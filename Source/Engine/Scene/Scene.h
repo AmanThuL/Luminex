@@ -8,6 +8,7 @@
 #include "Core/Math/Aabb.h"
 #include "Core/Math/Transform.h"
 #include "Engine/Asset/Asset.h"
+#include "Engine/Asset/Document/SceneLook.h"
 #include "Engine/Asset/Model/SceneAnimation.h"
 #include "Engine/Geometry/Mesh.h"
 #include "Engine/Lights/DirectionalLight.h"
@@ -68,6 +69,15 @@ struct SceneCamera {
 
 /// Copies the authored scene camera pose into a renderer camera.
 engine::Camera cameraFromScene(const SceneCamera& sceneCamera);
+
+/// Explicit ownership for one appended LightLab population; the first population owns the editor
+/// pile control.
+struct LightLabPopulation {
+    /// Owning generator node, or sentinel for direct append callers.
+    uint32_t documentNode = UINT32_MAX;
+    std::vector<LightId> grid; ///< Generated grid identities, never treated as pile by position.
+    std::vector<LightId> pile; ///< This generator's initial and subsequent session pile identities.
+};
 
 /// Owns renderable scene resources, instances, lighting, and initial view state.
 class Scene {
@@ -154,11 +164,15 @@ public:
     /// Returns borrowed bindings for the prepared slot; valid through that frame's execution.
     /// An unfinalized CPU scene returns empty bindings and cannot be submitted to the renderer.
     engine::SceneTables tables() const;
-    std::string name;                   ///< User-facing scene name.
+    asset::SceneLook look; ///< Authored document look; renderer configuration is separate.
+    std::string name;      ///< User-facing scene name.
     std::vector<SceneObject> objects;   ///< Editable draw instances.
-    engine::DirectionalLight lights[3]; ///< Fixed-size analytic light set.
-    glm::vec4 boundingSphere{0.f};      ///< World-space center in xyz and radius in w.
-    std::optional<MeshId> skySphere;    ///< Geometry used by the sky pass without an instance.
+    engine::DirectionalLight lights[3]; ///< Fixed key/fill/rim analytic role order.
+    /// Selected directional role, or no shadow contribution.
+    std::optional<uint32_t> shadowCaster{0};
+    Aabb authoredBounds = emptyAabb(); ///< Combined build-time bounds; excludes sky geometry.
+    glm::vec4 boundingSphere{0.f};     ///< World-space center in xyz and radius in w.
+    std::optional<MeshId> skySphere;   ///< Geometry used by the sky pass without an instance.
     std::unique_ptr<rojoRHI::Texture> skyCubemap; ///< Authored linear-radiance environment.
     /// Image-based lighting generated from the same authored sky radiance skyCubemap carries
     /// (Engine/Asset/Texture/Ibl.h): a cosine-convolved irradiance cube, a GGX-prefiltered radiance
@@ -167,9 +181,8 @@ public:
     std::unique_ptr<rojoRHI::Texture> irradianceMap;     ///< Diffuse irradiance cubemap.
     std::unique_ptr<rojoRHI::Texture> prefilteredEnvMap; ///< GGX-prefiltered environment chain.
     std::unique_ptr<rojoRHI::Texture> dfgLut; ///< Split-sum material response lookup table.
-    /// Immutable authored grid-light count set before finalize; zero outside LightLab. Remaining
-    /// initial local lights are the authored overflow pile, independently editable by the session.
-    uint32_t lightLabGridCount = 0;
+    /// Generated populations in append order; authored document lights never enter these lists.
+    std::vector<LightLabPopulation> lightLabPopulations;
     SceneCamera initialCamera{};     ///< Camera pose restored when the scene becomes active.
     asset::SceneAnimation animation; ///< Tracks this scene plays; empty for a static scene.
     double animationTime = 0.0; ///< Playback position in seconds, advanced by advanceAnimation().

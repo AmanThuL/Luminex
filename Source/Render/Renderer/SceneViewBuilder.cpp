@@ -23,7 +23,12 @@ SceneView buildSceneView(const engine::Scene& scene, std::vector<engine::DrawIte
     sceneView.coverageEpoch = scene.coverageEpoch();
     for (size_t i = 0; i < std::size(sceneView.lights); ++i) {
         sceneView.lights[i] = scene.lights[i];
+        if (!scene.lights[i].enabled)
+            sceneView.lights[i].strength = glm::vec3(0.0f);
     }
+    sceneView.shadowCaster = scene.shadowCaster && scene.lights[*scene.shadowCaster].enabled
+                                 ? static_cast<int32_t>(*scene.shadowCaster)
+                                 : -1;
     sceneView.boundingSphere = scene.boundingSphere;
     // A cubemap marks a fully constructed sky; the sphere and cubemap are published together.
     if (scene.skyCubemap != nullptr) {

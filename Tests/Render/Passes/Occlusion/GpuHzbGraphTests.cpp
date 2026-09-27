@@ -1,4 +1,5 @@
 #include "Support/GpuTemporalTestSupport.h"
+#include "Support/SceneDocumentTestSupport.h"
 
 #include "Engine/Scene/Scene.h"
 #include "Render/Renderer/SceneViewBuilder.h"
@@ -13,7 +14,7 @@ TEST_CASE("occlusion graph roots every HZB mip and reads the immediately precedi
     using namespace rojoRHI;
     auto device = createDevice();
     REQUIRE(device);
-    auto scene = lmx::scenes::loadVisibilityLabScene(**device, 1024);
+    auto scene = lmx::test::loadCatalogScene(**device, "visibility-lab", 1024);
     REQUIRE(scene);
     auto renderer = Renderer::create(**device, 64, 64, true);
     REQUIRE(renderer);

@@ -76,7 +76,9 @@ void EditorShell::startMeasurement(rojoRHI::Device& device, const render::Render
     plan.localLightMode = localLightModeName(m_settings.localLightMode);
     plan.localLightRig = m_session.localLightRigEnabled();
     plan.labLights =
-        m_session.lightLabPileAvailable() ? m_session.scene().lightLabGridCount : m_labLights;
+        m_session.lightLabPileAvailable()
+            ? static_cast<uint32_t>(m_session.scene().lightLabPopulations.front().grid.size())
+            : m_labLights;
     plan.labLightPile =
         m_session.lightLabPileAvailable() ? m_session.lightLabPileCount() : m_labLightPile;
     plan.lightCheck = m_settings.lightCheck;
@@ -124,9 +126,10 @@ void EditorShell::recordMeasurementFrame(uint64_t frameId, double waitMs, double
         m_measurement.plan().hzbDebugLevel != m_settings.hzbDebugLevel ||
         m_measurement.plan().localLightMode != localLightModeName(m_settings.localLightMode) ||
         m_measurement.plan().localLightRig != m_session.localLightRigEnabled() ||
-        m_measurement.plan().labLights != (m_session.lightLabPileAvailable()
-                                               ? m_session.scene().lightLabGridCount
-                                               : m_labLights) ||
+        m_measurement.plan().labLights !=
+            (m_session.lightLabPileAvailable()
+                 ? static_cast<uint32_t>(m_session.scene().lightLabPopulations.front().grid.size())
+                 : m_labLights) ||
         m_measurement.plan().labLightPile !=
             (m_session.lightLabPileAvailable() ? m_session.lightLabPileCount() : m_labLightPile) ||
         m_measurement.plan().lightCheck != m_settings.lightCheck ||

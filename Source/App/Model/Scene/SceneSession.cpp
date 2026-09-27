@@ -25,6 +25,7 @@ uint64_t lightKey(engine::LightId id) {
 
 //======================================================================================================================
 void SceneSession::activate(engine::Scene& scene, SceneActivationMotion motion) {
+    m_loaded = nullptr;
     auto [entry, inserted] = m_defaults.try_emplace(&scene);
     if (inserted) {
         for (const auto& object : scene.objects) {
@@ -32,18 +33,37 @@ void SceneSession::activate(engine::Scene& scene, SceneActivationMotion motion) 
         }
         std::copy(std::begin(scene.lights), std::end(scene.lights), entry->second.lights.begin());
     }
-    if (inserted && scene.lightLabGridCount > 0) {
-        LMX_ASSERT(scene.lightLabGridCount <= scene.localLights().size(),
-                   "LightLab grid count exceeds authored population");
-        const auto pile = scene.localLights().subspan(scene.lightLabGridCount);
-        entry->second.pileLights.assign(pile.begin(), pile.end());
-    }
+    if (inserted && !scene.lightLabPopulations.empty())
+        entry->second.pileLights = scene.lightLabPopulations.front().pile;
     m_scene = &scene;
     rememberLocalLightDefaults();
     m_camera = engine::cameraFromScene(scene.initialCamera);
     if (motion == SceneActivationMotion::Reset) {
         resetMotion();
     }
+}
+
+//======================================================================================================================
+void SceneSession::activate(engine::LoadedScene& loaded, SceneActivationMotion motion) {
+    activate(*loaded.scene, motion);
+    m_loaded = &loaded;
+    m_documentStates.try_emplace(loaded.scene.get(), scenes::initialDocumentState(loaded));
+}
+
+//======================================================================================================================
+void SceneSession::invalidate(const engine::Scene& old) {
+    m_defaults.erase(&old);
+    m_documentStates.erase(&old);
+    if (m_scene == &old) {
+        m_scene = nullptr;
+        m_loaded = nullptr;
+    }
+}
+
+//======================================================================================================================
+const scenes::SessionDocumentState& SceneSession::documentState() const {
+    LMX_ASSERT(m_loaded, "document state requires a loaded document");
+    return m_documentStates.at(m_scene);
 }
 
 //======================================================================================================================
@@ -175,20 +195,22 @@ void SceneSession::resetLight(size_t index) {
 bool SceneSession::lightChanged(size_t index) const {
     const auto& original = lightDefault(index);
     const auto& light = scene().lights[index];
-    return original.direction != light.direction || original.strength != light.strength;
+    return original.direction != light.direction || original.strength != light.strength ||
+           original.enabled != light.enabled;
 }
 
 //======================================================================================================================
 bool SceneSession::localLightRigAvailable() const {
-    return m_scene && m_scene->name == "Sponza";
+    return m_loaded && m_loaded->binding.localLightGroup.has_value();
 }
 
 //======================================================================================================================
 bool SceneSession::localLightRigEnabled() const {
     if (!localLightRigAvailable())
         return false;
-    for (const auto id : m_scene->rigLightIds()) {
-        if (const auto* light = m_scene->light(id); light && light->enabled)
+    for (const auto id : scene().rigLightIds()) {
+        const auto* light = scene().light(id);
+        if (light && light->enabled)
             return true;
     }
     return false;
@@ -196,14 +218,21 @@ bool SceneSession::localLightRigEnabled() const {
 
 //======================================================================================================================
 rojoRHI::Result<void> SceneSession::setLocalLightRig(bool enabled) {
-    if (!localLightRigAvailable()) {
-        return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
-                                              "Local-light rig is available only in Sponza"});
+    if (!localLightRigAvailable())
+        return {};
+    auto own = documentState().nodeEnabled;
+    own[*m_loaded->binding.localLightGroup] = enabled;
+    const auto effective = engine::effectiveDocumentEnabled(m_loaded->document, own);
+    for (auto id : scene().rigLightIds()) {
+        const auto* old = scene().light(id);
+        if (!old)
+            continue;
+        auto light = *old;
+        light.enabled = effective[m_loaded->binding.lightNode.at(engine::sceneLightKey(id))];
+        if (auto result = scene().updateLight(id, light); !result)
+            return result;
     }
-    auto result = m_lightRigs[m_scene].setEnabled(scene(), enabled);
-    if (result)
-        rememberLocalLightDefaults();
-    return result;
+    return {};
 }
 
 //======================================================================================================================
@@ -267,7 +296,7 @@ rojoRHI::Result<void> SceneSession::resetLocalLight(engine::LightId id) {
 
 //======================================================================================================================
 bool SceneSession::lightLabPileAvailable() const {
-    return m_scene && m_scene->lightLabGridCount > 0;
+    return m_scene && !m_scene->lightLabPopulations.empty();
 }
 
 //======================================================================================================================
@@ -283,7 +312,7 @@ uint32_t SceneSession::lightLabPileCount() const {
 uint32_t SceneSession::lightLabPileCapacity() const {
     if (!lightLabPileAvailable())
         return 0;
-    return std::min(engine::kMaxLocalLights - scene().lightLabGridCount,
+    return std::min(engine::kMaxLocalLights - 1,
                     engine::kMaxLocalLights - (static_cast<uint32_t>(scene().localLights().size()) -
                                                lightLabPileCount()));
 }
@@ -299,7 +328,14 @@ rojoRHI::Result<void> SceneSession::setLightLabPile(uint32_t count) {
     if (count > pile.size()) {
         // The immutable authored grid count reserves at least one slot, so count <= 4095 and this
         // helper's one unused grid light plus the requested pile obey the generator's 4096 limit.
-        const auto authored = scenes::lightLabLights(1, count);
+        auto authored = scenes::lightLabLights(1, count);
+        const auto owner = scene().lightLabPopulations.front().documentNode;
+        if (m_loaded && owner < m_loaded->document.nodes.size()) {
+            const auto effective =
+                engine::effectiveDocumentEnabled(m_loaded->document, documentState().nodeEnabled);
+            for (auto& light : authored)
+                light.enabled = effective[owner];
+        }
         for (size_t i = pile.size(); i < count; ++i) {
             const auto id = scene().addLight(authored[i + 1]);
             if (!id) {
@@ -310,11 +346,17 @@ rojoRHI::Result<void> SceneSession::setLightLabPile(uint32_t count) {
             added.push_back(*id);
         }
         pile.insert(pile.end(), added.begin(), added.end());
+        if (m_loaded)
+            for (auto id : added)
+                m_loaded->binding.lightGeneratorNode.emplace(engine::sceneLightKey(id), owner);
     }
     while (pile.size() > count) {
+        if (m_loaded)
+            m_loaded->binding.lightGeneratorNode.erase(engine::sceneLightKey(pile.back()));
         scene().removeLight(pile.back());
         pile.pop_back();
     }
+    scene().lightLabPopulations.front().pile = pile;
     rememberLocalLightDefaults();
     return {};
 }

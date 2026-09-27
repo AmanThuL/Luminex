@@ -120,7 +120,7 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
         return nullptr;
     }
     self->m_activeSceneId = initialScene;
-    self->m_session.activate(**scene, SceneActivationMotion::Reset);
+    self->m_session.activate(*library.loaded(initialScene), SceneActivationMotion::Reset);
     SDL_SetWindowTitle(window, (self->m_session.scene().name + " — Luminex").c_str());
     // Startup selects the scene's Camera (spec section 5); every scene provides one.
     self->m_selection = initialSelection(initialScene);
@@ -527,8 +527,8 @@ rojoRHI::Result<void> EditorShell::primeTemporal(const AppOptions& options) {
     m_settings.occlusionEnabled = options.occlusionEnabled;
     m_settings.occlusionCheck = options.occlusionCheck;
     m_settings.hzbDebugLevel = options.hzbDebugLevel;
-    if (m_session.localLightRigAvailable()) {
-        return m_session.setLocalLightRig(options.localLightRig);
+    if (options.localLightRigOverride && m_session.localLightRigAvailable()) {
+        return m_session.setLocalLightRig(*options.localLightRigOverride);
     }
     return {};
 }
@@ -716,7 +716,7 @@ bool EditorShell::selectScene(rojoRHI::Device& device, scenes::SceneId id) {
     m_visibilityDisplay.clear();
     m_lightingDisplay.clear();
     m_lightingFailureLogged = false;
-    m_session.activate(**scene, SceneActivationMotion::Reset);
+    m_session.activate(*m_library.loaded(id), SceneActivationMotion::Reset);
     SDL_SetWindowTitle(m_window, (m_session.scene().name + " — Luminex").c_str());
     // The new scene has no motion to report yet, and its generation differs from whatever the
     // renderer last saw (TemporalEditorState.h), which is what tells the temporal history to reset

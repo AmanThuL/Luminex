@@ -20,26 +20,11 @@
 
 namespace lmx::engine {
 
-namespace {
-
-constexpr glm::vec3 kLightDirections[3] = {
-    {0.577f, -0.577f, 0.577f},
-    {-0.577f, -0.577f, 0.577f},
-    {0.0f, -0.707f, -0.707f},
-};
-
-constexpr float kLightStrengths[3] = {0.7f, 0.2f, 0.2f};
-static_assert(std::size(kLightStrengths) == std::size(kLightDirections),
-              "kLightStrengths and kLightDirections must have the same length");
-
-} // namespace
-
 //======================================================================================================================
 asset::AssetResult<void> attachEnvironment(rojoRHI::Device& device, Scene& scene,
                                            std::unique_ptr<rojoRHI::Texture> skyCubemap,
                                            const asset::ibl::CpuCubemap& environment,
-                                           bool analyticLights, std::string_view label,
-                                           ibl::GenerationOptions options) {
+                                           std::string_view label, ibl::GenerationOptions options) {
     // The sky pass recentres the sphere and forces it to the far plane; only enclosure matters.
     scene.skySphere = scene.addMesh(engine::fromGeo(asset::makeSphere(0.5f, 20, 20)),
                                     std::string(label) + ".skySphere");
@@ -54,11 +39,6 @@ asset::AssetResult<void> attachEnvironment(rojoRHI::Device& device, Scene& scene
     scene.prefilteredEnvMap = std::move(generated->prefilteredEnv);
     scene.dfgLut = std::move(generated->dfgLut);
 
-    for (size_t i = 0; i < std::size(kLightDirections); ++i) {
-        scene.lights[i].direction = kLightDirections[i];
-        scene.lights[i].strength =
-            analyticLights ? glm::vec3(srgbToLinear(kLightStrengths[i])) : glm::vec3(0.0f);
-    }
     return {};
 }
 
@@ -91,7 +71,7 @@ asset::AssetResult<void> attachNeutralEnvironment(rojoRHI::Device& device, Scene
                                                          static_cast<float>(kNeutralSky[2])) /
                                                255.0f);
     return attachEnvironment(device, scene, std::move(*cubemap),
-                             asset::ibl::makeConstantCubemap(skyRadiance, 1), true, label);
+                             asset::ibl::makeConstantCubemap(skyRadiance, 1), label);
 }
 
 } // namespace lmx::engine

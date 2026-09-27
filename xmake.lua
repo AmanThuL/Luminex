@@ -31,5 +31,5 @@ includes("Source/Core/xmake.lua", "Source/Render/xmake.lua",
          "Source/Engine/Asset/xmake.lua",
          "Source/Scenes/xmake.lua", "Source/App/Model/xmake.lua",
          "Source/App/xmake.lua", "Tests/xmake.lua",
-         "Tools/TextureBake/xmake.lua", "Tools/SceneExport/xmake.lua",
+         "Tools/TextureBake/xmake.lua",
          "Benchmarks/FrameData/xmake.lua")

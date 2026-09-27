@@ -80,6 +80,7 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
     for (size_t i = 0; i < std::size(passUniforms.lights); ++i) {
         passUniforms.lights[i] = toUniform(view.lights[i]);
     }
+    passUniforms.shadowCaster = view.shadowCaster;
     passUniforms.shadowFilter =
         view.shadowFilter == ShadowFilter::PCSS ? kShadowFilterPcss : kShadowFilterPcf;
     passUniforms.viewProjUnjittered = cameraState.viewProjection;

@@ -7,6 +7,7 @@
 #include "Scenes/CatalogScenes.h"
 #include "Scenes/LightLab.h"
 #include "Scenes/SceneLibrary.h"
+#include "Support/SceneDocumentTestSupport.h"
 
 #include "Engine/Lights/LocalLightMath.h"
 
@@ -120,22 +121,27 @@ TEST_CASE("lightLabTracks periods divide the 12 s camera rail loop", "[scene][li
     REQUIRE_FALSE(tracks.empty());
     for (const asset::LightOrbitTrack& track : tracks) {
         REQUIRE(track.period > 0.0f);
-        const double periods = scenes::kLightLabRailDuration / static_cast<double>(track.period);
+        const double periods = lmx::test::catalogCamera("light-lab").animation.duration /
+                               static_cast<double>(track.period);
         REQUIRE(Approx(periods - std::round(periods)).margin(1e-6) == 0.0);
     }
 }
 
 //======================================================================================================================
 TEST_CASE("LightLab rail loops from an overview through a close pass", "[scene][light-lab]") {
-    const auto rail = scenes::lightLabCameraTrack();
+    const auto cameraScene = lmx::test::catalogCamera("light-lab");
+    const auto& rail = cameraScene.animation.cameraTrack;
     REQUIRE(rail.size() ==
-            static_cast<size_t>(scenes::kLightLabRailDuration * asset::kAnimationBakeRate) + 1);
+            static_cast<size_t>(lmx::test::catalogCamera("light-lab").animation.duration *
+                                asset::kAnimationBakeRate) +
+                1);
     REQUIRE(rail.front().time == 0.0);
-    REQUIRE(rail.back().time == scenes::kLightLabRailDuration);
+    REQUIRE(rail.back().time == lmx::test::catalogCamera("light-lab").animation.duration);
     REQUIRE(rail.front().position == rail.back().position);
     REQUIRE(rail.front().yaw == rail.back().yaw);
     REQUIRE(rail.front().pitch == rail.back().pitch);
-    const auto midpoint = asset::sampleCameraTrack(rail, scenes::kLightLabRailDuration * 0.5);
+    const auto midpoint = asset::sampleCameraTrack(
+        rail, lmx::test::catalogCamera("light-lab").animation.duration * 0.5);
     REQUIRE(glm::distance(midpoint.position, scenes::lightLabPilePosition()) <
             glm::distance(rail.front().position, scenes::lightLabPilePosition()));
 }
@@ -215,7 +221,7 @@ TEST_CASE("LightLab loads from the catalog with its requested population",
     auto& loaded = **result;
     REQUIRE(loaded.name == "LightLab");
     REQUIRE(loaded.localLights().size() == 144);
-    REQUIRE(loaded.lightLabGridCount == 128);
+    REQUIRE(loaded.lightLabPopulations.front().grid.size() == 128);
     const auto gridId = loaded.localLights().front();
     const auto originalPileId = loaded.localLights()[128];
     app::SceneSession session;
@@ -230,7 +236,7 @@ TEST_CASE("LightLab loads from the catalog with its requested population",
     loaded.animate(3.0);
     REQUIRE(loaded.light(runtimePileId)->position == runtimePosition);
     REQUIRE(loaded.animationLightId(0) == gridId);
-    REQUIRE(loaded.animation.duration == scenes::kLightLabRailDuration);
+    REQUIRE(loaded.animation.duration == lmx::test::catalogCamera("light-lab").animation.duration);
     REQUIRE(loaded.animation.loop);
     REQUIRE_FALSE(loaded.animation.cameraTrack.empty());
     (*device)->beginFrame();
@@ -243,9 +249,10 @@ TEST_CASE("LightLab loads from the catalog with its requested population",
 TEST_CASE("loadLightLabScene rejects out-of-range populations", "[gpu][scene][light-lab]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    REQUIRE_FALSE(scenes::loadLightLabScene(**device, 0, 0));
-    REQUIRE_FALSE(scenes::loadLightLabScene(**device, engine::kMaxLocalLights + 1, 0));
-    REQUIRE_FALSE(scenes::loadLightLabScene(**device, engine::kMaxLocalLights, 1));
+    REQUIRE_FALSE(lmx::test::loadCatalogScene(**device, "light-lab", 0, 0));
+    REQUIRE_FALSE(
+        lmx::test::loadCatalogScene(**device, "light-lab", engine::kMaxLocalLights + 1, 0));
+    REQUIRE_FALSE(lmx::test::loadCatalogScene(**device, "light-lab", engine::kMaxLocalLights, 1));
 }
 
 //======================================================================================================================

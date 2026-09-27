@@ -14,7 +14,6 @@
 #include "Core/Math/Sphere.h"
 #include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Geometry/Mesh.h"
-#include "Engine/Upload/SceneEnvironment.h"
 
 #include <glm/gtc/constants.hpp>
 
@@ -112,11 +111,6 @@ std::array<glm::vec3, 4> lightPalette() {
     return {
         srgbToLinear(glm::vec3(1.00f, 0.86f, 0.66f)), srgbToLinear(glm::vec3(0.55f, 0.76f, 1.00f)),
         srgbToLinear(glm::vec3(1.00f, 0.55f, 0.35f)), srgbToLinear(glm::vec3(0.72f, 0.48f, 1.00f))};
-}
-
-//======================================================================================================================
-asset::AssetError uploadFailure(rojoRHI::Error error) {
-    return asset::AssetError{asset::AssetErrorCode::UploadFailed, std::move(error.message)};
 }
 
 //======================================================================================================================
@@ -271,36 +265,9 @@ std::vector<asset::LightOrbitTrack> lightLabTracks(uint32_t n, uint32_t pile) {
 }
 
 //======================================================================================================================
-std::vector<asset::CameraKey> lightLabCameraTrack() {
-    std::vector<asset::CameraKey> keys;
-    constexpr float kRailHeight = 12.0f;
-    constexpr float kRailDepth = 4.0f;
-    const glm::vec3 target(0.0f, 0.0f, 0.0f);
-    const glm::vec3 closePoint(0.0f, 6.0f, 2.0f);
-    const glm::vec3 farPoint(0.0f, kRailHeight, kRailDepth);
-    const size_t keyCount =
-        static_cast<size_t>(kLightLabRailDuration * asset::kAnimationBakeRate) + 1;
-    keys.reserve(keyCount);
-    for (size_t i = 0; i < keyCount; ++i) {
-        const double time = static_cast<double>(i) / asset::kAnimationBakeRate;
-        const float phase = static_cast<float>(time / kLightLabRailDuration) * glm::two_pi<float>();
-        // A close pass near the pile point at the loop's midpoint, easing out to an overview of
-        // the material field at its endpoints. Looking down at the floor keeps the dense
-        // grid distributed across screen tiles instead of compressed into a distant band.
-        const float fraction = (1.0f + std::cos(phase)) * 0.5f;
-        const glm::vec3 position = glm::mix(closePoint, farPoint, fraction);
-        const glm::vec3 direction = glm::normalize(target - position);
-        keys.push_back({.time = time,
-                        .position = position,
-                        .yaw = std::atan2(direction.x, -direction.z),
-                        .pitch = std::asin(direction.y)});
-    }
-    return keys;
-}
-
-//======================================================================================================================
-asset::AssetResult<std::unique_ptr<engine::Scene>>
-loadLightLabScene(rojoRHI::Device& device, uint32_t lightCount, uint32_t pileCount) {
+asset::AssetResult<void> appendLightLab(engine::Scene& target, uint32_t lightCount,
+                                        uint32_t pileCount,
+                                        const engine::EnvironmentHook& environment) {
     if (lightCount == 0 || lightCount > engine::kMaxLocalLights) {
         return std::unexpected(asset::AssetError{asset::AssetErrorCode::Malformed,
                                                  "LightLab lights must be 1.." +
@@ -312,43 +279,44 @@ loadLightLabScene(rojoRHI::Device& device, uint32_t lightCount, uint32_t pileCou
                                                   std::to_string(engine::kMaxLocalLights)});
     }
 
-    auto scene = std::make_unique<engine::Scene>();
-    scene->name = "LightLab";
-    scene->lightLabGridCount = lightCount;
+    engine::Scene* scene = &target;
+    if (target.localLights().size() + uint64_t{lightCount} + pileCount > engine::kMaxLocalLights)
+        return std::unexpected(asset::AssetError{asset::AssetErrorCode::Malformed,
+                                                 "combined local light capacity exceeds 4096"});
+    engine::LightLabPopulation population;
+    const uint32_t lightBase = static_cast<uint32_t>(scene->localLights().size());
 
     Aabb bounds = emptyAabb();
     addMaterialField(*scene, bounds);
 
     for (const engine::LocalLight& light : lightLabLights(lightCount, pileCount)) {
         const auto added = scene->addLight(light);
-        LMX_ASSERT(added.has_value(), "LightLab authored an invalid light");
+        if (!added)
+            return std::unexpected(
+                asset::AssetError{asset::AssetErrorCode::Malformed, added.error().message});
+        auto& identities = population.grid.size() < lightCount ? population.grid : population.pile;
+        identities.push_back(*added);
     }
-    scene->animation.lightTracks = lightLabTracks(lightCount, pileCount);
+    scene->lightLabPopulations.push_back(std::move(population));
+    auto tracks = lightLabTracks(lightCount, pileCount);
+    for (auto& track : tracks)
+        track.light += lightBase;
+    scene->animation.lightTracks.insert(scene->animation.lightTracks.end(), tracks.begin(),
+                                        tracks.end());
 
-    scene->animation.cameraTrack = lightLabCameraTrack();
-    scene->animation.duration = kLightLabRailDuration;
+    scene->animation.duration = std::max(scene->animation.duration, double(kLightLabOrbitPeriod));
     scene->animation.loop = true;
 
     scene->animate(0.0);
     scene->resetMotion();
 
-    scene->boundingSphere = toVec4(boundingSphere(bounds));
-    const asset::CameraKey first = scene->animation.cameraTrack.front();
-    scene->initialCamera = {.position = first.position,
-                            .yaw = first.yaw,
-                            .pitch = first.pitch,
-                            .fovY = kLightLabCameraFovY,
-                            .nearZ = kLightLabCameraNearZ,
-                            .farZ = 300.0f};
-
-    if (auto environment = engine::attachNeutralEnvironment(device, *scene, "LightLab");
-        !environment) {
-        return std::unexpected(environment.error());
+    expand(scene->authoredBounds, bounds.minimum);
+    expand(scene->authoredBounds, bounds.maximum);
+    scene->boundingSphere = toVec4(boundingSphere(scene->authoredBounds));
+    if (auto attached = environment(*scene); !attached) {
+        return std::unexpected(attached.error());
     }
-    if (auto finalized = scene->finalize(device); !finalized) {
-        return std::unexpected(uploadFailure(std::move(finalized.error())));
-    }
-    return scene;
+    return {};
 }
 
 } // namespace lmx::scenes

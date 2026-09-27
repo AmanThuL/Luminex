@@ -151,13 +151,13 @@ asset::SceneDocument, path, const SceneGeneratorLookup&) -> AssetResult<LoadedSc
 `sceneIdFromPath`, `SceneLibrary::loaded(id) -> LoadedScene*`, `SessionDocumentState {
 std::vector<bool> nodeEnabled; std::optional<engine::SceneCamera> sceneCamera; }` and
 `initialDocumentState(const LoadedScene&)`.
-- [ ] Tests first (pure): effective enabled is the AND over ancestors; an override name mismatch
+- [x] Tests first (pure): effective enabled is the AND over ancestors; an override name mismatch
   names both; a stale asset hash names `/nodes/<n>/extensions/LMX_scene/asset/sha256`; a missing
   HDRI names its `uri`; `uri`s resolve under `Assets/` wherever the document is (Review focus 2);
   `--scene <path>` parses; `--local-light-rig` is a no-op without a group; a pose override on an
   animated node fails. GPU (`[gpu][scene-doc]`): every catalog document loads; Sponza has 16
   lights and a 7,201-key rail.
-- [ ] Keep the parent's order: nodes in document order, asset tracks rebased by the objects before
+- [x] Keep the parent's order: nodes in document order, asset tracks rebased by the objects before
   them and asset clips setting the duration; the environment where each loader attached it (a
   generator calls `EnvironmentHook` where its lab called `attachNeutralEnvironment`); then document
   lights. Commit `scene: load the catalog from documents (UX3)`.

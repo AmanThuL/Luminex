@@ -1,5 +1,6 @@
 #include "App/Model/Scene/SceneSession.h"
 #include "Support/GraphTestSupport.h"
+#include "Support/SceneDocumentTestSupport.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -371,13 +372,13 @@ TEST_CASE("SceneSession local-light reset uses full identities and current orbit
 TEST_CASE("SceneSession pile edits preserve grid and unrelated identities and obey capacity",
           "[app][scene-session][local-light-editor]") {
     engine::Scene scene;
-    scene.lightLabGridCount = 2;
     const auto grid0 = scene.addLight(engine::LocalLight{});
     const auto grid1 = scene.addLight(engine::LocalLight{});
     const auto authoredPile = scene.addLight(engine::LocalLight{});
     REQUIRE(grid0);
     REQUIRE(grid1);
     REQUIRE(authoredPile);
+    scene.lightLabPopulations.push_back({.grid = {*grid0, *grid1}, .pile = {*authoredPile}});
     SceneSession session;
     session.activate(scene, SceneActivationMotion::PreserveLoadedMotion);
     REQUIRE(session.lightLabPileAvailable());
@@ -397,4 +398,37 @@ TEST_CASE("SceneSession pile edits preserve grid and unrelated identities and ob
     REQUIRE(session.setLightLabPile(0));
     REQUIRE(scene.localLights().size() == 3);
     REQUIRE(scene.light(*unrelated));
+}
+
+//======================================================================================================================
+TEST_CASE("local light rig override is a no-op without a document group", "[app][scene-doc]") {
+    lmx::engine::Scene scene;
+    lmx::app::SceneSession session;
+    session.activate(scene, lmx::app::SceneActivationMotion::Reset);
+    REQUIRE_FALSE(session.localLightRigAvailable());
+    REQUIRE(session.setLocalLightRig(true));
+    REQUIRE(scene.localLights().empty());
+}
+
+//======================================================================================================================
+TEST_CASE("CLI rig override preserves an authored-off child and off group state",
+          "[app][scene-doc]") {
+    auto loaded = lmx::test::documentLightFixture();
+    const auto group = *loaded.binding.localLightGroup;
+    loaded.document.nodes[group].enabled = false;
+    const auto id = loaded.scene->rigLightIds().front();
+    const auto child = loaded.binding.lightNode.at(lmx::engine::sceneLightKey(id));
+    loaded.document.nodes[child].enabled = false;
+    for (const auto lightId : loaded.scene->rigLightIds()) {
+        auto light = *loaded.scene->light(lightId);
+        light.enabled = false;
+        REQUIRE(loaded.scene->updateLight(lightId, light));
+    }
+    lmx::app::SceneSession session;
+    session.activate(loaded, lmx::app::SceneActivationMotion::Reset);
+    REQUIRE(session.setLocalLightRig(true));
+    REQUIRE(loaded.scene->enabledLightCount() == 15);
+    REQUIRE_FALSE(loaded.scene->light(id)->enabled);
+    REQUIRE_FALSE(session.documentState().nodeEnabled[group]);
+    REQUIRE_FALSE(session.documentState().nodeEnabled[child]);
 }

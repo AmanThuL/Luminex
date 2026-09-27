@@ -1,6 +1,7 @@
 #include "Render/Renderer/SceneViewBuilder.h"
 #include "Scenes/CatalogScenes.h"
 #include "Support/GpuTemporalTestSupport.h"
+#include "Support/SceneDocumentTestSupport.h"
 #include "Support/SceneTableTestSupport.h"
 
 using lmx::test::FixtureDrawItem;
@@ -401,7 +402,7 @@ TEST_CASE("TemporalLab writes motion for its animated tracks", "[gpu][temporal]"
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto scene = lmx::scenes::loadTemporalLabScene(**device);
+    auto scene = lmx::test::loadCatalogScene(**device, "temporal-lab");
     INFO(errorOf(scene));
     REQUIRE(scene.has_value());
 

@@ -11,7 +11,6 @@
 #include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Asset/Model/SceneAnimation.h"
 #include "Engine/Asset/Texture/TextureBake.h"
-#include "Engine/Upload/SceneEnvironment.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
@@ -59,11 +58,6 @@ constexpr glm::vec2 kSignSize{1.5f, 0.75f};
 constexpr glm::vec3 kSignEmissive{1.0f, 0.8f, 0.3f};
 constexpr double kSignPeriodSeconds = 6.0;
 constexpr float kSignStrengthOn = 4.0f;
-constexpr glm::vec3 kCameraStart{0.0f, 3.0f, 10.0f};
-constexpr glm::vec3 kCameraEnd{2.0f, 3.0f, 8.0f};
-constexpr float kCameraYawDrift = 0.1f;
-constexpr float kCameraPitch = -0.15f;
-constexpr double kCameraLoopSeconds = 8.0;
 
 //======================================================================================================================
 asset::AssetError uploadFailure(rojoRHI::Error error) {
@@ -151,9 +145,9 @@ float phase(double time, double seconds) {
 //   radians and pitch holds at -0.15 radians, which frames the floor and every probe.
 //   initialCamera is the track's first key: (0, 3, 10), yaw 0, pitch -0.15, 45 degree vertical
 //   FOV.
-asset::AssetResult<std::unique_ptr<engine::Scene>> loadTemporalLabScene(rojoRHI::Device& device) {
-    auto scene = std::make_unique<engine::Scene>();
-    scene->name = "TemporalLab";
+asset::AssetResult<void> appendTemporalLab(rojoRHI::Device& device, engine::Scene& target,
+                                           const engine::EnvironmentHook& environment) {
+    engine::Scene* scene = &target;
 
     // makeGrid rather than engine::makePlane: the checker needs the 0..1 UVs only the grid
     // generator authors.
@@ -311,40 +305,20 @@ asset::AssetResult<std::unique_ptr<engine::Scene>> loadTemporalLabScene(rojoRHI:
     }
     scene->animation.emissiveTracks.push_back(std::move(signTrack));
 
-    scene->animation.cameraTrack.reserve(kKeyCount);
-    for (size_t i = 0; i < kKeyCount; ++i) {
-        const double time = static_cast<double>(i) / asset::kAnimationBakeRate;
-        const float angle = phase(time, kCameraLoopSeconds);
-        const float eased = (1.0f - std::cos(angle)) * 0.5f;
-        scene->animation.cameraTrack.push_back(
-            {.time = time,
-             .position = glm::mix(kCameraStart, kCameraEnd, eased),
-             .yaw = kCameraYawDrift * std::sin(angle),
-             .pitch = kCameraPitch});
-    }
-    scene->animation.duration = kClipDuration;
+    scene->animation.duration = std::max(scene->animation.duration, kClipDuration);
     scene->animation.loop = true;
     scene->animate(0.0);
     scene->resetMotion();
 
-    scene->boundingSphere = toVec4(boundingSphere(aabb));
+    expand(scene->authoredBounds, aabb.minimum);
+    expand(scene->authoredBounds, aabb.maximum);
+    scene->boundingSphere = toVec4(boundingSphere(scene->authoredBounds));
 
-    if (auto sky = engine::attachNeutralEnvironment(device, *scene, "TemporalLab"); !sky) {
+    if (auto sky = environment(*scene); !sky) {
         return std::unexpected(sky.error());
     }
 
-    const asset::CameraKey first = scene->animation.cameraTrack.front();
-    scene->initialCamera.position = first.position;
-    scene->initialCamera.yaw = first.yaw;
-    scene->initialCamera.pitch = first.pitch;
-    scene->initialCamera.fovY = glm::radians(45.0f);
-    scene->initialCamera.nearZ = 0.05f;
-    scene->initialCamera.farZ = 200.0f;
-
-    if (auto finalized = scene->finalize(device); !finalized) {
-        return std::unexpected(uploadFailure(std::move(finalized.error())));
-    }
-    return scene;
+    return {};
 }
 
 } // namespace lmx::scenes

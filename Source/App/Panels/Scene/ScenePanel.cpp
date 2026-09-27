@@ -135,7 +135,7 @@ void drawHierarchy(std::span<const EditorSelectionRow> rows, const ScenePanelCon
     if (lightCount + objectCount + localCount == 0) {
         return;
     }
-    ImGui::PushID(static_cast<int>(context.activeSceneId.catalogIndex));
+    ImGui::PushID(context.activeSceneId.key.c_str());
     const bool sceneOpen =
         ImGui::TreeNodeEx("active-scene", kGroupFlags, "%s", context.activeScene.name.c_str());
     editorTooltip(
@@ -222,7 +222,7 @@ std::optional<scenes::SceneId> drawSceneMenu(const SceneMenuContext& context) {
     }
     ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + editor_style::scaled(360.0f));
     for (const auto& entry : context.library.entries()) {
-        ImGui::PushID(static_cast<int>(entry.id.catalogIndex));
+        ImGui::PushID(entry.id.key.c_str());
         ImGui::BeginDisabled(!entry.available);
         if (ImGui::Selectable(entry.displayName.data(), entry.id == context.activeSceneId,
                               ImGuiSelectableFlags_NoAutoClosePopups) &&

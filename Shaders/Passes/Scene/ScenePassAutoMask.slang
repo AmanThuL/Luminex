@@ -86,6 +86,7 @@ struct PassUniforms
     float preExposure; // exp2(exposure in EV), applied to the fragment's linear output
     DirLight lights[3];
     int shadowFilter; // Shadow.slang's kShadowFilterPcf / kShadowFilterPcss
+    int shadowCaster; // key/fill/rim role index; -1 leaves every contribution unshadowed
     // The motion pair, unjittered on purpose: jitter moves where the frame is sampled, never where
     // the surface is, so a still scene rendered with a moving jitter sequence must still produce
     // zero motion. Rasterisation uses PassUniforms.viewProj, which carries the jitter.
@@ -247,11 +248,14 @@ SurfaceShading shadeSurfaceDetailed(VSOutput input, bool frontFace)
     // Only light 0 owns a shadow map.
     float shadowFactor =
         CalcShadowFactor(input.shadowPos, gShadowMap, gShadowSampler, gPass.shadowFilter);
-    float3 litColor = shadowFactor * ComputeDirectionalLight(gPass.lights[0], normalW, toEye,
+    float3 litColor = (gPass.shadowCaster == 0 ? shadowFactor : 1.0f) *
+                      ComputeDirectionalLight(gPass.lights[0], normalW, toEye,
                                                              baseColor, f0, metallic, alpha);
-    litColor += ComputeDirectionalLight(gPass.lights[1], normalW, toEye, baseColor, f0, metallic,
+    litColor += (gPass.shadowCaster == 1 ? shadowFactor : 1.0f) *
+                ComputeDirectionalLight(gPass.lights[1], normalW, toEye, baseColor, f0, metallic,
                                         alpha);
-    litColor += ComputeDirectionalLight(gPass.lights[2], normalW, toEye, baseColor, f0, metallic,
+    litColor += (gPass.shadowCaster == 2 ? shadowFactor : 1.0f) *
+                ComputeDirectionalLight(gPass.lights[2], normalW, toEye, baseColor, f0, metallic,
                                         alpha);
 
     litColor += AccumulateLocalLights(gLocalLights, gLights, gLightClusterGrid,

@@ -3,7 +3,7 @@
 /// @brief Tests the Sponza tour's corridor coverage, pacing and seamless playback.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Scenes/SponzaCameraTour.h"
+#include "Support/SceneDocumentTestSupport.h"
 
 #include "Engine/Scene/Scene.h"
 
@@ -16,31 +16,30 @@
 using namespace lmx;
 
 //======================================================================================================================
-TEST_CASE("Sponza tour authors one closed rail and preserves the camera lens",
+TEST_CASE("Sponza tour document supplies one closed rail and its camera lens",
           "[scene][sponza-tour]") {
-    engine::Scene scene;
-    scene.initialCamera.fovY = 0.9f;
-    scene.initialCamera.nearZ = 0.07f;
-    scene.initialCamera.farZ = 400.0f;
-    scenes::authorSponzaCameraTour(scene);
+    auto scene = test::catalogCamera("sponza");
     const auto& keys = scene.animation.cameraTrack;
     REQUIRE(scene.animation.loop);
-    REQUIRE(scene.animation.duration == scenes::kSponzaCameraTourDuration);
+    REQUIRE(scene.animation.duration == 120.0);
     REQUIRE(keys.size() == 7201);
     REQUIRE(keys.front().time == 0.0);
-    REQUIRE(keys.back().time == scenes::kSponzaCameraTourDuration);
+    REQUIRE(keys.back().time == 120.0);
     REQUIRE(keys.front().position == keys.back().position);
     REQUIRE(keys.front().yaw == keys.back().yaw);
     REQUIRE(keys.front().pitch == keys.back().pitch);
     REQUIRE(scene.initialCamera.position == keys.front().position);
     REQUIRE(scene.initialCamera.yaw == keys.front().yaw);
     REQUIRE(scene.initialCamera.pitch == keys.front().pitch);
-    REQUIRE(scene.initialCamera.fovY == 0.9f);
-    REQUIRE(scene.initialCamera.nearZ == 0.07f);
-    REQUIRE(scene.initialCamera.farZ == 400.0f);
+    const auto document = scenes::readCatalogDocument("sponza");
+    REQUIRE(document);
+    const auto& authoredCamera = document->cameras[*document->nodes[document->camera].camera];
+    REQUIRE(scene.initialCamera.fovY == authoredCamera.fovY);
+    REQUIRE(scene.initialCamera.nearZ == authoredCamera.nearZ);
+    REQUIRE(scene.initialCamera.farZ == *authoredCamera.farZ);
 
     engine::Camera camera;
-    scene.advanceAnimation(3.0 * scenes::kSponzaCameraTourDuration + 0.25);
+    scene.advanceAnimation(3.0 * 120.0 + 0.25);
     scene.followCameraTrack(camera);
     const auto expected = asset::sampleCameraTrack(keys, 0.25);
     REQUIRE(glm::distance(camera.position, expected.position) < 1e-5f);
@@ -50,8 +49,7 @@ TEST_CASE("Sponza tour authors one closed rail and preserves the camera lens",
 //======================================================================================================================
 TEST_CASE("Sponza tour covers every corridor on both floors and changes level only in the atrium",
           "[scene][sponza-tour]") {
-    engine::Scene scene;
-    scenes::authorSponzaCameraTour(scene);
+    auto scene = test::catalogCamera("sponza");
     std::array<std::array<bool, 4>, 2> visited{};
     for (const auto& key : scene.animation.cameraTrack) {
         const auto p = key.position;
@@ -82,8 +80,7 @@ TEST_CASE("Sponza tour covers every corridor on both floors and changes level on
 //======================================================================================================================
 TEST_CASE("Sponza tour maintains walking pace and continuous pose through corners and the loop",
           "[scene][sponza-tour]") {
-    engine::Scene scene;
-    scenes::authorSponzaCameraTour(scene);
+    auto scene = test::catalogCamera("sponza");
     const auto& keys = scene.animation.cameraTrack;
     for (size_t i = 1; i < keys.size(); ++i) {
         CAPTURE(i);

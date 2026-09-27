@@ -195,8 +195,9 @@ int runMeasurement(const AppOptions& options) {
         LMX_LOG_ERROR("{}", run.failure());
         return 1;
     }
-    scenes::SceneLibrary library(**device, options.labInstances, options.labOccluders,
-                                 options.labLights, options.labLightPile);
+    scenes::SceneLibrary library(
+        **device, options.generatorOverrides.instances, options.generatorOverrides.occluders,
+        options.generatorOverrides.lights, options.generatorOverrides.pile);
     auto loaded = library.get(options.initialScene);
     if (!loaded) {
         run.cancel(loaded.error().message);
@@ -204,8 +205,9 @@ int runMeasurement(const AppOptions& options) {
         return 1;
     }
     SceneSession session;
-    session.activate(**loaded, SceneActivationMotion::PreserveLoadedMotion);
-    if (session.localLightRigAvailable()) {
+    session.activate(*library.loaded(options.initialScene),
+                     SceneActivationMotion::PreserveLoadedMotion);
+    if (options.localLightRigOverride && session.localLightRigAvailable()) {
         if (auto rig = session.setLocalLightRig(options.localLightRig); !rig) {
             run.cancel(rig.error().message);
             writeReport(options.measurementPath, run);

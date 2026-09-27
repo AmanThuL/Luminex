@@ -2,6 +2,7 @@
 #include "Scenes/CatalogScenes.h"
 #include "Scenes/SceneLibrary.h"
 #include "Support/GpuTestSupport.h"
+#include "Support/SceneDocumentTestSupport.h"
 
 namespace {
 namespace render = lmx::render;
@@ -13,7 +14,7 @@ TEST_CASE("GPU VisibilityLab states and canonical output equal the CPU at three 
           "[gpu][visibility]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    auto loaded = lmx::scenes::loadVisibilityLabScene(**device, 4096);
+    auto loaded = lmx::test::loadCatalogScene(**device, "visibility-lab", 4096);
     REQUIRE(loaded);
     auto& world = **loaded;
     auto renderer = render::Renderer::create(**device, 160, 90, true);

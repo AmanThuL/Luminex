@@ -433,3 +433,70 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
     REQUIRE(channelNear(flatUnbiased.r, 128, 3));
     REQUIRE(std::abs(int{flatBiased.r} - int{flatUnbiased.r}) <= 1);
 }
+
+//======================================================================================================================
+TEST_CASE("renderer applies the chosen directional caster and leaves none or disabled unshadowed",
+          "[gpu][scene-doc][composition][caster]") {
+    using namespace lmx;
+    auto device = rojoRHI::createDevice();
+    REQUIRE(device);
+    engine::Scene scene;
+    const auto ground = scene.addMesh(engine::makePlane(8.0f), "caster.ground");
+    const auto cube = scene.addMesh(engine::makeCube(), "caster.cube");
+    const auto material =
+        scene.addMaterial({.albedo = glm::vec4(1), .roughness = 0.5f, .metallic = 0.0f});
+    scene.addObject({.mesh = ground, .material = material});
+    scene.addObject(
+        {.position = {0, 3, 0}, .scale = glm::vec3(2), .mesh = cube, .material = material});
+    scene.boundingSphere = {0, 0, 0, 12};
+    REQUIRE(scene.finalize(**device));
+    auto renderer = render::Renderer::create(**device, kSceneProbeSize, kSceneProbeSize, true);
+    REQUIRE(renderer);
+    engine::Camera camera;
+    camera.position = {0, 12, 16};
+    camera.pitch = -0.62f;
+    const auto probe = projectToPixel(camera, kSceneProbeSize, {3, 0, 3});
+    const glm::vec3 direction = glm::normalize(glm::vec3{1, -1, 1});
+    for (bool masked : {false, true}) {
+        scene.material(material).alphaMode =
+            masked ? engine::AlphaMode::Mask : engine::AlphaMode::Opaque;
+        for (bool automatic : {false, true}) {
+            CAPTURE(masked, automatic);
+            const auto renderCase = [&](int caster, bool disabled) {
+                for (auto& light : scene.lights)
+                    light = {.strength = glm::vec3(0), .direction = {0, -1, 0}};
+                const int contributor = caster < 0 || disabled ? 1 : caster;
+                scene.lights[contributor] = {.strength = glm::vec3(0.8f), .direction = direction};
+                scene.shadowCaster = caster < 0 ? std::optional<uint32_t>{} : caster;
+                if (disabled)
+                    scene.lights[caster] = {
+                        .strength = glm::vec3(0.8f), .direction = direction, .enabled = false};
+                auto& commands = (*device)->beginFrame();
+                REQUIRE(scene.prepareFrame((*device)->frameNumber()));
+                std::vector<engine::DrawItem> items;
+                auto view = render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
+                view.bloomEnabled = false;
+                view.autoExposureEnabled = automatic;
+                view.exposureReset = true;
+                view.exposureAdaptUpStopsPerSecond = 0;
+                view.exposureAdaptDownStopsPerSecond = 0;
+                (*renderer)->render(commands, camera, view, false);
+                (*device)->endFrame(nullptr);
+                (*device)->waitIdle();
+                std::vector<uint8_t> pixels(size_t{kSceneProbeSize} * kSceneProbeSize * 4);
+                (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+                return pixels;
+            };
+            const auto key = renderCase(0, false);
+            REQUIRE(renderCase(1, false) == key);
+            REQUIRE(renderCase(2, false) == key);
+            const auto none = renderCase(-1, false);
+            REQUIRE(renderCase(0, true) == none);
+            const auto shadowed = pixelAtWidth(key, kSceneProbeSize, probe.x, probe.y);
+            const auto unshadowed = pixelAtWidth(none, kSceneProbeSize, probe.x, probe.y);
+            REQUIRE(shadowed.r * 4 < unshadowed.r * 3);
+            REQUIRE(shadowed.g * 4 < unshadowed.g * 3);
+            REQUIRE(shadowed.b * 4 < unshadowed.b * 3);
+        }
+    }
+}

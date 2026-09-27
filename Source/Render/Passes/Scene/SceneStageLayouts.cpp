@@ -115,6 +115,7 @@ void SceneStage::registerPassLayoutsForCapture() {
     // Preserve offset order for comparison with raw capture bytes.
     passFields.push_back(
         {"shadowFilter", offsetof(PassUniforms, shadowFilter), "int"}); // kShadowFilterPcf/Pcss
+    passFields.push_back({"shadowCaster", offsetof(PassUniforms, shadowCaster), "int"});
     passFields.push_back(
         {"viewProjUnjittered", offsetof(PassUniforms, viewProjUnjittered), "float4x4"});
     passFields.push_back({"previousViewProjUnjittered",

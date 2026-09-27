@@ -3,7 +3,7 @@
 /// @brief Implements building a scene from a glTF asset.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/Scene/Scene.h"
+#include "Engine/Scene/SceneInstantiate.h"
 
 #include "Core/Diagnostics/Log.h"
 #include "Core/Math/Aabb.h"
@@ -52,19 +52,12 @@ std::filesystem::path bakedDdsPath(const std::filesystem::path& gltfPath, size_t
 } // namespace
 
 //======================================================================================================================
-asset::AssetResult<std::unique_ptr<Scene>> loadGltfScene(rojoRHI::Device& device,
-                                                         std::string_view assetPath,
-                                                         std::string_view sceneName,
-                                                         const SceneAuthoring& beforeFinalize) {
-    const std::filesystem::path path(assetPath);
-    auto loaded = asset::loadGltf(path.string());
-    if (!loaded) {
-        return std::unexpected(loaded.error());
-    }
-    asset::GltfScene gltfScene = std::move(*loaded);
-
-    auto scene = std::make_unique<Scene>();
-    scene->name = std::string(sceneName);
+asset::AssetResult<void> appendGltfScene(rojoRHI::Device& device, Scene& target,
+                                         asset::GltfScene& gltfScene,
+                                         const std::filesystem::path& path,
+                                         std::string_view sceneName, Aabb& aabb) {
+    Scene* scene = &target;
+    const size_t objectBase = scene->objects.size();
 
     // Materials share an uploaded texture only when both source image and color space match.
     // Metal texture formats carry the sRGB decode, so one image used in color and data slots
@@ -214,7 +207,7 @@ asset::AssetResult<std::unique_ptr<Scene>> loadGltfScene(rojoRHI::Device& device
                                          std::string(sceneName) + ".mesh" + std::to_string(i)));
     }
 
-    scene->objects.reserve(gltfScene.instances.size());
+    scene->objects.reserve(objectBase + gltfScene.instances.size());
     for (size_t i = 0; i < gltfScene.instances.size(); ++i) {
         const asset::GltfInstance& instance = gltfScene.instances[i];
         if (instance.meshIndex >= gltfScene.meshes.size() ||
@@ -247,12 +240,13 @@ asset::AssetResult<std::unique_ptr<Scene>> loadGltfScene(rojoRHI::Device& device
         }
     }
 
-    scene->animation.tracks.reserve(gltfScene.tracks.size());
+    scene->animation.tracks.reserve(scene->animation.tracks.size() + gltfScene.tracks.size());
     for (asset::GltfAnimationTrack& track : gltfScene.tracks) {
         scene->animation.tracks.push_back(
-            {.objectIndex = track.instanceIndex, .keys = std::move(track.keys)});
+            {.objectIndex = static_cast<uint32_t>(objectBase + track.instanceIndex),
+             .keys = std::move(track.keys)});
     }
-    scene->animation.duration = gltfScene.animationDuration;
+    scene->animation.duration = std::max(scene->animation.duration, gltfScene.animationDuration);
     scene->animation.loop = true;
     // A clip's pose at t = 0 need not be the file's authored rest pose, so the scene is posed
     // before anything measures it: the bounds below, and with them the camera fit and the shadow
@@ -263,10 +257,10 @@ asset::AssetResult<std::unique_ptr<Scene>> loadGltfScene(rojoRHI::Device& device
     }
     scene->resetMotion();
 
-    Aabb aabb = emptyAabb();
-    for (const SceneObject& object : scene->objects) {
+    for (size_t i = 0; i < gltfScene.instances.size(); ++i) {
+        const SceneObject& object = scene->objects[objectBase + i];
         const glm::mat4 model = object.modelMatrix();
-        const asset::GeoData& mesh = gltfScene.meshes[object.mesh.slot];
+        const asset::GeoData& mesh = gltfScene.meshes[gltfScene.instances[i].meshIndex];
         for (const asset::VertexPNTU& v : mesh.vertices) {
             const glm::vec3 world = glm::vec3(model * glm::vec4(v.px, v.py, v.pz, 1.0f));
             expand(aabb, world);
@@ -280,17 +274,31 @@ asset::AssetResult<std::unique_ptr<Scene>> loadGltfScene(rojoRHI::Device& device
     // Half the AABB diagonal gives a conservative world-space bounding sphere.
     scene->boundingSphere = toVec4(boundingSphere(aabb));
 
-    if (auto sky = attachNeutralEnvironment(device, *scene, sceneName); !sky) {
-        return std::unexpected(sky.error());
-    }
+    return {};
+}
 
+//======================================================================================================================
+asset::AssetResult<std::unique_ptr<Scene>> loadGltfScene(rojoRHI::Device& device,
+                                                         std::string_view assetPath,
+                                                         std::string_view sceneName,
+                                                         const SceneAuthoring& beforeFinalize) {
+    auto source = asset::loadGltf(assetPath);
+    if (!source)
+        return std::unexpected(source.error());
+    auto scene = std::make_unique<Scene>();
+    scene->name = sceneName;
+    if (auto appended = appendGltfScene(device, *scene, *source, std::filesystem::path(assetPath),
+                                        sceneName, scene->authoredBounds);
+        !appended)
+        return std::unexpected(appended.error());
+    if (auto sky = attachNeutralEnvironment(device, *scene, sceneName); !sky)
+        return std::unexpected(sky.error());
     if (beforeFinalize) {
         if (auto authored = beforeFinalize(*scene); !authored)
             return std::unexpected(uploadFailure(std::move(authored.error())));
     }
-    if (auto finalized = scene->finalize(device); !finalized) {
+    if (auto finalized = scene->finalize(device); !finalized)
         return std::unexpected(uploadFailure(std::move(finalized.error())));
-    }
     return scene;
 }
 

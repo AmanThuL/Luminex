@@ -113,9 +113,6 @@ int runOffscreen(AppOptions options) {
     const auto occlusionEnabled = options.occlusionEnabled;
     const auto occlusionCheck = options.occlusionCheck;
     const auto hzbDebugLevel = options.hzbDebugLevel;
-    const auto labOccluders = options.labOccluders;
-    const auto labLights = options.labLights;
-    const auto labLightPile = options.labLightPile;
     const auto localLightMode = options.localLightMode;
     const auto localLightRig = options.localLightRig;
     EditorRenderSettings resolutionSettings;
@@ -165,7 +162,9 @@ int runOffscreen(AppOptions options) {
     }
     LMX_LOG_INFO("Metal 4 device: {}", (*device)->deviceName());
 
-    scenes::SceneLibrary library(**device, labInstances, labOccluders, labLights, labLightPile);
+    scenes::SceneLibrary library(
+        **device, options.generatorOverrides.instances, options.generatorOverrides.occluders,
+        options.generatorOverrides.lights, options.generatorOverrides.pile);
     const scenes::SceneEntry& entry = library.entry(sceneId);
     if (!entry.available) {
         std::cerr << "Error: " << entry.stableId << " assets missing; " << entry.hint << '\n';
@@ -196,8 +195,8 @@ int runOffscreen(AppOptions options) {
     (*renderer)->clearColor[3] = 1.0f;
 
     SceneSession session;
-    session.activate(*activeScene, SceneActivationMotion::PreserveLoadedMotion);
-    if (session.localLightRigAvailable()) {
+    session.activate(*library.loaded(sceneId), SceneActivationMotion::PreserveLoadedMotion);
+    if (options.localLightRigOverride && session.localLightRigAvailable()) {
         if (auto rig = session.setLocalLightRig(localLightRig); !rig) {
             LMX_LOG_ERROR("local-light rig failed: {}", rig.error().message);
             return 1;

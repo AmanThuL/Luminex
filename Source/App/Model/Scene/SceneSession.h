@@ -8,7 +8,7 @@
 #include "Engine/Scene/Scene.h"
 #include "Engine/View/Camera.h"
 #include "Render/Renderer/SceneView.h"
-#include "Scenes/SponzaLightRig.h"
+#include "Scenes/SceneDocuments.h"
 
 #include <array>
 #include <cstdint>
@@ -35,6 +35,15 @@ public:
     /// Selects an already-loaded scene and restores its initial camera. Editor activation resets
     /// motion; headless startup preserves the loader's existing previous transforms exactly.
     void activate(engine::Scene& scene, SceneActivationMotion motion);
+    /// Activates a complete document snapshot and retains its separate authored flags.
+    void activate(engine::LoadedScene& loaded, SceneActivationMotion motion);
+    /// Invalidates all pointer-keyed defaults before SceneLibrary replaces an old snapshot. If
+    /// active, detaches it; the caller clears selection and activates the replacement afterward.
+    void invalidate(const engine::Scene& scene);
+    /// Returns the active complete snapshot, or null for CPU-only scene fixtures.
+    engine::LoadedScene* loadedScene() const { return m_loaded; }
+    /// Authored document and imported flags; CLI group overrides leave these values untouched.
+    const scenes::SessionDocumentState& documentState() const;
 
     /// The borrowed scene, or null before the first activation.
     engine::Scene* activeScene() const { return m_scene; }
@@ -112,15 +121,14 @@ public:
     /// True when direction or scene-linear radiance differs from the authored light.
     bool lightChanged(size_t index) const;
 
-    /// Whether the active scene supports the static Sponza local-light rig.
+    /// Whether the active document has a top-level local-light group.
     bool localLightRigAvailable() const;
 
-    /// Whether any surviving authored Sponza rig light is enabled; false on other scenes.
+    /// Whether any surviving light under the document local-light group is effectively enabled.
     bool localLightRigEnabled() const;
 
-    /// Sets enabled flags on the active Sponza rig before prepareFrame, retaining IDs and edits.
-    /// Authors a missing rig for CPU fixtures; invalid scenes/capacity fail without partial
-    /// additions.
+    /// Applies a session-only group mask without changing authored child flags or saved values.
+    /// A document with no local-light group is a successful no-op.
     rojoRHI::Result<void> setLocalLightRig(bool enabled);
 
     /// Authored light fields with orbit-owned position sampled at current time; null for stale IDs.
@@ -132,14 +140,15 @@ public:
     /// Restores all authored fields and current orbit position; stale/foreign IDs return
     /// InvalidDesc.
     rojoRHI::Result<void> resetLocalLight(engine::LightId id);
-    /// Whether the active scene exposes an authored LightLab grid and editable overflow pile.
+    /// Whether the active scene has a LightLab population; the first generator owns this control.
     bool lightLabPileAvailable() const;
     /// Number of this session's currently live pile lights; unrelated additions are excluded.
     uint32_t lightLabPileCount() const;
     /// Largest requested pile preserving every current non-pile light under the 4096 live cap.
     uint32_t lightLabPileCapacity() const;
-    /// Replaces only the pile population before prepareFrame. Added lights are static; oversized
-    /// requests fail transactionally. Grid identities, tracks and unrelated runtime lights survive.
+    /// Replaces only the first LightLab generator's pile before prepareFrame. Added lights are
+    /// static; oversized requests fail transactionally. Authored lights, every grid and other
+    /// generator populations retain their identities and bindings.
     rojoRHI::Result<void> setLightLabPile(uint32_t count);
 
 private:
@@ -156,7 +165,8 @@ private:
     engine::Scene* m_scene = nullptr;
     engine::Camera m_camera;
     std::unordered_map<const engine::Scene*, Defaults> m_defaults;
-    std::unordered_map<const engine::Scene*, scenes::SponzaLightRig> m_lightRigs;
+    engine::LoadedScene* m_loaded = nullptr;
+    std::unordered_map<const engine::Scene*, scenes::SessionDocumentState> m_documentStates;
 };
 
 } // namespace lmx::app

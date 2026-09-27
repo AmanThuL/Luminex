@@ -4,8 +4,7 @@
     "Source",
     "Tests",
     "Tools/TextureBake",
-    "Benchmarks",
-    "Tools/SceneExport"
+    "Benchmarks"
   ],
   "thirdPartyPrefixes": {
     "SDL3/": "libsdl3"
@@ -217,7 +216,8 @@
         "Tests/Support/GpuTestSupport.h",
         "Tests/Support/GraphTestSupport.h",
         "Tests/Support/RenderGraphTestSupport.h",
-        "Tests/Support/SceneTableTestSupport.h"
+        "Tests/Support/SceneTableTestSupport.h",
+        "Tests/Support/SceneDocumentTestSupport.h"
       ]
     },
     "texture-bake": {
@@ -256,24 +256,6 @@
         "Benchmarks/FrameData/Runner.h",
         "Benchmarks/FrameData/Workload.h"
       ]
-    },
-    "scene-export": {
-      "paths": [
-        "Tools/SceneExport"
-      ],
-      "targets": [
-        "SceneExport"
-      ],
-      "units": [
-        "core",
-        "asset",
-        "engine",
-        "scenes"
-      ],
-      "thirdParty": [
-        "glm"
-      ],
-      "privateHeaders": []
     }
   },
   "externals": {
@@ -319,9 +301,6 @@
           "rojoRHI/TextureDesc.h"
         ],
         "benchmarks": [
-          "*"
-        ],
-        "scene-export": [
           "*"
         ]
       }
@@ -429,15 +408,6 @@
         "Core",
         "RojoRHI",
         "Render",
-        "Asset",
-        "Engine",
-        "Scenes"
-      ]
-    },
-    "SceneExport": {
-      "deps": [
-        "Core",
-        "RojoRHI",
         "Asset",
         "Engine",
         "Scenes"

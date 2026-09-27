@@ -1,6 +1,7 @@
 #include "Render/Renderer/SceneViewBuilder.h"
 #include "Scenes/CatalogScenes.h"
 #include "Support/GpuRendererTestSupport.h"
+#include "Support/SceneDocumentTestSupport.h"
 #include "Support/SceneTableTestSupport.h"
 
 #include <array>
@@ -45,7 +46,7 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto scene = lmx::scenes::loadMaterialLabScene(**device);
+    auto scene = lmx::test::loadCatalogScene(**device, "material-lab");
     REQUIRE(scene.has_value());
 
     auto renderer = Renderer::create(**device, kDepthReconstructSize, kDepthReconstructSize);
@@ -177,7 +178,7 @@ TEST_CASE("MaterialLab's sphere grid conserves energy in a white furnace", "[gpu
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto scene = lmx::scenes::loadMaterialLabScene(**device);
+    auto scene = lmx::test::loadCatalogScene(**device, "material-lab");
     INFO(errorOf(scene));
     REQUIRE(scene.has_value());
 

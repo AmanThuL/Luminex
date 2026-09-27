@@ -34,7 +34,8 @@ struct PassUniforms {
     float alignmentPadding[2]; // 152 -- lights[] carries float3s and realigns to 16
     DirLightUniform lights[3]; // 160
     int32_t shadowFilter;      // 256
-    int32_t tailPadding[3];    // 260
+    int32_t shadowCaster;   // 260 -- role index, -1 disables contribution without changing passes
+    int32_t tailPadding[2]; // 264
     // The motion pair, unjittered: rasterisation carries the jitter in PassUniforms.viewProj, and
     // motion must not, or a still scene would move by the jitter delta every frame.
     glm::mat4 viewProjUnjittered;         // 272

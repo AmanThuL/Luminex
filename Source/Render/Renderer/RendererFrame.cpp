@@ -88,7 +88,8 @@ RendererFrameState Renderer::deriveFrameState(const engine::Camera& camera, cons
     // history is being reset anyway, so a fabricated previous camera would only invent motion.
     const CameraFrameState previousCamera = m_previousCamera.value_or(cameraState);
 
-    const ShadowMatrices shadow = fitShadowOrtho(view.boundingSphere, view.lights[0].direction);
+    const ShadowMatrices shadow = fitShadowOrtho(
+        view.boundingSphere, view.lights[view.shadowCaster >= 0 ? view.shadowCaster : 0].direction);
 
     return {.temporalEnabled = temporalEnabled,
             .selection = selection,

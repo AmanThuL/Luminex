@@ -16,8 +16,8 @@
 namespace lmx::engine {
 
 /// Publishes `scene`'s sky geometry and radiance, the image-based lighting generated from
-/// `environment`, and the catalog's shared three-light directional rig. Every built-in scene ends
-/// its construction here, so they all light from the same rig and the same split-sum set.
+/// `environment`, without authoring directional lights. Every built-in scene ends
+/// its environment construction here, sharing the same split-sum generation.
 ///
 /// `skyCubemap` is the uploaded radiance the sky pass samples and `environment` is that same
 /// radiance in CPU form, which the IBL is generated from. Both are taken because a scene chooses
@@ -27,19 +27,17 @@ namespace lmx::engine {
 ///
 /// `options` selects the reflection extent and optionally a lower-resolution copy of the same
 /// environment for diffuse convolution; its borrowed source only needs to survive this call.
-/// `analyticLights` false zeroes the rig's strengths, for a scene whose environment already
-/// contains its key lights and would otherwise be lit twice. Ownership of `skyCubemap` moves into
-/// `scene`. Returns `AssetErrorCode::UploadFailed` if any GPU resource cannot be created.
+/// Ownership of skyCubemap moves into scene. Returns UploadFailed on GPU creation failure.
 asset::AssetResult<void> attachEnvironment(rojoRHI::Device& device, Scene& scene,
                                            std::unique_ptr<rojoRHI::Texture> skyCubemap,
                                            const asset::ibl::CpuCubemap& environment,
-                                           bool analyticLights, std::string_view label,
+                                           std::string_view label,
                                            ibl::GenerationOptions options = {});
 
 /// Calls attachEnvironment with the authored neutral sky every scene without its own environment
 /// shares: one sRGB texel of light overcast sky, decoded once so the sky pass and the generated
-/// image-based lighting describe the same radiance, with the analytic rig on. `label` prefixes the
-/// created GPU objects' debug labels.
+/// image-based lighting describe the same radiance, with directional lighting owned by document
+/// nodes. `label` prefixes the created GPU objects' debug labels.
 asset::AssetResult<void> attachNeutralEnvironment(rojoRHI::Device& device, Scene& scene,
                                                   std::string_view label);
 

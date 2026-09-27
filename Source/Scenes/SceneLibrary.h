@@ -1,86 +1,82 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file SceneLibrary.h
-/// @brief Declares stable scene identifiers, catalog entries, and scene lookup.
+/// @brief Declares document identities and whole-snapshot scene caching and replacement.
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-
-#include "Engine/Scene/Scene.h"
-
-#include <cstddef>
-#include <memory>
-#include <optional>
+#include "Scenes/SceneDocuments.h"
+#include <map>
 #include <span>
-#include <string>
-#include <string_view>
-#include <vector>
 
 namespace lmx::scenes {
-
-/// Stable catalog handle whose index is meaningful only for the built-in scene catalog.
+/// Catalog key or a caller-spelled document path; equality preserves that supplied identity.
 struct SceneId {
-    size_t catalogIndex = 0; ///< Zero-based index into the static catalog.
-    /// Compares catalog identity.
-    friend bool operator==(SceneId, SceneId) = default;
+    std::string key; ///< Stable catalog id, or path as supplied for evidence and UI.
+    /// Returns whether key names a built-in document.
+    bool isCatalog() const;
+    /// Compares scene identity without borrowing either key's storage.
+    friend bool operator==(const SceneId&, const SceneId&) = default;
 };
-
-/// Classifies a scene's user-facing purpose.
+/// A scene's user-facing purpose.
 enum class SceneRole {
     Showcase,   ///< Full environment demonstrating shipped rendering behavior.
-    Sample,     ///< Focused third-party asset sample.
-    Diagnostic, ///< Deterministic scene used for visual validation.
+    Sample,     ///< Focused third-party asset sample or path-opened document.
+    Diagnostic, ///< Deterministic scene for validation.
 };
-
-/// Immutable catalog metadata plus runtime availability information.
+/// Owned metadata; arbitrary document paths have the same lifetime guarantees as catalog entries.
 struct SceneEntry {
-    SceneId id;                        ///< Catalog handle used by API calls.
-    std::string_view stableId;         ///< Stable CLI identifier.
-    std::string_view displayName;      ///< User-facing label.
-    SceneRole role;                    ///< User-facing scene category.
-    std::string_view assetRequirement; ///< Setup artifact required to build the scene.
-    bool available = false;            ///< Whether its required assets are present.
-    std::string hint;                  ///< Availability guidance shown to users.
+    SceneId id;                   ///< API identity.
+    std::string stableId;         ///< Catalog key or supplied document path.
+    std::string displayName;      ///< Document label, or filename before first successful load.
+    SceneRole role;               ///< User-facing purpose.
+    std::string assetRequirement; ///< Required setup artifact description.
+    bool available = false;       ///< Required files were present when metadata was refreshed.
+    std::string hint;             ///< Recovery guidance.
 };
-
-/// Returns the scene selected when the caller supplies no explicit ID.
+/// Returns Sponza, the default catalog document.
 SceneId defaultSceneId();
-/// Resolves a stable command-line identifier to its catalog handle.
+/// Resolves a catalog key only; path inputs use sceneIdFromPath.
 std::optional<SceneId> parseSceneId(std::string_view stableId);
-/// Returns the stable command-line identifier for `id`.
-std::string_view sceneIdString(SceneId id);
-
-/// Every catalog entry's stableId, in catalog order. Device-free (the catalog itself is static
-/// data), so callers that only need to name valid IDs -- CLI usage/error text -- do not need a
-/// device just to keep that text in sync with the catalog.
+/// Keeps a document path exactly as supplied; cache equivalence is handled by SceneLibrary.
+SceneId sceneIdFromPath(const std::filesystem::path& path);
+/// Borrows the stable key; the SceneId must outlive the returned view.
+std::string_view sceneIdString(const SceneId& id);
+/// Lists all eight built-in document keys in display order.
 std::span<const std::string_view> sceneStableIds();
 
-/// Provides catalog metadata and lazily constructs device-owned scene resources.
+/// Owns complete loaded snapshots and waits for their GPU use before replacement/destruction.
 class SceneLibrary {
 public:
-    /// Creates a catalog whose loaded scenes use `device` for their full lifetime.
-    /// labInstances sets the total VisibilityLab population; its builder validates 1..1,048,576.
-    /// labOccluders adds 0..1,024 optional slabs without changing the default lab.
-    /// labLights sets LightLab's grid local-light population; its builder validates
-    /// 1..engine::kMaxLocalLights. labLightPile adds that many extra lights stacked at one point.
-    explicit SceneLibrary(rojoRHI::Device& device, uint32_t labInstances = 4096,
-                          uint32_t labOccluders = 0, uint32_t labLights = 256,
-                          uint32_t labLightPile = 0);
-
-    /// Returns every catalog entry in stable display order.
+    /// Explicit optional population overrides affect generators only; absence preserves the
+    /// document.
+    explicit SceneLibrary(rojoRHI::Device& device, std::optional<uint32_t> labInstances = {},
+                          std::optional<uint32_t> labOccluders = {},
+                          std::optional<uint32_t> labLights = {},
+                          std::optional<uint32_t> labLightPile = {});
+    /// Waits for outstanding GPU work before releasing cached scenes.
+    ~SceneLibrary();
+    /// Returns the built-in entries in stable display order.
     std::span<const SceneEntry> entries() const;
-    /// Returns metadata for a valid catalog handle.
-    const SceneEntry& entry(SceneId id) const;
-    /// Loads a scene on first access and returns the library-owned instance.
-    asset::AssetResult<engine::Scene*> get(SceneId id);
+    /// Returns stable owned metadata for either a catalog key or an arbitrary path.
+    const SceneEntry& entry(const SceneId& id) const;
+    /// Loads once, returning the cached scene until reload explicitly bypasses the cache.
+    asset::AssetResult<engine::Scene*> get(const SceneId& id);
+    /// Returns a cached complete snapshot, or null before a successful load.
+    engine::LoadedScene* loaded(const SceneId& id);
+    /// Builds before touching the old snapshot. On success waits for GPU retirement, invokes
+    /// beforeReplace with the still-live old value so the caller invalidates session defaults and
+    /// selection, then publishes the new scene/binding/document/path/hash together. Failure invokes
+    /// no callback and preserves the cached/active scene. The callback must not throw.
+    asset::AssetResult<engine::LoadedScene*>
+    reload(const SceneId& id, const std::function<void(const engine::LoadedScene&)>& beforeReplace);
 
 private:
+    asset::AssetResult<std::filesystem::path> documentPath(const SceneId& id) const;
+    std::string cacheKey(const SceneId& id) const;
     rojoRHI::Device& m_device;
-    uint32_t m_labInstances;
-    uint32_t m_labOccluders;
-    uint32_t m_labLights;
-    uint32_t m_labLightPile;
+    GeneratorOverrides m_overrides;
     std::vector<SceneEntry> m_entries;
-    std::vector<std::unique_ptr<engine::Scene>> m_scenes;
+    mutable std::map<std::string, SceneEntry> m_pathEntries;
+    std::map<std::string, engine::LoadedScene> m_scenes;
 };
-
 } // namespace lmx::scenes
