@@ -1,6 +1,6 @@
 # UX3 — Scene documents implementation
 
-**Status**: Proposed
+**Status**: In progress
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development (or
 > superpowers:executing-plans) task by task. Steps use checkbox (`- [ ]`) syntax for tracking.
@@ -49,7 +49,7 @@ by Opus 5. Work in the sibling worktree `../Luminex-ux3` (submodule initialised,
 | W6 (UX3.5) | 18 (after artwork approval), 19, 20 | W5 |
 
 ### Task 1: Start execution (main thread)
-- [ ] Create both worktrees. Record `Accepted`, this plan `In progress`, the roadmap step row and
+- [x] Create both worktrees. Record `Accepted`, this plan `In progress`, the roadmap step row and
   `AGENTS.md` (net zero) name UX3 in progress. Amend the record's units table: `SceneLook` lives in
   `Engine/Asset/Document` (Asset cannot include Scene) and the reader parses whole documents with
   `JsonTokens`, so `GltfLoader` grows only nodes and animations. Commit `docs: start UX3 execution`.

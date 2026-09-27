@@ -1,6 +1,6 @@
 # UX3 — Scene Documents and Hierarchy
 
-**Status**: Proposed
+**Status**: Accepted
 
 Revised on 2026-09-27 after a survey of the code at the UX2 merge; the owner approved the design
 section by section the same day. UX3 makes a scene a saved document instead of C++ code, rebuilds
@@ -107,10 +107,10 @@ evidence field stays its id; a document opened by path records the path as given
 | Unit | Home | Owns |
 |---|---|---|
 | `JsonWriter` | `Core/IO` | Byte-stable JSON with `std::to_chars` floats |
-| `CgltfImplementation`, `JsonTokens` | `Engine/Asset/Model` | The one cgltf implementation unit and a reader over its tokenizer for extension JSON; no new dependency |
-| `GltfLoader` growth | `Engine/Asset/Model` | Node index per instance, cameras, punctual lights, every animation |
+| `CgltfImplementation`, `JsonTokens` | `Engine/Asset/Model` | The one cgltf implementation unit and a reader over its tokenizer for whole scene documents; no new dependency |
+| `GltfLoader` growth | `Engine/Asset/Model` | Node index per instance and every animation |
 | `SceneDocument` | `Engine/Asset/Document` | Plain model, reader and writer for `.gltf` and `.bin`; no GPU type |
-| `SceneLook` | `Engine/Scene` | Per-scene look; `EditorRenderSettings` loses those fields |
+| `SceneLook` | `Engine/Asset/Document` | Per-scene look; `EditorRenderSettings` loses those fields |
 | Instantiation, binding | `Engine/Scene` (asset, light, camera nodes); `Scenes` (generator registry) | Scene built from a document, plus the node-to-instance, light and camera binding |
 | `exportSceneDocument` | `Scenes` | The pure save function |
 | Catalog | `Scenes` | Document ids under `Assets/Scenes/`; `SceneId` becomes a document path; `--scene <id\|path>` |
