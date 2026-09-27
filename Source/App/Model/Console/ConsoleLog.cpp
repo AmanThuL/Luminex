@@ -42,11 +42,8 @@ void ConsoleLog::append(log::Level severity, int64_t timestampMilliseconds,
 
 //======================================================================================================================
 ConsoleSnapshot ConsoleLog::snapshotLocked() const {
-    return {m_revision,
-            {m_entries.begin(), m_entries.end()},
-            m_payloadBytes,
-            m_evictedEntries,
-            m_truncatedMessages};
+    return {m_revision,     m_nextSequence,   {m_entries.begin(), m_entries.end()},
+            m_payloadBytes, m_evictedEntries, m_truncatedMessages};
 }
 
 //======================================================================================================================
@@ -70,6 +67,12 @@ ConsoleSnapshot ConsoleLog::clear() {
     m_truncatedMessages = 0;
     ++m_revision;
     return snapshotLocked();
+}
+
+//======================================================================================================================
+uint64_t ConsoleLog::nextSequence() const {
+    std::scoped_lock lock(m_mutex);
+    return m_nextSequence;
 }
 
 //======================================================================================================================

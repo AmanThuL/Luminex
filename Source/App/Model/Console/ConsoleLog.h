@@ -29,7 +29,8 @@ struct ConsoleEntry {
 
 /// Coherent copy of retained messages and their loss counters at one store revision.
 struct ConsoleSnapshot {
-    uint64_t revision = 0; ///< Advances whenever a message arrives or storage is cleared.
+    uint64_t revision = 0;     ///< Advances whenever a message arrives or storage is cleared.
+    uint64_t nextSequence = 1; ///< First arrival not included in this coherent snapshot.
     std::vector<ConsoleEntry>
         entries;                 ///< Oldest first; owned independently of later log ingestion.
     size_t payloadBytes = 0;     ///< Sum of retained message byte counts, excluding metadata.
@@ -58,6 +59,8 @@ public:
     /// Atomically empties entries and loss counters, returning the exact empty revision. Messages
     /// arriving afterwards belong to the new history; sequence identities are never reused.
     ConsoleSnapshot clear();
+    /// Returns the next ingestion identity under the store lock, including evicted arrivals.
+    uint64_t nextSequence() const;
 
 private:
     ConsoleSnapshot snapshotLocked() const;

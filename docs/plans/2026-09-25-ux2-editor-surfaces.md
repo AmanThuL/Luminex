@@ -213,7 +213,7 @@ InspectorPanelContext&)`.
   Every page uses `beginPropertyGrid`; identifiers, bounds and frame numbers move under
   `beginDiagnostics`; footnotes become tooltips. View > Editor Camera selects the Camera subject.
   Commit `editor: give Inspector pages one header and grid (UX2)`.
-- [ ] **Owner check (UX2.2):** the completion gate's search/select/edit/restore task, every scoped
+- [x] **Owner check (UX2.2):** the completion gate's search/select/edit/restore task, every scoped
   reset as before, and no page stacking labels at the default layout width.
 
 ### Task 10: Console (UX2.3)
@@ -223,10 +223,10 @@ accessor), `Source/App/Panels/Console/ConsolePanel.cpp`, `Tests/App/Model/Consol
 **Produces:** `ConsoleModel::setScrolledToEnd(bool)`, `newSinceFreeze() const -> uint64_t`,
 `resumeAtEnd()`; `consoleSeverityCounts(const ConsoleSnapshot&) -> ConsoleSeverityCounts`;
 `autoScroll` removed.
-- [ ] Tests first: leaving the end freezes; returning resumes; `newSinceFreeze` counts appends
+- [x] Tests first: leaving the end freezes; returning resumes; `newSinceFreeze` counts appends
   since the freeze, or since a Clear while frozen (Review focus 2); `resumeAtEnd` resumes and zeroes
   it; Copy visible copies the frozen view; per-level counts. Existing cases stay unchanged.
-- [ ] One row: search with inline Close, severity chips with counts, a More menu with Clear and Copy
+- [x] One row: search with inline Close, severity chips with counts, a More menu with Clear and Copy
   visible; a `↓ N new` chip while frozen; statistics print only when eviction or truncation is
   non-zero, else they sit in the search tooltip. Commit `editor: freeze the Console on scroll (UX2)`.
 
