@@ -96,7 +96,6 @@ SceneSwitchOutcome sceneSwitchOutcome(bool switchSucceeded, scenes::SceneId acti
 /// Presentational grouping the Scene panel draws as separate headers. Does not alter scene ordering
 /// or introduce a tree into Scene (spec section 6).
 enum class EditorSelectionGroup {
-    Workspace,         ///< Editor Camera and Rendering categories.
     DirectionalLights, ///< The three fixed lights, in index order.
     LocalLights,       ///< Live local-light identities in stable row order.
     Objects,           ///< `Scene::objects`, in scene order.
@@ -108,7 +107,7 @@ struct EditorSelectionRow {
     EditorSubject subject = EditorSubject::None; ///< What selecting this row selects.
     size_t index = 0;         ///< Rendering category or DirectionalLight/Object index.
     std::string displayLabel; ///< Text the panel draws for the row.
-    EditorSelectionGroup group = EditorSelectionGroup::Workspace; ///< Which header it draws under.
+    EditorSelectionGroup group = EditorSelectionGroup::Objects; ///< Which header it draws under.
     /// Full source-qualified name for search, hover and copy; empty when the short label suffices.
     std::string detailLabel;
     std::string sourceGroup;   ///< Optional imported source navigation group; no parent transform.
@@ -124,17 +123,26 @@ std::string sceneObjectLabel(const engine::Scene& scene, size_t index);
 
 /// Whether a resolved selected subject is hidden by the current case-insensitive name filter.
 /// Filtering never clears the selection; Inspector can keep showing it with an explicit notice.
+/// Camera and Rendering are outside the Hierarchy and are never hidden by its search.
 bool selectionHiddenByFilter(const engine::Scene& scene, const EditorSelection& selection,
                              std::string_view filter);
 
-/// Builds rows in fixed order: Editor Camera, Rendering categories in enum order, three lights,
-/// live local lights, then scene objects. Filters visible/full source names case-insensitively;
-/// matching `Rendering` retains every category. Unmatched navigation parents are not included in
-/// selectable rows. An empty `filter` keeps every row; a filter matching nothing returns an empty
-/// vector rather than an error state. Duplicate object names still produce distinct rows: subject
-/// kind plus index, not label text, identifies a row. Never mutates `scene`.
+/// Builds scene-only rows in fixed order: directional lights, live local-light identities, then
+/// scene objects. Disabled local lights keep their rows. Filters visible/full source names
+/// case-insensitively. Camera and Rendering remain selectable outside the Hierarchy but emit no
+/// rows here. An empty filter keeps every row; unmatched filters return an empty vector. Duplicate
+/// names keep distinct identities. Never mutates `scene`.
 std::vector<EditorSelectionRow> buildSceneSelectionRows(const engine::Scene& scene,
                                                         std::string_view filter);
+
+/// Counts matching and total selectable scene subjects, independent of collapsed groups.
+struct HierarchyCount {
+    size_t shown = 0; ///< Rows matching the current filter.
+    size_t total = 0; ///< The same row population with an empty filter, including disabled lights.
+};
+
+/// Counts the filtered rows and the unfiltered scene-only population under the same row contract.
+HierarchyCount hierarchyCount(const engine::Scene& scene, std::string_view filter);
 
 /// Objects grouped for navigation in first-source encounter order. An empty source label means
 /// leaves can draw directly under Objects. Rows preserve their scene-local selection indices.

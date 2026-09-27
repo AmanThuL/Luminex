@@ -184,12 +184,8 @@ bool selectionHiddenByFilter(const engine::Scene& scene, const EditorSelection& 
     std::string compact;
     switch (selection.subject) {
     case EditorSubject::Camera:
-        label = "Editor Camera";
-        break;
     case EditorSubject::Rendering:
-        label = renderingCategoryLabel(static_cast<RenderingCategory>(selection.index));
-        compact = "Rendering";
-        break;
+        return false;
     case EditorSubject::LocalLight:
         label = sceneLocalLightLabel(scene, selection.lightId);
         break;
@@ -223,20 +219,7 @@ bool selectionHiddenByFilter(const engine::Scene& scene, const EditorSelection& 
 std::vector<EditorSelectionRow> buildSceneSelectionRows(const engine::Scene& scene,
                                                         std::string_view filter) {
     std::vector<EditorSelectionRow> rows;
-    rows.reserve(1 + static_cast<size_t>(RenderingCategory::Count) + std::size(scene.lights) +
-                 scene.localLights().size() + scene.objects.size());
-
-    rows.push_back({.subject = EditorSubject::Camera,
-                    .index = 0,
-                    .displayLabel = "Editor Camera",
-                    .group = EditorSelectionGroup::Workspace});
-    for (size_t i = 0; i < static_cast<size_t>(RenderingCategory::Count); ++i) {
-        rows.push_back(
-            {.subject = EditorSubject::Rendering,
-             .index = i,
-             .displayLabel = std::string(renderingCategoryLabel(static_cast<RenderingCategory>(i))),
-             .group = EditorSelectionGroup::Workspace});
-    }
+    rows.reserve(std::size(scene.lights) + scene.localLights().size() + scene.objects.size());
 
     for (size_t i = 0; i < std::size(scene.lights); ++i) {
         rows.push_back({.subject = EditorSubject::DirectionalLight,
@@ -292,14 +275,18 @@ std::vector<EditorSelectionRow> buildSceneSelectionRows(const engine::Scene& sce
 
     const std::string needleLower = toLower(filter);
     std::erase_if(rows, [&](const EditorSelectionRow& row) {
-        if (row.subject == EditorSubject::Rendering &&
-            containsCaseInsensitive("Rendering", needleLower)) {
-            return false;
-        }
         return !containsCaseInsensitive(row.displayLabel, needleLower) &&
                !containsCaseInsensitive(row.detailLabel, needleLower);
     });
     return rows;
+}
+
+//======================================================================================================================
+HierarchyCount hierarchyCount(const engine::Scene& scene, std::string_view filter) {
+    const size_t total =
+        std::size(scene.lights) + scene.localLights().size() + scene.objects.size();
+    return {.shown = filter.empty() ? total : buildSceneSelectionRows(scene, filter).size(),
+            .total = total};
 }
 
 //======================================================================================================================

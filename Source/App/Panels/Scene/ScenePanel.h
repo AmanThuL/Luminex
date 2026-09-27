@@ -4,11 +4,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/Model/Rendering/Temporal/TemporalEditorState.h"
 #include "App/Model/Rendering/Visibility/VisibilityDisplay.h"
 #include "App/Model/Scene/EditorSelection.h"
 #include "App/Model/Scene/SceneLoadState.h"
-#include "App/Model/Scene/SceneSession.h"
 #include "Engine/Scene/Scene.h"
 #include "Scenes/SceneLibrary.h"
 
@@ -25,10 +23,9 @@ inline constexpr const char* kScenePanelWindowName = "Hierarchy###Scene";
 struct ScenePanelContext {
     scenes::SceneId activeSceneId;    ///< Catalog identity scoping this scene's tree state.
     const engine::Scene& activeScene; ///< Flat scene whose subjects are grouped for navigation.
-    SceneSession& session; ///< Applies light edits before prepareFrame and retains reset defaults.
-    TemporalEditorState& temporalState; ///< Invalidates history when light enablement changes.
-    EditorSelection& selection;         ///< Selected leaf, edited in place.
-    std::string& filter; ///< Case-insensitive short/full name filter, edited in place.
+    EditorSelection& selection;       ///< Selected leaf, edited in place.
+    std::string& filter;              ///< Case-insensitive short/full name filter, edited in place.
+    bool& frameSelectionRequested; ///< Set by the context menu for the shell's shared frame action.
     const VisibilityDisplay& visibilityDisplay;       ///< Identity mapping for the displayed image.
     const render::VisibilityStatus& visibilityStatus; ///< Last declared frame.
     uint64_t sceneGeneration = 0;                     ///< Active scene identity revision.
@@ -47,7 +44,7 @@ struct SceneMenuContext {
 /// Call inside an open File menu; failures and unavailable-entry reasons remain visible here.
 std::optional<scenes::SceneId> drawSceneMenu(const SceneMenuContext& context);
 
-/// Draws an indented Workspace and active-scene tree over a flat scene, with a fixed search/count
+/// Draws an indented active-scene tree over a flat scene, with a fixed search/count
 /// header. Groups collapse independently; keyboard Up/Down visits only drawn leaves. Filtering
 /// never clears selection. `open` follows the native ImGui window close button.
 void drawScenePanel(bool& open, const ScenePanelContext& context);

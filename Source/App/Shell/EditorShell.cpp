@@ -327,15 +327,17 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
     // same storage the Window menu writes, so the two can never disagree.
     if (m_workspace.visibility.isVisible(EditorPanel::Scene)) {
         bool open = true;
+        bool frameSelectionRequested = false;
         drawScenePanel(open, ScenePanelContext{.activeSceneId = m_activeSceneId,
                                                .activeScene = m_session.scene(),
-                                               .session = m_session,
-                                               .temporalState = m_temporalState,
                                                .selection = m_selection,
                                                .filter = m_sceneFilter,
+                                               .frameSelectionRequested = frameSelectionRequested,
                                                .visibilityDisplay = m_visibilityDisplay,
                                                .visibilityStatus = m_visibilityDisplay.status(),
                                                .sceneGeneration = m_temporalState.sceneGeneration});
+        if (frameSelectionRequested)
+            frameSelected(renderer);
         setPanelVisible(EditorPanel::Scene, open);
     }
 

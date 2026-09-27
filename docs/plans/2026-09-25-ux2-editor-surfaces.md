@@ -175,7 +175,7 @@ available, const MenuBarWidths&)`.
   enabled. The side bar, Scene/Measure combo, options chevron and `measureOnPlay` go; clicking the
   zoom percentage resets it to 100%. The Measure tab gets Start and Stop and loses its instruction
   text. Commit `editor: put the transport in the menu bar (UX2)`.
-- [ ] **Owner check (UX2.1):** walk the placement map, reaching each removed command by its named
+- [x] **Owner check (UX2.1):** walk the placement map, reaching each removed command by its named
   route; menus, chip and transport at 1280 × 720 and maximized, at 100% and 150%.
 
 ### Task 7: Scene-only Hierarchy (UX2.2)
@@ -185,10 +185,10 @@ available, const MenuBarWidths&)`.
 **Produces:** `buildSceneSelectionRows` emits DirectionalLight, LocalLight and Object rows only;
 `struct HierarchyCount { size_t shown, total; }`; `hierarchyCount(const Scene&, std::string_view
 filter) -> HierarchyCount`, whose `total` counts the same rows under an empty filter.
-- [ ] Tests first: in LightLab and Sponza `total` equals the unfiltered rows including local
+- [x] Tests first: in LightLab and Sponza `total` equals the unfiltered rows including local
   lights, and `shown <= total` for any filter. Cases that asserted Camera or Rendering rows move to
   the scene-only contract; the commit body names each one.
-- [ ] Panel: no Workspace group or local-light checkboxes; the search field gets an inline Close
+- [x] Panel: no Workspace group or local-light checkboxes; the search field gets an inline Close
   icon when non-empty; the context menu adds Frame Selected; dimmed rows keep their tooltip.
   Commit `editor: keep the Hierarchy to scene content (UX2)`.
 
