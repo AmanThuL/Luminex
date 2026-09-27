@@ -25,7 +25,11 @@ MeasurementProvenance testProvenance() {
 TEST_CASE("Measurement plans drain only after every exact frame retires", "[app][measurement]") {
     MeasurementRun run;
     REQUIRE(run.state() == MeasurementState::Idle);
-    REQUIRE(run.start({.warmupFrames = 1, .measuredFrames = 2}, testProvenance()));
+    REQUIRE(run.start({.warmupFrames = 1,
+                       .measuredFrames = 2,
+                       .sceneDocumentPath = "./Scenes/sponza.scene.gltf",
+                       .sceneDocumentHash = "abc123"},
+                      testProvenance()));
     REQUIRE(run.state() == MeasurementState::Warmup);
     REQUIRE_FALSE(run.nextFrame()->ordinal);
     REQUIRE(run.recordCpu({.frameId = 8, .sequenceFrame = 0, .lighting = {.frameNumber = 8}}));
@@ -44,7 +48,11 @@ TEST_CASE("Measurement plans drain only after every exact frame retires", "[app]
     REQUIRE(run.state() == MeasurementState::Complete);
     REQUIRE(run.finishDrain());
     REQUIRE(run.samples().size() == 2);
-    REQUIRE(run.json().find("\"schemaVersion\":4") != std::string::npos);
+    REQUIRE(run.json().find("\"schemaVersion\":5") != std::string::npos);
+    REQUIRE(
+        run.json().find(
+            "\"sceneDocument\":{\"path\":\"./Scenes/sponza.scene.gltf\",\"sha256\":\"abc123\"}") !=
+        std::string::npos);
     REQUIRE(run.json().find("\"scored\":true") != std::string::npos);
     REQUIRE(run.json().find("serialized-retirement") != std::string::npos);
 }
@@ -122,6 +130,18 @@ TEST_CASE("Measurement instrumentation and interactive scoring are explicit",
     run.cancel("scene changed");
     run.cancel("later failure");
     REQUIRE(run.failure() == "scene changed");
+}
+
+//======================================================================================================================
+TEST_CASE("Path-opened document rig may be measured without a catalog id", "[app][measurement]") {
+    MeasurementPlan plan;
+    plan.scene = "./saved/sponza.scene.gltf";
+    plan.sceneDocumentPath = plan.scene;
+    plan.sceneDocumentHash = std::string(64, 'a');
+    plan.localLightRig = true;
+    MeasurementRun run;
+    REQUIRE(run.start(plan, testProvenance()));
+    REQUIRE(run.json().contains(R"("sceneDocument":{"path":"./saved/sponza.scene.gltf")"));
 }
 
 //======================================================================================================================

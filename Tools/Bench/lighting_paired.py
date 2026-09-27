@@ -5,7 +5,9 @@ The scored protocol is fixed: 12 alternating AB/BA fresh-process pairs, W32/N256
 Native TAA 1280x720 scale 1, 10,000 paired-median bootstrap resamples, seed 0x4C4D5836.
 Every workload and failed attempt remains in the output. Timings never select defaults.
 Use --control local for five lit workloads, or --control zero --parent App for six
-frozen parent/schema-3 versus candidate/schema-4 workloads. No collection runs in --selftest.
+frozen parent/schema-3 or 4 versus candidate/schema-5 workloads. Select --parent-schema 4
+for a lighting-capable parent; the default 3 retains older-parent commands. No collection runs
+in --selftest.
 """
 import argparse
 import copy
@@ -17,6 +19,7 @@ import statistics
 import subprocess
 import sys
 import unittest
+from unittest import mock
 
 import lighting_report
 import visibility_paired as visibility
@@ -42,14 +45,14 @@ def expected_plan(workload, control, side):
     return plan
 
 
-def command(binary, output, plan, candidate, unscored):
+def command(binary, output, plan, candidate, unscored, parent_schema=3):
     cmd = [str(binary), "--measure", str(output), "--scene", plan["scene"],
            "--frames", str(FRAMES), "--warmup", str(WARMUP), "--visibility", "cull",
            "--classify", "cpu", "--submission", "indirect", "--temporal", "taa",
            "--render-scale", "1", "--measure-camera", "track" if plan["cameraTrack"] else "initial"]
     if plan["scene"] == "visibility-lab":
         cmd += ["--lab-instances", str(plan["labInstances"])]
-    if candidate:
+    if candidate or parent_schema == 4:
         cmd += ["--local-lights", plan["localLightMode"], "--light-view", "off"]
         if plan["scene"] == "light-lab":
             cmd += ["--lab-lights", str(plan["labLights"]), "--lab-light-pile", "0"]
@@ -60,9 +63,10 @@ def command(binary, output, plan, candidate, unscored):
     return cmd
 
 
-def validate_report(report, expected, scored, candidate):
-    if report.get("schemaVersion") != (4 if candidate else 3):
-        raise ValueError("expected candidate schema 4 or frozen parent schema 3")
+def validate_report(report, expected, scored, candidate, parent_schema=None):
+    expected_schemas = (5,) if candidate else ((parent_schema,) if parent_schema else (3, 4))
+    if report.get("schemaVersion") not in expected_schemas:
+        raise ValueError("report schema differs from selected parent/candidate capability")
     provenance = visibility.validate_report(report, expected, scored)
     if not candidate and any(p["label"].startswith("lmx.pass.light.") for s in report["samples"] for p in s["passes"]):
         raise ValueError("frozen parent unexpectedly contains local-light passes")
@@ -80,8 +84,8 @@ def metric(sample, name):
     return sample[name]
 
 
-def run_side(binary, path, plan, candidate, unscored, timeout):
-    cmd = command(binary, path, plan, candidate, unscored)
+def run_side(binary, path, plan, candidate, unscored, timeout, parent_schema=3):
+    cmd = command(binary, path, plan, candidate, unscored, parent_schema)
     attempt = dict(command=cmd, cwd=str(binary.parent), executable=str(binary),
                    binarySha256=hashlib.sha256(binary.read_bytes()).hexdigest(),
                    startedAt=datetime.now(timezone.utc).isoformat())
@@ -99,7 +103,7 @@ def run_side(binary, path, plan, candidate, unscored, timeout):
         if proc.returncode:
             raise ValueError(f"process returned {proc.returncode}")
         report = json.loads(path.read_text())
-        validate_report(report, plan, not unscored, candidate)
+        validate_report(report, plan, not unscored, candidate, parent_schema)
         attempt["valid"] = True
     except (OSError, ValueError, TypeError, KeyError, subprocess.TimeoutExpired) as exc:
         attempt.update(valid=False, failure=str(exc))
@@ -127,7 +131,8 @@ def collect_cell(args, workload):
             binary = args.binary if candidate else args.parent
             path = args.out / f"{workload}.{repetition:02d}.{side}.json"
             plan = expected_plan(workload, args.control, side)
-            report, attempt = run_side(binary, path, plan, candidate, args.unscored, args.timeout)
+            report, attempt = run_side(binary, path, plan, candidate, args.unscored,
+                                       args.timeout, getattr(args, "parent_schema", 3))
             if report is not None:
                 provenance = report["provenance"]
                 reason = None
@@ -167,7 +172,7 @@ def collect_cell(args, workload):
                 analysis={name: visibility.analyze_pairs(values) for name, values in pairs.items()} if complete else {})
 
 
-def fixture(schema=4, mode="direct"):
+def fixture(schema=5, mode="direct"):
     plan = expected_plan("sponza", "zero", "B")
     plan.update(warmupFrames=0, measuredFrames=1, localLightMode=mode)
     counters = dict(candidates=2, visible=1, rejected=1, bypassed=[0, 0, 0, 0], emittedRows=1,
@@ -191,7 +196,7 @@ def fixture(schema=4, mode="direct"):
                               liveLightCount=0, retired=True, counters={key: 0 for key in lighting_report.COUNTERS},
                               listBytes=0, allocatedListBytes=0, checkEnabled=False, gridMismatches=0,
                               indexMismatches=0, counterMismatches=0)
-    native_plan = plan if schema == 4 else lighting_report.comparable_plan(schema, plan)
+    native_plan = plan if schema in (4, 5) else lighting_report.comparable_plan(schema, plan)
     report = dict(schemaVersion=schema, complete=True, scored=True, interactive=False,
                   pacing="serialized-retirement", plan=native_plan, samples=[sample],
                   provenance=dict(device="gpu", os="os", buildMode="release", executableHash="a" * 64,
@@ -200,6 +205,8 @@ def fixture(schema=4, mode="direct"):
                                       "MTL_SHADER_VALIDATION": "", "LMX_CAPTURE_AT_FRAME": ""}))
     if schema == 3:
         del sample["lighting"]; del sample["lightingGpuMs"]
+    if schema == 5:
+        report["sceneDocument"] = {"path": "Assets/Scenes/sponza.scene.gltf", "sha256": "c" * 64}
     return report, plan
 
 
@@ -211,10 +218,10 @@ class LightingTests(unittest.TestCase):
             p = expected_plan(f"light-lab-{n}", "local", "B")
             self.assertEqual(p["labLights"], n); self.assertEqual(p["localLightMode"], "clustered")
 
-    def test_schema3_parent_and_schema4_candidate(self):
-        for schema in (3, 4):
+    def test_schema3_or_4_parent_and_schema5_candidate(self):
+        for schema in (3, 4, 5):
             report, plan = fixture(schema)
-            validate_report(report, plan, True, schema == 4)
+            validate_report(report, plan, True, schema == 5)
         report, plan = fixture(mode=lighting_report.DEFAULT_PLAN["localLightMode"])
         visibility.validate_report(report, lighting_report.comparable_plan(3, plan), True)
 
@@ -252,9 +259,74 @@ class LightingTests(unittest.TestCase):
         p = expected_plan("sponza", "zero", "A")
         cmd = command(Path("/frozen/App"), Path("/run.json"), p, False, False)
         self.assertNotIn("--local-lights", cmd)
+        cmd = command(Path("/frozen/App"), Path("/run.json"), p, False, False,
+                      parent_schema=4)
+        self.assertEqual(cmd[cmd.index("--local-lights") + 1], "off")
+        self.assertEqual(cmd[cmd.index("--local-light-rig") + 1], "off")
         cmd = command(Path("/frozen/App"), Path("/run.json"), p, True, False)
         self.assertIn("--local-lights", cmd)
         self.assertEqual(cmd[cmd.index("--local-lights") + 1], "off")
+        report, plan = fixture(4, mode="off")
+        with self.assertRaisesRegex(ValueError, "selected parent"):
+            validate_report(report, plan, True, False, parent_schema=3)
+
+    def test_zero_control_collects_schema3_or_schema4_parent_with_matching_commands(self):
+        from types import SimpleNamespace
+        import contextlib
+        import io
+        import tempfile
+
+        for parent_schema in (3, 4):
+            with self.subTest(parent_schema=parent_schema), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                parent, candidate = root / "parent", root / "candidate"
+                parent.write_bytes(b"parent")
+                candidate.write_bytes(b"candidate")
+                args = SimpleNamespace(control="zero", parent=parent, binary=candidate,
+                                       parent_schema=parent_schema, out=root, unscored=False,
+                                       timeout=5, provenance={}, hashes={
+                                           "parent": hashlib.sha256(parent.read_bytes()).hexdigest(),
+                                           "candidate": hashlib.sha256(candidate.read_bytes()).hexdigest()})
+                commands = []
+
+                class Process:
+                    returncode = 0
+                    pid = 1234
+
+                    def __enter__(self):
+                        return self
+
+                    def __exit__(self, *_):
+                        return False
+
+                    def communicate(self, timeout=None):
+                        return "", ""
+
+                def fake_popen(command, **_):
+                    commands.append(command)
+                    is_parent = command[0] == str(parent)
+                    schema = parent_schema if is_parent else 5
+                    report, _ = fixture(schema, mode="off")
+                    report["provenance"]["executableHash"] = args.hashes[
+                        "parent" if is_parent else "candidate"]
+                    Path(command[command.index("--measure") + 1]).write_text(json.dumps(report))
+                    return Process()
+
+                with mock.patch(__name__ + ".REPETITIONS", 1), \
+                        mock.patch(__name__ + ".WARMUP", 0), \
+                        mock.patch(__name__ + ".FRAMES", 1), \
+                        mock.patch.object(subprocess, "Popen", side_effect=fake_popen), \
+                        contextlib.redirect_stdout(io.StringIO()):
+                    cell = collect_cell(args, "sponza")
+                self.assertTrue(cell["complete"], cell["failures"])
+                self.assertEqual(len(commands), 2)
+                parent_command = next(cmd for cmd in commands if cmd[0] == str(parent))
+                if parent_schema == 3:
+                    self.assertNotIn("--local-lights", parent_command)
+                    self.assertNotIn("--local-light-rig", parent_command)
+                else:
+                    self.assertEqual(parent_command[parent_command.index("--local-lights") + 1], "off")
+                    self.assertEqual(parent_command[parent_command.index("--local-light-rig") + 1], "off")
 
 
 def main():
@@ -264,6 +336,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--parent", type=Path)
+    parser.add_argument("--parent-schema", type=int, choices=(3, 4), default=3,
+                        help="parent measurement schema/capability; 4 enables explicit zero-light flags")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--control", choices=("local", "zero"), default="local")
     parser.add_argument("--workloads")

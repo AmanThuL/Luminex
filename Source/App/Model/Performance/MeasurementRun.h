@@ -36,6 +36,8 @@ struct MeasurementPlan {
     uint32_t labOccluders = 0;           ///< Optional static slab count.
     uint32_t labInstances = 4096;        ///< Configured diagnostic workload size.
     std::string scene;                   ///< Catalog stable identifier.
+    std::string sceneDocumentPath;       ///< Caller-spelled path of the loaded snapshot.
+    std::string sceneDocumentHash;       ///< Hash of loaded glTF and buffer bytes.
     std::string temporal = "taa";        ///< Requested reconstruction.
     std::string submission = "indirect"; ///< Draw submission mode.
     std::string classify = "cpu";        ///< Requested classifier, cpu or gpu.
@@ -153,7 +155,7 @@ public:
     std::span<const MeasurementSample> samples() const { return m_samples; }
     /// Empty on success, otherwise the first terminal failure or cancellation reason.
     const std::string& failure() const { return m_failure; }
-    /// Schema-4 JSON, including partial evidence, exact scopes, provenance and completion status.
+    /// Schema-5 JSON, including partial evidence, exact scopes, provenance and completion status.
     std::string json() const;
 
 private:

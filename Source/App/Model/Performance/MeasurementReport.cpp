@@ -1,6 +1,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file MeasurementReport.cpp
-/// @brief Serializes schema-4 measurement scopes and exact-frame retired diagnostics.
+/// @brief Serializes schema-5 measurement scopes and exact-frame retired diagnostics.
 //----------------------------------------------------------------------------------------------------------------------
 #include "App/Model/Performance/MeasurementRun.h"
 #include "App/Model/Rendering/Lighting/LightingDiagnostics.h"
@@ -33,7 +33,7 @@ std::string pairsJson(const std::vector<std::pair<std::string, std::string>>& pa
 std::string MeasurementRun::json() const {
     const bool complete = m_state == MeasurementState::Complete;
     std::string out = std::format(
-        "{{\"schemaVersion\":4,\"complete\":{},\"scored\":{},\"interactive\":{},\"failure\":{},",
+        "{{\"schemaVersion\":5,\"complete\":{},\"scored\":{},\"interactive\":{},\"failure\":{},",
         complete, complete && !m_plan.interactive && !m_plan.unscored, m_plan.interactive,
         quote(m_failure));
     out +=
@@ -47,6 +47,8 @@ std::string MeasurementRun::json() const {
         "\"memoryScope\":{\"listBytes\":\"valid emitted row payload; GPU joined on retirement\","
         "\"reservedListBytes\":\"declaration row reservation; includes rejected GPU slots\","
         "\"allocatedListBytes\":\"active list storage across three slots\"},";
+    out += "\"sceneDocument\":{\"path\":" + quote(m_plan.sceneDocumentPath) +
+           ",\"sha256\":" + quote(m_plan.sceneDocumentHash) + "},";
     out += std::format(
         "\"plan\":{{\"warmupFrames\":{},\"measuredFrames\":{},\"width\":{},\"height\":{},"
         "\"labInstances\":{},\"scene\":{},\"temporal\":{},\"submission\":{},\"visibilityEnabled\":{"

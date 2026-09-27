@@ -176,11 +176,11 @@ std::vector<bool> nodeEnabled; std::optional<engine::SceneCamera> sceneCamera; }
 **Files:** `CaptureMetadata.{h,cpp}`, `MeasurementRun.h`, `MeasurementReport.cpp`,
 `Tools/TemporalCompare/compare.py`, `Tools/Bench/{visibility_paired,lighting_paired}.py`; create
 `Tools/Screenshots/parity_rounds.py`, `Tools/tests/test_parity_rounds.py`; tests.
-- [ ] Tests first: manifest 3 and measurement schema 5 carry `sceneDocument: {path, sha256}` from
+- [x] Tests first: manifest 3 and measurement schema 5 carry `sceneDocument: {path, sha256}` from
   `sceneDocumentHash`; a path-opened document records the path as given; PNG `lmx:frame` bytes
   equal the parent's; `localLightRig` defaults from the document's group. Readers accept manifests
   1–3 and reports 2–5 (lighting: parent 3 or 4, candidate 5), with `--selftest` covering them.
-- [ ] `parity_rounds.py --parent-app --candidate-app --rounds 8 --output` alternates `parity.py`,
+- [x] `parity_rounds.py --parent-app --candidate-app --rounds 8 --output` alternates `parity.py`,
   fails a case whose candidate hash no parent round produced and writes `summary.json`; `--selftest`
   (listed in `ToolsTests.cpp`). Commit `app: record scene documents in evidence (UX3)`.
 

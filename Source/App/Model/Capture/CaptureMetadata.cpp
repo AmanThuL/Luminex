@@ -67,11 +67,14 @@ std::string captureManifestJson(const AppOptions& options, std::string_view devi
                                 const render::DisplayDomain& display, uint32_t width,
                                 uint32_t height, bool cameraTrack,
                                 const std::vector<std::string>& records, bool complete,
-                                std::string_view failure) {
+                                std::string_view sceneDocumentPath,
+                                std::string_view sceneDocumentHash, std::string_view failure) {
     std::ostringstream file;
     file << std::setprecision(17)
-         << "{\n\"schemaVersion\":2,\"complete\":" << (complete ? "true" : "false")
+         << "{\n\"schemaVersion\":3,\"complete\":" << (complete ? "true" : "false")
          << ",\"scene\":" << jsonString(scenes::sceneIdString(options.initialScene))
+         << ",\"sceneDocument\":{\"path\":" << jsonString(sceneDocumentPath)
+         << ",\"sha256\":" << jsonString(sceneDocumentHash) << "}"
          << ",\"failure\":" << jsonString(failure) << ",\"device\":" << jsonString(device)
          << ",\"requestedMode\":" << jsonString(captureModeName(options.temporal))
          << ",\"width\":" << width << ",\"height\":" << height

@@ -190,18 +190,15 @@ int runMeasurement(const AppOptions& options) {
     plan.lightCheck = options.lightCheck;
     plan.lightDebugView = lightDebugViewName(options.lightDebugView);
     MeasurementRun run;
-    if (!run.start(plan, collectMeasurementProvenance(**device))) {
-        writeReport(options.measurementPath, run);
-        LMX_LOG_ERROR("{}", run.failure());
-        return 1;
-    }
     scenes::SceneLibrary library(
         **device, options.generatorOverrides.instances, options.generatorOverrides.occluders,
         options.generatorOverrides.lights, options.generatorOverrides.pile);
     auto loaded = library.get(options.initialScene);
     if (!loaded) {
+        run.start(plan, collectMeasurementProvenance(**device));
         run.cancel(loaded.error().message);
         writeReport(options.measurementPath, run);
+        LMX_LOG_ERROR("measurement scene failed to load: {}", loaded.error().message);
         return 1;
     }
     SceneSession session;
@@ -209,10 +206,22 @@ int runMeasurement(const AppOptions& options) {
                      SceneActivationMotion::PreserveLoadedMotion);
     if (options.localLightRigOverride && session.localLightRigAvailable()) {
         if (auto rig = session.setLocalLightRig(options.localLightRig); !rig) {
+            run.start(plan, collectMeasurementProvenance(**device));
             run.cancel(rig.error().message);
             writeReport(options.measurementPath, run);
+            LMX_LOG_ERROR("measurement local-light rig failed: {}", rig.error().message);
             return 1;
         }
+    }
+    const auto& loadedSnapshot = *library.loaded(options.initialScene);
+    plan.sceneDocumentPath =
+        options.initialScene.isCatalog() ? loadedSnapshot.path.string() : options.initialScene.key;
+    plan.sceneDocumentHash = loadedSnapshot.hash;
+    plan.localLightRig = session.localLightRigEnabled();
+    if (!run.start(plan, collectMeasurementProvenance(**device))) {
+        writeReport(options.measurementPath, run);
+        LMX_LOG_ERROR("{}", run.failure());
+        return 1;
     }
     render::TransientPool pool(**device);
     auto renderer = render::Renderer::create(**device, plan.width, plan.height);

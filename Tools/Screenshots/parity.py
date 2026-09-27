@@ -45,8 +45,9 @@ def load_reference(path: Path) -> dict:
     return reference
 
 
-def command_for(app: Path, image: dict, output: Path) -> list[str]:
-    return [str(app), "--scene", image["scene"], "--temporal", image["temporal"],
+def command_for(app: Path, image: dict, output: Path, documents: Path | None = None) -> list[str]:
+    scene = str(documents / (image["scene"] + ".scene.gltf")) if documents else image["scene"]
+    return [str(app), "--scene", scene, "--temporal", image["temporal"],
             "--render-scale", format(image["renderScale"], "g"), "--frames", "32",
             "--screenshot", str(output)]
 
@@ -70,11 +71,16 @@ def shader_hashes(app: Path) -> dict:
     return result
 
 
-def run(app: Path, output: Path, reference_path: Path) -> bool:
+def run(app: Path, output: Path, reference_path: Path, documents: Path | None = None) -> bool:
     reference = load_reference(reference_path)
     app, output = app.resolve(), output.resolve()
     if not app.is_file():
         raise ValueError(f"App binary missing: {app}")
+    if documents is not None:
+        documents = documents.resolve()
+        for scene in {row["scene"] for row in reference["images"]}:
+            if not (documents / (scene + ".scene.gltf")).is_file():
+                raise ValueError(f"scene document missing: {documents / (scene + '.scene.gltf')}")
     if output.exists() and any(output.iterdir()):
         raise ValueError("output directory must be new or empty")
     app_hash, shaders = sha256(app), shader_hashes(app)
@@ -92,7 +98,7 @@ def run(app: Path, output: Path, reference_path: Path) -> bool:
     print("Result  Image                              Actual SHA-256")
     for image in reference["images"]:
         destination = output / (image["name"] + ".bmp")
-        command = command_for(app, image, destination)
+        command = command_for(app, image, destination, documents)
         record = {"name": image["name"], "command": command, "match": False,
                   "expectedSha256": image["sha256"]}
         with (output / (image["name"] + ".log")).open("w") as log:
@@ -126,6 +132,9 @@ class ParityTests(unittest.TestCase):
                          ["/build/App", "--scene", "damaged-helmet", "--temporal", "metalfx",
                           "--render-scale", "0.5", "--frames", "32", "--screenshot", "/out/image.bmp"])
         self.assertIn("within-version drift", reference["evidenceLimit"])
+        mapped = command_for(Path("/build/App"), vendor, Path("/out/image.bmp"),
+                             Path("/frozen/documents"))
+        self.assertEqual(mapped[2], "/frozen/documents/damaged-helmet.scene.gltf")
 
     def test_hash_mismatch_and_wrong_extent_fail(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -185,6 +194,8 @@ def main() -> int:
     parser.add_argument("--app", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--reference", type=Path, default=Path(__file__).with_name("reference.json"))
+    parser.add_argument("--documents", type=Path,
+                        help="map reference scene ids to this frozen document directory")
     parser.add_argument("--selftest", action="store_true")
     args = parser.parse_args()
     if args.selftest:
@@ -193,7 +204,7 @@ def main() -> int:
     if args.app is None or args.output is None:
         parser.error("--app and --output are required unless --selftest is used")
     try:
-        return 0 if run(args.app, args.output, args.reference) else 1
+        return 0 if run(args.app, args.output, args.reference, args.documents) else 1
     except (OSError, ValueError, KeyError) as error:
         print(f"parity refused: {error}", file=sys.stderr)
         return 1

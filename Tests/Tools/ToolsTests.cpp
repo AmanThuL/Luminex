@@ -25,3 +25,10 @@ TEST_CASE("Lighting evidence Python tool tests pass", "[tools][lighting-tools]")
         REQUIRE(std::system(command.c_str()) == 0);
     }
 }
+
+//======================================================================================================================
+TEST_CASE("Screenshot parity rounds Python tool tests pass", "[tools][parity-rounds]") {
+    const std::string command = std::string("python3 \"") + LMX_REPO_ROOT +
+                                "/Tools/Screenshots/parity_rounds.py\" --selftest 2>&1";
+    REQUIRE(std::system(command.c_str()) == 0);
+}

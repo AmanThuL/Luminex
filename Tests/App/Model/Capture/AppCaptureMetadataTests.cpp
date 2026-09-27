@@ -6,8 +6,7 @@ using namespace lmx;
 using namespace lmx::app;
 
 //======================================================================================================================
-TEST_CASE("capture manifest v2 preserves run fields and declares display, container and UI",
-          "[app][capture]") {
+TEST_CASE("capture manifest v3 preserves run fields and document provenance", "[app][capture]") {
     AppOptions options;
     options.frames = 2;
     options.warmup = 32;
@@ -15,7 +14,8 @@ TEST_CASE("capture manifest v2 preserves run fields and declares display, contai
     options.temporal = TemporalMode::Vendor;
     const std::vector<std::string> records = {R"({"ordinal":0})", R"({"ordinal":1})"};
     const std::string expected =
-        "{\n\"schemaVersion\":2,\"complete\":false,\"scene\":\"sponza\","
+        "{\n\"schemaVersion\":3,\"complete\":false,\"scene\":\"sponza\","
+        "\"sceneDocument\":{\"path\":\"./Scenes/sponza.scene.gltf\",\"sha256\":\"abc123\"},"
         "\"failure\":\"bad \\\"frame\\\"\\u000a\",\"device\":\"test GPU\","
         "\"requestedMode\":\"metalfx\",\"width\":1280,\"height\":720,"
         "\"fps\":60,\"warmup\":32,\"frameCount\":2,\"renderScale\":0.75,"
@@ -30,10 +30,12 @@ TEST_CASE("capture manifest v2 preserves run fields and declares display, contai
         ",\"container\":\"png\",\"ui\":{\"composited\":false},"
         "\"dynamicResolution\":false,\"frames\":[\n{\"ordinal\":0},\n{\"ordinal\":1}\n]}\n";
     REQUIRE(captureManifestJson(options, "test GPU", render::kSdrDisplayDomain, 1280, 720, true,
-                                records, false, "bad \"frame\"\n") == expected);
+                                records, false, "./Scenes/sponza.scene.gltf", "abc123",
+                                "bad \"frame\"\n") == expected);
     options.captureFormat = CaptureFormat::Bmp;
     const auto bmp =
-        captureManifestJson(options, "GPU", render::kSdrDisplayDomain, 1280, 720, false, {}, true);
+        captureManifestJson(options, "GPU", render::kSdrDisplayDomain, 1280, 720, false, {}, true,
+                            "Assets/Scenes/sponza.scene.gltf", "abc123");
     REQUIRE(bmp.contains(R"("container":"bmp")"));
     REQUIRE(bmp.contains(R"("complete":true)"));
     REQUIRE_FALSE(bmp.contains("colorSpace"));
@@ -101,7 +103,8 @@ TEST_CASE("capture metadata retains lighting requests and exact retired context"
     options.labLights = 1024;
     options.dynamicResolution = true;
     const auto manifest =
-        lmx::app::captureManifestJson(options, "test", {}, 1280, 720, true, {}, false);
+        lmx::app::captureManifestJson(options, "test", {}, 1280, 720, true, {}, false,
+                                      "Assets/Scenes/sponza.scene.gltf", "abc123");
     REQUIRE(manifest.find("\"localLightMode\":\"clustered\"") != std::string::npos);
     REQUIRE(manifest.find("\"labLights\":1024") != std::string::npos);
     REQUIRE(manifest.find("\"dynamicResolution\":true") != std::string::npos);

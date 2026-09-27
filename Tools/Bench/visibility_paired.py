@@ -109,8 +109,15 @@ def validate_report(report, expected, scored):
             raise ValueError("invalid measurement: " + name)
 
     require_dict(report, "report")
-    if type(report.get("schemaVersion")) is not int or report["schemaVersion"] not in (2, 3, 4) or report.get("complete") is not True:
+    if type(report.get("schemaVersion")) is not int or report["schemaVersion"] not in (2, 3, 4, 5) or report.get("complete") is not True:
         raise ValueError("incomplete or unsupported report")
+    if report["schemaVersion"] == 5:
+        document = report.get("sceneDocument")
+        if (not isinstance(document, dict) or not isinstance(document.get("path"), str) or
+                not document["path"] or not isinstance(document.get("sha256"), str) or
+                len(document["sha256"]) != 64 or
+                any(c not in "0123456789abcdef" for c in document["sha256"])):
+            raise ValueError("missing or invalid sceneDocument provenance")
     legacy = report["schemaVersion"] == 2
     if legacy and (expected["occlusionEnabled"] or expected["occlusionCheck"] or
                    expected["labOccluders"] or expected["hzbDebugLevel"] >= 0):
@@ -258,7 +265,7 @@ def validate_report(report, expected, scored):
                         and p["label"] != "lmx.pass.hzb.debug")
             if not math.isclose(scope, sample[metric], rel_tol=1e-12, abs_tol=1e-12):
                 raise ValueError(metric + " differs from joined passes")
-        if report["schemaVersion"] == 4:
+        if report["schemaVersion"] in (4, 5):
             lighting_report.validate_sample(sample, comparison)
         if sample["candidates"] != sample["visible"] + sample["rejected"]:
             raise ValueError("visibility count mismatch")
@@ -332,8 +339,8 @@ def checked_provenance(args, reports):
     normalized = []
     for side in (0, 1):
         report = reports[side]
-        if parent and report.get("schemaVersion") != 4:
-            raise ValueError("binary comparison requires schema 4 on both sides")
+        if parent and report.get("schemaVersion") not in (4, 5):
+            raise ValueError("binary comparison requires schema 4 or 5 on both sides")
         provenance = copy.deepcopy(report["provenance"])
         expected_hash = args.parent_hash if parent and side == 0 else args.binary_hash
         if provenance.get("executableHash") != expected_hash:

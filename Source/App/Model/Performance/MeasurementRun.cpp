@@ -88,7 +88,6 @@ bool MeasurementRun::start(MeasurementPlan plan, MeasurementProvenance provenanc
     if (!validLightMode || !validLightView ||
         (diagnosticLighting && m_plan.localLightMode != "clustered") ||
         (diagnosticLighting && !m_plan.interactive && !m_plan.unscored) ||
-        (m_plan.localLightRig && m_plan.scene != "sponza") ||
         (m_plan.scene == "light-lab" &&
          (m_plan.labLights == 0 ||
           uint64_t{m_plan.labLights} + m_plan.labLightPile > engine::kMaxLocalLights))) {

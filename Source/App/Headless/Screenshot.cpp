@@ -84,20 +84,6 @@ bool isFlatImage(const std::vector<uint8_t>& bgra) {
 }
 
 //======================================================================================================================
-bool writeManifest(const AppOptions& options, std::string_view device,
-                   const render::DisplayDomain& display, bool cameraTrack,
-                   const std::vector<std::string>& records, bool complete,
-                   std::string_view failure = {}) {
-    std::ofstream file(options.captureSequencePath / "manifest.json", std::ios::trunc);
-    if (!file)
-        return false;
-    file << captureManifestJson(options, device, display, kScreenshotWidth, kScreenshotHeight,
-                                cameraTrack, records, complete, failure);
-    file.close();
-    return static_cast<bool>(file);
-}
-
-//======================================================================================================================
 int runOffscreen(AppOptions options) {
     const auto& outPath = options.screenshotPath;
     const auto sceneId = options.initialScene;
@@ -204,12 +190,25 @@ int runOffscreen(AppOptions options) {
     }
     const engine::Camera& camera = session.camera();
     const bool hasCameraTrack = !activeScene->animation.cameraTrack.empty();
+    const auto& loadedSnapshot = *library.loaded(sceneId);
+    const std::string sceneDocumentPath =
+        sceneId.isCatalog() ? loadedSnapshot.path.string() : sceneId.key;
+    const auto writeManifest = [&](bool complete, std::string_view failure = {}) {
+        std::ofstream file(options.captureSequencePath / "manifest.json", std::ios::trunc);
+        if (!file)
+            return false;
+        file << captureManifestJson(options, (*device)->deviceName(), (*renderer)->displayDomain(),
+                                    kScreenshotWidth, kScreenshotHeight, hasCameraTrack, records,
+                                    complete, sceneDocumentPath, loadedSnapshot.hash, failure);
+        file.close();
+        return static_cast<bool>(file);
+    };
+    options.localLightRig = session.localLightRigEnabled();
     FrameRecordRing frameRecords;
     DynamicResolutionState resolutionState;
     render::ResolutionController resolutionController;
 
-    if (sequence && !writeManifest(*sequence, (*device)->deviceName(), (*renderer)->displayDomain(),
-                                   hasCameraTrack, records, false)) {
+    if (sequence && !writeManifest(false)) {
         return 1;
     }
     const auto scaleStep = readOcclusionScaleStep(true, temporal != TemporalMode::Off);
@@ -293,8 +292,7 @@ int runOffscreen(AppOptions options) {
         }
         if (const auto failure = lightingFailure(captureLighting); !failure.empty()) {
             if (sequence)
-                writeManifest(*sequence, (*device)->deviceName(), (*renderer)->displayDomain(),
-                              hasCameraTrack, records, false, failure);
+                writeManifest(false, failure);
             LMX_LOG_ERROR("capture refused: {}", failure);
             return 1;
         }
@@ -305,8 +303,7 @@ int runOffscreen(AppOptions options) {
         }
         if (const auto failure = visibilityFailure(captureVisibility); !failure.empty()) {
             if (sequence)
-                writeManifest(*sequence, (*device)->deviceName(), (*renderer)->displayDomain(),
-                              hasCameraTrack, records, false, failure);
+                writeManifest(false, failure);
             LMX_LOG_ERROR("capture refused: {}", failure);
             return 1;
         }
@@ -319,8 +316,7 @@ int runOffscreen(AppOptions options) {
                                 status.vendorFallback == render::VendorFallback::Unsupported
                                     ? "unsupported"
                                     : "creation-failed");
-                if (!writeManifest(*sequence, (*device)->deviceName(), (*renderer)->displayDomain(),
-                                   hasCameraTrack, records, false, failure)) {
+                if (!writeManifest(false, failure)) {
                     LMX_LOG_ERROR("capture could not write fallback metadata");
                 }
                 LMX_LOG_ERROR("capture sequence refused vendor fallback: {}", failure);
@@ -345,8 +341,7 @@ int runOffscreen(AppOptions options) {
                 records.push_back(captureRecordJson(ordinal, frame, camera, view, status, filename,
                                                     temporal, &captureVisibility,
                                                     &captureLighting));
-                if (!writeManifest(*sequence, (*device)->deviceName(), (*renderer)->displayDomain(),
-                                   hasCameraTrack, records, false)) {
+                if (!writeManifest(false)) {
                     return 1;
                 }
                 if (options.lightDebugView != engine::LightDebugView::Missed &&
@@ -370,10 +365,7 @@ int runOffscreen(AppOptions options) {
         }
     }
     if (sequence) {
-        return writeManifest(*sequence, (*device)->deviceName(), (*renderer)->displayDomain(),
-                             hasCameraTrack, records, true)
-                   ? 0
-                   : 1;
+        return writeManifest(true) ? 0 : 1;
     }
 
     std::vector<uint8_t> pixels(size_t{kScreenshotWidth} * kScreenshotHeight * 4);

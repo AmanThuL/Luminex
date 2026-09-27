@@ -9,6 +9,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 
@@ -36,8 +37,15 @@ def validate_manifests(root: Path) -> dict:
     for mode in MODES:
         path = root / mode / "manifest.json"
         data = json.loads(path.read_text())
-        if data.get("schemaVersion") not in (1, 2) or data.get("complete") is not True:
+        if data.get("schemaVersion") not in (1, 2, 3) or data.get("complete") is not True:
             raise ValueError(f"{mode}: incomplete or unsupported capture manifest")
+        if data["schemaVersion"] == 3:
+            document = data.get("sceneDocument")
+            if (not isinstance(document, dict) or
+                    not isinstance(document.get("path"), str) or not document["path"] or
+                    not isinstance(document.get("sha256"), str) or
+                    not re.fullmatch(r"[0-9a-f]{64}", document["sha256"])):
+                raise ValueError(f"{mode}: invalid sceneDocument provenance")
         if data.get("requestedMode") != mode or data.get("debugView") != 0:
             raise ValueError(f"{mode}: wrong requested mode or diagnostic overlay")
         if data.get("dynamicResolution") is not False:
@@ -79,17 +87,19 @@ def validate_manifests(root: Path) -> dict:
             if filename in filenames:
                 raise ValueError(f"{mode}: duplicate frame filename {filename!r}")
             filenames.add(filename)
-            if data["schemaVersion"] == 2 and Path(filename).suffix.lower() != "." + data["container"]:
+            if data["schemaVersion"] >= 2 and Path(filename).suffix.lower() != "." + data["container"]:
                 raise ValueError(f"{mode}: frame container differs from manifest")
         manifests[mode] = data
     baseline = manifests["taa"]
     domains = [(mode, data["display"]) for mode, data in manifests.items()
-               if data["schemaVersion"] == 2]
+               if data["schemaVersion"] >= 2]
     for mode, domain in domains[1:]:
         if domain != domains[0][1]:
             raise ValueError(f"{mode}: display domain differs from {domains[0][0]}")
     for mode in MODES:
         data = manifests[mode]
+        if data["schemaVersion"] == 3 and baseline["schemaVersion"] == 3 and data["sceneDocument"] != baseline["sceneDocument"]:
+            raise ValueError(f"{mode}: scene document differs from Native TAA")
         for field in COMMON:
             if data[field] != baseline[field]:
                 raise ValueError(f"{mode}: capture setting {field} differs from Native TAA")

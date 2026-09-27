@@ -62,6 +62,11 @@ void EditorShell::startMeasurement(rojoRHI::Device& device, const render::Render
     plan.labInstances = m_labInstances;
     plan.labOccluders = m_labOccluders;
     plan.scene = scenes::sceneIdString(m_activeSceneId);
+    if (const auto* loaded = m_session.loadedScene()) {
+        plan.sceneDocumentPath =
+            m_activeSceneId.isCatalog() ? loaded->path.string() : m_activeSceneId.key;
+        plan.sceneDocumentHash = loaded->hash;
+    }
     plan.temporal = temporalName(m_settings);
     plan.submission = submissionName(m_settings.submission);
     plan.classify = classifyModeName(m_settings.classifyMode);
