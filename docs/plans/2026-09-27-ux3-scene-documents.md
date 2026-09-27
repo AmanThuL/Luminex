@@ -110,7 +110,7 @@ component, `encodeStrength`/`decodeStrength` with a power-of-two intensity.
 **Files:** `xmake/setup.lua`, `THIRD_PARTY_NOTICES.md`, `.github/workflows/ci.yml`; create
 `Tools/Scenes/validate_documents.py`, `Tools/tests/test_validate_documents.py`,
 `Tests/Scenes/SceneDocumentCanonicalTests.cpp`.
-- [ ] Setup pins `gltf_validator-2.0.0-dev.3.10-macos64.tar.xz` into `ThirdParty/glTF-Validator`
+- [x] Setup pins `gltf_validator-2.0.0-dev.3.10-macos64.tar.xz` into `ThirdParty/glTF-Validator`
   in `slangc`'s pattern, clearing quarantine; archive and binary SHA-256:
   `bce89ceea00b4d3191a8779018f41744b84a4539b127465d63ba83ad0f243fef`,
   `4751098c84469231c4e06e2ba0f2fe472f3143a35725c7a168b595d2110d7eef`. The script validates

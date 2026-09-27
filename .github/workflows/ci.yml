@@ -90,6 +90,12 @@ jobs:
       - name: Install xmake and clang-format
         run: brew install xmake clang-format
 
+      - name: Install Rosetta for glTF Validator
+        run: |
+          if [[ "$(uname -m)" == "arm64" ]] && ! arch -x86_64 /usr/bin/true >/dev/null 2>&1; then
+            sudo softwareupdate --install-rosetta --agree-to-license
+          fi
+
       - name: Cache ThirdParty
         uses: actions/cache@v5
         with:
@@ -128,6 +134,9 @@ jobs:
         run: |
           xmake test Tests/unit
           xmake test RojoRHITests/unit
+
+      - name: Validate scene documents
+        run: python3 Tools/Scenes/validate_documents.py
 
       # GitHub's hosted macOS runner exposes an Apple Paravirtual device without Metal 4.
       # Compile and inventory the suite here; run it on Metal 4 hardware before merge.
