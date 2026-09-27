@@ -88,5 +88,4 @@ show the typeface in use; the font itself is not relicensed under Apache-2.0.
 `xmake setup` verifies the pinned archive, font and license hashes. Building App copies the font,
 `Codicons-LICENSE.txt` and `Codicons-SOURCE.txt` to its `Fonts/` directory; keep them together when
 distributing App. The editor merges the glyphs into its atlas at runtime without modifying the
-font file. Gallery screenshots show the icons in use; the font itself is not relicensed under
-Apache-2.0.
+font file. The font itself is not relicensed under Apache-2.0.

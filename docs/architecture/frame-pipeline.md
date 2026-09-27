@@ -271,7 +271,7 @@ File > Open Scene and `--scene` share eight IDs: **Sponza** (`sponza`, default, 
 courtyard with a 12-second rail), and **VisibilityLab** (`visibility-lab`, seeded cube/icosphere grid,
 four materials and a 12-second rail), plus **LightLab** (`light-lab`, point/spot grid and 12-second rail).
 `--lab-instances` accepts 1..1,048,576 only for VisibilityLab (default 4,096, including boundary probes).
-`--lab-lights` defaults to 256 (1..4096); `--lab-light-pile` defaults to 0 and their sum is at most 4096, both LightLab-only. Sponza authors 16 static lights; its `--local-light-rig on|off` defaults on. Explicit off retains disabled identities/rows; Hierarchy checkboxes preserve per-light edits. Only enabled lights count toward rendering participation.
+`--lab-lights` defaults to 256 (1..4096); `--lab-light-pile` defaults to 0 and their sum is at most 4096, both LightLab-only. Sponza authors 16 static lights; its `--local-light-rig on|off` defaults on. Explicit off retains disabled identities/rows; the Inspector's enable checkbox preserves per-light edits. Only enabled lights count toward rendering participation.
 San Miguel requires `xmake setup --san-miguel`; the procedural labs are always available. MaterialLab uses the fetched CC0 Studio Small 09 HDRI for sky/IBL, logging a neutral fallback
 otherwise. Other scenes retain the shared neutral cubemap/IBL. Missing glTF assets disable catalog
 entries with setup guidance; unavailable explicit CLI scenes fail rather than falling back.

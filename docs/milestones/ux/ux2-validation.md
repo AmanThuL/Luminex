@@ -2,18 +2,18 @@
 
 **Status**: Implemented — owner accepted on 2026-09-27; evidence limits retained.
 
-The [implemented record](ux2.md) owns placement and conventions. The owner accepted the running
-editor at the final [completion gate](../../roadmap/editor-experience.md#completion-gate), then
-authorized local closure. The executor plan is closed and removed. Publication and integration
+The [implemented record](ux2.md) owns placement and conventions. The owner accepted UX2 overall
+after the [completion gate](../../roadmap/editor-experience.md#completion-gate) checklist, without
+per-gesture results, then authorized local closure. The executor plan is closed and removed. Publication and integration
 remain pending under the original no-push instruction.
 
 ## Revisions and evidence
 
 The parent is `de6bdcb` on `docs/ux2-design`. The candidate is `9fe2e3a` on
-`feat/ux2-editor-surfaces`, in the sibling `Luminex-ux2` worktree. Task 13 is `76a266c`
-(`editor: migrate the workspace to schema 4 (UX2)`); Task 14 is `9fe2e3a`
-(`docs: describe the UX2 editor surfaces`). Every task received a different implementation and
-review agent, with strongest-reasoning review for the Debug View model and workspace migration.
+`feat/ux2-editor-surfaces`, in the sibling `Luminex-ux2` worktree: the workspace migration is
+`76a266c` (`editor: migrate the workspace to schema 4 (UX2)`) and the operator documents are
+`9fe2e3a` (`docs: describe the UX2 editor surfaces`). Each change had a separate implementation
+and review, with the strongest review for the Debug View model and the workspace migration.
 The local annotated tag `ux2-editor-surfaces-validated` preserves `9fe2e3a`; closure changes only
 documentation. The plan remains recoverable there, with the final acceptance copy retained as
 `task15/closed-plan.md` in the local evidence archive.
@@ -25,7 +25,7 @@ Per-task implementation/review reports retain the underlying logs and source has
 
 ## Automated results
 
-The final Task 13 and Task 14 gates passed from the worktree root, using `-P .` on every xmake
+The gates after the workspace migration and the operator documents passed from the worktree root, using `-P .` on every xmake
 invocation. Root checkers ran directly; `xmake policy` was not used.
 
 | Check | Result |
@@ -46,7 +46,7 @@ invocation. Root checkers ran directly; `xmake policy` was not used.
 The protected diff covers `Source/Render`, `Source/Engine`, `Source/Scenes`, `Shaders/`,
 `RojoRHI/` and `Source/App/Headless`. No renderer, CLI, measurement-schema or capture-output
 change is included. Gate logs are in `task13/integrated-gates/` and `task14/integrated-gates/`;
-Task 15 GPU results are retained in `task15/gpu.log`.
+the acceptance GPU results are retained in `task15/gpu.log`.
 The run used `MTL_DEBUG_LAYER=1 xmake test -v -P . Tests/gpu` (the `[gpu]~[.]` filter),
 on Apple M3 Max with Metal 4, macOS 26.7 build 25G229. `task15/environment.json` records the host.
 
@@ -77,7 +77,7 @@ performance conclusions or close historical M6/R1/M7 image, capture or reliabili
 
 ### Workspace migration and focused probes
 
-Task 13 passed 309 production docking/settings checks across 1280 × 720 and 1920 × 1080 at
+The workspace migration passed 309 production docking/settings checks across 1280 × 720 and 1920 × 1080 at
 100% and 150% scale, including reset while either new tab had focus. A failed reset-focus probe
 was retained, then corrected by focusing Viewport after selecting the default neighbour tabs.
 
@@ -130,12 +130,37 @@ No new before/after editor screenshots or per-action records accompanied final a
 The automated scene-only PNGs above are not editor screenshots. A gesture not reported or
 observed remains unverified; overall acceptance does not fill that evidence gap.
 
+## Corrections after acceptance
+
+On 2026-09-27 a whole-branch review after local closure found defects that the checkpoints had not
+exercised; they were corrected on the same branch after the validated tag, so the owner's
+acceptance above does not cover them and each corrected behaviour below is unverified in the
+running editor until the owner rechecks it.
+
+- F in the focused Render Graph also framed the selection in the main camera; F, Home and C now
+  ignore keys while the Render Graph or Performance window has focus. C without capture again
+  posts the reason. The legend chip no longer covers the occlusion overlay caption.
+- Debug View availability used the requested reconstruction, so a MetalFX fallback to Native TAA
+  hid Rejection, Weight and Age; it now uses the effective mode, as before UX2. Scoped resets no
+  longer clear or count the Debug View. The oracle adds `--visibility cull|off` (96 modes).
+- Reset icons had lost the changed state the earlier Modified labels showed; each is enabled only
+  when its scope differs. Display compared and restored the renderer's navy default instead of the
+  editor's grey, a pre-UX2 reset error now corrected, and the guide's Display row with it.
+- Smaller corrections: a copy or reveal error keeps its notice; the transport shows Warmup,
+  Measuring and Finishing; a wheel-down at a shrunken Console end resumes it; severity chips mark
+  every shown level; the fallback warning moved to the Rendering panel top; stale comments.
+
+The corrected head passes the build, format and every root checker; `Tests/unit` passes 750 cases
+and 1,086,407 assertions; `MTL_DEBUG_LAYER=1` GPU cases pass 201 cases and 1,160,546 assertions;
+all eight scene-only PNGs match the table above. With `codicon.ttf`
+moved aside, a 30-frame editor launch exited normally and logged exactly one icon warning.
+
 ## Scope adjustments and publication
 
 Implementation added small App-only helpers and observer fields where needed for truthful
 freshness, retained Performance readings, notice routing and default-width behaviour; per-task
-reports retain their tests-first and review evidence. None changed the protected paths. Task 14
-also corrected obsolete operator routes in the frame-pipeline, GPU-visibility and
+reports retain their tests-first and review evidence. None changed the protected paths. The
+operator documents also corrected obsolete operator routes in the frame-pipeline, GPU-visibility and
 temporal-comparison guides, beyond its four named documents. Fenced commands stayed unchanged.
 
 The owner accepted local closure with these evidence limits. The plan's PR action is deferred:

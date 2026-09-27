@@ -179,7 +179,7 @@ exposure (clear, accumulate and resolve, with bounded adaptation and GPU-residen
 upsample) and the display transform, respectively. `Render/Renderer/DisplayDomain.h` names the one
 output domain the display transform writes: opaque 8-bit SDR with BT.709 primaries, the sRGB
 transfer function and the PBR Neutral tone map. `Renderer` exposes it to capture metadata and to
-the read-only Inspector Display details
+the Rendering panel's Display diagnostics
 (domain, encoded SDR UI, backing scale and 1:1 status).
 
 ## Selection outline

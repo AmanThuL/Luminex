@@ -27,8 +27,8 @@ uint32_t stepUiScalePercent(uint32_t percent, bool zoomIn);
 
 /// One of the editor's independently visible top-level panels (spec section 3).
 enum class EditorPanel {
-    Scene,              ///< Active-scene choice, filtering, grouped subjects, single selection.
-    Viewport,           ///< Rendered image, camera input, compact rendering toolbar.
+    Scene,              ///< Scene-only Hierarchy: filtering, grouped subjects, single selection.
+    Viewport,           ///< Rendered image, camera input and the debug-view legend chip.
     Rendering,          ///< Rendering controls, readings and diagnostics.
     Inspector,          ///< Properties of the selected subject only.
     PerformanceSummary, ///< Compact dockable performance readings.

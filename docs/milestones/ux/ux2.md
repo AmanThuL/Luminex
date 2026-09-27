@@ -98,12 +98,12 @@ every panel:
 |---|---|
 | Viewport scene name | Main window title |
 | Reset camera, Frame selected | View menu, with Home and F; Frame selected also in the Hierarchy context menu |
-| Camera help | Help > Controls |
+| Camera help, lab descriptions | Help > Controls, which also describes the active VisibilityLab or LightLab |
 | Viewport GPU capture | Removed; Debug > Capture Next GPU Frame and `C` remain, and results appear in a transient notice |
 | Selection outline checkbox | View > Selection Outline |
 | Temporal, lighting and HZB views | One View > Debug View selector grouped by topic; unavailable views are disabled with the reason. The viewport's legend chip gains a view dropdown in its title and, for HZB, the mip-level stepper. CLI options are unchanged |
 | Toolbar row | The transport joins the menu-bar row: Play/Pause, Stop, Step, time, and a rail-follow toggle shown only for scenes with a rail |
-| Scene/Measure combo, options chevron | Removed. A run starts from Performance; during it the transport shows progress and only Stop is enabled |
+| Scene/Measure combo, options chevron | Removed. A run starts from Performance, and not while scene playback is active; during it the transport shows its phase and progress and only Stop is enabled |
 | Layout menu, menu-bar zoom | Layout merges into Window; View > UI Scale and the Cmd shortcuts remain; the menu bar keeps the percentage, which resets on click |
 | Workspace > Rendering topics | A dockable Rendering panel with each topic's controls, readings and scoped reset |
 | Workspace > Editor Camera | Leaves the Hierarchy; View > Editor Camera shows it in the Inspector |

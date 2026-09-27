@@ -33,7 +33,7 @@ Rendering groups restore these editor defaults without resetting playback or ano
 | Shadows | PCF |
 | Reconstruction | Temporal inputs and jitter enabled; Native TAA; temporal diagnostic off |
 | Resolution | Scale 1; dynamic resolution off; timed-pass budget 16 ms |
-| Display | Encoded sRGB clear RGBA (0.05, 0.07, 0.10, 1); wireframe off; transient pooling on |
+| Display | Encoded sRGB clear RGBA (0.7, 0.7, 0.7, 1); wireframe off; transient pooling on |
 
 ## Dump the compiled frame
 

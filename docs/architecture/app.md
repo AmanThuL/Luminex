@@ -141,7 +141,7 @@ unaffected. `DynamicResolution.h` drives the shell-owned resolution controller o
 resolution are both active; its publication cursor and its last actual measurement carry separate frame IDs, so an
 inactive status never pairs an idle frame with an older measurement. Native TAA stays the default reconstruction.
 `DebugView` provides one grouped selector for temporal, lighting and HZB diagnostics, checks availability against the
-CLI rules and clears conflicting views. If a settings edit invalidates the active view, reconciliation returns to Final
+CLI rules for the effective reconstruction, so a MetalFX fallback keeps native views, and clears conflicts. If a settings edit invalidates the active view, reconciliation returns to Final
 with a notice. `DiagnosticLegend` describes shader-derived view encodings and Raw-mode placeholders beside the active
 mode in the viewport chip, whose title selects views and Close returns to Final. `LightingDisplay` publishes one retired
 counter and timing frame every 250 ms, with immediate overflow and check warnings; `LightingHistory`,
@@ -194,7 +194,7 @@ Shared primitives in `Panels/Shared/EditorStyle` implement these conventions:
 1. **One home per function.** Commands have one menu route, plus a shortcut or frequent context
    action. Panels do not repeat global commands.
 2. **Header row.** Frequent panel actions use icon buttons with tooltips; rare actions use More.
-   Inspector headers name the subject and kind, with a Reset icon explaining what it restores.
+   Inspector headers name the subject and kind; Reset, enabled only after a change, names its scope.
 3. **Property grid.** Inspector pages use label | value grids; they reflow to one column below
    `kPropertyGridMinWidth` (260 base UI points, adjusted by UI scale).
 4. **Controls, readings, diagnostics.** Actionable readings stay visible. Identifiers, capacities,
@@ -213,10 +213,10 @@ suppresses Ready. File > Open Scene owns catalog availability, loading and retry
 each scene; filtering keeps selection. Hierarchy contains directional lights, local lights and objects. View > Editor
 Camera selects the camera in Inspector; View also owns Reset Camera (Home), Frame Selected (F), Selection Outline, Debug
 View and UI Scale. Frame Selected is also a Hierarchy context action. `EditorShortcuts` suppresses F, Home and C during text
-entry, popups or RMB look. Help > Controls explains movement. `EditorMenus` and `EditorTransport` share the menu row;
+entry, popups, RMB look or Render Graph/Performance focus; C without capture explains why. Help > Controls explains movement. `EditorMenus` and `EditorTransport` share the menu row;
 the latter owns Play/Pause, Stop, Step, time and rail follow. The main window title carries the scene name.
 `RenderingPanel`, `RenderingTopics` and `RenderingLighting` draw eleven collapsing topics, with Reconstruction initially
-open. Seven topic headers have scoped resets; controls precede readings and Diagnostics, and Details opens Performance.
+open. Seven topic headers have scoped resets that keep the Debug View; controls precede readings and Diagnostics, and Details opens Performance.
 Inspector pages share subject/kind/reset headers, with a local-light enable checkbox that preserves light identity,
 edits and orbit tracks.
 

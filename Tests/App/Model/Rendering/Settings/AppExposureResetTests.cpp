@@ -95,8 +95,8 @@ TEST_CASE("an unchanged context does not reset (a failed resize, or any other no
 }
 
 //======================================================================================================================
-// setAutoExposureEnabled is what the Inspector's Rendering section and the Viewport toolbar's quick
-// toggle both call, so the disabled->enabled edge has to fire the same trigger from either site.
+// setAutoExposureEnabled is what the Rendering panel's Exposure control and its topic reset both
+// call, so the disabled->enabled edge has to fire the same trigger from either site.
 TEST_CASE("setAutoExposureEnabled writes settings and resets on the disabled->enabled edge",
           "[app]") {
     EditorRenderSettings settings;
