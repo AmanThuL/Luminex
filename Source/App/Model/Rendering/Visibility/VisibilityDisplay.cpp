@@ -5,6 +5,7 @@
 #include "App/Model/Rendering/Visibility/VisibilityDisplay.h"
 #include "App/Model/Rendering/Settings/DiagnosticRefresh.h"
 #include "App/Model/Rendering/Visibility/VisibilityDiagnostics.h"
+#include "App/Model/Scene/EditorSelection.h"
 
 #include <algorithm>
 #include <format>
@@ -173,7 +174,7 @@ std::vector<VisibilityField> objectVisibilityFields(const render::InstanceVisibi
         return {{"Visibility", "Awaiting this object's rendered frame"}};
     const auto& b = visibility->worldBounds;
     std::vector<VisibilityField> fields{
-        {"Visibility", std::string(visibilityStateName(visibility->state))},
+        {"Visibility", std::string(visibilityStatusLabel(visibility->state, visibility->reason))},
         {"Reason", visibility->state == render::VisibilityState::Rejected &&
                            visibility->reason != render::VisibilityReason::Occluded &&
                            visibility->reason != render::VisibilityReason::AuthoredOff

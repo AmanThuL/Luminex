@@ -77,7 +77,7 @@ TEST_CASE("Selected object labels the matching declared or retired frame only",
     const auto cpu = display.objectFields(object.id, 9);
     REQUIRE(cpu[0].label == "Declared frame");
     REQUIRE(cpu[0].value == "12");
-    REQUIRE(cpu[1].value == "Rejected");
+    REQUIRE(cpu[1].value == "Culled: frustum");
 
     status.frameNumber = 13;
     status.classifyMode = render::ClassifyMode::Gpu;
@@ -90,7 +90,7 @@ TEST_CASE("Selected object labels the matching declared or retired frame only",
     const auto gpu = display.objectFields(object.id, 9);
     REQUIRE(gpu[0].label == "Retired frame");
     REQUIRE(gpu[0].value == "13");
-    REQUIRE(gpu[1].value == "Rejected");
+    REQUIRE(gpu[1].value == "Culled: frustum");
     REQUIRE(gpu[2].value == "Outside camera frustum");
 
     // Reused rows and scene switches must not borrow the retained frame's attribution.

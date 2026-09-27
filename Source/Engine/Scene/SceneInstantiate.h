@@ -56,7 +56,10 @@ struct SceneBinding {
     std::vector<uint32_t> objectGeneratorNode; ///< Generator root for generated objects only.
     std::unordered_map<uint64_t, uint32_t> lightNode; ///< Packed LightId to document node.
     std::unordered_map<uint64_t, uint32_t>
-        lightGeneratorNode;                  ///< Generated light to generator root.
+        lightGeneratorNode; ///< Generated light to generator root.
+    std::vector<bool>
+        generatedObjectEnabled; ///< Unmasked generator own flags, aligned with objects.
+    std::unordered_map<uint64_t, bool> generatedLightEnabled; ///< Unmasked generated light seeds.
     std::optional<uint32_t> localLightGroup; ///< Top-level group containing authored local lights.
     std::vector<ImportedNodeBinding> importedNodes; ///< Complete source hierarchy per asset.
     std::vector<BoundAssetAnimation> assets; ///< Local animation inputs retained for playback.

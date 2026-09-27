@@ -58,14 +58,12 @@ void drawLeaf(const EditorSelectionRow& row, const ScenePanelContext& context,
         const auto* state =
             context.visibilityDisplay.find(context.activeScene.objects[row.index].id,
                                            context.visibilityStatus, context.sceneGeneration);
-        culled = state && state->state == render::VisibilityState::Rejected;
-        visibilityTip =
-            state ? std::format("\n{}: {}", visibilityStateName(state->state),
-                                state->state == render::VisibilityState::Rejected &&
-                                        state->reason != render::VisibilityReason::Occluded
-                                    ? "Outside camera frustum"
-                                    : visibilityReasonName(state->reason))
-                  : "\nAwaiting this object's rendered frame";
+        const bool disabled = !context.activeScene.objects[row.index].enabled;
+        culled = disabled || (state && state->state == render::VisibilityState::Rejected);
+        visibilityTip = disabled ? "\nDisabled"
+                        : state
+                            ? "\n" + std::string(visibilityStatusLabel(state->state, state->reason))
+                            : "\nAwaiting this object's rendered frame";
     }
     bool disabledLight = false;
     if (row.subject == EditorSubject::LocalLight) {

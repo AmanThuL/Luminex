@@ -82,6 +82,7 @@ void bindAsset(SceneBinding& binding, uint32_t root, size_t objectBase,
         binding.objectImportedNode.push_back(importedBase + sourceNode);
         binding.objectGeneratorNode.push_back(kGeneratedNode);
         binding.objectEffective.push_back(prepared.effective[sourceNode]);
+        binding.generatedObjectEnabled.push_back(true);
     }
     binding.assets.push_back({root, objectBase, prepared.rootWorld,
                               std::move(prepared.source.nodes), std::move(prepared.source.clips)});
@@ -284,11 +285,13 @@ asset::AssetResult<LoadedScene> instantiateSceneDocument(rojoRHI::Device& device
                 binding.objectNode.push_back(kGeneratedNode);
                 binding.objectImportedNode.push_back(kGeneratedNode);
                 binding.objectGeneratorNode.push_back(n);
-                binding.objectEffective.push_back(prepared->enabled[n]);
+                binding.generatedObjectEnabled.push_back(scene.objects[i].enabled);
+                binding.objectEffective.push_back(scene.objects[i].enabled && prepared->enabled[n]);
             }
             for (size_t i = lightBase; i < scene.localLights().size(); ++i) {
                 const auto id = scene.localLights()[i];
                 binding.lightGeneratorNode.emplace(sceneLightKey(id), n);
+                binding.generatedLightEnabled.emplace(sceneLightKey(id), scene.light(id)->enabled);
                 if (!prepared->enabled[n]) {
                     auto light = *scene.light(id);
                     light.enabled = false;

@@ -5,6 +5,7 @@
 
 #include "App/Model/Scene/SceneSession.h"
 
+#include "App/Model/Scene/EditorSelection.h"
 #include "Core/Diagnostics/Assert.h"
 #include "Engine/Asset/Model/SceneAnimation.h"
 #include "Render/Renderer/SceneViewBuilder.h"
@@ -31,12 +32,14 @@ void SceneSession::activate(engine::Scene& scene, SceneActivationMotion motion) 
         entry->second.look = scene.look;
         for (const auto& object : scene.objects) {
             entry->second.objects.push_back({object.position, object.eulerDegrees, object.scale});
+            entry->second.objectOwnEnabled.push_back(object.enabled);
         }
         std::copy(std::begin(scene.lights), std::end(scene.lights), entry->second.lights.begin());
     }
     if (inserted && !scene.lightLabPopulations.empty())
         entry->second.pileLights = scene.lightLabPopulations.front().pile;
     m_scene = &scene;
+    m_temporalResetPending = false;
     rememberLocalLightDefaults();
     m_camera = engine::cameraFromScene(scene.initialCamera);
     if (motion == SceneActivationMotion::Reset) {
@@ -52,6 +55,21 @@ void SceneSession::activate(engine::LoadedScene& loaded, SceneActivationMotion m
         m_defaults.at(m_scene).look = loaded.document.look;
     m_loaded = &loaded;
     m_documentStates.try_emplace(loaded.scene.get(), scenes::initialDocumentState(loaded));
+    if (firstActivation) {
+        auto& defaults = m_defaults.at(m_scene);
+        for (size_t i = 0; i < loaded.binding.objectGeneratorNode.size(); ++i)
+            if (loaded.binding.objectGeneratorNode[i] != engine::kGeneratedNode)
+                defaults.objectOwnEnabled[i] = loaded.binding.generatedObjectEnabled.at(i);
+        for (const auto& [key, enabled] : loaded.binding.generatedLightEnabled) {
+            defaults.lightOwnEnabled[key] = enabled;
+            defaults.localLights.at(key).enabled = enabled;
+        }
+        for (const auto& [key, node] : loaded.binding.lightNode)
+            defaults.localLights.at(key).enabled = loaded.document.nodes[node].enabled;
+        for (size_t n = 0; n < loaded.binding.nodes.size(); ++n)
+            if (const auto slot = loaded.binding.nodes[n].directional)
+                defaults.lights[*slot].enabled = loaded.document.nodes[n].enabled;
+    }
 }
 
 //======================================================================================================================
@@ -210,11 +228,28 @@ bool SceneSession::objectChanged(size_t index) const {
 //======================================================================================================================
 void SceneSession::editObject(size_t index, const DecomposedTransform& transform) {
     LMX_ASSERT(index < scene().objects.size(), "Object index out of range");
-    auto& object = scene().objects[index];
-    object.position = transform.position;
-    object.eulerDegrees = transform.eulerDegrees;
-    object.scale = transform.scale;
-    object.previousModel = object.modelMatrix();
+    const auto apply = [&](size_t target) {
+        auto& object = scene().objects[target];
+        const bool changed = object.position != transform.position ||
+                             object.eulerDegrees != transform.eulerDegrees ||
+                             object.scale != transform.scale;
+        object.position = transform.position;
+        object.eulerDegrees = transform.eulerDegrees;
+        object.scale = transform.scale;
+        object.previousModel = object.modelMatrix();
+        return changed;
+    };
+    bool changed = false;
+    const auto imported =
+        m_loaded ? m_loaded->binding.objectImportedNode.at(index) : engine::kGeneratedNode;
+    if (imported != engine::kGeneratedNode) {
+        for (size_t target : m_loaded->binding.importedNodes.at(imported).objects)
+            changed |= apply(target);
+    } else {
+        changed = apply(index);
+    }
+    if (changed && persistentObject(index))
+        notifyPersistentEdit();
 }
 
 //======================================================================================================================
@@ -229,8 +264,8 @@ const engine::DirectionalLight& SceneSession::lightDefault(size_t index) const {
 }
 
 //======================================================================================================================
-void SceneSession::resetLight(size_t index) {
-    scene().lights[index] = lightDefault(index);
+rojoRHI::Result<void> SceneSession::resetLight(size_t index) {
+    return editLight(index, lightDefault(index));
 }
 
 //======================================================================================================================
@@ -238,7 +273,13 @@ bool SceneSession::lightChanged(size_t index) const {
     const auto& original = lightDefault(index);
     const auto& light = scene().lights[index];
     return original.direction != light.direction || original.strength != light.strength ||
-           original.enabled != light.enabled;
+           original.enabled != ([&] {
+               if (m_loaded)
+                   for (size_t n = 0; n < m_loaded->binding.nodes.size(); ++n)
+                       if (m_loaded->binding.nodes[n].directional == index)
+                           return nodeEnabled(static_cast<uint32_t>(n));
+               return light.enabled;
+           })();
 }
 
 //======================================================================================================================
@@ -259,25 +300,6 @@ bool SceneSession::localLightRigEnabled() const {
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> SceneSession::setLocalLightRig(bool enabled) {
-    if (!localLightRigAvailable())
-        return {};
-    auto own = documentState().nodeEnabled;
-    own[*m_loaded->binding.localLightGroup] = enabled;
-    const auto effective = engine::effectiveDocumentEnabled(m_loaded->document, own);
-    for (auto id : scene().rigLightIds()) {
-        const auto* old = scene().light(id);
-        if (!old)
-            continue;
-        auto light = *old;
-        light.enabled = effective[m_loaded->binding.lightNode.at(engine::sceneLightKey(id))];
-        if (auto result = scene().updateLight(id, light); !result)
-            return result;
-    }
-    return {};
-}
-
-//======================================================================================================================
 void SceneSession::rememberLocalLightDefaults() {
     auto& defaults = m_defaults.at(m_scene).localLights;
     std::erase_if(defaults, [&](const auto& entry) {
@@ -286,8 +308,12 @@ void SceneSession::rememberLocalLightDefaults() {
                               .generation = static_cast<uint16_t>(key >> 32),
                               .store = static_cast<uint16_t>(key >> 48)}) == nullptr;
     });
-    for (const auto id : scene().localLights())
+    auto& own = m_defaults.at(m_scene).lightOwnEnabled;
+    std::erase_if(own, [&](const auto& entry) { return !defaults.contains(entry.first); });
+    for (const auto id : scene().localLights()) {
         defaults.try_emplace(lightKey(id), *scene().light(id));
+        own.try_emplace(lightKey(id), scene().light(id)->enabled);
+    }
 }
 
 //======================================================================================================================
@@ -312,7 +338,7 @@ bool SceneSession::localLightChanged(engine::LightId id) const {
     const auto original = localLightDefault(id);
     const auto* current = scene().light(id);
     return original && current &&
-           (original->enabled != current->enabled || original->type != current->type ||
+           (original->enabled != localLightEnabled(id) || original->type != current->type ||
             original->position != current->position || original->colour != current->colour ||
             original->intensity != current->intensity || original->range != current->range ||
             original->direction != current->direction ||
@@ -322,9 +348,33 @@ bool SceneSession::localLightChanged(engine::LightId id) const {
 //======================================================================================================================
 rojoRHI::Result<void> SceneSession::editLocalLight(engine::LightId id,
                                                    const engine::LocalLight& light) {
-    if (const auto* current = scene().light(id))
-        m_defaults.at(m_scene).localLights.try_emplace(lightKey(id), *current);
-    return scene().updateLight(id, light);
+    const auto* current = scene().light(id);
+    if (!current)
+        return std::unexpected(
+            rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, "Light no longer exists"});
+    if (m_measurementActive && light.enabled != localLightEnabled(id))
+        return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
+                                              "Enabled edits are unavailable during measurement"});
+    m_defaults.at(m_scene).localLights.try_emplace(lightKey(id), *current);
+    const bool fieldsChanged =
+        current->type != light.type || current->position != light.position ||
+        current->colour != light.colour || current->intensity != light.intensity ||
+        current->range != light.range || current->direction != light.direction ||
+        current->innerCone != light.innerCone || current->outerCone != light.outerCone;
+    const bool enabledChanged = light.enabled != localLightEnabled(id);
+    auto effective = light;
+    effective.enabled = current->enabled;
+    if (auto result = scene().updateLight(id, effective); !result)
+        return result;
+    if (enabledChanged) {
+        const auto result = setLocalLightEnabled(id, light.enabled);
+        LMX_ASSERT(result.has_value(), "validated local light enabled edit succeeds");
+    }
+    if (fieldsChanged && !enabledChanged && !isGenerated(EditorSubject::LocalLight, 0, id))
+        notifyPersistentEdit();
+    if (fieldsChanged)
+        m_temporalResetPending = true;
+    return {};
 }
 
 //======================================================================================================================
@@ -333,7 +383,7 @@ rojoRHI::Result<void> SceneSession::resetLocalLight(engine::LightId id) {
     if (!original)
         return std::unexpected(
             rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, "Light no longer exists"});
-    return scene().updateLight(id, *original);
+    return editLocalLight(id, *original);
 }
 
 //======================================================================================================================
@@ -361,11 +411,12 @@ uint32_t SceneSession::lightLabPileCapacity() const {
 
 //======================================================================================================================
 rojoRHI::Result<void> SceneSession::setLightLabPile(uint32_t count) {
-    if (!lightLabPileAvailable() || count > lightLabPileCapacity())
+    if (m_measurementActive || !lightLabPileAvailable() || count > lightLabPileCapacity())
         return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
                                               "Pile exceeds available LightLab light capacity"});
     auto& pile = m_defaults.at(m_scene).pileLights;
     std::erase_if(pile, [&](auto id) { return scene().light(id) == nullptr; });
+    const bool populationChanged = pile.size() != count;
     std::vector<engine::LightId> added;
     if (count > pile.size()) {
         // The immutable authored grid count reserves at least one slot, so count <= 4095 and this
@@ -373,8 +424,7 @@ rojoRHI::Result<void> SceneSession::setLightLabPile(uint32_t count) {
         auto authored = scenes::lightLabLights(1, count);
         const auto owner = scene().lightLabPopulations.front().documentNode;
         if (m_loaded && owner < m_loaded->document.nodes.size()) {
-            const auto effective =
-                engine::effectiveDocumentEnabled(m_loaded->document, documentState().nodeEnabled);
+            const auto effective = effectiveNodes();
             for (auto& light : authored)
                 light.enabled = effective[owner];
         }
@@ -388,17 +438,28 @@ rojoRHI::Result<void> SceneSession::setLightLabPile(uint32_t count) {
             added.push_back(*id);
         }
         pile.insert(pile.end(), added.begin(), added.end());
-        if (m_loaded)
-            for (auto id : added)
-                m_loaded->binding.lightGeneratorNode.emplace(engine::sceneLightKey(id), owner);
+        for (auto id : added) {
+            m_defaults.at(m_scene).lightOwnEnabled[lightKey(id)] = true;
+            auto original = *scene().light(id);
+            original.enabled = true;
+            m_defaults.at(m_scene).localLights[lightKey(id)] = original;
+            if (m_loaded) {
+                m_loaded->binding.lightGeneratorNode.emplace(lightKey(id), owner);
+                m_loaded->binding.generatedLightEnabled.emplace(lightKey(id), true);
+            }
+        }
     }
     while (pile.size() > count) {
-        if (m_loaded)
+        if (m_loaded) {
             m_loaded->binding.lightGeneratorNode.erase(engine::sceneLightKey(pile.back()));
+            m_loaded->binding.generatedLightEnabled.erase(engine::sceneLightKey(pile.back()));
+        }
         scene().removeLight(pile.back());
         pile.pop_back();
     }
     scene().lightLabPopulations.front().pile = pile;
+    if (populationChanged)
+        m_temporalResetPending = true;
     rememberLocalLightDefaults();
     return {};
 }

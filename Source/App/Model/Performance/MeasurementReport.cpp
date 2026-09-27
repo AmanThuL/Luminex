@@ -49,6 +49,17 @@ std::string MeasurementRun::json() const {
         "\"allocatedListBytes\":\"active list storage across three slots\"},";
     out += "\"sceneDocument\":{\"path\":" + quote(m_plan.sceneDocumentPath) +
            ",\"sha256\":" + quote(m_plan.sceneDocumentHash) + "},";
+    if (const auto& population = m_plan.startingPopulation) {
+        out += std::format("\"startingPopulation\":{{\"objects\":{},\"enabledObjects\":{},"
+                           "\"disabledObjects\":{},\"localLights\":{},\"enabledLocalLights\":{},"
+                           "\"directionalLights\":{},\"enabledDirectionalLights\":{}}},",
+                           population->objects, population->enabledObjects,
+                           population->objects - population->enabledObjects,
+                           population->localLights, population->enabledLocalLights,
+                           population->directionalLights, population->enabledDirectionalLights);
+    } else {
+        out += "\"startingPopulation\":null,";
+    }
     out += std::format(
         "\"plan\":{{\"warmupFrames\":{},\"measuredFrames\":{},\"width\":{},\"height\":{},"
         "\"labInstances\":{},\"scene\":{},\"temporal\":{},\"submission\":{},\"visibilityEnabled\":{"
@@ -79,15 +90,19 @@ std::string MeasurementRun::json() const {
         const uint32_t rejected = c.classifyMode == render::ClassifyMode::Gpu && sample.visibility
                                       ? sample.visibility->sceneCounters.rejected
                                       : c.rejected;
+        const uint32_t disabled = sample.visibility ? sample.visibility->sceneCounters.disabled
+                                                    : c.sceneCounters.disabled;
         out += std::format(
             "{{\"ordinal\":{},\"frameId\":{},\"sequenceFrame\":{},\"classifyMs\":{},\"prepareMs\":{"
             "},\"encodeMs\":{},\"slotWaitMs\":{},\"candidates\":{},\"visible\":{},\"rejected\":{},"
+            "\"disabled\":{},"
             "\"sceneCommands\":{},\"shadowCommands\":{},\"tableBytes\":{},\"listBytes\":{},"
             "\"reservedListBytes\":{},"
             "\"argumentBytes\":{},\"transientBytes\":{},\"retired\":{},\"gpuSumMs\":",
             i, c.frameId, c.sequenceFrame, c.classifyMs, c.prepareMs, c.encodeMs, c.slotWaitMs,
-            c.candidates, visible, rejected, c.sceneCommands, c.shadowCommands, c.tableBytes,
-            c.listBytes, c.reservedListBytes, c.argumentBytes, c.transientBytes, sample.retired);
+            c.candidates, visible, rejected, disabled, c.sceneCommands, c.shadowCommands,
+            c.tableBytes, c.listBytes, c.reservedListBytes, c.argumentBytes, c.transientBytes,
+            sample.retired);
         // Actual reconstruction extents may differ from requested scale under vendor clamps.
         double sum = 0;
         for (const auto& pass : sample.passes)

@@ -25,13 +25,20 @@ constexpr float kMinLightDirectionLength = 1e-5f;
 //======================================================================================================================
 void drawDirectionalLightSection(const InspectorPanelContext& context, size_t index) {
     auto& session = context.session;
-    auto& light = session.scene().lights[index];
+    auto light = session.scene().lights[index];
+    if (const auto* loaded = session.loadedScene())
+        for (uint32_t n = 0; n < loaded->binding.nodes.size(); ++n)
+            if (loaded->binding.nodes[n].directional == index)
+                light.enabled = session.nodeEnabled(n);
     const std::string name = "Light " + std::to_string(index);
     if (drawInspectorHeader(name.c_str(), "Directional",
                             "Restore this directional light's direction and scene-linear "
                             "radiance from the current scene defaults.",
                             session.lightChanged(index))) {
-        session.resetLight(index);
+        if (const auto result = session.resetLight(index); !result)
+            editor_style::message(result.error().message.c_str(), true);
+        else
+            light = session.lightDefault(index);
     }
     if (editor_style::beginPropertyGrid("directionalLightFields")) {
         glm::vec3 direction = light.direction;
@@ -47,6 +54,8 @@ void drawDirectionalLightSection(const InspectorPanelContext& context, size_t in
         valueRow("Role", std::string(directionalLightRoleLabel(index)));
         editor_style::endFields();
     }
+    if (const auto result = session.editLight(index, light); !result)
+        editor_style::message(result.error().message.c_str(), true);
 }
 
 } // namespace lmx::app

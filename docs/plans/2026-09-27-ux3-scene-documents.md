@@ -230,7 +230,7 @@ to `EditorSelection.{h,cpp}`), tests.
 scenes::SessionDocumentState&`, `editGeneration() -> uint64_t`; `editObject` on a bound node poses
 every instance of that node; `visibilityStatusLabel(...)` → `Disabled`, `Culled: frustum`,
 `Culled: occluded`.
-- [ ] Tests first: a group toggle updates descendants and keeps their own flags; generated toggles
+- [x] Tests first: a group toggle updates descendants and keeps their own flags; generated toggles
   stay session-only; toggles request a temporal reset; schema 5 records the starting population
   and per-frame `disabled`; Measure refuses enabled edits. Commit `scene: toggle nodes (UX3)`.
 

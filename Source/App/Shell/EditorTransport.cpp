@@ -52,6 +52,7 @@ float measurementReadoutWidth(const MeasurementPlan& plan) {
 void EditorShell::stopPlayback() {
     if (m_measurement.active())
         m_measurement.cancel();
+    m_session.setMeasurementActive(false);
     endMouseLook();
     if (m_playback.stop(m_session, m_settings.followCameraTrack)) {
         requestCameraCut(m_temporalState);
@@ -62,6 +63,7 @@ void EditorShell::stopPlayback() {
 
 //======================================================================================================================
 void EditorShell::finishMeasurementPlayback() {
+    m_session.setMeasurementActive(m_measurement.active());
     if (m_measurementOwnsPlayback && !m_measurement.active())
         stopPlayback();
 }

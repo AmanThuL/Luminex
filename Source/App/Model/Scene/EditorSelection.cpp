@@ -12,6 +12,18 @@
 #include <unordered_map>
 
 namespace lmx::app {
+
+//======================================================================================================================
+std::string_view visibilityStatusLabel(render::VisibilityState state,
+                                       render::VisibilityReason reason) {
+    if (reason == render::VisibilityReason::AuthoredOff)
+        return "Disabled";
+    if (state == render::VisibilityState::Rejected)
+        return reason == render::VisibilityReason::Occluded ? "Culled: occluded"
+                                                            : "Culled: frustum";
+    return state == render::VisibilityState::Bypassed ? "Bypassed" : "Visible";
+}
+
 namespace {
 
 //======================================================================================================================

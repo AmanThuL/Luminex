@@ -80,6 +80,7 @@ void EditorShell::startMeasurement(rojoRHI::Device& device, const render::Render
     plan.unscored = true;
     plan.localLightMode = localLightModeName(m_settings.localLightMode);
     plan.localLightRig = m_session.localLightRigEnabled();
+    plan.startingPopulation = measurementPopulation(m_session.scene());
     plan.labLights =
         m_session.lightLabPileAvailable()
             ? static_cast<uint32_t>(m_session.scene().lightLabPopulations.front().grid.size())
@@ -92,6 +93,7 @@ void EditorShell::startMeasurement(rojoRHI::Device& device, const render::Render
         m_measurementFeedback = m_measurement.failure();
         return;
     }
+    m_session.setMeasurementActive(true);
     endMouseLook();
     m_playback.play(m_session, m_settings.followCameraTrack);
     m_measurementOwnsPlayback = true;
@@ -122,7 +124,8 @@ void EditorShell::recordMeasurementFrame(uint64_t frameId, double waitMs, double
     const auto next = m_measurement.nextFrame();
     if (!next)
         return;
-    if (frameId != record.frameId || frameId != m_measurementVisibility.frameNumber ||
+    if (m_measurement.plan().startingPopulation != measurementPopulation(m_session.scene()) ||
+        frameId != record.frameId || frameId != m_measurementVisibility.frameNumber ||
         m_measurement.plan().submission != submissionName(m_settings.submission) ||
         m_measurement.plan().classify != classifyModeName(m_settings.classifyMode) ||
         m_measurement.plan().classifyCheck != m_settings.classifyCheck ||

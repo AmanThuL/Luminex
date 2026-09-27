@@ -26,6 +26,7 @@ void drawLocalLightSection(const InspectorPanelContext& context, engine::LightId
         return;
     }
     auto light = *current;
+    light.enabled = session.localLightEnabled(id);
     const bool animated =
         std::ranges::any_of(session.scene().animation.lightTracks, [&](const auto& track) {
             return session.scene().animationLightId(track.light) == id;
@@ -41,8 +42,9 @@ void drawLocalLightSection(const InspectorPanelContext& context, engine::LightId
         else
             requestCameraCut(context.temporalState);
         light = *session.scene().light(id);
+        light.enabled = session.localLightEnabled(id);
     }
-    bool edited = light.enabled != session.scene().light(id)->enabled;
+    bool edited = light.enabled != session.localLightEnabled(id);
     if (editor_style::beginPropertyGrid("localLightFields")) {
         edited |=
             editor_style::vector3("Position (world metres)", "position", &light.position.x, 0.05f);

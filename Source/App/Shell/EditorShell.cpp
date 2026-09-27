@@ -558,6 +558,7 @@ render::SceneView EditorShell::sceneView() {
     // Consumed here rather than left for main.cpp: a cut is a one-shot camera event, not a render
     // setting, so its latch belongs next to the generation counter it is unrelated to but shares a
     // lifetime with (both are TemporalEditorState.h).
+    syncSessionTemporalReset(m_temporalState, m_session);
     view.temporal.cameraCut = consumeCameraCut(m_temporalState);
     return view;
 }

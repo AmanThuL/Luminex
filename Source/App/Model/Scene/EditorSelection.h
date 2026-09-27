@@ -5,6 +5,7 @@
 
 #pragma once
 #include "Engine/Scene/Scene.h"
+#include "Render/Passes/Visibility/Visibility.h"
 #include "Scenes/SceneLibrary.h"
 
 #include <cstddef>
@@ -41,6 +42,11 @@ enum class RenderingCategory {
     SceneTables,    ///< Scene-table allocation and update information.
     Count,          ///< Exclusive upper bound; not a selectable category.
 };
+
+/// Shared object status: Disabled for authored off, Culled for frustum/HZB rejection,
+/// otherwise Visible or Bypassed. A missing frame remains a caller-owned waiting state.
+std::string_view visibilityStatusLabel(render::VisibilityState state,
+                                       render::VisibilityReason reason);
 
 /// Stable visible topic label; Overview is `Rendering`, invalid values return `Unavailable`.
 std::string_view renderingCategoryLabel(RenderingCategory category);

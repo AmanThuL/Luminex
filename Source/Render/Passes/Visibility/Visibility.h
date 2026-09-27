@@ -115,15 +115,18 @@ struct VisibilityStatus {
     uint64_t pyramidBytes = 0;         ///< Both allocated depth pyramids.
     OcclusionParams occlusionParams;   ///< Source projection retained with this declaration.
     ClassifyMode classifyMode = ClassifyMode::Cpu; ///< Requested classifier.
-    bool isRetired = false;            ///< GPU results have completed and been read back.
-    bool overflow = false;             ///< At least one output capacity dropped work.
-    bool checkEnabled = false;         ///< Declaration captured CPU oracle expectations.
-    uint32_t stateMismatches = 0;      ///< Candidate state or reason differences.
-    uint32_t rowMismatches = 0;        ///< Valid row sequence differences.
-    uint32_t argumentMismatches = 0;   ///< Defined argument word differences.
-    uint32_t counterMismatches = 0;    ///< Counter reconciliation differences.
-    VisibilityCounters sceneCounters;  ///< Retired scene-view counters.
-    VisibilityCounters shadowCounters; ///< Retired shadow-view counters.
+    bool isRetired = false;          ///< GPU results have completed and been read back.
+    bool overflow = false;           ///< At least one output capacity dropped work.
+    bool checkEnabled = false;       ///< Declaration captured CPU oracle expectations.
+    uint32_t stateMismatches = 0;    ///< Candidate state or reason differences.
+    uint32_t rowMismatches = 0;      ///< Valid row sequence differences.
+    uint32_t argumentMismatches = 0; ///< Defined argument word differences.
+    uint32_t counterMismatches = 0;  ///< Counter reconciliation differences.
+    /// CPU results are immediate. GPU declarations publish only candidates/disabled from canonical
+    /// row flags; classification/emission fields remain pending until isRetired becomes true.
+    VisibilityCounters sceneCounters;
+    /// Same immediate-population versus retired-result contract as sceneCounters.
+    VisibilityCounters shadowCounters;
     /// Whether every enabled diagnostic comparison matched.
     bool checkPassed() const {
         return stateMismatches == 0 && rowMismatches == 0 && argumentMismatches == 0 &&

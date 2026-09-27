@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
+#include "Engine/Scene/Scene.h"
 #include "Render/Passes/LocalLights/LightingStatus.h"
 #include "Render/Passes/Visibility/Visibility.h"
 #include <rojoRHI/Device.h>
@@ -26,6 +27,19 @@ enum class MeasurementState {
     Complete,  ///< Every planned sample has retired.
     Cancelled, ///< Explicit cancellation or invalid evidence ended the run.
 };
+
+/// Starting identity counts, taken before warmup; culling never reduces this population.
+struct MeasurementPopulation {
+    uint32_t objects = 0;        ///< Retained object identities, including disabled instances.
+    uint32_t enabledObjects = 0; ///< Objects effectively enabled after document and CLI masks.
+    uint32_t localLights = 0;    ///< Retained local-light identities, including disabled lights.
+    uint32_t enabledLocalLights = 0;       ///< Effectively enabled local lights.
+    uint32_t directionalLights = 0;        ///< Fixed directional slots, including disabled slots.
+    uint32_t enabledDirectionalLights = 0; ///< Effectively enabled directional slots.
+    bool operator==(const MeasurementPopulation&) const = default; ///< Exact population comparison.
+};
+/// Captures the current effective population without sampling animation or changing scene state.
+MeasurementPopulation measurementPopulation(const engine::Scene& scene);
 
 /// Frozen settings common to every frame in one run.
 struct MeasurementPlan {
@@ -54,6 +68,7 @@ struct MeasurementPlan {
     bool localLightRig = false;               ///< Authored Sponza rig enabled for the complete run.
     uint32_t labLights = 256;                 ///< Authored LightLab base count.
     uint32_t labLightPile = 0;                ///< Authored LightLab saturation count.
+    std::optional<MeasurementPopulation> startingPopulation; ///< Absent only before a scene loads.
     bool lightCheck = false;            ///< Exact CPU/GPU light-list diagnostic; never scored.
     std::string lightDebugView = "off"; ///< Lighting diagnostic view; never scored when active.
 };
@@ -106,8 +121,10 @@ struct MeasurementCpuSample {
     uint64_t stateBytes = 0;             ///< GPU state storage bytes.
     uint64_t counterBytes = 0;           ///< GPU counter storage bytes.
     render::ClassifyMode classifyMode = render::ClassifyMode::Cpu; ///< Effective classifier.
-    render::VisibilityCounters sceneCounters;  ///< Immediate CPU scene counts; GPU joins later.
-    render::VisibilityCounters shadowCounters; ///< Immediate CPU shadow counts; GPU joins later.
+    render::VisibilityCounters
+        sceneCounters; ///< Declared population; GPU classification joins later.
+    render::VisibilityCounters
+        shadowCounters;          ///< Declared shadow population; GPU results join later.
     uint64_t transientBytes = 0; ///< Compiled transient physical bytes for this frame.
     std::vector<std::string>
         expectedPasses;              ///< Scheduled pass labels required in retirement order.

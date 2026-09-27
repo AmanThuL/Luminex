@@ -179,3 +179,54 @@ TEST_CASE("Scored measurement requires real runtime provenance", "[app][measurem
     REQUIRE_FALSE(run.start({}, provenance));
     REQUIRE(run.start({.unscored = true}, provenance));
 }
+
+//======================================================================================================================
+TEST_CASE("Measurement records and enforces the starting enabled population",
+          "[app][measurement][scene-enabled]") {
+    MeasurementRun run;
+    MeasurementPlan plan{.warmupFrames = 0, .measuredFrames = 1};
+    plan.startingPopulation = MeasurementPopulation{
+        .objects = 5, .enabledObjects = 3, .localLights = 4, .enabledLocalLights = 2};
+    REQUIRE(run.start(plan, testProvenance()));
+    MeasurementCpuSample sample{.frameId = 1,
+                                .candidates = 3,
+                                .visible = 3,
+                                .sceneCounters = {.candidates = 3, .disabled = 2},
+                                .lighting = {.effective = lmx::engine::LocalLightMode::Clustered,
+                                             .frameNumber = 1,
+                                             .liveLightCount = 2}};
+    SECTION("matching counts are frozen and serialized") {
+        REQUIRE(run.recordCpu(sample));
+        plan.startingPopulation->enabledObjects = 5;
+        CHECK(run.plan().startingPopulation->enabledObjects == 3);
+        CHECK(run.json().find("\"startingPopulation\":{\"objects\":5,\"enabledObjects\":3,"
+                              "\"disabledObjects\":2") != std::string::npos);
+        CHECK(run.json().find("\"disabled\":2") != std::string::npos);
+    }
+    SECTION("changed enabled object counts fail even when total is unchanged") {
+        sample.candidates = 4;
+        sample.visible = 4;
+        sample.sceneCounters.candidates = 4;
+        sample.sceneCounters.disabled = 1;
+        CHECK_FALSE(run.recordCpu(sample));
+        CHECK(run.failure().find("population") != std::string::npos);
+    }
+    SECTION("changed enabled local light counts fail") {
+        sample.lighting.liveLightCount = 1;
+        CHECK_FALSE(run.recordCpu(sample));
+    }
+    SECTION("GPU retirement cannot replace frozen disabled counts") {
+        sample.classifyMode = lmx::render::ClassifyMode::Gpu;
+        plan.classify = "gpu";
+        MeasurementRun gpu;
+        REQUIRE(gpu.start(plan, testProvenance()));
+        REQUIRE(gpu.recordCpu(sample));
+        lmx::render::VisibilityStatus status;
+        status.frameNumber = 1;
+        status.classifyMode = lmx::render::ClassifyMode::Gpu;
+        status.isRetired = true;
+        status.sceneCounters.candidates = 3;
+        status.sceneCounters.disabled = 1;
+        CHECK_FALSE(gpu.retireVisibility(status));
+    }
+}
