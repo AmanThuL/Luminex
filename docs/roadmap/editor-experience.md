@@ -172,7 +172,8 @@ holds the contract.
 **Exit gate:** converted scenes match the parent under the exact-image matrix at `--temporal off`
 with identical graph dumps, reported as measured with no tolerance approved in advance; saves are
 byte-stable and pass a pinned glTF validator; the re-baseline lists every retired and new hash and
-carries the owner's acceptance; a disabled object contributes to no target and no counter but its
+carries the owner's acceptance, and the standing matrix becomes Sponza, MaterialLab and
+TemporalLab; a disabled object contributes to no target and no counter but its
 own, identically on CPU and GPU classification; the [completion gate](#completion-gate) tasks
 still pass on the new layout; capture manifests and measurement reports record the document hash.
 
