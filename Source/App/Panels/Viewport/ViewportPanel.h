@@ -45,10 +45,13 @@ struct ViewportPanelContext {
     EditorRenderSettings& settings;     ///< Diagnostic request edited by the chip.
     TemporalEditorState& temporalState; ///< Provenance for retired occlusion overlays.
     EditorSelection selection;          ///< Resolved selection for editor-only overlays.
+    /// Reconstruction after vendor fallback; gates the chip's native-only temporal entries.
+    render::ReconstructionMode effectiveReconstruction;
     const VisibilityDisplay* visibilityDisplay = nullptr; ///< Matched retired bounds.
 };
 
-/// Number of available HZB levels for the renderer's current output extent.
+/// Number of HZB levels `render::hzbLayout` allocates for the renderer's current output extent;
+/// zero while that extent is empty. The View menu and the viewport chip share this count.
 uint32_t viewportHzbLevels(const render::Renderer& renderer);
 
 /// Draws the scene image over the full content region, with diagnostic overlays when active.

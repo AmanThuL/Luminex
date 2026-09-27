@@ -84,25 +84,6 @@ TEST_CASE("reconstruction names follow the capability without changing native la
 }
 
 //======================================================================================================================
-TEST_CASE(
-    "native-only diagnostics clamp under effective vendor mode and remain available in fallback",
-    "[app]") {
-    for (auto view :
-         {render::TemporalDebugView::RejectionMask, render::TemporalDebugView::BlendWeight,
-          render::TemporalDebugView::HistoryAge}) {
-        REQUIRE(clampTemporalDebugView(view, render::ReconstructionMode::VendorTemporal) ==
-                render::TemporalDebugView::Off);
-        REQUIRE(clampTemporalDebugView(view, render::ReconstructionMode::NativeTaa) == view);
-        REQUIRE(clampTemporalDebugView(view, render::ReconstructionMode::Raw) == view);
-    }
-    for (auto view : {render::TemporalDebugView::Off, render::TemporalDebugView::MotionVectors,
-                      render::TemporalDebugView::ReprojectionError,
-                      render::TemporalDebugView::ReprojectedHistory}) {
-        REQUIRE(clampTemporalDebugView(view, render::ReconstructionMode::VendorTemporal) == view);
-    }
-}
-
-//======================================================================================================================
 TEST_CASE("editor preserves the paired last reset event across normal frames", "[app]") {
     TemporalEditorState state;
     EditorRenderSettings settings;

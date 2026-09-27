@@ -36,10 +36,16 @@ struct DebugViewEntry {
     std::string reason; ///< Empty exactly when available is true.
 };
 
+/// Names one HZB diagnostic as "HZB level N" in menus, entries and the viewport chip alike.
+std::string hzbLevelLabel(uint32_t level);
+
 /// Lists temporal, lighting, then HZB entries. Other active diagnostics do not block selection,
-/// which replaces them. HZB lists at most 31 levels; zero levels retains a disabled Level 0 entry.
+/// which replaces them. HZB lists at most 31 levels; zero levels retains a disabled level 0 entry.
+/// effectiveReconstruction is the mode the renderer runs after any vendor fallback; only an
+/// effective vendor mode disables native-only temporal views, so a Native TAA fallback keeps them.
 std::vector<DebugViewEntry> debugViewEntries(const EditorRenderSettings& settings,
-                                             uint32_t hzbLevels);
+                                             uint32_t hzbLevels,
+                                             render::ReconstructionMode effectiveReconstruction);
 
 /// Returns the sole structurally valid diagnostic, even when its mode prerequisites changed.
 /// Final, conflicting diagnostics and out-of-range values return null; reconcile before drawing.
@@ -52,6 +58,8 @@ void selectDebugView(EditorRenderSettings& settings, std::optional<DebugView> vi
 
 /// Clears invalid or conflicting diagnostics and returns a one-time notice naming the reason.
 /// Final and valid requests return null. Extent-dependent HZB clamping remains renderer-owned.
-std::optional<std::string> reconcileDebugView(EditorRenderSettings& settings);
+/// effectiveReconstruction has the same meaning as for debugViewEntries.
+std::optional<std::string> reconcileDebugView(EditorRenderSettings& settings,
+                                              render::ReconstructionMode effectiveReconstruction);
 
 } // namespace lmx::app

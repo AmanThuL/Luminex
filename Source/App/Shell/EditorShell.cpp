@@ -19,6 +19,7 @@
 #include "App/Panels/Viewport/ViewportPanel.h"
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"
+#include "Render/Passes/Temporal/TemporalResolve.h"
 #include <rojoRHI/Metal4/Metal4ImGui.h>
 
 #include <SDL3/SDL.h>
@@ -43,6 +44,9 @@ constexpr uint32_t kResizeDebounceFrames = 10;
 // The section body ImGui hands back never includes its own header line, so the schema decision is
 // reached through the same text writeWorkspaceSettings emits.
 constexpr std::string_view kNoSchemaReason = "no matching workspace schema in imgui.ini";
+constexpr std::string_view kMigrationReason =
+    "migrating workspace schema 3 to 4; keeping panel visibility, UI scale and detached window "
+    "bounds";
 constexpr std::string_view kResetReason = "layout reset requested";
 
 } // namespace
@@ -146,13 +150,23 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
     self->m_workspace.uiScalePercent = decision.uiScalePercent;
     self->m_buildDefaultLayout = decision.kind == WorkspaceDecisionKind::BuildDefault;
     self->m_performancePanel.resetPlacement = decision.resetPerformancePlacement;
-    self->m_layoutBuildReason = kNoSchemaReason;
+    // Schema 3 is the one known migration: it rebuilds docking but keeps the stored preferences,
+    // so it logs its own reason rather than the generic no-match recovery.
+    const bool migrating = self->m_buildDefaultLayout && parsed.has_value() &&
+                           parsed->schemaState == WorkspaceSchemaState::Present &&
+                           parsed->schemaVersion == 3;
+    self->m_layoutBuildReason = migrating ? kMigrationReason : kNoSchemaReason;
 
-    LMX_LOG_INFO("editor shell: {} (scene '{}', {} objects)",
-                 self->m_buildDefaultLayout
-                     ? "no matching workspace schema -- the default layout will be built"
-                     : "workspace schema matches -- restoring the docked layout from imgui.ini",
-                 self->m_session.scene().name, self->m_session.scene().objects.size());
+    std::string_view startup =
+        "workspace schema matches -- restoring the docked layout from imgui.ini";
+    if (migrating) {
+        startup = "workspace schema 3 found -- migrating to schema 4 and building the default "
+                  "layout";
+    } else if (self->m_buildDefaultLayout) {
+        startup = "no matching workspace schema -- the default layout will be built";
+    }
+    LMX_LOG_INFO("editor shell: {} (scene '{}', {} objects)", startup, self->m_session.scene().name,
+                 self->m_session.scene().objects.size());
     return self;
 }
 
@@ -316,7 +330,7 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
 
     // Before the dockspace, so the work area the topology is built into excludes the menu bar.
     finishMeasurementPlayback();
-    buildMainMenu(renderer);
+    buildMainMenu(renderer, device);
 
     const ImGuiID dockspaceId = ImGui::DockSpaceOverViewport();
     if (m_buildDefaultLayout) {
@@ -329,7 +343,8 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
     // Input consumes this frame's hover state and Inspector edits.
     updateCameraInput(deltaSeconds);
     updateEditorShortcuts(renderer);
-    if (const auto reason = reconcileDebugView(m_settings))
+    if (const auto reason =
+            reconcileDebugView(m_settings, effectiveReconstruction(renderer, device)))
         m_notices.post({ActionStatus::Unavailable, *reason, {}}, ImGui::GetTime());
     postCaptureNotice();
     editor_style::drawNotice(m_notices, ImGui::GetTime());
@@ -372,6 +387,8 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
                                        .settings = m_settings,
                                        .temporalState = m_temporalState,
                                        .selection = m_selection,
+                                       .effectiveReconstruction =
+                                           effectiveReconstruction(renderer, device),
                                        .visibilityDisplay = &m_visibilityDisplay});
         setPanelVisible(EditorPanel::Viewport, open);
         m_viewportHovered = result.hovered;
@@ -716,6 +733,16 @@ bool EditorShell::selectScene(rojoRHI::Device& device, scenes::SceneId id) {
     LMX_LOG_INFO("scene switched to '{}' ({} objects)", m_session.scene().name,
                  m_session.scene().objects.size());
     return true;
+}
+
+//======================================================================================================================
+render::ReconstructionMode
+EditorShell::effectiveReconstruction(const render::Renderer& renderer,
+                                     const rojoRHI::Device& device) const {
+    return render::resolveReconstruction(
+               m_settings.reconstruction, device.capabilities().temporalScaler,
+               renderer.temporalStatus().vendorFallback == render::VendorFallback::CreationFailed)
+        .mode;
 }
 
 } // namespace lmx::app

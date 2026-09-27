@@ -8,6 +8,7 @@
 #include "App/Model/Rendering/Settings/DebugView.h"
 #include "App/Model/Rendering/Temporal/DiagnosticLegend.h"
 #include "App/Panels/Shared/EditorStyle.h"
+#include "Render/Passes/Occlusion/HzbStage.h"
 #include <rojoRHI/Metal4/Metal4ImGui.h>
 
 #include <imgui.h>
@@ -16,6 +17,7 @@
 #include <array>
 #include <cmath>
 #include <format>
+#include <optional>
 
 namespace lmx::app {
 namespace {
@@ -25,21 +27,30 @@ uint32_t toPixels(float points, float scale) {
     return static_cast<uint32_t>(std::max(points * scale, 0.0f) + 0.5f);
 }
 
+/// What the diagnostic legend chip reported after drawing.
+struct LegendChipResult {
+    bool hovered = false;        ///< Whether the pointer is over the chip, not the scene image.
+    std::optional<float> bottom; ///< Screen-space bottom edge when the chip was drawn.
+};
+
 //======================================================================================================================
-bool drawLegendChip(const ViewportPanelContext& context, ImVec2 origin, ImVec2 imageSize) {
+LegendChipResult drawLegendChip(const ViewportPanelContext& context, ImVec2 origin,
+                                ImVec2 imageSize) {
     const auto active = activeDebugView(context.settings);
     if (!active)
-        return false;
-    const auto entries = debugViewEntries(context.settings, viewportHzbLevels(context.renderer));
+        return {};
+    const uint32_t hzbLevels = viewportHzbLevels(context.renderer);
+    const auto entries =
+        debugViewEntries(context.settings, hzbLevels, context.effectiveReconstruction);
     const auto selected = std::ranges::find_if(entries, [&](const auto& entry) {
         return entry.view.topic == active->topic && entry.view.value == active->value;
     });
     const std::string title =
-        selected != entries.end() ? selected->label : "HZB level " + std::to_string(active->value);
+        selected != entries.end() ? selected->label : hzbLevelLabel(active->value);
     const float inset = editor_style::scaled(8.0f);
     const float width = std::min(editor_style::scaled(390.0f), imageSize.x - inset * 2);
     if (width <= 0 || imageSize.y <= inset * 2)
-        return false;
+        return {};
     ImGui::SetCursorScreenPos(ImVec2(origin.x + inset, origin.y + inset));
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.08f, 0.08f, 0.09f, 0.9f));
     ImGui::SetNextWindowSizeConstraints(ImVec2(0, 0), ImVec2(width, imageSize.y - inset * 2));
@@ -70,17 +81,17 @@ bool drawLegendChip(const ViewportPanelContext& context, ImVec2 origin, ImVec2 i
         if (editor_style::iconButton("close-debug", EditorIcon::Close, true, "Return to Final"))
             selectDebugView(context.settings, std::nullopt);
         if (active->topic == DebugViewTopic::Occlusion) {
+            // Zero levels (no output extent yet) still leaves level 0 as the only request.
+            const int top = std::max(static_cast<int>(hzbLevels), 1) - 1;
             int level = context.settings.hzbDebugLevel;
             ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
             if (ImGui::InputInt("##hzb-level", &level)) {
-                level =
-                    std::clamp(level, 0, static_cast<int>(viewportHzbLevels(context.renderer)) - 1);
+                level = std::clamp(level, 0, top);
                 selectDebugView(context.settings,
                                 DebugView{DebugViewTopic::Occlusion, static_cast<uint8_t>(level)});
             }
             editorTooltip("HZB mip level. Higher levels summarize a larger source region.");
             ImGui::TextWrapped("Farthest reversed depth; black is uncovered.");
-            const int top = static_cast<int>(viewportHzbLevels(context.renderer)) - 1;
             if (active->value > top)
                 ImGui::Text("Requested level %u; showing available level %d", active->value, top);
         } else {
@@ -103,11 +114,13 @@ bool drawLegendChip(const ViewportPanelContext& context, ImVec2 origin, ImVec2 i
     }
     ImGui::EndChild();
     ImGui::PopStyleColor();
-    return hovered;
+    return {hovered, ImGui::GetItemRectMax().y};
 }
 
 //======================================================================================================================
-void drawOcclusionOverlay(const ViewportPanelContext& context, ImVec2 origin, ImVec2 size) {
+/// Draws retired occlusion bounds; its caption sits below the legend chip when one is shown.
+void drawOcclusionOverlay(const ViewportPanelContext& context, ImVec2 origin, ImVec2 size,
+                          std::optional<float> chipBottom) {
     if (!context.settings.occlusionEnabled || !context.visibilityDisplay)
         return;
     const auto& display = *context.visibilityDisplay;
@@ -173,8 +186,8 @@ void drawOcclusionOverlay(const ViewportPanelContext& context, ImVec2 origin, Im
         const auto label = std::format(
             "HZB source frame {}: yellow bounds / cyan test rectangle; rejected {} / 128",
             status.occlusionSourceFrame, rejected);
-        draw->AddText(ImVec2(origin.x + 8, origin.y + 8), IM_COL32(255, 240, 180, 255),
-                      label.c_str());
+        const float labelY = chipBottom ? *chipBottom + 8 : origin.y + 8;
+        draw->AddText(ImVec2(origin.x + 8, labelY), IM_COL32(255, 240, 180, 255), label.c_str());
     }
     draw->PopClipRect();
 }
@@ -183,15 +196,9 @@ void drawOcclusionOverlay(const ViewportPanelContext& context, ImVec2 origin, Im
 
 //======================================================================================================================
 uint32_t viewportHzbLevels(const render::Renderer& renderer) {
-    uint32_t width = (renderer.width() + 1) / 2;
-    uint32_t height = (renderer.height() + 1) / 2;
-    uint32_t levels = 1;
-    while (width > 16 || height > 16) {
-        width = (width + 1) / 2;
-        height = (height + 1) / 2;
-        ++levels;
-    }
-    return levels;
+    if (renderer.width() == 0 || renderer.height() == 0)
+        return 0;
+    return render::hzbLayout(renderer.width(), renderer.height()).levelCount;
 }
 
 //======================================================================================================================
@@ -213,9 +220,10 @@ ViewportPanelResult drawViewportPanel(bool& open, const ViewportPanelContext& co
                          imageSize);
             result.hovered = ImGui::IsItemHovered();
             const auto origin = ImGui::GetItemRectMin();
-            drawOcclusionOverlay(context, origin, imageSize);
-            if (drawLegendChip(context, origin, imageSize))
+            const auto chip = drawLegendChip(context, origin, imageSize);
+            if (chip.hovered)
                 result.hovered = false;
+            drawOcclusionOverlay(context, origin, imageSize, chip.bottom);
             const auto scale = ImGui::GetWindowViewport()->FramebufferScale;
             result.backingScale = scale.x;
             result.width = toPixels(imageSize.x, scale.x);

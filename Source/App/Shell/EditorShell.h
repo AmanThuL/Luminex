@@ -233,7 +233,11 @@ private:
 
     // Submitted before the dockspace so the work area the topology is built into already excludes
     // the menu bar. Menu items only read visibility and raise intents.
-    void buildMainMenu(const render::Renderer& renderer);
+    void buildMainMenu(const render::Renderer& renderer, const rojoRHI::Device& device);
+    /// Resolves the reconstruction the renderer runs for the current request: a vendor request
+    /// falls back to Native TAA without device support or after the scaler's creation failed.
+    render::ReconstructionMode effectiveReconstruction(const render::Renderer& renderer,
+                                                       const rojoRHI::Device& device) const;
     void resetCamera();
     void frameSelected(const render::Renderer& renderer);
     void updateEditorShortcuts(const render::Renderer& renderer);

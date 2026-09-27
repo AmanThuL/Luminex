@@ -3,7 +3,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <array>
+#include <string>
 #include <string_view>
 
 using namespace lmx;
@@ -31,6 +33,43 @@ constexpr std::array kViews{
 };
 
 //======================================================================================================================
+/// Compares every entry for one mode combination with parseAppOptions on the same CLI flags. The
+/// CLI resolves no vendor fallback, so the effective reconstruction equals the requested one.
+void requireCliAvailability(const EditorRenderSettings& settings,
+                            const std::array<std::string_view, 10>& modeArgs) {
+    const auto entries = debugViewEntries(settings, 31, settings.reconstruction);
+    REQUIRE(entries.size() == 40);
+    for (size_t i = 0; i < entries.size(); ++i) {
+        const auto level = std::to_string(i >= 9 ? i - 9 : 0);
+        const auto view = i < 9 ? kViews[i]
+                                : ViewCase{{DebugViewTopic::Occlusion, static_cast<uint8_t>(i - 9)},
+                                           "--hzb-level",
+                                           level};
+        std::array<std::string_view, 16> args{"--scene", "sponza", "--screenshot", "o.png"};
+        std::ranges::copy(modeArgs, args.begin() + 4);
+        args[14] = view.flag;
+        args[15] = view.value;
+        std::string mode;
+        for (const auto arg : modeArgs) {
+            mode += arg;
+            mode += ' ';
+        }
+        CAPTURE(mode, view.flag, view.value);
+        CHECK(entries[i].view.topic == view.view.topic);
+        CHECK(entries[i].view.value == view.view.value);
+        CHECK_FALSE(entries[i].label.empty());
+        CHECK(entries[i].available == parseAppOptions(args).has_value());
+        CHECK(entries[i].reason.empty() == entries[i].available);
+        auto selected = settings;
+        selectDebugView(selected, view.view);
+        CHECK(reconcileDebugView(selected, selected.reconstruction).has_value() ==
+              !entries[i].available);
+        CHECK(activeDebugView(selected).has_value() == entries[i].available);
+        CHECK_FALSE(reconcileDebugView(selected, selected.reconstruction));
+    }
+}
+
+//======================================================================================================================
 void requireFinal(const EditorRenderSettings& settings) {
     REQUIRE(settings.temporalDebugView == render::TemporalDebugView::Off);
     REQUIRE(settings.lightDebugView == engine::LightDebugView::Off);
@@ -47,52 +86,35 @@ TEST_CASE("Debug View availability matches the complete CLI conflict matrix", "[
     constexpr std::array lightNames{"off", "direct", "clustered"};
     constexpr std::array lightModes{engine::LocalLightMode::Off, engine::LocalLightMode::Direct,
                                     engine::LocalLightMode::Clustered};
+    // 4 temporal x 3 lighting x occlusion x classifier x culling = 96 CLI combinations.
+    uint32_t combinations = 0;
     for (size_t temporal = 0; temporal < temporalNames.size(); ++temporal) {
         for (size_t light = 0; light < lightNames.size(); ++light) {
             for (const bool occlusion : {false, true}) {
                 for (const bool gpu : {false, true}) {
-                    EditorRenderSettings settings;
-                    settings.temporalEnabled = temporalModes[temporal] != TemporalMode::Off;
-                    settings.reconstruction = temporalReconstructionMode(temporalModes[temporal]);
-                    settings.localLightMode = lightModes[light];
-                    settings.occlusionEnabled = occlusion;
-                    settings.classifyMode =
-                        gpu ? render::ClassifyMode::Gpu : render::ClassifyMode::Cpu;
-                    const auto entries = debugViewEntries(settings, 31);
-                    REQUIRE(entries.size() == 40);
-                    for (size_t i = 0; i < entries.size(); ++i) {
-                        const auto level = std::to_string(i >= 9 ? i - 9 : 0);
-                        const auto view =
-                            i < 9
-                                ? kViews[i]
-                                : ViewCase{{DebugViewTopic::Occlusion, static_cast<uint8_t>(i - 9)},
-                                           "--hzb-level",
-                                           level};
-                        CAPTURE(temporalNames[temporal], lightNames[light], occlusion, gpu,
-                                view.flag, view.value);
-                        const std::array<std::string_view, 14> args{
-                            "--scene",        "sponza",
-                            "--screenshot",   "o.png",
-                            "--temporal",     temporalNames[temporal],
-                            "--local-lights", lightNames[light],
-                            "--occlusion",    occlusion ? "on" : "off",
-                            "--classify",     gpu ? "gpu" : "cpu",
-                            view.flag,        view.value};
-                        CHECK(entries[i].view.topic == view.view.topic);
-                        CHECK(entries[i].view.value == view.view.value);
-                        CHECK_FALSE(entries[i].label.empty());
-                        CHECK(entries[i].available == parseAppOptions(args).has_value());
-                        CHECK(entries[i].reason.empty() == entries[i].available);
-                        auto selected = settings;
-                        selectDebugView(selected, view.view);
-                        CHECK(reconcileDebugView(selected).has_value() == !entries[i].available);
-                        CHECK(activeDebugView(selected).has_value() == entries[i].available);
-                        CHECK_FALSE(reconcileDebugView(selected));
+                    for (const bool cull : {false, true}) {
+                        EditorRenderSettings settings;
+                        settings.temporalEnabled = temporalModes[temporal] != TemporalMode::Off;
+                        settings.reconstruction =
+                            temporalReconstructionMode(temporalModes[temporal]);
+                        settings.localLightMode = lightModes[light];
+                        settings.occlusionEnabled = occlusion;
+                        settings.classifyMode =
+                            gpu ? render::ClassifyMode::Gpu : render::ClassifyMode::Cpu;
+                        settings.visibilityEnabled = cull;
+                        const std::array<std::string_view, 10> modeArgs{
+                            "--temporal",         temporalNames[temporal], "--local-lights",
+                            lightNames[light],    "--occlusion",           occlusion ? "on" : "off",
+                            "--classify",         gpu ? "gpu" : "cpu",     "--visibility",
+                            cull ? "cull" : "off"};
+                        requireCliAvailability(settings, modeArgs);
+                        ++combinations;
                     }
                 }
             }
         }
     }
+    CHECK(combinations == 96);
 }
 
 //======================================================================================================================
@@ -126,16 +148,16 @@ TEST_CASE("Debug View selection replaces all diagnostics without changing render
         CHECK(settings.classifyMode == render::ClassifyMode::Gpu);
         CHECK(settings.localLightMode == engine::LocalLightMode::Clustered);
         CHECK(settings.reconstruction == render::ReconstructionMode::NativeTaa);
-        CHECK_FALSE(reconcileDebugView(settings));
+        CHECK_FALSE(reconcileDebugView(settings, settings.reconstruction));
         // A current view must not disable the replacements that clear it.
-        for (const auto& entry : debugViewEntries(settings, 3)) {
+        for (const auto& entry : debugViewEntries(settings, 3, settings.reconstruction)) {
             CHECK(entry.available);
             CHECK(entry.reason.empty());
         }
     }
     selectDebugView(settings, std::nullopt);
     requireFinal(settings);
-    CHECK_FALSE(reconcileDebugView(settings));
+    CHECK_FALSE(reconcileDebugView(settings, settings.reconstruction));
 }
 
 //======================================================================================================================
@@ -180,12 +202,12 @@ TEST_CASE("Debug View reconciles changed prerequisites to Final once", "[app][de
     SECTION("out of range HZB value cannot wrap to a valid level") {
         settings.hzbDebugLevel = 256;
     }
-    const auto notice = reconcileDebugView(settings);
+    const auto notice = reconcileDebugView(settings, settings.reconstruction);
     REQUIRE(notice);
     CHECK_FALSE(notice->empty());
     CHECK(notice->find("Final") != std::string::npos);
     requireFinal(settings);
-    CHECK_FALSE(reconcileDebugView(settings));
+    CHECK_FALSE(reconcileDebugView(settings, settings.reconstruction));
     // Restoring prerequisites does not silently re-enter a diagnostic.
     settings.temporalEnabled = true;
     settings.reconstruction = render::ReconstructionMode::NativeTaa;
@@ -193,7 +215,7 @@ TEST_CASE("Debug View reconciles changed prerequisites to Final once", "[app][de
     settings.visibilityEnabled = true;
     settings.classifyMode = render::ClassifyMode::Gpu;
     settings.localLightMode = engine::LocalLightMode::Clustered;
-    CHECK_FALSE(reconcileDebugView(settings));
+    CHECK_FALSE(reconcileDebugView(settings, settings.reconstruction));
     requireFinal(settings);
 }
 
@@ -206,7 +228,7 @@ TEST_CASE("Debug View keeps supported diagnostics across reconstruction changes"
         settings.reconstruction = mode;
         for (const uint8_t value : {1, 2, 3}) {
             selectDebugView(settings, DebugView{DebugViewTopic::Temporal, value});
-            CHECK_FALSE(reconcileDebugView(settings));
+            CHECK_FALSE(reconcileDebugView(settings, settings.reconstruction));
             REQUIRE(activeDebugView(settings));
             CHECK(activeDebugView(settings)->value == value);
         }
@@ -214,10 +236,51 @@ TEST_CASE("Debug View keeps supported diagnostics across reconstruction changes"
     for (const uint8_t value : {4, 5, 6}) {
         settings.reconstruction = render::ReconstructionMode::Raw;
         selectDebugView(settings, DebugView{DebugViewTopic::Temporal, value});
-        CHECK_FALSE(reconcileDebugView(settings));
+        CHECK_FALSE(reconcileDebugView(settings, settings.reconstruction));
         settings.reconstruction = render::ReconstructionMode::VendorTemporal;
-        REQUIRE(reconcileDebugView(settings));
+        REQUIRE(reconcileDebugView(settings, settings.reconstruction));
         requireFinal(settings);
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("Debug View gates native-only temporal views on the effective reconstruction",
+          "[app][debug-view]") {
+    EditorRenderSettings settings;
+    settings.reconstruction = render::ReconstructionMode::VendorTemporal;
+    const auto nativeOnly = [](const DebugViewEntry& entry) {
+        return entry.view.topic == DebugViewTopic::Temporal && entry.view.value >= 4;
+    };
+    SECTION("an unsupported or failed vendor request falls back to Native TAA") {
+        for (const auto& entry :
+             debugViewEntries(settings, 3, render::ReconstructionMode::NativeTaa)) {
+            if (!nativeOnly(entry))
+                continue;
+            CAPTURE(entry.label);
+            CHECK(entry.available);
+            CHECK(entry.reason.empty());
+        }
+        for (const uint8_t value : {4, 5, 6}) {
+            selectDebugView(settings, DebugView{DebugViewTopic::Temporal, value});
+            CHECK_FALSE(reconcileDebugView(settings, render::ReconstructionMode::NativeTaa));
+            REQUIRE(activeDebugView(settings));
+            CHECK(activeDebugView(settings)->value == value);
+        }
+    }
+    SECTION("an effective vendor reconstruction disables them") {
+        for (const auto& entry :
+             debugViewEntries(settings, 3, render::ReconstructionMode::VendorTemporal)) {
+            if (!nativeOnly(entry))
+                continue;
+            CAPTURE(entry.label);
+            CHECK_FALSE(entry.available);
+            CHECK(entry.reason.find("MetalFX") != std::string::npos);
+        }
+        for (const uint8_t value : {4, 5, 6}) {
+            selectDebugView(settings, DebugView{DebugViewTopic::Temporal, value});
+            REQUIRE(reconcileDebugView(settings, render::ReconstructionMode::VendorTemporal));
+            requireFinal(settings);
+        }
     }
 }
 
@@ -225,22 +288,22 @@ TEST_CASE("Debug View keeps supported diagnostics across reconstruction changes"
 TEST_CASE("Debug View exposes bounded HZB levels and reports missing prerequisites",
           "[app][debug-view]") {
     EditorRenderSettings settings;
-    auto entries = debugViewEntries(settings, 0);
+    auto entries = debugViewEntries(settings, 0, settings.reconstruction);
     REQUIRE(entries.size() == 10);
     CHECK(entries.back().view.topic == DebugViewTopic::Occlusion);
     CHECK_FALSE(entries.back().available);
     CHECK_FALSE(entries.back().reason.empty());
     settings.occlusionEnabled = true;
     settings.classifyMode = render::ClassifyMode::Gpu;
-    entries = debugViewEntries(settings, 0);
+    entries = debugViewEntries(settings, 0, settings.reconstruction);
     CHECK_FALSE(entries.back().available);
     CHECK_FALSE(entries.back().reason.empty());
-    entries = debugViewEntries(settings, 1000);
+    entries = debugViewEntries(settings, 1000, settings.reconstruction);
     REQUIRE(entries.size() == 40);
     CHECK(entries.back().view.value == 30);
     CHECK(entries.back().available);
     settings.visibilityEnabled = false;
-    for (const auto& entry : debugViewEntries(settings, 3)) {
+    for (const auto& entry : debugViewEntries(settings, 3, settings.reconstruction)) {
         CHECK_FALSE(entry.available);
         CHECK_FALSE(entry.reason.empty());
     }

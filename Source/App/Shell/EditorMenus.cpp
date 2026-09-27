@@ -20,7 +20,7 @@
 namespace lmx::app {
 
 //======================================================================================================================
-void EditorShell::buildMainMenu(const render::Renderer& renderer) {
+void EditorShell::buildMainMenu(const render::Renderer& renderer, const rojoRHI::Device& device) {
     if (!ImGui::BeginMainMenuBar())
         return;
     if (ImGui::BeginMenu("File")) {
@@ -61,7 +61,8 @@ void EditorShell::buildMainMenu(const render::Renderer& renderer) {
             const auto active = activeDebugView(m_settings);
             if (ImGui::MenuItem("Final", nullptr, !active))
                 selectDebugView(m_settings, std::nullopt);
-            const auto entries = debugViewEntries(m_settings, viewportHzbLevels(renderer));
+            const auto entries = debugViewEntries(m_settings, viewportHzbLevels(renderer),
+                                                  effectiveReconstruction(renderer, device));
             for (auto topic :
                  {DebugViewTopic::Temporal, DebugViewTopic::Lighting, DebugViewTopic::Occlusion}) {
                 const char* label = topic == DebugViewTopic::Temporal   ? "Temporal"

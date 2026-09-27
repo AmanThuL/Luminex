@@ -34,17 +34,19 @@ bool validView(DebugView view) {
 }
 
 //======================================================================================================================
-std::string unavailableReason(const EditorRenderSettings& settings, DebugView view) {
+std::string unavailableReason(const EditorRenderSettings& settings, DebugView view,
+                              render::ReconstructionMode effectiveReconstruction) {
     if (settings.occlusionEnabled &&
         (settings.classifyMode != render::ClassifyMode::Gpu || !settings.visibilityEnabled))
-        return "Occlusion requires GPU classification and visibility culling.";
+        return "Occlusion needs the GPU Classifier and Frustum culling in Rendering > Visibility.";
     switch (view.topic) {
     case DebugViewTopic::Temporal:
         if (!settings.temporalEnabled)
             return "Enable temporal inputs in Rendering > Reconstruction.";
-        if (settings.reconstruction == render::ReconstructionMode::VendorTemporal &&
+        if (effectiveReconstruction == render::ReconstructionMode::VendorTemporal &&
             render::nativeOnlyTemporalView(static_cast<render::TemporalDebugView>(view.value)))
-            return "Requires native reconstruction; choose Raw or Native TAA.";
+            return "MetalFX vendor reconstruction is active; choose Raw or Native TAA in "
+                   "Rendering > Reconstruction.";
         break;
     case DebugViewTopic::Lighting:
         if (settings.localLightMode != engine::LocalLightMode::Clustered)
@@ -52,7 +54,8 @@ std::string unavailableReason(const EditorRenderSettings& settings, DebugView vi
         break;
     case DebugViewTopic::Occlusion:
         if (!settings.occlusionEnabled)
-            return "Enable occlusion with GPU classification and visibility culling.";
+            return "Enable Occlusion in Rendering > Occlusion; it needs the GPU Classifier and "
+                   "Frustum culling in Rendering > Visibility.";
         break;
     }
     return {};
@@ -60,13 +63,19 @@ std::string unavailableReason(const EditorRenderSettings& settings, DebugView vi
 } // namespace
 
 //======================================================================================================================
+std::string hzbLevelLabel(uint32_t level) {
+    return "HZB level " + std::to_string(level);
+}
+
+//======================================================================================================================
 std::vector<DebugViewEntry> debugViewEntries(const EditorRenderSettings& settings,
-                                             uint32_t hzbLevels) {
+                                             uint32_t hzbLevels,
+                                             render::ReconstructionMode effectiveReconstruction) {
     std::vector<DebugViewEntry> entries;
     const auto levelCount = std::clamp(hzbLevels, 1u, kMaxHzbLevels);
     entries.reserve(kTemporalLabels.size() + kLightingLabels.size() + levelCount);
     const auto append = [&](DebugView view, std::string label) {
-        auto reason = unavailableReason(settings, view);
+        auto reason = unavailableReason(settings, view, effectiveReconstruction);
         if (reason.empty() && view.topic == DebugViewTopic::Occlusion && hzbLevels == 0)
             reason = "The HZB pyramid has no available levels yet.";
         const bool available = reason.empty();
@@ -79,7 +88,7 @@ std::vector<DebugViewEntry> debugViewEntries(const EditorRenderSettings& setting
         append({DebugViewTopic::Lighting, static_cast<uint8_t>(index + 1)},
                std::string(kLightingLabels[index]));
     for (uint8_t level = 0; level < levelCount; ++level)
-        append({DebugViewTopic::Occlusion, level}, "Level " + std::to_string(level));
+        append({DebugViewTopic::Occlusion, level}, hzbLevelLabel(level));
     return entries;
 }
 
@@ -125,12 +134,13 @@ void selectDebugView(EditorRenderSettings& settings, std::optional<DebugView> vi
 }
 
 //======================================================================================================================
-std::optional<std::string> reconcileDebugView(EditorRenderSettings& settings) {
+std::optional<std::string> reconcileDebugView(EditorRenderSettings& settings,
+                                              render::ReconstructionMode effectiveReconstruction) {
     if (settings.temporalDebugView == render::TemporalDebugView::Off &&
         settings.lightDebugView == engine::LightDebugView::Off && settings.hzbDebugLevel == -1)
         return std::nullopt;
     const auto view = activeDebugView(settings);
-    const auto reason = view ? unavailableReason(settings, *view)
+    const auto reason = view ? unavailableReason(settings, *view, effectiveReconstruction)
                              : "Diagnostic requests conflict or contain an unsupported value.";
     if (reason.empty())
         return std::nullopt;
