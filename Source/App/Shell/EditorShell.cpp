@@ -366,7 +366,9 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
                                                .frameSelectionRequested = frameSelectionRequested,
                                                .visibilityDisplay = m_visibilityDisplay,
                                                .visibilityStatus = m_visibilityDisplay.status(),
-                                               .sceneGeneration = m_temporalState.sceneGeneration});
+                                               .sceneGeneration = m_temporalState.sceneGeneration,
+                                               .loadedScene = m_session.loadedScene(),
+                                               .session = &m_session});
         if (frameSelectionRequested)
             frameSelected(renderer);
         setPanelVisible(EditorPanel::Scene, open);

@@ -5,6 +5,8 @@
 
 #include "App/Panels/Scene/ScenePanel.h"
 
+#include "App/Model/Scene/SceneSession.h"
+#include "App/Model/Scene/SceneTree.h"
 #include "App/Model/Scene/SelectionBounds.h"
 #include "App/Panels/Shared/EditorStyle.h"
 
@@ -12,8 +14,10 @@
 
 #include <algorithm>
 #include <format>
+#include <set>
 #include <span>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace lmx::app {
@@ -210,6 +214,161 @@ void handleKeyboardNav(std::span<const EditorSelectionRow> rows, const ScenePane
     }
 }
 
+//======================================================================================================================
+void selectTreeRow(const SceneTreeRow& row, const ScenePanelContext& context) {
+    context.selection = {.sceneId = context.activeSceneId,
+                         .subject = row.subject,
+                         .index = row.index,
+                         .lightId = row.lightId,
+                         .node = row.node,
+                         .importedNode = row.importedNode};
+}
+
+//======================================================================================================================
+void drawTreeRows(std::span<const SceneTreeRow> rows, size_t& cursor,
+                  const ScenePanelContext& context, std::set<uint32_t>& collapsed,
+                  bool& rootCollapsed, std::vector<SceneTreeRow>& navigation) {
+    const SceneTreeRow& row = rows[cursor++];
+    const bool root = row.depth == 0;
+    if (!root)
+        navigation.push_back(row);
+    const uint32_t key = row.importedNode == engine::kGeneratedNode
+                             ? row.node
+                             : sceneTreeImportedKey(row.importedNode);
+    ImGui::PushID(static_cast<int>(row.subject));
+    ImGui::PushID(static_cast<int>(row.node));
+    ImGui::PushID(static_cast<int>(row.importedNode));
+    ImGui::PushID(static_cast<int>(row.index));
+    ImGui::PushID(static_cast<int>(row.lightId.slot));
+    ImGui::PushID(static_cast<int>(row.lightId.generation));
+    const bool selected = sceneTreeRowSelected(row, context.selection);
+    const auto* object =
+        row.subject == EditorSubject::Object && row.index < context.activeScene.objects.size()
+            ? &context.activeScene.objects[row.index]
+            : nullptr;
+    const auto* status = object ? context.visibilityDisplay.find(
+                                      object->id, context.visibilityStatus, context.sceneGeneration)
+                                : nullptr;
+    size_t rejectedPrimitives = 0;
+    size_t knownPrimitives = 0;
+    size_t primitiveCount = object ? 1 : 0;
+    if (row.importedNode != engine::kGeneratedNode && context.loadedScene && object) {
+        const auto& source = context.loadedScene->binding.importedNodes[row.importedNode];
+        primitiveCount = source.objects.size();
+        for (const size_t index : source.objects) {
+            const auto* primitiveStatus =
+                context.visibilityDisplay.find(context.activeScene.objects[index].id,
+                                               context.visibilityStatus, context.sceneGeneration);
+            if (!primitiveStatus)
+                continue;
+            ++knownPrimitives;
+            rejectedPrimitives +=
+                primitiveStatus->state == render::VisibilityState::Rejected ? 1 : 0;
+        }
+    } else if (status) {
+        knownPrimitives = 1;
+        rejectedPrimitives = status->state == render::VisibilityState::Rejected ? 1 : 0;
+    }
+    const bool culled = row.effective && primitiveCount > 0 && knownPrimitives == primitiveCount &&
+                        rejectedPrimitives == primitiveCount;
+    const bool dimmed = !row.effective || culled;
+    std::string label = row.label;
+    if (root && context.dirty)
+        label += " *";
+    if (!row.enabled)
+        label += " [off]";
+    else if (!row.effective)
+        label += " [off by parent]";
+    if (row.generated)
+        label += " · not saved";
+    ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_OpenOnArrow |
+                               ImGuiTreeNodeFlags_OpenOnDoubleClick |
+                               (selected ? ImGuiTreeNodeFlags_Selected : 0);
+    if (!row.group)
+        flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+    else if (root)
+        ImGui::SetNextItemOpen(sceneTreeRootOpen(rootCollapsed, context.filter), ImGuiCond_Always);
+    else
+        ImGui::SetNextItemOpen(!context.filter.empty() || !collapsed.contains(key),
+                               ImGuiCond_Always);
+    if (dimmed && !selected)
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    const bool opened = ImGui::TreeNodeEx("document-row", flags, "%s", label.c_str());
+    if (dimmed && !selected)
+        ImGui::PopStyleColor();
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
+        selectTreeRow(row, context);
+    std::string tip = row.label;
+    if (row.generated && context.loadedScene &&
+        row.node < context.loadedScene->document.nodes.size())
+        tip += "\nGenerated by " + context.loadedScene->document.nodes[row.node].generator->name +
+               " · not saved";
+    if (!row.enabled)
+        tip += "\nDisabled on this node; enable it in Inspector.";
+    else if (!row.effective)
+        tip += "\nDisabled by an ancestor.";
+    else if (primitiveCount > 1 && rejectedPrimitives > 0)
+        tip += std::format("\n{} of {} material primitives culled in this view.",
+                           rejectedPrimitives, primitiveCount);
+    else if (culled && status)
+        tip += "\n" + std::string(visibilityStatusLabel(status->state, status->reason));
+    if (row.importedNode != engine::kGeneratedNode && context.loadedScene) {
+        const auto& source = context.loadedScene->binding.importedNodes[row.importedNode];
+        if (source.objects.size() > 1)
+            tip += std::format("\nOne source node controls all {} material primitives.",
+                               source.objects.size());
+    }
+    editorTooltip(tip.c_str());
+    if (ImGui::BeginPopupContextItem("SubjectActions")) {
+        selectTreeRow(row, context);
+        const bool canFrame =
+            selectedObjectBounds(context.activeScene, context.selection).has_value();
+        if (ImGui::MenuItem("Frame Selected", "F", false, canFrame))
+            context.frameSelectionRequested = true;
+        if (ImGui::MenuItem("Copy full name"))
+            ImGui::SetClipboardText(row.label.c_str());
+        ImGui::EndPopup();
+    }
+    if (row.group) {
+        if (root) {
+            rootCollapsed = sceneTreeRootCollapsedAfterDraw(rootCollapsed, opened, context.filter);
+        } else if (context.filter.empty()) {
+            if (opened)
+                collapsed.erase(key);
+            else
+                collapsed.insert(key);
+        }
+        if (opened) {
+            while (cursor < rows.size() && rows[cursor].depth > row.depth)
+                drawTreeRows(rows, cursor, context, collapsed, rootCollapsed, navigation);
+            ImGui::TreePop();
+        } else {
+            while (cursor < rows.size() && rows[cursor].depth > row.depth)
+                ++cursor;
+        }
+    }
+    ImGui::PopID();
+    ImGui::PopID();
+    ImGui::PopID();
+    ImGui::PopID();
+    ImGui::PopID();
+    ImGui::PopID();
+}
+
+//======================================================================================================================
+void handleTreeKeyboard(std::span<const SceneTreeRow> rows, const ScenePanelContext& context) {
+    if (rows.empty() || !ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) ||
+        ImGui::GetIO().WantTextInput)
+        return;
+    const int step = ImGui::IsKeyPressed(ImGuiKey_DownArrow) ? 1
+                     : ImGui::IsKeyPressed(ImGuiKey_UpArrow) ? -1
+                                                             : 0;
+    if (step == 0)
+        return;
+    if (const auto target = sceneTreeKeyboardTarget(rows, context.selection, step > 0))
+        selectTreeRow(*target, context);
+}
+
 } // namespace
 
 //======================================================================================================================
@@ -303,14 +462,34 @@ void drawScenePanel(bool& open, const ScenePanelContext& context) {
         }
         ImGui::PopStyleVar();
         ImGui::EndGroup();
-        // Rows are built once; the total is counted without building the unfiltered rows.
-        const auto rows = buildSceneSelectionRows(context.activeScene, context.filter);
-        ImGui::TextDisabled("%zu / %zu", rows.size(), hierarchyTotal(context.activeScene));
-        editorTooltip(
-            "Matching / total selectable scene subjects, including directional lights, local "
-            "lights and objects. Dimmed names are culled objects or disabled lights. "
-            "They remain selectable; hover a name for its status.");
-        if (selectionHiddenByFilter(context.activeScene, context.selection, context.filter)) {
+        struct TreeExpansion {
+            std::set<uint32_t> collapsed;
+            bool rootCollapsed = false;
+        };
+        static std::unordered_map<std::string, TreeExpansion> expansionByScene;
+        const bool documentTree = context.loadedScene && context.session;
+        auto& expansion = expansionByScene[context.activeSceneId.key];
+        const auto tree =
+            documentTree
+                ? buildSceneTreeView(*context.loadedScene, context.session->documentState(),
+                                     context.filter, expansion.collapsed, context.session)
+                : SceneTreeView{};
+        const auto flatRows = documentTree
+                                  ? std::vector<EditorSelectionRow>{}
+                                  : buildSceneSelectionRows(context.activeScene, context.filter);
+        ImGui::TextDisabled("%zu / %zu", documentTree ? tree.matchedCount : flatRows.size(),
+                            documentTree ? tree.totalCount : hierarchyTotal(context.activeScene));
+        editorTooltip("Matching / total scene subjects, including disabled rows. Search keeps "
+                      "ancestors; off and culled rows stay selectable.");
+        if (documentTree && !context.filter.empty()) {
+            const bool selectedShown = std::ranges::any_of(tree.rows, [&](const auto& row) {
+                return sceneTreeRowSelected(row, context.selection);
+            });
+            if (context.selection.subject != EditorSubject::None && !selectedShown)
+                editor_style::message("Selection hidden by search; Inspector keeps it selected.",
+                                      true);
+        } else if (selectionHiddenByFilter(context.activeScene, context.selection,
+                                           context.filter)) {
             editor_style::message("Selection hidden by search; Inspector keeps it selected.", true);
         }
         ImGui::PushStyleVar(ImGuiStyleVar_IndentSpacing, editor_style::scaled(12.0f));
@@ -320,9 +499,18 @@ void drawScenePanel(bool& open, const ScenePanelContext& context) {
                             ImVec2(ImGui::GetStyle().ItemSpacing.x, editor_style::scaled(2.0f)));
         if (ImGui::BeginChild("SubjectList", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
                               ImGuiWindowFlags_HorizontalScrollbar)) {
-            std::vector<EditorSelectionRow> visibleLeaves;
-            drawHierarchy(rows, context, visibleLeaves);
-            handleKeyboardNav(visibleLeaves, context);
+            if (documentTree) {
+                std::vector<SceneTreeRow> visibleRows;
+                size_t cursor = 0;
+                if (!tree.rows.empty())
+                    drawTreeRows(tree.rows, cursor, context, expansion.collapsed,
+                                 expansion.rootCollapsed, visibleRows);
+                handleTreeKeyboard(visibleRows, context);
+            } else {
+                std::vector<EditorSelectionRow> visibleLeaves;
+                drawHierarchy(flatRows, context, visibleLeaves);
+                handleKeyboardNav(visibleLeaves, context);
+            }
         }
         ImGui::EndChild();
         ImGui::PopStyleVar(3);

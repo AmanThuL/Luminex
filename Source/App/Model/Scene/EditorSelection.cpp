@@ -134,6 +134,8 @@ EditorSelection resolveSelection(const EditorSelection& current, scenes::SceneId
         break;
     case EditorSubject::None:
     case EditorSubject::Camera:
+    case EditorSubject::Group:
+    case EditorSubject::Environment:
         break;
     }
 
@@ -190,6 +192,8 @@ bool selectionHiddenByFilter(const engine::Scene& scene, const EditorSelection& 
     std::string compact;
     switch (selection.subject) {
     case EditorSubject::Camera:
+    case EditorSubject::Group:
+    case EditorSubject::Environment:
         return false;
     case EditorSubject::LocalLight:
         label = sceneLocalLightLabel(scene, selection.lightId);

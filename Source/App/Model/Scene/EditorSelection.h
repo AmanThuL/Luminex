@@ -5,10 +5,12 @@
 
 #pragma once
 #include "Engine/Scene/Scene.h"
+#include "Engine/Scene/SceneInstantiate.h"
 #include "Render/Passes/Visibility/Visibility.h"
 #include "Scenes/SceneLibrary.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <span>
 #include <string>
@@ -24,6 +26,8 @@ enum class EditorSubject {
     DirectionalLight, ///< One of `Scene::lights`, named by `EditorSelection::index`.
     LocalLight,       ///< One generational local light, named by `lightId`.
     Object,           ///< One of `Scene::objects`, named by `EditorSelection::index`.
+    Group,            ///< Document or imported source node with no direct leaf subject.
+    Environment,      ///< The document's scene look.
 };
 
 /// Ordered Rendering panel topics; independent from the selected scene subject.
@@ -59,7 +63,9 @@ struct EditorSelection {
     scenes::SceneId sceneId;                     ///< The scene the selection was made against.
     EditorSubject subject = EditorSubject::None; ///< What is selected.
     size_t index = 0;                            ///< DirectionalLight/Object row index.
-    engine::LightId lightId{}; ///< Complete local-light identity; otherwise unused.
+    engine::LightId lightId{};              ///< Complete local-light identity; otherwise unused.
+    uint32_t node = engine::kGeneratedNode; ///< Document node, or sentinel for generated/look.
+    uint32_t importedNode = engine::kGeneratedNode; ///< Imported binding, distinct from `node`.
 };
 
 /// Compares `current` against `activeScene`/`scene` and returns the value the caller should store:
