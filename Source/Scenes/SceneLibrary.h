@@ -41,7 +41,7 @@ std::optional<SceneId> parseSceneId(std::string_view stableId);
 SceneId sceneIdFromPath(const std::filesystem::path& path);
 /// Borrows the stable key; the SceneId must outlive the returned view.
 std::string_view sceneIdString(const SceneId& id);
-/// Lists all eight built-in document keys in display order.
+/// Lists all six built-in document keys in display order.
 std::span<const std::string_view> sceneStableIds();
 
 /// Owns complete loaded snapshots and waits for their GPU use before replacement/destruction.

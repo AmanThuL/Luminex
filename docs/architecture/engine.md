@@ -11,7 +11,7 @@ on Asset, but Engine may not depend on Render, and Render never depends on Scene
 ## Asset
 
 `Source/Engine/Asset` (target `Asset`, namespace `lmx::asset`) keeps `Asset.h` and repository asset
-discovery at its root, with `Image/`, `Model/` and `Texture/` folders. It owns procedural geometry,
+discovery at its root, with `Document/`, `Image/`, `Model/` and `Texture/` folders. It owns procedural geometry,
 DDS/glTF/Radiance HDR and PNG/BMP image handling, deterministic equirectangular environment
 conversion and image-based-lighting generation (`HdrEnvironment.h`, `Ibl.h`), including filtered
 cubemap sampling and a higher-resolution studio reflection source with a separate bounded diffuse
@@ -37,8 +37,9 @@ the scene itself. Render consumes this vocabulary directly, plus the `SceneTable
 and `MotionClass.h` headers `Scene/` exports, but its reach into the scene type itself
 (`Engine/Scene/Scene.h`) stays confined to one translation unit, the `SceneView` builder; see
 [render-passes.md](render-passes.md#scene-view-and-buildsceneview) for what it builds and reads.
-Renderer configuration (temporal settings, shadow filter, visibility, occlusion and lighting modes)
-stays in Render; the scene carries none of it. See
+The scene owns its Asset-defined `SceneLook`: exposure, bloom, shadow filter and environment.
+`buildSceneView` converts that CPU vocabulary into Render settings. Reconstruction, render scale,
+visibility, occlusion, submission and lighting mode remain renderer/session configuration. See
 [ADR 0025](../decisions/0025-engine-subsystem-and-render-on-engine.md) for the render-on-engine
 edge and [ADR 0021](../decisions/0021-gpu-scene-handoff-contract.md) for the scene-identity and
 update contract.
@@ -85,35 +86,72 @@ Engine performs the scene's texture and IBL uploads and its initial camera mappi
 object a source-derived name. `SceneEnvironment.h` is public so that a catalog scene can attach its
 own environment through it.
 
-## Scenes catalog
+## Scene documents and catalog
 
-`Source/Scenes` (target `Scenes`, namespace `lmx::scenes`) owns the eight-scene catalog,
-`SceneLibrary`, above Engine. Engine reaches a catalog entry only through the `SceneAuthoring`
-callback that entry passes to `loadGltfScene`; the `Engine` archive's `forbidUndefined:
-lmx::scenes::` check keeps Engine from naming any Scenes symbol
-([module contract](../conventions/modules.md#render-depends-on-engine-not-the-reverse)). Catalog
-entries include `temporal-lab`, `milk-truck` and the optional `san-miguel`. San Miguel is imported
-at authored metre scale with a deterministic 12-second camera rail; `xmake setup --san-miguel`
-fetches its pinned official archive, converts the realtime OBJ with diffuse alpha cutouts and `N_`
-tangent normals, preserves both upstream metadata and the bundled license in provenance, and bakes
-its referenced images. The always-available VisibilityLab adds a seeded cube/icosphere grid, four
-materials, five initial camera boundary probes and a 12-second rail, and its configurable total
-instance count includes those probes.
-LightLab adds a deterministic point/spot grid, a 12-second rail, position-only orbit tracks and an
-optional overflow pile; authored orbits clear material rows by 0.25 m. Sponza authors 16 static
-lights through `SponzaLightRig` and a 120-second two-level corridor/atrium camera tour; disabling
-the light rig on the command line removes the lights' contribution without removing their
-allocation. AppModel, App and Tests link `Scenes` and reach the catalog through it.
+`Asset/Document/SceneDocument` is a GPU-free glTF 2.0 model with `KHR_lights_punctual` and the
+optional `LMX_scene` extension. It references fetched assets under `Assets/`, records their file
+hashes, and owns the look, cameras, rails, own-enabled flags and imported-node overrides.
+`SceneDocumentRead` validates fields and buffer access; `SceneDocumentWrite` uses Core's
+`JsonWriter` for canonical JSON plus an external animation buffer. `Orientation` searches exact
+float quaternion encodings with contraction disabled. `Model/CgltfImplementation` owns the single
+cgltf implementation and `JsonTokens`; `GltfLoader` retains source nodes, primitive bindings and
+all animation clips. The [document guide](../guides/scene-documents.md) describes the file form.
+
+`Scene/SceneInstantiate` preflights asset hashes, overrides, cameras, lights and required HDRI
+content before GPU creation, then constructs a replacement `LoadedScene`. It carries the scene,
+loaded document, path/hash and `SceneBinding`. Bindings distinguish document nodes, imported
+source nodes (including empty ancestors), primitive instances and generated subjects. Imported
+node pose/enabled edits fan out to every primitive of that source node. Resource creation retains
+asset order, the generator's environment attachment point and document light order. Engine calls
+an injected generator lookup; it names no Scenes symbol.
+
+`Source/Scenes` owns `SceneLibrary`, the generator registry and six catalog documents under
+`Assets/Scenes/`: Sponza, MaterialLab, TemporalLab, San Miguel, VisibilityLab and LightLab.
+`SceneId` holds a catalog key or supplied document path. San Miguel still requires
+`xmake setup --san-miguel`; its document owns the 12-second rail. Sponza's document owns sixteen
+local lights and its 120-second tour. MaterialLab references Damaged Helmet, and TemporalLab
+references Milk Truck; their former standalone catalog IDs have retired. Generated lab geometry,
+emissive step tracks and closed-form light orbits stay in Scenes. CLI generator parameters and
+`--local-light-rig` apply session overrides without changing authored document values.
+
+`SessionDocumentState` retains own flags, the immutable imported-pose baseline and an explicitly
+set scene camera. `exportSceneDocument` derives a candidate document from the loaded snapshot,
+this state and the live scene. It returns an error for unrepresentable exact orientations or
+inconsistent primitive poses. `documentDirty` compares canonical JSON and buffer bytes; generated
+edits, animation preview and ordinary editor-camera movement do not participate. Save adoption
+replaces the document baseline only after write, canonical reread/equality and hash succeed.
+
+Runtime document animation currently accepts LINEAR translation/rotation of the selected camera.
+Referenced asset clips loop on their own durations using retained local hierarchy/channels;
+generators own their other motion. Unsupported document channels and transformed generator roots
+fail preflight. Independent asset scale clips still have a known decomposition limit; the
+[validation record](../milestones/ux/ux3-validation.md#ux32--fixture-integration) retains the
+source-reviewed counterexample and failed migration image gates.
+
+## Authored enabled state
+
+Own-enabled flags combine by ancestor AND. Disabling an object keeps its identity and table row,
+sets `kInstanceDisabled = 4u`, and bumps the occlusion coverage epoch. Both classification paths
+reject it before culling bypasses, including the unculled shadow view. Disabled rows contribute
+only to the disabled counter, with no colour, depth, motion, shadow, outline or HZB coverage.
+`AuthoredOff` means disabled; `CullingOff` means view culling is bypassed. Frustum/HZB rejection
+remains transient and never changes authored state.
+
+Disabled local lights retain their identities and edits. A disabled directional retains its role
+and direction but contributes zero strength; the selected enabled caster receives the shadow
+factor without changing pass declarations. Measurement freezes the starting population and
+refuses enabled edits. [Proposed ADR 0028](../decisions/0028-scene-document-contract.md) records
+the population amendment to ADR 0021; identity and three-slot retirement rules remain unchanged.
 
 ## Tests
 
 - `Tests/Engine/Asset/` covers Asset: repository discovery and BMP writing, DDS loading and mip
   baking, procedural geometry, glTF loading, HDR environment conversion, IBL generation, PNG
-  handling, transform decomposition and rigid, camera and orbit track sampling.
+  handling, transform decomposition, document reader/writer failures and rigid, camera and orbit sampling.
 - `Tests/Engine/Lights/` covers `LocalLightMath`.
 - `Tests/Engine/Scene/` covers the scene-table row ABI and its GPU upload, world-bounds recomputation,
   coverage-epoch advancement, generational scene identities, the local-light table and playback.
 - `Tests/Engine/View/` covers `Camera`.
 - `Tests/Scenes/` covers the catalog and each scene and lab it lists, including San Miguel import,
-  LightLab, MaterialLab, the Sponza camera tour, TemporalLab and VisibilityLab, the `loadGltfScene`
-  authoring callback and the Sponza light rig.
+  LightLab, MaterialLab, camera rails, TemporalLab and VisibilityLab, canonical document round trips,
+  source bindings, pure export/dirty state and enabled-state persistence.

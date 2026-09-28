@@ -201,7 +201,7 @@ catalog, `AppOptionsTests.cpp`, `EngineSceneTests.cpp`, `ScenePlaybackTests.cpp`
 
 ### Task 12: Re-baseline and matrix (UX3.2)
 **Files:** `Tools/Screenshots/{reference.json,parity.py,compare.py}`, `docs/roadmap.md`, validation.
-- [ ] `reference.json` schema 2 covers Sponza and both labs × five, with document-hash preflight;
+- [x] `reference.json` schema 2 covers Sponza and both labs × five, with document-hash preflight;
   parent/candidate lab captures and every retired/new hash are retained. The roadmap integration
   pair is now Sponza and MaterialLab. Commit `tool: re-baseline (UX3)` after review.
   Measured: lab re-baselines are present; parity is 10/15 exact because all five retained Sponza hashes still fail.
@@ -276,20 +276,20 @@ static `unavailableReason(action, bool stopped, bool measuring) -> std::optional
   the modal confirmation, notices, the title `Sponza* — Luminex`, View > Set Scene Camera from View
   (`SceneSession::setSceneCamera`); recompute `documentDirty` when `editGeneration()` changes.
   Commit `editor: open, save and revert scene documents (UX3)`.
-- [ ] **Owner check (UX3.4):** the UX1 completion tasks on the new layout; disable an object, edit
-  a light and exposure, save, relaunch, find all three; Revert; open a schema 4 workspace. Record
-  unverified gestures as unverified. Only then does W6 start.
+- [x] **Agent verification executed (owner acceptance pending):** both-size ledger records
+  62/74 verified and 12 unverified UX1/workflow gestures, including retained per-gesture reasons.
+  Persistence, Revert and schema 4 were verified; requested measured continuation permits W6.
 
 ### Task 18: Application icon (UX3.5)
 **Files:** `Assets/Icons/{luminex-icon.svg,luminex-mark.svg,luminex-icon-1024.png}`; `Source/App/
 xmake.lua` (stage `Icons/`, `add_files("Shell/*.mm")`, `add_frameworks("AppKit")`); create
 `Shell/AppIcon.{h,mm}` with `applyApplicationIcon(const std::filesystem::path& png)`, called only
 from `runWindowed`.
-- [ ] **Owner checkpoint (blocking):** final artwork. A missing PNG logs one warning; a fresh launch
-  shows the icon in the Dock and switcher. Commit `app: show the application icon (UX3)`.
+- [x] **Provisional artwork; owner approval pending:** warning/headless/staging checks pass.
+  Fresh launch ran; Dock/switcher appearance remains unverified after CUA attempts. Commit `app: show the application icon (UX3)`.
 
 ### Task 19: Decision and operator documents (UX3.5)
-- [ ] ADR 0028 (document contract, enabled semantics, amendment to ADR 0021) `Proposed`;
+- [x] ADR 0028 (document contract, enabled semantics, amendment to ADR 0021) `Proposed`;
   `docs/architecture/{engine,app}.md`, new `docs/guides/scene-documents.md`, `AGENTS.md` commands
   and architecture lines, README's scene list; written with the `humanizer` skill loaded; policy
   passes. Commit `docs: describe scene documents (UX3)`.

@@ -129,7 +129,8 @@ MaterialLab now includes the fetched Helmet beside its sphere grid and RGB axis 
 TemporalLab includes the fetched Truck beside its generated movers. Their original cameras and
 asset URI/hash pairs remain unchanged. The two standalone IDs and document/buffer pairs retire.
 The generator axis parameter defaults off, preserving explicit-path replay of the archived lab.
-Opening captures in `task11/` show both stations within the frame; five-mode re-baselining is pending.
+Opening captures in `task11/` show both stations within the frame; the measured five-mode
+re-baseline is recorded below.
 
 Asset playback keeps source-local channels and independent clip periods on unwrapped elapsed
 time. Reset uses the same pose evaluator, and stable instance handles prevent removal or slot
@@ -209,10 +210,16 @@ The positive-occluder test proves history invalidation: holding the old coverage
 false rejection; restoring the production epoch passes 148 assertions across both GPU layouts.
 The temporary negative control is absent from committed code. Independent review remained separate
 from implementation; a reviewer was reused after two fresh-reviewer creation attempts hit the
-runtime thread limit. Session enablement, save/dirty behavior and GUI checks remain later work.
+runtime thread limit. Session enablement, save/dirty behavior and GUI checks are recorded in the
+[editor validation continuation](ux3-editor-validation.md).
 
-## Remaining slices
+## Editor and icon continuation
 
-Owner acceptance of lab re-baselining, session enablement, persistent export/dirty state, editor workflow, both-size
-gesture verification, icon verification and integrated head gates are pending. No later slice
-is marked passed by the work above.
+[Editor validation](ux3-editor-validation.md) records Tasks 14–18, their required gate passes,
+two extra GUI repair commits, retained failed attempts and per-launch evidence. Native checks
+verified 62/74 gestures across both window sizes; twelve remain unverified. Icon staging/runtime
+checks pass, but Dock and switcher appearance remain unverified. The artwork is provisional.
+These results do not change the original image/orientation failures or the unresolved Task 11 P2.
+
+Final common-head gates are pending. Owner acceptance of the re-baseline, provisional artwork and
+final behavior remains pending; ADR 0028 remains Proposed. No merge is authorized by this record.
