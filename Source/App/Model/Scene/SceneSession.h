@@ -107,6 +107,11 @@ public:
     /// changes must not call it. Dirty tracking uses this as an invalidation, not a dirty verdict.
     void notifyPersistentEdit();
 
+    /// Explicitly requests the current view as the saved rest camera. Ordinary view/playback
+    /// changes never call this. Rejects missing documents, Measure and invalid lens/pose values;
+    /// a changed request increments persistent generation. The owner requires stopped playback.
+    rojoRHI::Result<void> setSceneCamera();
+
     /// The camera edited by the owner, including fly input and lens changes.
     engine::Camera& camera() { return m_camera; }
     /// The camera used when declaring passes for this session.

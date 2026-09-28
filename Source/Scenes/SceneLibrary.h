@@ -70,6 +70,20 @@ public:
     asset::AssetResult<engine::LoadedScene*>
     reload(const SceneId& id, const std::function<void(const engine::LoadedScene&)>& beforeReplace);
 
+    /// Retires and removes a cached scene after a replacement was successfully constructed.
+    /// The callback invalidates its session state while the old scene is still alive.
+    void forget(const SceneId& id,
+                const std::function<void(const engine::LoadedScene&)>& beforeRemove);
+    /// Adopts a verified canonical save without rebuilding the live scene or changing bindings.
+    /// Rekeying retains LoadedScene's address. A cached destination retires first and is
+    /// invalidated through beforeReplace; source and destination metadata publish only after
+    /// verification by the caller. source must belong to this library; document/path/hash must
+    /// describe that save.
+    engine::LoadedScene&
+    adoptSaved(engine::LoadedScene& source, const SceneId& destination,
+               asset::SceneDocument document, std::filesystem::path path, std::string hash,
+               const std::function<void(const engine::LoadedScene&)>& beforeReplace);
+
 private:
     asset::AssetResult<std::filesystem::path> documentPath(const SceneId& id) const;
     std::string cacheKey(const SceneId& id) const;

@@ -124,6 +124,7 @@ private:
     JsonNode m_root;
     std::filesystem::path m_path;
     std::optional<AssetError> m_error;
+    std::optional<std::string> m_bufferUri;
     std::vector<std::optional<uint32_t>> m_lightMap;
     std::set<uint32_t> m_placementAncestors;
 };
@@ -637,6 +638,7 @@ AssetResult<std::vector<std::byte>> Reader::buffer() {
         return std::unexpected(malformed(b.path(), "buffer '" + uri + "' byte length is " +
                                                        std::to_string(bytes->size()) +
                                                        ", expected " + std::to_string(expected)));
+    m_bufferUri = *decoded;
     return bytes;
 }
 
@@ -884,6 +886,7 @@ AssetResult<SceneDocument> Reader::document() {
     const auto bytes = buffer();
     if (!bytes)
         return std::unexpected(bytes.error());
+    doc.sourceBufferUri = m_bufferUri;
     animations(doc, *bytes);
     if (m_error)
         return std::unexpected(*m_error);

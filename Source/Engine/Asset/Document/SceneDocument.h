@@ -133,6 +133,9 @@ struct SceneDocument {
     std::vector<DocLight> lights;         ///< Standard punctual lights in document order.
     std::vector<DocAnimation> animations; ///< Standard animation clips in source order.
     std::vector<std::string> warnings;    ///< Read diagnostics; excluded from canonical output.
+    /// Validated decoded buffer URI from the read source. Provenance only: excluded from canonical
+    /// output and dirty comparison; successful save adoption replaces it with the saved source URI.
+    std::optional<std::string> sourceBufferUri;
 };
 
 /// Reads and validates a document plus its standard external animation buffer. All malformed

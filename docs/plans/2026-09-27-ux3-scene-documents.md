@@ -269,7 +269,7 @@ modify `EditorMenus.cpp`, `EditorShell.{h,cpp}`, `main.cpp` (quit, close), `Scen
 `DocumentWorkflow` with `request(action, target = {})`, `confirm(ConfirmChoice)`,
 `pathChosen(std::optional<path>)`, `takeWork() -> std::optional<PendingDocumentWork>`, `step()`,
 static `unavailableReason(action, bool stopped, bool measuring) -> std::optional<std::string>`.
-- [ ] Tests first: each action on clean and dirty documents; Cancel changes nothing; a failed save
+- [x] Tests first: each action on clean and dirty documents; Cancel changes nothing; a failed save
   stays dirty and aborts the pending switch; Quit waits for an open dialog (Review focus 5); Save,
   Save As and Revert are unavailable while playing or measuring. Wire Open… and Save As… through
   `SDL_ShowOpenFileDialog`/`SDL_ShowSaveFileDialog` with results queued under a mutex, ⌘S and ⌘⇧S,

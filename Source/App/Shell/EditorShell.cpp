@@ -249,7 +249,7 @@ void EditorShell::prepareUIFrame() {
 //======================================================================================================================
 void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, float deltaSeconds,
                           const FrameRecordRing& frameRecords) {
-    applyPendingScene(device);
+    refreshDocumentDirty();
     const RetainedFrame* newestTimed = frameRecords.newestTimedFrame();
     observeRetiredTemporal(m_temporalState, newestTimed);
     std::optional<PerformanceFrameSample> sample;
@@ -337,13 +337,17 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
         LMX_LOG_INFO("editor workspace: built the default panel layout ({})", m_layoutBuildReason);
     }
 
+    ImGui::BeginDisabled(m_documentWorkflow.step() != WorkflowStep::Idle);
     buildPanels(device, renderer, frameRecords);
+    ImGui::EndDisabled();
     // Input consumes this frame's hover state and Inspector edits.
     updateCameraInput(deltaSeconds);
     updateEditorShortcuts(renderer);
     if (const auto reason =
             reconcileDebugView(m_settings, effectiveReconstruction(renderer, device)))
         m_notices.post({ActionStatus::Unavailable, *reason, {}}, ImGui::GetTime());
+    refreshDocumentDirty();
+    buildDocumentWorkflow();
     postCaptureNotice();
     editor_style::drawNotice(m_notices, ImGui::GetTime());
 }
@@ -368,7 +372,8 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
                                                .visibilityStatus = m_visibilityDisplay.status(),
                                                .sceneGeneration = m_temporalState.sceneGeneration,
                                                .loadedScene = m_session.loadedScene(),
-                                               .session = &m_session});
+                                               .session = &m_session,
+                                               .dirty = m_documentDirty});
         if (frameSelectionRequested)
             frameSelected(renderer);
         setPanelVisible(EditorPanel::Scene, open);
@@ -661,56 +666,6 @@ FrameMetricsMetadata EditorShell::frameMetrics(const render::Renderer& renderer)
 //======================================================================================================================
 void EditorShell::commitFrame() {
     m_session.commitFrame();
-}
-
-//======================================================================================================================
-void EditorShell::applyPendingScene(rojoRHI::Device& device) {
-    const auto requested = m_sceneLoading.consumeRequest();
-    if (!requested) {
-        return;
-    }
-    const scenes::SceneId requestedFrom = m_activeSceneId;
-    const bool switched = selectScene(device, *requested);
-    const SceneSwitchOutcome outcome =
-        sceneSwitchOutcome(switched, requestedFrom, *requested, m_selection, m_sceneFilter);
-    m_selection = outcome.selection;
-    m_sceneFilter = outcome.filter;
-}
-
-//======================================================================================================================
-bool EditorShell::selectScene(rojoRHI::Device& device, scenes::SceneId id) {
-    if (id == m_activeSceneId) {
-        return false;
-    }
-    // In-flight frames may still reference the current scene's meshes and textures.
-    device.waitIdle();
-    auto scene = m_library.get(id);
-    if (!scene) {
-        // A failed switch leaves the current scene renderable.
-        LMX_LOG_ERROR("scene '{}' failed to load: {}", m_library.entry(id).displayName,
-                      scene.error().message);
-        m_sceneLoading.fail(id, scene.error().message);
-        return false;
-    }
-    if (m_measurement.active())
-        m_measurement.cancel("Scene changed during measurement");
-    stopPlayback();
-    m_activeSceneId = id;
-    m_visibilityDisplay.clear();
-    m_lightingDisplay.clear();
-    m_lightingFailureLogged = false;
-    m_session.activate(*m_library.loaded(id), SceneActivationMotion::Reset);
-    SDL_SetWindowTitle(m_window, (m_session.scene().name + " — Luminex").c_str());
-    // The new scene has no motion to report yet, and its generation differs from whatever the
-    // renderer last saw (TemporalEditorState.h), which is what tells the temporal history to reset
-    // rather than reproject the previous scene's pixels onto this one's geometry.
-    onSceneSelected(m_temporalState, m_settings, id);
-    // A scene switch is a reset trigger (spec 9): the previous scene's metering has nothing to say
-    // about the new one's content.
-    activateExposureLook(m_exposureContext, m_exposureResetPending, id, m_session.look());
-    LMX_LOG_INFO("scene switched to '{}' ({} objects)", m_session.scene().name,
-                 m_session.scene().objects.size());
-    return true;
 }
 
 //======================================================================================================================

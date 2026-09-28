@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Scenes/SceneLibrary.h"
+#include "Core/Diagnostics/Assert.h"
 #include "Engine/Asset/RepositoryAsset.h"
 #include <algorithm>
 #include <array>
@@ -156,5 +157,53 @@ SceneLibrary::reload(const SceneId& id,
         metadata.hint.clear();
     }
     return &old->second;
+}
+//======================================================================================================================
+void SceneLibrary::forget(const SceneId& id,
+                          const std::function<void(const engine::LoadedScene&)>& beforeRemove) {
+    const auto found = m_scenes.find(cacheKey(id));
+    if (found == m_scenes.end())
+        return;
+    m_device.waitIdle();
+    if (beforeRemove)
+        beforeRemove(found->second);
+    m_scenes.erase(found);
+}
+
+//======================================================================================================================
+engine::LoadedScene&
+SceneLibrary::adoptSaved(engine::LoadedScene& source, const SceneId& destination,
+                         asset::SceneDocument document, std::filesystem::path path,
+                         std::string hash,
+                         const std::function<void(const engine::LoadedScene&)>& beforeReplace) {
+    auto old = std::find_if(m_scenes.begin(), m_scenes.end(),
+                            [&](const auto& entry) { return &entry.second == &source; });
+    const auto newKey = cacheKey(destination);
+    LMX_ASSERT(old != m_scenes.end(), "save adoption requires a loaded source");
+    if (old->first != newKey) {
+        if (auto target = m_scenes.find(newKey); target != m_scenes.end()) {
+            m_device.waitIdle();
+            if (beforeReplace)
+                beforeReplace(target->second);
+            m_scenes.erase(target);
+        }
+        auto retained = m_scenes.extract(old);
+        retained.key() = newKey;
+        old = m_scenes.insert(std::move(retained)).position;
+    }
+    auto& saved = old->second;
+    saved.document = std::move(document);
+    saved.path = std::move(path);
+    saved.hash = std::move(hash);
+    if (!destination.isCatalog()) {
+        entry(destination);
+        auto& metadata = m_pathEntries.at(newKey);
+        metadata.id = destination;
+        metadata.stableId = destination.key;
+        metadata.displayName = saved.document.name;
+        metadata.available = true;
+        metadata.hint.clear();
+    }
+    return saved;
 }
 } // namespace lmx::scenes

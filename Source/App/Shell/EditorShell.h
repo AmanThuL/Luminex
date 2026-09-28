@@ -18,6 +18,8 @@
 #include "App/Model/Rendering/Temporal/DynamicResolution.h"
 #include "App/Model/Rendering/Temporal/TemporalEditorState.h"
 #include "App/Model/Rendering/Visibility/VisibilityDisplay.h"
+#include "App/Model/Scene/DocumentDialogMailbox.h"
+#include "App/Model/Scene/DocumentWorkflow.h"
 #include "App/Model/Scene/EditorPlayback.h"
 #include "App/Model/Scene/EditorSelection.h"
 #include "App/Model/Scene/SceneLoadState.h"
@@ -214,6 +216,13 @@ public:
     /// still drawing into.
     EditorActions& actions() { return m_actions; }
 
+    /// Routes menu, OS Quit and main-window close through the same unsaved-changes workflow.
+    /// An outstanding native dialog must answer before this can publish a quit action.
+    void requestQuit();
+    /// Consumes ready document work and native responses before drawable acquisition, even when
+    /// no frame can render. Dirty confirmation remains pending until buildUI can present it.
+    void pumpDocuments();
+
     /// The active scene's display name, for capture tooling. Empty until a scene is loaded.
     std::string_view activeSceneName() const {
         return m_session.activeScene() != nullptr ? m_session.scene().name : std::string_view{};
@@ -263,11 +272,16 @@ private:
     // close button, and the only place that tells ImGui the ini needs rewriting for a change that
     // moved no window.
     void setPanelVisible(EditorPanel panel, bool visible);
-    // Consumes the preceding presented frame's request, preserving selection/filter on failure.
-    void applyPendingScene(rojoRHI::Device& device);
-    // Drains in-flight scene references and loads one requested catalog entry, retaining an
-    // actionable failure for ScenePanel while the current scene remains renderable.
-    bool selectScene(rojoRHI::Device& device, scenes::SceneId id);
+    void refreshDocumentDirty(bool force = false);
+    void requestDocumentAction(DocumentAction action, std::optional<scenes::SceneId> target = {});
+    bool executeDocumentWork(const PendingDocumentWork& work);
+    void buildDocumentWorkflow();
+    void startDocumentDialog();
+    bool saveDocument(const std::filesystem::path& path, bool saveAs);
+    void setSceneCamera();
+    // Builds a fresh snapshot before discarding the active one; failure retains scene and
+    // selection.
+    bool selectScene(scenes::SceneId id);
     void updateCameraInput(float deltaSeconds);
     uint64_t metricsContextEpoch();
     void startMeasurement(rojoRHI::Device& device, const render::Renderer& renderer);
@@ -289,6 +303,13 @@ private:
     EditorSelection m_selection;
     std::string m_sceneFilter;
     SceneLoadState m_sceneLoading;
+    DocumentWorkflow m_documentWorkflow;
+    std::shared_ptr<DocumentDialogMailbox> m_documentDialog =
+        std::make_shared<DocumentDialogMailbox>();
+    const engine::Scene* m_dirtyScene = nullptr;
+    uint64_t m_dirtyGeneration = 0;
+    bool m_documentDirty = false;
+    std::string m_documentExportError;
     MetricsContextRevision m_metricsContextRevision;
 
     std::vector<engine::DrawItem> m_drawItems;
