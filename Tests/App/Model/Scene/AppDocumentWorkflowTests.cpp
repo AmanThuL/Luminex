@@ -48,11 +48,20 @@ TEST_CASE("document workflow cancellation never exposes destructive work",
     REQUIRE_FALSE(flow.takeWork());
     REQUIRE(flow.request(DocumentAction::Open));
     flow.confirm(ConfirmChoice::Save);
+    REQUIRE(flow.step() == WorkflowStep::Ready);
+    const auto save = flow.takeWork();
+    REQUIRE(save);
+    REQUIRE(save->action == DocumentAction::Save);
+    REQUIRE_FALSE(save->saveFirst);
+    REQUIRE_FALSE(save->path);
+    flow.complete(true);
     REQUIRE(flow.step() == WorkflowStep::ChoosePath);
+    REQUIRE_FALSE(flow.dirty());
     flow.pathChosen({});
     REQUIRE_FALSE(flow.takeWork());
     REQUIRE(flow.step() == WorkflowStep::Idle);
-    REQUIRE(flow.dirty());
+    REQUIRE_FALSE(flow.dirty());
+    flow.setContext(true, true, false);
     REQUIRE(flow.request(DocumentAction::SaveAs));
     flow.pathChosen({});
     REQUIRE_FALSE(flow.takeWork());
@@ -220,4 +229,74 @@ TEST_CASE("quit queued behind a save waits for the save result", "[app][document
             REQUIRE_FALSE(flow.takeWork());
         }
     }
+}
+
+//======================================================================================================================
+TEST_CASE("Open confirmation saves before choosing a path and retains queued Quit",
+          "[app][document-workflow][save-before-open]") {
+    for (bool succeeds : {false, true}) {
+        for (bool selected : {false, true}) {
+            DocumentWorkflow flow;
+            flow.setContext(true, true, false);
+            REQUIRE(flow.request(DocumentAction::Open));
+            flow.confirm(ConfirmChoice::Save);
+            REQUIRE(flow.step() == WorkflowStep::Ready);
+            const auto save = flow.takeWork();
+            REQUIRE(save);
+            CHECK(save->action == DocumentAction::Save);
+            CHECK_FALSE(save->saveFirst);
+            CHECK_FALSE(save->path);
+            REQUIRE(flow.request(DocumentAction::Quit));
+            REQUIRE_FALSE(flow.takeWork());
+            flow.complete(succeeds);
+            if (!succeeds) {
+                CHECK(flow.step() == WorkflowStep::Confirm);
+                CHECK(flow.action() == DocumentAction::Quit);
+                CHECK(flow.dirty());
+                CHECK_FALSE(flow.takeWork());
+                continue;
+            }
+            REQUIRE(flow.step() == WorkflowStep::ChoosePath);
+            CHECK(flow.action() == DocumentAction::Open);
+            CHECK_FALSE(flow.dirty());
+            CHECK_FALSE(flow.takeWork());
+            flow.pathChosen(selected ? std::optional(std::filesystem::path("chosen.scene.gltf"))
+                                     : std::nullopt);
+            if (selected) {
+                const auto open = flow.takeWork();
+                REQUIRE(open);
+                CHECK(open->action == DocumentAction::Open);
+                CHECK(open->path == std::filesystem::path("chosen.scene.gltf"));
+                CHECK_FALSE(open->saveFirst);
+                CHECK_FALSE(flow.takeWork());
+                flow.complete(true);
+            }
+            const auto quit = flow.takeWork();
+            REQUIRE(quit);
+            CHECK(quit->action == DocumentAction::Quit);
+            CHECK_FALSE(flow.takeWork());
+        }
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("Quit cannot replace an accepted Open save before its work is taken",
+          "[app][document-workflow][save-before-open]") {
+    DocumentWorkflow flow;
+    flow.setContext(true, true, false);
+    REQUIRE(flow.request(DocumentAction::Open));
+    flow.confirm(ConfirmChoice::Save);
+    REQUIRE(flow.request(DocumentAction::Quit));
+    REQUIRE(flow.request(DocumentAction::Quit));
+    const auto save = flow.takeWork();
+    REQUIRE(save);
+    CHECK(save->action == DocumentAction::Save);
+    CHECK_FALSE(flow.takeWork());
+    flow.complete(true);
+    REQUIRE(flow.step() == WorkflowStep::ChoosePath);
+    CHECK(flow.action() == DocumentAction::Open);
+    flow.pathChosen({});
+    const auto quit = flow.takeWork();
+    REQUIRE(quit);
+    CHECK(quit->action == DocumentAction::Quit);
 }

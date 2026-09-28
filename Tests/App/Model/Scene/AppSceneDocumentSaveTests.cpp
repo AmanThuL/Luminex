@@ -609,3 +609,107 @@ TEST_CASE("queued Quit waits for actual Save As adoption or preserves a failed l
     CHECK(saves == 1);
     CHECK(quits == (succeeds ? 1 : 0));
 }
+
+//======================================================================================================================
+TEST_CASE("confirmed Save persists exposure before Open chooser cancellation",
+          "[app][document-save][save-before-open]") {
+    for (bool succeeds : {false, true}) {
+        for (bool queuedQuit : {false, true}) {
+            for (bool nativeError : {false, true}) {
+                CAPTURE(succeeds, queuedQuit, nativeError);
+                const auto source = savePath("save-before-open");
+                auto document = saveFixture();
+                document.look.exposure.ev = .86f;
+                REQUIRE(asset::saveSceneDocument(document, source));
+                auto companion = source;
+                companion.replace_extension(".bin");
+                const auto originalJson = *readWholeFile(source);
+                const auto originalBin = *readWholeFile(companion);
+                FakeDevice device;
+                scenes::SceneLibrary library(device);
+                auto id = scenes::sceneIdFromPath(source);
+                REQUIRE(library.get(id));
+                app::SceneSession session;
+                session.activate(*library.loaded(id), app::SceneActivationMotion::Reset);
+                auto* loaded = session.loadedScene();
+                const auto oldHash = loaded->hash;
+                auto edited = session.look();
+                edited.exposure.ev = 1.54f;
+                session.editLook(edited);
+                REQUIRE(dirty(session));
+                app::DocumentWorkflow flow;
+                app::DocumentDialogMailbox mailbox;
+                flow.setContext(dirty(session), true, false);
+                REQUIRE(flow.request(app::DocumentAction::Open));
+                flow.confirm(app::ConfirmChoice::Save);
+                int saves = 0;
+                int opens = 0;
+                int quits = 0;
+                int errors = 0;
+                app::SceneDocumentSaveIO io;
+                if (!succeeds)
+                    io.write = [](const auto&, const auto&) -> asset::AssetResult<void> {
+                        return std::unexpected(asset::AssetError{asset::AssetErrorCode::Io,
+                                                                 "save before Open failed"});
+                    };
+                const auto execute = [&](const app::PendingDocumentWork& work) {
+                    if (work.action == app::DocumentAction::Quit) {
+                        ++quits;
+                        CHECK(saves == 1);
+                        CHECK_FALSE(dirty(session));
+                        return true;
+                    }
+                    if (work.action == app::DocumentAction::Open) {
+                        ++opens;
+                        return true;
+                    }
+                    REQUIRE(work.action == app::DocumentAction::Save);
+                    ++saves;
+                    if (queuedQuit)
+                        REQUIRE(flow.request(app::DocumentAction::Quit));
+                    const auto saved =
+                        app::saveSessionDocument(library, session, id, source, false, io);
+                    flow.setContext(dirty(session), true, false);
+                    return saved.has_value();
+                };
+                const auto reportError = [&](const std::string&) { ++errors; };
+                CHECK_FALSE(app::pumpDocumentWork(flow, mailbox, execute, reportError));
+                CHECK(saves == 1);
+                CHECK(opens == 0);
+                CHECK(quits == 0);
+                CHECK(session.loadedScene() == loaded);
+                const auto disk = asset::readSceneDocument(source);
+                REQUIRE(disk);
+                CHECK(disk->look.exposure.ev == (succeeds ? 1.54f : .86f));
+                CHECK(dirty(session) == !succeeds);
+                if (!succeeds) {
+                    CHECK(flow.step() ==
+                          (queuedQuit ? app::WorkflowStep::Confirm : app::WorkflowStep::Idle));
+                    CHECK(loaded->hash == oldHash);
+                    CHECK(*readWholeFile(source) == originalJson);
+                    CHECK(*readWholeFile(companion) == originalBin);
+                    CHECK(session.lookDefault().exposure.ev == .86f);
+                    CHECK_FALSE(mailbox.pending());
+                    continue;
+                }
+                REQUIRE(flow.step() == app::WorkflowStep::ChoosePath);
+                CHECK(session.lookDefault().exposure.ev == 1.54f);
+                CHECK(loaded->hash == *asset::sceneDocumentHash(source));
+                REQUIRE(mailbox.begin());
+                CHECK_FALSE(app::pumpDocumentWork(flow, mailbox, execute, reportError));
+                CHECK(quits == 0);
+                mailbox.post({.error = nativeError ? "native Open failed" : ""});
+                CHECK(app::pumpDocumentWork(flow, mailbox, execute, reportError) == queuedQuit);
+                CHECK(saves == 1);
+                CHECK(opens == 0);
+                CHECK(quits == (queuedQuit ? 1 : 0));
+                CHECK(errors == (nativeError ? 1 : 0));
+                CHECK_FALSE(dirty(session));
+                CHECK(asset::readSceneDocument(source)->look.exposure.ev == 1.54f);
+                CHECK_FALSE(app::pumpDocumentWork(flow, mailbox, execute, reportError));
+                CHECK(saves == 1);
+                CHECK(quits == (queuedQuit ? 1 : 0));
+            }
+        }
+    }
+}

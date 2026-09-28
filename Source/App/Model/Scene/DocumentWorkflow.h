@@ -47,16 +47,18 @@ public:
     /// Queues a request when idle. Quit coalesces while a path dialog or operation is outstanding
     /// and is reconsidered after that response; other overlapping requests return false.
     bool request(DocumentAction action, std::optional<scenes::SceneId> target = {});
-    /// Resolves confirmation. Save is ignored unless stopped and not measuring.
+    /// Resolves confirmation. Save is ignored unless stopped and not measuring. For Open, Save
+    /// work must complete successfully before the native chooser becomes available.
     void confirm(ConfirmChoice choice);
     /// Completes the pending dialog, with null for cancellation or failure. A selected path runs
     /// before queued Quit; cancellation resumes Quit immediately against the current dirty state.
     void pathChosen(std::optional<std::filesystem::path> path);
     /// Returns ready work exactly once, leaving the workflow busy until complete is called.
+    /// An accepted Save before Open first emits a standalone Save, retaining the Open intent.
     std::optional<PendingDocumentWork> takeWork();
     /// Finishes issued work. Failure retains dirty state and aborts its destructive continuation.
-    /// Success refreshes dirty only for Save/Save As/save-first; the owner then supplies actual
-    /// state.
+    /// Success refreshes dirty only for Save/Save As/save-first; the owner supplies actual state.
+    /// A successful preparatory Save resumes the retained Open at ChoosePath without saving again.
     void complete(bool success);
     /// Current user or executor boundary.
     WorkflowStep step() const { return m_step; }
@@ -69,6 +71,7 @@ public:
                                                         bool measuring);
 
 private:
+    bool savingBeforeOpen() const;
     void advance();
     void clear();
     void resumeQuit();

@@ -36,7 +36,7 @@ bool DocumentWorkflow::request(DocumentAction action, std::optional<scenes::Scen
             return false;
         if (m_pending->action == DocumentAction::Quit)
             return true;
-        if (m_step == WorkflowStep::ChoosePath || m_issued) {
+        if (m_step == WorkflowStep::ChoosePath || m_issued || savingBeforeOpen()) {
             m_quitQueued = true;
             return true;
         }
@@ -49,6 +49,11 @@ bool DocumentWorkflow::request(DocumentAction action, std::optional<scenes::Scen
     else
         advance();
     return true;
+}
+
+//======================================================================================================================
+bool DocumentWorkflow::savingBeforeOpen() const {
+    return m_pending && m_pending->action == DocumentAction::Open && m_pending->saveFirst;
 }
 
 //======================================================================================================================
@@ -76,7 +81,10 @@ void DocumentWorkflow::confirm(ConfirmChoice choice) {
         advance();
     } else if (!unavailableReason(DocumentAction::Save, m_stopped, m_measuring)) {
         m_pending->saveFirst = true;
-        advance();
+        if (savingBeforeOpen())
+            m_step = WorkflowStep::Ready;
+        else
+            advance();
     }
 }
 
@@ -107,6 +115,8 @@ std::optional<PendingDocumentWork> DocumentWorkflow::takeWork() {
     if (m_step != WorkflowStep::Ready || m_issued)
         return {};
     m_issued = true;
+    if (savingBeforeOpen())
+        return PendingDocumentWork{.action = DocumentAction::Save};
     return m_pending;
 }
 
@@ -114,6 +124,13 @@ std::optional<PendingDocumentWork> DocumentWorkflow::takeWork() {
 void DocumentWorkflow::complete(bool success) {
     if (!m_issued)
         return;
+    if (success && savingBeforeOpen()) {
+        m_dirty = false;
+        m_pending->saveFirst = false;
+        m_issued = false;
+        advance();
+        return;
+    }
     if (success && (m_pending->saveFirst || m_pending->action == DocumentAction::Save ||
                     m_pending->action == DocumentAction::SaveAs))
         m_dirty = false;
