@@ -1,9 +1,11 @@
 # UX3 editor and icon validation
 
-**Status**: In progress
+**Status**: Implemented (owner acceptance pending)
 
 This continues [UX3 validation](ux3-validation.md). Evidence paths are relative to
-`../Luminex-evidence/ux3/`. Final common-head gates and owner acceptance remain pending.
+`../Luminex-evidence/ux3/`. The [final integrated run](ux3-final-validation.md) records the
+automated results at `7875edd`; owner acceptance remains pending. The native evidence below
+retains its per-launch revisions and unverified gestures.
 
 ## Session and document implementation (2026-09-28)
 

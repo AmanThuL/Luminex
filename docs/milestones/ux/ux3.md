@@ -1,6 +1,6 @@
 # UX3 — Scene Documents and Hierarchy
 
-**Status**: Accepted
+**Status**: Implemented
 
 Revised on 2026-09-27 after a survey of the code at the UX2 merge; the owner approved the design
 section by section the same day. UX3 makes a scene a saved document instead of C++ code, rebuilds
@@ -12,6 +12,21 @@ owns the outcome and gates; this record keeps the contract, evidence and limits.
 
 **Placement:** R4 → [UX2](ux2.md) → **UX3** → N1. Renumbered from UX2 on 2026-09-25, when editor
 surfaces took that identifier; records and ADRs dated earlier call this milestone UX2.
+
+## Implementation result (2026-09-29)
+
+All five UX3 slices are implemented. The six-scene document catalog, authored enabled state,
+saved look, document Hierarchy and disk workflow are in place; Helmet and Truck remain lab
+fixtures, and windowed startup loads the provisional FACET artwork. The executor plan is closed.
+
+[Final validation](ux3-final-validation.md) records the integrated run at tag `ux3-validation`
+(`7875edd`): build, contract, Metal, document and catalog-smoke checks pass; the three image gates
+remain failed at 1/12 original off images, 5/15 original union cases and 10/15 current hashes.
+[Original validation](ux3-validation.md) retains the orientation misses and unresolved independent
+STEP-scale P2. [Editor validation](ux3-editor-validation.md) records 62/74 native gestures,
+twelve unverified rows and unverified Dock/switcher appearance. The lab re-baseline, provisional
+artwork and final behavior await owner acceptance. ADR 0028 remains Proposed; no merge is
+authorized by implementation completion. The design and exit gates below retain their scope.
 
 ## Observed state before UX3
 

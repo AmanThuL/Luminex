@@ -1,6 +1,6 @@
 # UX3 validation
 
-**Status**: In progress — owner acceptance pending.
+**Status**: Implemented (owner acceptance pending)
 
 This record accompanies [UX3](ux3.md). The owner requested uninterrupted execution, replacing
 the intermediate owner checkpoints with measured agent verification. A failed gate stays failed;
@@ -221,5 +221,7 @@ verified 62/74 gestures across both window sizes; twelve remain unverified. Icon
 checks pass, but Dock and switcher appearance remain unverified. The artwork is provisional.
 These results do not change the original image/orientation failures or the unresolved Task 11 P2.
 
-Final common-head gates are pending. Owner acceptance of the re-baseline, provisional artwork and
-final behavior remains pending; ADR 0028 remains Proposed. No merge is authorized by this record.
+The [final integrated run](ux3-final-validation.md) records all automated results at `7875edd`
+(tag `ux3-validation`), including the three failed image gates. Owner acceptance of the
+re-baseline, provisional artwork and final behavior remains pending; ADR 0028 remains Proposed.
+The executor plan is closed. No merge is authorized by this record.

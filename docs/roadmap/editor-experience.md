@@ -166,8 +166,15 @@ Damaged Helmet joining MaterialLab and Milk Truck joining TemporalLab, leaving a
 and measurement (UX3.3); a document-grouped Hierarchy, UX2's Inspector header checkbox extended to
 objects and Open/Save/Save As/Revert (UX3.4); the application icon and whole-application
 acceptance (UX3.5). The scene's look is saved; renderer
-configuration stays with the editor session and CLI. The [proposed record](../milestones/ux/ux3.md)
+configuration stays with the editor session and CLI. The [implemented record](../milestones/ux/ux3.md)
 holds the contract.
+
+Implemented on 2026-09-29; the executor plan is closed and owner acceptance remains pending.
+The [final validation](../milestones/ux/ux3-final-validation.md) records passing build, contract,
+Metal and document checks, with image gates failed at 1/12 original off, 5/15 original union
+and 10/15 current hashes. Orientation misses and the independent STEP-scale P2 remain unresolved.
+Native verification covers 62/74 gestures; twelve rows and Dock/switcher appearance remain
+unverified. ADR 0028 stays Proposed. These measured limits do not amend the exit gates.
 
 **Exit gate:** converted scenes match the parent under the exact-image matrix at `--temporal off`
 with identical graph dumps, reported as measured with no tolerance approved in advance; saves are
