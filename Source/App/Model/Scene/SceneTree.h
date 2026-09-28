@@ -70,6 +70,11 @@ size_t sceneTreeSubjectCount(std::span<const SceneTreeRow> rows);
 /// Compares complete document/source/generated selection identity for one visible row.
 bool sceneTreeRowSelected(const SceneTreeRow& row, const EditorSelection& selection);
 
+/// Reports whether a selection is absent from the current filtered document rows. Camera and
+/// Environment selections retain their Inspector context even when their rows are filtered out.
+bool sceneTreeSelectionHidden(std::span<const SceneTreeRow> rows, const EditorSelection& selection,
+                              std::string_view filter);
+
 /// Returns the next keyboard row. An absent/hidden selection enters at the first visible row.
 std::optional<SceneTreeRow> sceneTreeKeyboardTarget(std::span<const SceneTreeRow> rows,
                                                     const EditorSelection& selection, bool down);

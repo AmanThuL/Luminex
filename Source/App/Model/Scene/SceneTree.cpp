@@ -263,6 +263,17 @@ bool sceneTreeRowSelected(const SceneTreeRow& row, const EditorSelection& select
 }
 
 //======================================================================================================================
+bool sceneTreeSelectionHidden(std::span<const SceneTreeRow> rows, const EditorSelection& selection,
+                              std::string_view filter) {
+    if (filter.empty() || selection.subject == EditorSubject::None ||
+        selection.subject == EditorSubject::Camera ||
+        selection.subject == EditorSubject::Environment)
+        return false;
+    return std::ranges::none_of(
+        rows, [&](const auto& row) { return sceneTreeRowSelected(row, selection); });
+}
+
+//======================================================================================================================
 std::optional<SceneTreeRow> sceneTreeKeyboardTarget(std::span<const SceneTreeRow> rows,
                                                     const EditorSelection& selection, bool down) {
     if (rows.empty())

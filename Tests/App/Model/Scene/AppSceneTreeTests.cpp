@@ -160,6 +160,33 @@ TEST_CASE("Scene root search reveals a match and restores the collapsed state",
 }
 
 //======================================================================================================================
+TEST_CASE("Inspector search warning follows the selected document row", "[app][scene-tree]") {
+    auto loaded = treeFixture();
+    loaded.document.nodes[4].name = "Key";
+    const auto state = scenes::initialDocumentState(loaded);
+    const EditorSelection key{
+        .sceneId = {"fixture"}, .subject = EditorSubject::DirectionalLight, .index = 0, .node = 4};
+    const EditorSelection pillar{.sceneId = {"fixture"},
+                                 .subject = EditorSubject::Object,
+                                 .index = 1,
+                                 .node = 3,
+                                 .importedNode = 1};
+    const EditorSelection lab{.sceneId = {"fixture"}, .subject = EditorSubject::Group, .node = 1};
+
+    const auto keyRows = buildSceneTree(loaded, state, "Key", {});
+    CHECK(sceneTreeSelectionHidden(keyRows, pillar, "Key"));
+    CHECK_FALSE(sceneTreeSelectionHidden(keyRows, key, "Key"));
+    CHECK_FALSE(sceneTreeSelectionHidden(keyRows, lab, "Key"));
+    CHECK_FALSE(sceneTreeSelectionHidden(
+        keyRows, EditorSelection{.sceneId = {"fixture"}, .subject = EditorSubject::Environment},
+        "Key"));
+
+    const auto pillarRows = buildSceneTree(loaded, state, "Pillar", {});
+    CHECK_FALSE(sceneTreeSelectionHidden(pillarRows, pillar, "Pillar"));
+    CHECK_FALSE(sceneTreeSelectionHidden(pillarRows, key, ""));
+}
+
+//======================================================================================================================
 TEST_CASE("Scene tree handles a large generated population in one build", "[app][scene-tree]") {
     auto loaded = treeFixture();
     loaded.scene->objects.resize(4099);

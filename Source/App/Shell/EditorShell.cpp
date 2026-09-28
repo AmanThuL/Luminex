@@ -6,6 +6,7 @@
 #include "App/Shell/EditorShell.h"
 
 #include "App/Model/Rendering/Settings/DebugView.h"
+#include "App/Model/Scene/SceneTree.h"
 #include "App/Shell/EditorFont.h"
 
 #include "App/Panels/Console/ConsolePanel.h"
@@ -360,20 +361,22 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
     ImGui::BeginDisabled(m_measurement.active());
     // Every panel is drawn only while visible, and hands its window close button back through the
     // same storage the Window menu writes, so the two can never disagree.
+    std::optional<bool> documentSelectionHidden;
     if (m_workspace.visibility.isVisible(EditorPanel::Scene)) {
         bool open = true;
         bool frameSelectionRequested = false;
-        drawScenePanel(open, ScenePanelContext{.activeSceneId = m_activeSceneId,
-                                               .activeScene = m_session.scene(),
-                                               .selection = m_selection,
-                                               .filter = m_sceneFilter,
-                                               .frameSelectionRequested = frameSelectionRequested,
-                                               .visibilityDisplay = m_visibilityDisplay,
-                                               .visibilityStatus = m_visibilityDisplay.status(),
-                                               .sceneGeneration = m_temporalState.sceneGeneration,
-                                               .loadedScene = m_session.loadedScene(),
-                                               .session = &m_session,
-                                               .dirty = m_documentDirty});
+        documentSelectionHidden = drawScenePanel(
+            open, ScenePanelContext{.activeSceneId = m_activeSceneId,
+                                    .activeScene = m_session.scene(),
+                                    .selection = m_selection,
+                                    .filter = m_sceneFilter,
+                                    .frameSelectionRequested = frameSelectionRequested,
+                                    .visibilityDisplay = m_visibilityDisplay,
+                                    .visibilityStatus = m_visibilityDisplay.status(),
+                                    .sceneGeneration = m_temporalState.sceneGeneration,
+                                    .loadedScene = m_session.loadedScene(),
+                                    .session = &m_session,
+                                    .dirty = m_documentDirty});
         if (frameSelectionRequested)
             frameSelected(renderer);
         setPanelVisible(EditorPanel::Scene, open);
@@ -425,6 +428,18 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
     }
 
     m_selection = resolveSelection(m_selection, m_activeSceneId, m_session.scene());
+    bool selectionHidden = false;
+    if (const auto* loaded = m_session.loadedScene()) {
+        if (documentSelectionHidden) {
+            selectionHidden = *documentSelectionHidden;
+        } else if (!m_sceneFilter.empty()) {
+            const auto tree = buildSceneTreeView(*loaded, m_session.documentState(), m_sceneFilter,
+                                                 {}, &m_session);
+            selectionHidden = sceneTreeSelectionHidden(tree.rows, m_selection, m_sceneFilter);
+        }
+    } else {
+        selectionHidden = selectionHiddenByFilter(m_session.scene(), m_selection, m_sceneFilter);
+    }
     const auto inspectorContext =
         InspectorPanelContext{.selection = m_selection,
                               .session = m_session,
@@ -438,8 +453,7 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
                               .viewportWidth = m_viewportWidth,
                               .viewportHeight = m_viewportHeight,
                               .viewportVisible = viewportUsable,
-                              .selectionHiddenByFilter = selectionHiddenByFilter(
-                                  m_session.scene(), m_selection, m_sceneFilter),
+                              .selectionHiddenByFilter = selectionHidden,
                               .visibilityDisplay = &m_visibilityDisplay,
                               .sceneFilter = &m_sceneFilter,
                               .openPerformance =

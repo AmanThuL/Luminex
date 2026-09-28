@@ -426,7 +426,8 @@ std::optional<scenes::SceneId> drawSceneMenu(const SceneMenuContext& context) {
 }
 
 //======================================================================================================================
-void drawScenePanel(bool& open, const ScenePanelContext& context) {
+std::optional<bool> drawScenePanel(bool& open, const ScenePanelContext& context) {
+    std::optional<bool> selectionHidden;
     if (ImGui::Begin(kScenePanelWindowName, &open)) {
         char buffer[kFilterBufferSize];
         const size_t copied = context.filter.copy(buffer, sizeof(buffer) - 1);
@@ -481,11 +482,8 @@ void drawScenePanel(bool& open, const ScenePanelContext& context) {
                             documentTree ? tree.totalCount : hierarchyTotal(context.activeScene));
         editorTooltip("Matching / total scene subjects, including disabled rows. Search keeps "
                       "ancestors; off and culled rows stay selectable.");
-        if (documentTree && !context.filter.empty()) {
-            const bool selectedShown = std::ranges::any_of(tree.rows, [&](const auto& row) {
-                return sceneTreeRowSelected(row, context.selection);
-            });
-            if (context.selection.subject != EditorSubject::None && !selectedShown)
+        if (documentTree) {
+            if (sceneTreeSelectionHidden(tree.rows, context.selection, context.filter))
                 editor_style::message("Selection hidden by search; Inspector keeps it selected.",
                                       true);
         } else if (selectionHiddenByFilter(context.activeScene, context.selection,
@@ -514,8 +512,12 @@ void drawScenePanel(bool& open, const ScenePanelContext& context) {
         }
         ImGui::EndChild();
         ImGui::PopStyleVar(3);
+        if (documentTree)
+            selectionHidden =
+                sceneTreeSelectionHidden(tree.rows, context.selection, context.filter);
     }
     ImGui::End();
+    return selectionHidden;
 }
 
 } // namespace lmx::app

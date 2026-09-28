@@ -52,7 +52,8 @@ std::optional<scenes::SceneId> drawSceneMenu(const SceneMenuContext& context);
 
 /// Draws an indented active-scene tree over a flat scene, with a fixed search/count
 /// header. Groups collapse independently; keyboard Up/Down visits only drawn leaves. Filtering
-/// never clears selection. `open` follows the native ImGui window close button.
-void drawScenePanel(bool& open, const ScenePanelContext& context);
+/// never clears selection. `open` follows the native ImGui window close button. When the document
+/// tree is drawn, returns its final selected-row visibility for the Inspector in the same frame.
+std::optional<bool> drawScenePanel(bool& open, const ScenePanelContext& context);
 
 } // namespace lmx::app
