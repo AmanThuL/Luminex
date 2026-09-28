@@ -8,6 +8,7 @@
 #include "App/Model/Graph/FrameRecordRing.h"
 #include "App/Model/Options/AppOptions.h"
 #include "App/Model/Scene/SceneDefaults.h"
+#include "App/Shell/AppIcon.h"
 #include "App/Shell/ConsoleLogSink.h"
 #include "App/Shell/EditorShell.h"
 #include "Core/Diagnostics/Log.h"
@@ -467,6 +468,11 @@ int runWindowed(const lmx::app::AppOptions& options,
         SDL_Quit();
         return 1;
     }
+
+    const char* basePath = SDL_GetBasePath();
+    lmx::app::applyApplicationIcon(basePath != nullptr ? std::filesystem::path(basePath) /
+                                                             "Icons/luminex-icon-1024.png"
+                                                       : std::filesystem::path{});
 
     // SDL_MetalView owns the layer and outlives all RHI objects created by run().
     SDL_MetalView view = SDL_Metal_CreateView(window);
