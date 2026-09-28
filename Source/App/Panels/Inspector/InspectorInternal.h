@@ -20,5 +20,7 @@ void valueRow(const char* label, const std::string& value);
 void drawCameraSection(const InspectorPanelContext& context);
 void drawDirectionalLightSection(const InspectorPanelContext& context, size_t index);
 void drawObjectSection(const InspectorPanelContext& context, size_t index);
+void drawGroupSection(const InspectorPanelContext& context);
+void drawEnvironmentSection(const InspectorPanelContext& context);
 
 } // namespace lmx::app

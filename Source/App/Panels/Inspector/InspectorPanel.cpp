@@ -42,8 +42,8 @@ bool drawInspectorHeader(const char* name, const char* kind, const char* resetTo
         if (enabled) {
             ImGui::TableNextColumn();
             ImGui::Checkbox("##enabled", enabled);
-            editorTooltip("Enable this light without changing its identity, edited properties or "
-                          "orbit track.");
+            editorTooltip("Change this subject's own enabled state. A parent can still keep it "
+                          "off; its identity and edited fields are retained.");
         }
         ImGui::TableNextColumn();
         reset = editor_style::iconButton("resetSubject", EditorIcon::Reset, changed, resetTooltip);
@@ -84,6 +84,8 @@ void drawInspectorPanel(bool& open, const InspectorPanelContext& context) {
                                            : context.selection.index));
         ImGui::PushID(static_cast<int>(context.selection.lightId.generation));
         ImGui::PushID(static_cast<int>(context.selection.lightId.store));
+        ImGui::PushID(static_cast<int>(context.selection.node));
+        ImGui::PushID(static_cast<int>(context.selection.importedNode));
         const ImGuiID page = ImGui::GetID("InspectorFields");
         const bool changed = storage->GetInt(previousKey, -1) != static_cast<int>(page);
         storage->SetInt(previousKey, static_cast<int>(page));
@@ -93,7 +95,7 @@ void drawInspectorPanel(bool& open, const InspectorPanelContext& context) {
             switch (subject) {
             case EditorSubject::None:
                 editor_style::message(
-                    "Select a light or object in Hierarchy, or choose View > Editor Camera.");
+                    "Select a scene node in Hierarchy, or choose View > Editor Camera.");
                 break;
             case EditorSubject::Camera:
                 drawCameraSection(context);
@@ -107,9 +109,17 @@ void drawInspectorPanel(bool& open, const InspectorPanelContext& context) {
             case EditorSubject::Object:
                 drawObjectSection(context, context.selection.index);
                 break;
+            case EditorSubject::Group:
+                drawGroupSection(context);
+                break;
+            case EditorSubject::Environment:
+                drawEnvironmentSection(context);
+                break;
             }
         }
         ImGui::EndChild();
+        ImGui::PopID();
+        ImGui::PopID();
         ImGui::PopID();
         ImGui::PopID();
         ImGui::PopID();

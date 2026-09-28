@@ -91,12 +91,6 @@ std::string_view renderingCategoryLabel(RenderingCategory category) {
         return "Submission";
     case RenderingCategory::Lighting:
         return "Lighting";
-    case RenderingCategory::Exposure:
-        return "Exposure";
-    case RenderingCategory::Bloom:
-        return "Bloom";
-    case RenderingCategory::Shadows:
-        return "Shadows";
     case RenderingCategory::Display:
         return "Display";
     case RenderingCategory::SceneTables:

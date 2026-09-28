@@ -36,6 +36,12 @@ void resetRenderingGroup(EditorRenderSettings& settings, SceneSession& session,
 bool renderingGroupChanged(const EditorRenderSettings& settings, const SceneSession& session,
                            EditorRenderGroup group);
 
+/// True when any saved look field differs from the active document reset baseline.
+bool sceneLookChanged(const SceneSession& session);
+
+/// Restores exposure, bloom and shadow filtering together from the loaded/saved document.
+void resetSceneLook(SceneSession& session);
+
 /// The reset scope a Rendering panel topic restores, or nullopt for topics without one (Overview,
 /// Visibility, Occlusion, Submission, Scene tables and out-of-range values).
 std::optional<EditorRenderGroup> renderingTopicResetGroup(RenderingCategory topic);

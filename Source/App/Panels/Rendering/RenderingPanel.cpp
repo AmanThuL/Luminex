@@ -36,10 +36,6 @@ void resetTopic(const InspectorPanelContext& context, EditorRenderGroup scope) {
     const bool pileChanged =
         scope == EditorRenderGroup::Lighting && context.session.lightLabPileCount() > 0;
     resetRenderingGroup(context.settings, context.session, scope);
-    if (scope == EditorRenderGroup::Exposure) {
-        reconcileExposureLook(context.session.look(), context.exposureContext,
-                              context.exposureResetPending);
-    }
     if (scope == EditorRenderGroup::Display)
         std::copy(kDefaultClearColor.begin(), kDefaultClearColor.end(),
                   context.renderer.clearColor);

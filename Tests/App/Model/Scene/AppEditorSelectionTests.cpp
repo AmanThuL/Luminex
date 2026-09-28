@@ -236,8 +236,8 @@ TEST_CASE("rendering topics have stable category identities and independent labe
     const auto scene = sceneWithObjects({});
     const auto rows = buildSceneSelectionRows(scene, "rendering");
     constexpr std::array<std::string_view, kRenderingCategoryCount> labels{
-        "Rendering", "Reconstruction", "Resolution", "Visibility", "Occlusion", "Submission",
-        "Lighting",  "Exposure",       "Bloom",      "Shadows",    "Display",   "Scene tables"};
+        "Rendering",  "Reconstruction", "Resolution", "Visibility",  "Occlusion",
+        "Submission", "Lighting",       "Display",    "Scene tables"};
     REQUIRE(rows.empty());
     for (size_t i = 0; i < labels.size(); ++i) {
         CAPTURE(i);

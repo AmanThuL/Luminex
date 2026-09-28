@@ -77,6 +77,16 @@ bool renderingGroupChanged(const EditorRenderSettings& settings, const SceneSess
 }
 
 //======================================================================================================================
+bool sceneLookChanged(const SceneSession& session) {
+    return session.look() != session.lookDefault();
+}
+
+//======================================================================================================================
+void resetSceneLook(SceneSession& session) {
+    session.editLook(session.lookDefault());
+}
+
+//======================================================================================================================
 std::optional<EditorRenderGroup> renderingTopicResetGroup(RenderingCategory topic) {
     switch (topic) {
     case RenderingCategory::Reconstruction:
@@ -85,12 +95,6 @@ std::optional<EditorRenderGroup> renderingTopicResetGroup(RenderingCategory topi
         return EditorRenderGroup::Resolution;
     case RenderingCategory::Lighting:
         return EditorRenderGroup::Lighting;
-    case RenderingCategory::Exposure:
-        return EditorRenderGroup::Exposure;
-    case RenderingCategory::Bloom:
-        return EditorRenderGroup::Bloom;
-    case RenderingCategory::Shadows:
-        return EditorRenderGroup::Shadows;
     case RenderingCategory::Display:
         return EditorRenderGroup::Display;
     case RenderingCategory::Overview:

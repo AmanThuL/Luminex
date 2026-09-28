@@ -103,9 +103,6 @@ TEST_CASE("each Rendering topic maps to its documented reset scope", "[app][rend
           EditorRenderGroup::Reconstruction);
     CHECK(renderingTopicResetGroup(RenderingCategory::Resolution) == EditorRenderGroup::Resolution);
     CHECK(renderingTopicResetGroup(RenderingCategory::Lighting) == EditorRenderGroup::Lighting);
-    CHECK(renderingTopicResetGroup(RenderingCategory::Exposure) == EditorRenderGroup::Exposure);
-    CHECK(renderingTopicResetGroup(RenderingCategory::Bloom) == EditorRenderGroup::Bloom);
-    CHECK(renderingTopicResetGroup(RenderingCategory::Shadows) == EditorRenderGroup::Shadows);
     CHECK(renderingTopicResetGroup(RenderingCategory::Display) == EditorRenderGroup::Display);
     for (const auto topic : {RenderingCategory::Overview, RenderingCategory::Visibility,
                              RenderingCategory::Occlusion, RenderingCategory::Submission,

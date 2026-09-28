@@ -6,6 +6,7 @@
 #include "App/Panels/Inspector/InspectorInternal.h"
 
 #include "App/Model/Rendering/Lighting/DirectionalLightRole.h"
+#include "App/Model/Scene/InspectorSubject.h"
 #include "App/Panels/Shared/EditorStyle.h"
 
 #include <glm/glm.hpp>
@@ -26,20 +27,27 @@ constexpr float kMinLightDirectionLength = 1e-5f;
 void drawDirectionalLightSection(const InspectorPanelContext& context, size_t index) {
     auto& session = context.session;
     auto light = session.scene().lights[index];
-    if (const auto* loaded = session.loadedScene())
-        for (uint32_t n = 0; n < loaded->binding.nodes.size(); ++n)
-            if (loaded->binding.nodes[n].directional == index)
-                light.enabled = session.nodeEnabled(n);
-    const std::string name = "Light " + std::to_string(index);
-    if (drawInspectorHeader(name.c_str(), "Directional",
+    const auto enabledState = inspectorEnabledState(session, context.selection);
+    if (!enabledState) {
+        editor_style::message("This directional light is unavailable in the document.", true);
+        return;
+    }
+    bool enabled = enabledState->own;
+    if (drawInspectorHeader(enabledState->label.c_str(), "Directional",
                             "Restore this directional light's direction and scene-linear "
-                            "radiance from the current scene defaults.",
-                            session.lightChanged(index))) {
+                            "radiance and its own enabled state from the document.",
+                            session.lightChanged(index), &enabled)) {
         if (const auto result = session.resetLight(index); !result)
             editor_style::message(result.error().message.c_str(), true);
-        else
+        else {
             light = session.lightDefault(index);
+            enabled = inspectorEnabledState(session, context.selection)->own;
+            requestCameraCut(context.temporalState);
+        }
     }
+    if (enabledState->own && !enabledState->effective)
+        editor_style::message("Off in scene because an ancestor is disabled.");
+    light.enabled = enabled;
     if (editor_style::beginPropertyGrid("directionalLightFields")) {
         glm::vec3 direction = light.direction;
         if (editor_style::vector3("Direction (world)", "direction", &direction.x, 0.01f)) {
@@ -56,6 +64,8 @@ void drawDirectionalLightSection(const InspectorPanelContext& context, size_t in
     }
     if (const auto result = session.editLight(index, light); !result)
         editor_style::message(result.error().message.c_str(), true);
+    else if (enabled != enabledState->own)
+        requestCameraCut(context.temporalState);
 }
 
 } // namespace lmx::app

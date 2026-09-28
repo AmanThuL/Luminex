@@ -39,9 +39,6 @@ enum class RenderingCategory {
     Occlusion,      ///< Previous-frame occlusion controls and validation.
     Submission,     ///< Draw submission and batching counts.
     Lighting,       ///< Local-light modes, cluster diagnostics and rig controls.
-    Exposure,       ///< Exposure controls and adaptation feedback.
-    Bloom,          ///< Bloom controls.
-    Shadows,        ///< Shadow controls and status.
     Display,        ///< Display and output-domain information.
     SceneTables,    ///< Scene-table allocation and update information.
     Count,          ///< Exclusive upper bound; not a selectable category.
