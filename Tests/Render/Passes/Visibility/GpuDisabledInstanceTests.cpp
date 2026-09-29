@@ -185,7 +185,7 @@ TEST_CASE("document instantiation applies initial object effective flags before 
             if (node.generator)
                 node.generator->params = {{"instances", 3}, {"occluders", 0}};
         }
-        const auto path = std::filesystem::current_path() / "SceneDocuments" /
+        const auto path = std::filesystem::current_path() / "SceneDocumentsGpu" /
                           (std::string(id) + "-disabled.scene.gltf");
         std::filesystem::create_directories(path.parent_path());
         REQUIRE(asset::saveSceneDocument(*document, path));
