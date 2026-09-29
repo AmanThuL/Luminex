@@ -46,12 +46,12 @@ def load_reference(path: Path) -> dict:
     for row in images:
         if not re.fullmatch(r"[a-z0-9.-]+", row["name"]) or not re.fullmatch(r"[0-9a-f]{64}", row["sha256"]):
             raise ValueError("invalid reference name or SHA-256")
-    if schema == 2:
+    if schema == 2 or "documents" in reference:
         documents = reference.get("documents")
         if not isinstance(documents, dict) or set(documents) != set(scenes) or any(
                 not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value)
                 for value in documents.values()):
-            raise ValueError("schema 2 requires three scene document SHA-256 values")
+            raise ValueError("reference requires three scene document SHA-256 values")
     return reference
 
 
@@ -86,7 +86,7 @@ def runtime_catalog_document(app: Path, scene: str) -> Path:
 
 
 def verify_documents(reference: dict, documents: Path, app: Path | None = None) -> dict[str, str]:
-    if reference["schemaVersion"] == 1:
+    if "documents" not in reference:  # An unpinned schema 1 reference carries no document hashes.
         return {}
     observed = {}
     for scene, expected in reference["documents"].items():
@@ -144,7 +144,12 @@ def run(app: Path, output: Path, reference_path: Path, documents: Path | None = 
         raise ValueError(f"App binary missing: {app}")
     # Resolve the catalog beside the target binary, not beside this script: they may
     # come from different checkouts during parent/candidate comparisons.
-    document_root = document_root_for(app, documents) if reference["schemaVersion"] == 2 else None
+    if reference["schemaVersion"] == 1 and documents is None:
+        # The retired damaged-helmet id no longer resolves in the catalog, so the original matrix
+        # can only replay from frozen documents.
+        raise ValueError("schema 1 references replay frozen documents; pass --documents")
+    document_root = (document_root_for(app, documents) if reference["schemaVersion"] == 2
+                     else documents.resolve())
     catalog_app = app if documents is None else None
     checked_documents = verify_documents(reference, document_root, catalog_app) if document_root else {}
     if documents is not None:
@@ -346,6 +351,44 @@ class ParityTests(unittest.TestCase):
             row = next(row for row in legacy["images"] if row["name"] == "damaged-helmet-off")
             self.assertEqual(command_for(Path("/build/App"), row, root / "out.bmp", root)[2],
                              str(root / "damaged-helmet.scene.gltf"))
+
+    def legacy_reference(self, root: Path, pinned: bool) -> Path:
+        legacy = json.loads(Path(__file__).with_name("reference.json").read_text())
+        legacy["schemaVersion"] = 1
+        legacy["documents"] = {"sponza": "a" * 64, "damaged-helmet": "b" * 64, "material-lab": "c" * 64}
+        if not pinned:
+            legacy.pop("documents")
+        legacy["images"] = [row for row in legacy["images"] if row["scene"] != "temporal-lab"]
+        modes = [("off", 1), ("taa", 1), ("taa", 0.5), ("metalfx", 1), ("metalfx", 0.5)]
+        legacy["images"].extend({"name": f"damaged-helmet-{index}", "scene": "damaged-helmet",
+                                 "temporal": mode, "renderScale": scale, "sha256": "a" * 64}
+                                for index, (mode, scale) in enumerate(modes))
+        path = root / "original-reference.json"
+        path.write_text(json.dumps(legacy))
+        return path
+
+    def test_schema_one_requires_documents_and_checks_pinned_hashes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            app = root / "App"
+            app.write_bytes(b"x")
+            for pinned in (False, True):
+                path = self.legacy_reference(root, pinned)
+                with mock.patch("subprocess.run") as capture:
+                    with self.assertRaisesRegex(ValueError, "pass --documents"):
+                        run(app, root / "out", path)
+                    capture.assert_not_called()
+            documents = root / "docs"
+            documents.mkdir()
+            for scene in ("sponza", "damaged-helmet", "material-lab"):
+                (documents / f"{scene}.scene.gltf").write_text("{}")
+            reference = load_reference(path)
+            with self.assertRaisesRegex(ValueError, "document drift"):
+                verify_documents(reference, documents)
+            (documents / "sponza.scene.gltf").write_text('{"a":1}')
+            reference["documents"]["sponza"] = document_hash(documents / "sponza.scene.gltf")
+            with self.assertRaisesRegex(ValueError, "damaged-helmet: document drift"):
+                verify_documents(reference, documents)
 
     def test_hash_mismatch_and_wrong_extent_fail(self):
         with tempfile.TemporaryDirectory() as directory:
