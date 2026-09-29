@@ -52,6 +52,7 @@ struct MeasurementPlan {
     std::string scene;                   ///< Catalog stable identifier.
     std::string sceneDocumentPath;       ///< Caller-spelled path of the loaded snapshot.
     std::string sceneDocumentHash;       ///< Hash of loaded glTF and buffer bytes.
+    bool sceneDocumentDirty = false;     ///< Live edits differ from the hashed snapshot.
     std::string temporal = "taa";        ///< Requested reconstruction.
     std::string submission = "indirect"; ///< Draw submission mode.
     std::string classify = "cpu";        ///< Requested classifier, cpu or gpu.

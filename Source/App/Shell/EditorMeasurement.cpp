@@ -66,6 +66,8 @@ void EditorShell::startMeasurement(rojoRHI::Device& device, const render::Render
         plan.sceneDocumentPath =
             m_activeSceneId.isCatalog() ? loaded->path.string() : m_activeSceneId.key;
         plan.sceneDocumentHash = loaded->hash;
+        refreshDocumentDirty(true);
+        plan.sceneDocumentDirty = m_documentDirty;
     }
     plan.temporal = temporalName(m_settings);
     plan.submission = submissionName(m_settings.submission);

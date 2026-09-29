@@ -51,7 +51,7 @@ TEST_CASE("Measurement plans drain only after every exact frame retires", "[app]
     REQUIRE(run.json().find("\"schemaVersion\":5") != std::string::npos);
     REQUIRE(
         run.json().find(
-            "\"sceneDocument\":{\"path\":\"./Scenes/sponza.scene.gltf\",\"sha256\":\"abc123\"}") !=
+            "\"sceneDocument\":{\"path\":\"./Scenes/sponza.scene.gltf\",\"sha256\":\"abc123\",\"dirty\":false}") !=
         std::string::npos);
     REQUIRE(run.json().find("\"scored\":true") != std::string::npos);
     REQUIRE(run.json().find("serialized-retirement") != std::string::npos);
@@ -142,6 +142,18 @@ TEST_CASE("Path-opened document rig may be measured without a catalog id", "[app
     MeasurementRun run;
     REQUIRE(run.start(plan, testProvenance()));
     REQUIRE(run.json().contains(R"("sceneDocument":{"path":"./saved/sponza.scene.gltf")"));
+}
+
+//======================================================================================================================
+TEST_CASE("Report records that the measured document had unsaved edits", "[app][measurement]") {
+    MeasurementPlan plan;
+    plan.scene = "sponza";
+    plan.sceneDocumentPath = "sponza.scene.gltf";
+    plan.sceneDocumentHash = std::string(64, 'a');
+    plan.sceneDocumentDirty = true;
+    MeasurementRun run;
+    REQUIRE(run.start(plan, testProvenance()));
+    REQUIRE(run.json().contains(R"("sha256":")" + std::string(64, 'a') + R"(","dirty":true})"));
 }
 
 //======================================================================================================================

@@ -48,7 +48,8 @@ std::string MeasurementRun::json() const {
         "\"reservedListBytes\":\"declaration row reservation; includes rejected GPU slots\","
         "\"allocatedListBytes\":\"active list storage across three slots\"},";
     out += "\"sceneDocument\":{\"path\":" + quote(m_plan.sceneDocumentPath) +
-           ",\"sha256\":" + quote(m_plan.sceneDocumentHash) + "},";
+           ",\"sha256\":" + quote(m_plan.sceneDocumentHash) +
+           ",\"dirty\":" + (m_plan.sceneDocumentDirty ? "true" : "false") + "},";
     if (const auto& population = m_plan.startingPopulation) {
         out += std::format("\"startingPopulation\":{{\"objects\":{},\"enabledObjects\":{},"
                            "\"disabledObjects\":{},\"localLights\":{},\"enabledLocalLights\":{},"
