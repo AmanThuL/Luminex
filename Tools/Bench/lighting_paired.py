@@ -142,6 +142,13 @@ def collect_cell(args, workload):
                     reason = "runtime provenance changed across pairs/workloads"
                 else:
                     args.provenance[role] = provenance
+                    try:
+                        identity = visibility.check_document_identity(
+                            [report], args.documents.get(role))
+                        if identity is not None:
+                            args.documents[role] = identity
+                    except ValueError as exc:
+                        reason = str(exc)
                 if reason:
                     failures.append(dict(repetition=repetition, side=side, reason=reason))
                     report = None
@@ -149,6 +156,11 @@ def collect_cell(args, workload):
                 failures.append(dict(repetition=repetition, side=side, reason=attempt["failure"]))
             reports[side] = report
         if any(report is None for report in reports.values()):
+            continue
+        try:
+            visibility.check_document_identity([reports["A"], reports["B"]], None)
+        except ValueError as exc:
+            failures.append(dict(repetition=repetition, reason=str(exc)))
             continue
         if any(reports["A"]["provenance"][key] != reports["B"]["provenance"][key] for key in ("device", "os", "buildMode", "environment")):
             failures.append(dict(repetition=repetition, reason="paired device/OS/configuration differs"))
@@ -206,7 +218,8 @@ def fixture(schema=5, mode="direct"):
     if schema == 3:
         del sample["lighting"]; del sample["lightingGpuMs"]
     if schema == 5:
-        report["sceneDocument"] = {"path": "Assets/Scenes/sponza.scene.gltf", "sha256": "c" * 64}
+        report["sceneDocument"] = {"path": "Assets/Scenes/sponza.scene.gltf", "sha256": "c" * 64, "dirty": False}
+        report["startingPopulation"] = None
     return report, plan
 
 
@@ -284,7 +297,7 @@ class LightingTests(unittest.TestCase):
                 candidate.write_bytes(b"candidate")
                 args = SimpleNamespace(control="zero", parent=parent, binary=candidate,
                                        parent_schema=parent_schema, out=root, unscored=False,
-                                       timeout=5, provenance={}, hashes={
+                                       timeout=5, provenance={}, documents={}, hashes={
                                            "parent": hashlib.sha256(parent.read_bytes()).hexdigest(),
                                            "candidate": hashlib.sha256(candidate.read_bytes()).hexdigest()})
                 commands = []
@@ -359,7 +372,7 @@ def main():
         parser.error("output exists; preserve every collection attempt")
     args.hashes = {"candidate": hashlib.sha256(args.binary.read_bytes()).hexdigest()}
     if args.parent: args.hashes["parent"] = hashlib.sha256(args.parent.read_bytes()).hexdigest()
-    args.provenance = {}; args.out.mkdir(parents=True)
+    args.provenance = {}; args.documents = {}; args.out.mkdir(parents=True)
     summary = dict(schemaVersion=1, control=args.control, protocol=dict(pairs=REPETITIONS, warmup=WARMUP,
                    frames=FRAMES, bootstrapResamples=visibility.RESAMPLES, seed=visibility.SEED), cells=[],
                    scope="Serialized-retirement diagnostic costs; no default or performance adoption decision.")

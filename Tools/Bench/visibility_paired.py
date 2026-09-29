@@ -118,6 +118,10 @@ def validate_report(report, expected, scored):
                 len(document["sha256"]) != 64 or
                 any(c not in "0123456789abcdef" for c in document["sha256"])):
             raise ValueError("missing or invalid sceneDocument provenance")
+        if type(document.get("dirty")) is not bool:
+            raise ValueError("missing sceneDocument.dirty")
+        if scored and document["dirty"]:
+            raise ValueError("scored run measured a document with unsaved edits")
     legacy = report["schemaVersion"] == 2
     if legacy and (expected["occlusionEnabled"] or expected["occlusionCheck"] or
                    expected["labOccluders"] or expected["hzbDebugLevel"] >= 0):
@@ -333,6 +337,30 @@ def run_side(binary, report_path, plan, unscored, timeout):
         report_path.with_suffix(".attempt.json").write_text(json.dumps(attempt, indent=2) + "\n")
 
 
+def document_identity(report):
+    """Document hash plus starting population for schema 5; older schemas carry neither."""
+    if report.get("schemaVersion") != 5:
+        return None
+    return {"sha256": report["sceneDocument"]["sha256"],
+            "startingPopulation": report.get("startingPopulation")}
+
+
+def check_document_identity(reports, frozen):
+    """Require one document and population within a pair and against the frozen first pair.
+
+    Returns the identity to freeze (or the existing one) so cells share it."""
+    identities = [document_identity(report) for report in reports]
+    if len(identities) == 2 and None not in identities and identities[0] != identities[1]:
+        raise ValueError("scene document or starting population differs between paired sides")
+    for identity in identities:
+        if identity is None:
+            continue
+        if frozen is not None and identity != frozen:
+            raise ValueError("scene document or starting population differs across pairs or workload cells")
+        frozen = identity
+    return frozen
+
+
 def checked_provenance(args, reports):
     """Only the executable hash may differ in a parent/candidate binary control."""
     parent = getattr(args, "parent", None)
@@ -352,6 +380,8 @@ def checked_provenance(args, reports):
         raise ValueError("runtime provenance changed between paired sides")
     if args.frozen_provenance is not None and normalized[0] != args.frozen_provenance:
         raise ValueError("runtime provenance differs across pairs or workload cells")
+    args.frozen_document = check_document_identity(
+        [reports[0], reports[1]], getattr(args, "frozen_document", None))
     return normalized[0]
 
 
@@ -487,6 +517,30 @@ def binary_selftest(template):
             pass
         else:
             raise AssertionError("binary provenance drift accepted")
+    documents = copy.deepcopy(pair)
+    for report in documents.values():
+        report.update(schemaVersion=5, startingPopulation=None,
+                      sceneDocument={"path": "a.scene.gltf", "sha256": "c" * 64, "dirty": False})
+    args.frozen_document = None
+    checked_provenance(args, documents)
+    for side, mutation in ((1, lambda r: r["sceneDocument"].update(sha256="d" * 64)),
+                           (1, lambda r: r.update(startingPopulation={"objects": 1}))):
+        bad = copy.deepcopy(documents); mutation(bad[side])
+        args.frozen_document = None
+        try:
+            checked_provenance(args, bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("document identity drift accepted within a pair")
+    args.frozen_document = {"sha256": "d" * 64, "startingPopulation": None}
+    try:
+        checked_provenance(args, documents)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("document identity drift accepted across cells")
+    args.frozen_document = None
     for field in ("device", "os", "buildMode", "shaderHashes", "environment"):
         bad = copy.deepcopy(pair)
         for report in bad.values():
