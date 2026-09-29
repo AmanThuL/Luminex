@@ -4,9 +4,11 @@
 #include "App/Model/Scene/SceneDocumentSave.h"
 #include "Core/IO/File.h"
 #include "Core/Util/Sha256.h"
+#include "Engine/Asset/Document/Orientation.h"
 #include "Scenes/SceneDocumentExport.h"
 #include "Support/EngineTestSupport.h"
 #include "Support/GraphTestSupport.h"
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <fstream>
 #include <limits>
@@ -35,7 +37,7 @@ asset::SceneDocument saveFixture() {
     return doc;
 }
 //======================================================================================================================
-fs::path savePath(std::string_view name) {
+fs::path savePath(std::string_view name, const asset::SceneDocument& doc = saveFixture()) {
     auto root = fs::current_path() / "SceneDocuments" / "save-workflow";
     // Files from an earlier run must not look like foreign companions to Save As.
     static const bool cleaned = [&] {
@@ -54,7 +56,7 @@ fs::path savePath(std::string_view name) {
     // Leftovers from an earlier run must not look like foreign files to the companion check.
     fs::remove(path, ignored);
     fs::remove(bin, ignored);
-    REQUIRE(asset::saveSceneDocument(saveFixture(), path));
+    REQUIRE(asset::saveSceneDocument(doc, path));
     return path;
 }
 //======================================================================================================================
@@ -131,7 +133,10 @@ TEST_CASE("Save and Save As adopt one snapshot while preserving live identity an
     CHECK_FALSE(session.localLightDefault(lightId)->enabled);
     const auto copy = path.parent_path() / "adopted-copy.scene.gltf";
     const auto previous = id;
+    CHECK(library.entry(previous).displayName == "Save workflow");
     REQUIRE(app::saveSessionDocument(library, session, id, copy, true));
+    CHECK(library.entry(previous).displayName == path.filename().string());
+    CHECK(library.entry(id).displayName == "Save workflow");
     selection.sceneId = id;
     CHECK(id == scenes::sceneIdFromPath(copy));
     CHECK(library.loaded(id) == loaded);

@@ -187,6 +187,9 @@ SceneLibrary::adoptSaved(engine::LoadedScene& source, const SceneId& destination
                 beforeReplace(target->second);
             m_scenes.erase(target);
         }
+        // The old path is no longer this snapshot; drop its load metadata so entry() rebuilds it
+        // from the file instead of showing the saved document's name and availability.
+        m_pathEntries.erase(old->first);
         auto retained = m_scenes.extract(old);
         retained.key() = newKey;
         old = m_scenes.insert(std::move(retained)).position;

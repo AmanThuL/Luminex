@@ -77,7 +77,8 @@ public:
     /// Adopts a verified canonical save without rebuilding the live scene or changing bindings.
     /// Rekeying retains LoadedScene's address. A cached destination retires first and is
     /// invalidated through beforeReplace; source and destination metadata publish only after
-    /// verification by the caller. source must belong to this library; document/path/hash must
+    /// verification by the caller; the old key's cached path metadata is discarded and rebuilt from
+    /// disk on demand. source must belong to this library; document/path/hash must
     /// describe that save.
     engine::LoadedScene&
     adoptSaved(engine::LoadedScene& source, const SceneId& destination,
