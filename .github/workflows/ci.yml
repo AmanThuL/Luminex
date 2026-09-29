@@ -78,6 +78,9 @@ jobs:
       - name: Temporal comparison report tests
         run: python3 -m unittest discover -s Tools/TemporalCompare -v
 
+      - name: Screenshot comparison tests
+        run: python3 Tools/Screenshots/compare.py --selftest
+
   build-test:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}
