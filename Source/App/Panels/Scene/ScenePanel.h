@@ -7,6 +7,7 @@
 #include "App/Model/Rendering/Visibility/VisibilityDisplay.h"
 #include "App/Model/Scene/EditorSelection.h"
 #include "App/Model/Scene/SceneLoadState.h"
+#include "App/Model/Scene/SceneTreeState.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/Scene/SceneInstantiate.h"
 #include "Scenes/SceneLibrary.h"
@@ -35,6 +36,7 @@ struct ScenePanelContext {
     const engine::LoadedScene* loadedScene = nullptr; ///< Document and source-node bindings.
     const SceneSession* session = nullptr;            ///< Current own/effective enabled state.
     bool dirty = false;                               ///< Canonical document differs from load.
+    SceneTreeState& treeState;                        ///< Collapse choices and the cached tree.
 };
 
 /// Borrowed scene-loading state for File > Open Scene. Loading remains a shell frame-boundary

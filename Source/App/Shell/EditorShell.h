@@ -24,6 +24,7 @@
 #include "App/Model/Scene/EditorSelection.h"
 #include "App/Model/Scene/SceneLoadState.h"
 #include "App/Model/Scene/SceneSession.h"
+#include "App/Model/Scene/SceneTreeState.h"
 #include "App/Model/Workspace/WorkspaceModel.h"
 #include "App/Panels/Graph/RenderGraphPanel.h"
 #include "App/Panels/Performance/PerformancePanel.h"
@@ -302,6 +303,7 @@ private:
     // before panels draw, so a stale scene id or out-of-range index never reaches the Inspector.
     EditorSelection m_selection;
     std::string m_sceneFilter;
+    SceneTreeState m_sceneTree; ///< Hierarchy collapse choices and cached tree.
     SceneLoadState m_sceneLoading;
     DocumentWorkflow m_documentWorkflow;
     std::shared_ptr<DocumentDialogMailbox> m_documentDialog =

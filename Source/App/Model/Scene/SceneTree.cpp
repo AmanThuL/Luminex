@@ -57,6 +57,22 @@ uint32_t sceneTreeImportedKey(uint32_t importedNode) {
 }
 
 //======================================================================================================================
+std::string documentNodeLabel(std::string_view name, uint32_t node) {
+    return name.empty() ? std::format("Node {}", node) : std::string(name);
+}
+
+//======================================================================================================================
+std::string documentTitle(std::string_view name, bool dirty) {
+    return std::string(name) + (dirty ? "*" : "");
+}
+
+//======================================================================================================================
+std::span<const SceneTreeRow> sceneTreeVisibleRows(std::span<const SceneTreeRow> rows,
+                                                   bool rootCollapsed, std::string_view filter) {
+    return rootCollapsed && filter.empty() ? rows.first(std::min<size_t>(1, rows.size())) : rows;
+}
+
+//======================================================================================================================
 SceneTreeView buildSceneTreeView(const engine::LoadedScene& loaded,
                                  const scenes::SessionDocumentState& state, std::string_view filter,
                                  const std::set<uint32_t>& collapsed, const SceneSession* session) {
@@ -81,6 +97,17 @@ SceneTreeView buildSceneTreeView(const engine::LoadedScene& loaded,
         branches[parent].row.group = true;
         return index;
     };
+
+    // Generator children are grouped once so each generator node reads only its own population.
+    std::unordered_map<uint32_t, std::vector<size_t>> objectsByGenerator;
+    for (size_t object = 0; object < binding.objectGeneratorNode.size(); ++object)
+        if (binding.objectGeneratorNode[object] != engine::kGeneratedNode)
+            objectsByGenerator[binding.objectGeneratorNode[object]].push_back(object);
+    std::unordered_map<uint32_t, std::vector<engine::LightId>> lightsByGenerator;
+    for (const auto lightId : scene.localLights())
+        if (const auto found = binding.lightGeneratorNode.find(engine::sceneLightKey(lightId));
+            found != binding.lightGeneratorNode.end())
+            lightsByGenerator[found->second].push_back(lightId);
 
     const auto docEffective = engine::effectiveDocumentEnabled(document, state.nodeEnabled);
     std::vector<bool> importedEffective(binding.importedNodes.size(), true);
@@ -150,23 +177,20 @@ SceneTreeView buildSceneTreeView(const engine::LoadedScene& loaded,
         const bool own = session ? session->nodeEnabled(nodeIndex) : state.nodeEnabled[nodeIndex];
         const bool effective =
             session ? session->nodeEffectiveEnabled(nodeIndex) : docEffective[nodeIndex];
-        const size_t rowIndex =
-            add(parent, {.subject = subject,
-                         .index = index,
-                         .lightId = lightId,
-                         .node = nodeIndex,
-                         .depth = depth,
-                         .label = node.name.empty() ? std::format("Node {}", nodeIndex) : node.name,
-                         .enabled = own,
-                         .effective = effective});
+        const size_t rowIndex = add(parent, {.subject = subject,
+                                             .index = index,
+                                             .lightId = lightId,
+                                             .node = nodeIndex,
+                                             .depth = depth,
+                                             .label = documentNodeLabel(node.name, nodeIndex),
+                                             .enabled = own,
+                                             .effective = effective});
         for (const uint32_t child : node.children)
             appendDocument(rowIndex, child, depth + 1);
         for (const uint32_t source : importedRoots[nodeIndex])
             appendImported(rowIndex, source, depth + 1);
         if (node.generator) {
-            for (size_t object = 0; object < binding.objectGeneratorNode.size(); ++object) {
-                if (binding.objectGeneratorNode[object] != nodeIndex)
-                    continue;
+            for (const size_t object : objectsByGenerator[nodeIndex]) {
                 const bool objectOwn = session ? session->objectEnabled(object)
                                                : binding.generatedObjectEnabled[object];
                 add(rowIndex, {.subject = EditorSubject::Object,
@@ -178,22 +202,18 @@ SceneTreeView buildSceneTreeView(const engine::LoadedScene& loaded,
                                .enabled = objectOwn,
                                .effective = scene.objects[object].enabled});
             }
-            for (const auto lightId : scene.localLights()) {
-                if (const auto found =
-                        binding.lightGeneratorNode.find(engine::sceneLightKey(lightId));
-                    found != binding.lightGeneratorNode.end() && found->second == nodeIndex) {
-                    const bool lightOwn =
-                        session ? session->localLightEnabled(lightId)
-                                : binding.generatedLightEnabled.at(engine::sceneLightKey(lightId));
-                    add(rowIndex, {.subject = EditorSubject::LocalLight,
-                                   .lightId = lightId,
-                                   .node = nodeIndex,
-                                   .depth = depth + 1,
-                                   .label = sceneLocalLightLabel(scene, lightId),
-                                   .generated = true,
-                                   .enabled = lightOwn,
-                                   .effective = scene.light(lightId)->enabled});
-                }
+            for (const auto lightId : lightsByGenerator[nodeIndex]) {
+                const bool lightOwn =
+                    session ? session->localLightEnabled(lightId)
+                            : binding.generatedLightEnabled.at(engine::sceneLightKey(lightId));
+                add(rowIndex, {.subject = EditorSubject::LocalLight,
+                               .lightId = lightId,
+                               .node = nodeIndex,
+                               .depth = depth + 1,
+                               .label = sceneLocalLightLabel(scene, lightId),
+                               .generated = true,
+                               .enabled = lightOwn,
+                               .effective = scene.light(lightId)->enabled});
             }
         }
     };

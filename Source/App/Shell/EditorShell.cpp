@@ -376,7 +376,8 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
                                     .sceneGeneration = m_temporalState.sceneGeneration,
                                     .loadedScene = m_session.loadedScene(),
                                     .session = &m_session,
-                                    .dirty = m_documentDirty});
+                                    .dirty = m_documentDirty,
+                                    .treeState = m_sceneTree});
         if (frameSelectionRequested)
             frameSelected(renderer);
         setPanelVisible(EditorPanel::Scene, open);
@@ -433,8 +434,13 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
         if (documentSelectionHidden) {
             selectionHidden = *documentSelectionHidden;
         } else if (!m_sceneFilter.empty()) {
-            const auto tree = buildSceneTreeView(*loaded, m_session.documentState(), m_sceneFilter,
-                                                 {}, &m_session);
+            const auto& tree = m_sceneTree.view(m_activeSceneId.key,
+                                                {.loaded = *loaded,
+                                                 .state = m_session.documentState(),
+                                                 .session = &m_session,
+                                                 .filter = m_sceneFilter,
+                                                 .sceneGeneration = m_temporalState.sceneGeneration,
+                                                 .editGeneration = m_session.editGeneration()});
             selectionHidden = sceneTreeSelectionHidden(tree.rows, m_selection, m_sceneFilter);
         }
     } else {

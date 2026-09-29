@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "App/Model/Scene/InspectorSubject.h"
+#include "App/Model/Scene/SceneTree.h"
 
 #include <algorithm>
 #include <format>
@@ -63,7 +64,7 @@ std::optional<InspectorEnabledState> inspectorEnabledState(const SceneSession& s
         if (selection.node >= document.nodes.size())
             return std::nullopt;
         const auto& node = document.nodes[selection.node];
-        return InspectorEnabledState{.label = node.name,
+        return InspectorEnabledState{.label = documentNodeLabel(node.name, selection.node),
                                      .kind = node.generator ? "Generator"
                                              : node.asset   ? "Asset"
                                                             : "Group",
@@ -106,7 +107,7 @@ std::optional<InspectorEnabledState> inspectorEnabledState(const SceneSession& s
         }
         if (node >= document.nodes.size())
             return std::nullopt;
-        return InspectorEnabledState{.label = document.nodes[node].name,
+        return InspectorEnabledState{.label = documentNodeLabel(document.nodes[node].name, node),
                                      .kind = "Directional",
                                      .own = session.nodeEnabled(node),
                                      .effective = session.scene().lights[selection.index].enabled,
@@ -120,7 +121,7 @@ std::optional<InspectorEnabledState> inspectorEnabledState(const SceneSession& s
         if (const auto found = binding.lightNode.find(key); found != binding.lightNode.end()) {
             const uint32_t node = found->second;
             return InspectorEnabledState{
-                .label = document.nodes[node].name,
+                .label = documentNodeLabel(document.nodes[node].name, node),
                 .kind = light->type == engine::LocalLightType::Point ? "Point" : "Spot",
                 .own = session.localLightEnabled(selection.lightId),
                 .effective = light->enabled,

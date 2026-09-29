@@ -57,7 +57,7 @@ void EditorShell::refreshDocumentDirty(bool force) {
         m_dirtyGeneration = generation;
         SDL_SetWindowTitle(
             m_window,
-            (m_session.scene().name + (m_documentDirty ? "*" : "") + " — Luminex").c_str());
+            (documentTitle(m_session.scene().name, m_documentDirty) + " — Luminex").c_str());
     }
     m_documentWorkflow.setContext(m_documentDirty, m_playback.state() == PlaybackState::Stopped,
                                   m_measurement.active());
@@ -108,6 +108,7 @@ bool EditorShell::saveDocument(const std::filesystem::path& path, bool saveAs) {
         m_notices.post({ActionStatus::Unavailable, *reason, {}}, ImGui::GetTime());
         return false;
     }
+    const auto previousSceneId = m_activeSceneId;
     const auto result = saveSessionDocument(m_library, m_session, m_activeSceneId, path, saveAs);
     if (!result) {
         m_notices.post(
@@ -118,6 +119,7 @@ bool EditorShell::saveDocument(const std::filesystem::path& path, bool saveAs) {
     }
     // Rekeying a live scene changes only the selection's document identity, never its subject.
     m_selection.sceneId = m_activeSceneId;
+    m_sceneTree.rekey(previousSceneId.key, m_activeSceneId.key);
     m_exposureContext.sceneId = m_activeSceneId;
     refreshDocumentDirty(true);
     m_notices.post({ActionStatus::Succeeded, "Scene saved.", path.string()}, ImGui::GetTime());

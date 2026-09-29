@@ -46,6 +46,13 @@ struct SceneTreeView {
     size_t totalCount = 0;          ///< All subject rows before search or collapse.
 };
 
+/// Document node name, or "Node N" for an unnamed node; shared by the tree and the Inspector.
+std::string documentNodeLabel(std::string_view name, uint32_t node);
+
+/// Scene name with a trailing `*` when the document has unsaved edits, for the window title and
+/// the tree root.
+std::string documentTitle(std::string_view name, bool dirty);
+
 /// Collapse keys for imported nodes occupy the high half, disjoint from document indices.
 uint32_t sceneTreeImportedKey(uint32_t importedNode);
 
@@ -63,6 +70,11 @@ std::vector<SceneTreeRow> buildSceneTree(const engine::LoadedScene& loaded,
                                          std::string_view filter,
                                          const std::set<uint32_t>& collapsed,
                                          const SceneSession* session = nullptr);
+
+/// Rows actually drawn: a collapsed root (outside search) hides every descendant, since the built
+/// rows are already flattened in depth order with group collapse applied.
+std::span<const SceneTreeRow> sceneTreeVisibleRows(std::span<const SceneTreeRow> rows,
+                                                   bool rootCollapsed, std::string_view filter);
 
 /// Counts selectable subjects in already built rows, including disabled subjects and Environment.
 size_t sceneTreeSubjectCount(std::span<const SceneTreeRow> rows);
