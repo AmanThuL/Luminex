@@ -10,6 +10,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <bit>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -185,7 +186,9 @@ TEST_CASE("animation times and external buffer lengths have named failures",
     REQUIRE(original);
     {
         std::fstream file(binPath, std::ios::binary | std::ios::in | std::ios::out);
-        const float wrongTime = 2.0f;
+        // One ulp from the exact stored float(k / sampleRate) must still be rejected.
+        const float wrongTime =
+            std::nextafter(static_cast<float>(1.0 / doc.animations.front().sampleRate), 1.0f);
         file.seekp(sizeof(float));
         file.write(reinterpret_cast<const char*>(&wrongTime), sizeof(wrongTime));
     }
@@ -313,9 +316,9 @@ TEST_CASE("a local light without range is skipped once and directional indices s
     doc.nodes.push_back({.name = "Sun node", .light = 1, .role = "key", .castsShadow = true});
     doc.rootNodes = {0, 1, 2};
     const auto input = outputPath("unbounded.input.json");
-    writeText(input, sceneDocumentJson(doc, "animated.scene.bin"));
+    writeText(input, sceneDocumentJson(doc, "unbounded.scene.bin"));
     const auto bin = sceneDocumentBuffer(doc);
-    const auto binPath = outputPath("animated.scene.bin");
+    const auto binPath = outputPath("unbounded.scene.bin");
     {
         std::ofstream file(binPath, std::ios::binary | std::ios::trunc);
         file.write(reinterpret_cast<const char*>(bin.data()), std::streamsize(bin.size()));
@@ -607,6 +610,9 @@ TEST_CASE("rename failures restore existing and absent targets after backups or 
     changed.name = "Changed pair";
     changed.animations[0].channels[0].values.back().x = 99.0f;
     for (unsigned presentMask = 0; presentMask < 4; ++presentMask) {
+        // A companion beside an absent document is foreign data and is refused, not replaced.
+        if (presentMask == 2)
+            continue;
         const unsigned backups = ((presentMask & 1u) != 0u) + ((presentMask & 2u) != 0u);
         std::vector<unsigned> failures{backups + 1, backups + 2};
         if (presentMask == 3)
@@ -648,4 +654,61 @@ TEST_CASE("rename failures restore existing and absent targets after backups or 
             REQUIRE(saveSceneDocument(original, path));
         }
     }
+}
+
+//======================================================================================================================
+TEST_CASE("a document without animations writes no companion buffer", "[asset][scene-document]") {
+    auto doc = animatedDocument();
+    doc.animations.clear();
+    const auto path = outputPath("unbuffered.scene.gltf");
+    const auto binPath = outputPath("unbuffered.scene.bin");
+    fs::remove(binPath);
+    REQUIRE(saveSceneDocument(doc, path));
+    CHECK_FALSE(fs::exists(binPath));
+    const auto read = readSceneDocument(path);
+    REQUIRE(read);
+    CHECK_FALSE(read->sourceBufferUri);
+    const auto hash = sceneDocumentHash(path);
+    REQUIRE(hash);
+    const auto json = readText(path);
+    CHECK(*hash == lmx::sha256Hex({reinterpret_cast<const std::byte*>(json.data()), json.size()}));
+}
+
+//======================================================================================================================
+TEST_CASE("saving an animated document twice replaces both files with identical bytes",
+          "[asset][scene-document]") {
+    const auto path = outputPath("twice.scene.gltf");
+    const auto binPath = outputPath("twice.scene.bin");
+    const auto doc = animatedDocument();
+    REQUIRE(saveSceneDocument(doc, path));
+    const auto firstJson = readText(path);
+    const auto firstBin = readText(binPath);
+    REQUIRE_FALSE(firstBin.empty());
+    REQUIRE(saveSceneDocument(doc, path));
+    CHECK(readText(path) == firstJson);
+    CHECK(readText(binPath) == firstBin);
+    const auto read = readSceneDocument(path);
+    REQUIRE(read);
+    CHECK(read->sourceBufferUri == "twice.scene.bin");
+    for (const auto& entry : fs::directory_iterator(path.parent_path()))
+        CHECK_FALSE(entry.path().filename().string().starts_with(".lmx-save-"));
+}
+
+//======================================================================================================================
+TEST_CASE("Save As refuses to overwrite a companion the target document does not reference",
+          "[asset][scene-document]") {
+    const auto path = outputPath("foreign.scene.gltf");
+    const auto binPath = outputPath("foreign.scene.bin");
+    fs::remove(path);
+    writeText(binPath, "someone else's data");
+    const auto doc = animatedDocument();
+    const auto result = saveSceneDocument(doc, path);
+    REQUIRE_FALSE(result);
+    CHECK(result.error().message.contains("foreign.scene.bin"));
+    CHECK(readText(binPath) == "someone else's data");
+    CHECK_FALSE(fs::exists(path));
+    // A document that names the companion may replace it.
+    fs::remove(binPath);
+    REQUIRE(saveSceneDocument(doc, path));
+    REQUIRE(saveSceneDocument(doc, path));
 }

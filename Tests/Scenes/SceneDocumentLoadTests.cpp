@@ -42,6 +42,9 @@ TEST_CASE("document reload failure preserves activation and success invalidates 
     document->nodes[0].generator->params = {{"lights", 1}, {"pile", 0}};
     const auto path = std::filesystem::current_path() / "SceneDocuments" / "reload.scene.gltf";
     std::filesystem::create_directories(path.parent_path());
+    // Files left by an interrupted run must not look like a foreign companion.
+    std::filesystem::remove(path);
+    std::filesystem::remove(std::filesystem::path(path).replace_extension(".bin"));
     REQUIRE(asset::saveSceneDocument(*document, path));
     const auto id = scenes::sceneIdFromPath(path);
     REQUIRE(library.get(id));
@@ -73,6 +76,8 @@ TEST_CASE("document reload failure preserves activation and success invalidates 
     extra.generator->params = {{"lights", 1}, {"pile", 0}};
     overflow.nodes.push_back(extra);
     overflow.rootNodes.push_back(extraNode);
+    // A broken document cannot name its companion, so replacing it starts from a clean pair.
+    std::filesystem::remove(std::filesystem::path(path).replace_extension(".bin"));
     REQUIRE(asset::saveSceneDocument(overflow, path));
     const auto capacityFailure = library.reload(id, invalidate);
     REQUIRE_FALSE(capacityFailure);

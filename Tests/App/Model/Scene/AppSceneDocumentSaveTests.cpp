@@ -9,6 +9,7 @@
 #include "Support/GraphTestSupport.h"
 #include <catch2/catch_test_macros.hpp>
 #include <fstream>
+#include <limits>
 
 using namespace lmx;
 namespace fs = std::filesystem;
@@ -24,11 +25,25 @@ asset::SceneDocument saveFixture() {
                  {.name = "Local Lights", .children = {2}},
                  {.name = "Light", .light = 0}};
     doc.rootNodes = {0, 1};
+    // A camera rail gives the document its companion buffer.
+    doc.animations = {{.name = "Rail",
+                       .sampleRate = 60,
+                       .keyCount = 2,
+                       .channels = {{.node = 0,
+                                     .path = asset::DocChannelPath::Translation,
+                                     .values = {{0, 1, 4, 0}, {1, 1, 4, 0}}}}}};
     return doc;
 }
 //======================================================================================================================
 fs::path savePath(std::string_view name) {
     auto root = fs::current_path() / "SceneDocuments" / "save-workflow";
+    // Files from an earlier run must not look like foreign companions to Save As.
+    static const bool cleaned = [&] {
+        std::error_code cleanup;
+        fs::remove_all(root, cleanup);
+        return true;
+    }();
+    (void)cleaned;
     fs::create_directories(root);
     const auto path = root / (std::string(name) + ".scene.gltf");
     std::error_code ignored;
@@ -36,6 +51,9 @@ fs::path savePath(std::string_view name) {
     auto bin = path;
     bin.replace_extension(".bin");
     fs::permissions(bin, fs::perms::owner_write, fs::perm_options::add, ignored);
+    // Leftovers from an earlier run must not look like foreign files to the companion check.
+    fs::remove(path, ignored);
+    fs::remove(bin, ignored);
     REQUIRE(asset::saveSceneDocument(saveFixture(), path));
     return path;
 }
@@ -149,9 +167,9 @@ TEST_CASE("save failures preserve metadata baselines and block save-first destru
     const auto baseline = session.lookDefault();
     const auto oldId = id;
     app::SceneDocumentSaveIO io;
-    SECTION("export exactness fails before any disk writes") {
-        session.camera().yaw = 10.0f;
-        REQUIRE(session.setSceneCamera());
+    SECTION("export validity fails before any disk writes") {
+        look.bloom.intensity = std::numeric_limits<float>::infinity();
+        session.editLook(look);
     }
     SECTION("write failure") {
         io.write = [](const auto&, const auto&) -> asset::AssetResult<void> {
@@ -414,6 +432,8 @@ TEST_CASE("Save preserves immutable imported poses and generated session default
 TEST_CASE("Save As protects the actual padded alternate source buffer",
           "[app][document-save][document-repair]") {
     const auto source = savePath("alternate-source");
+    // The source names its own padded buffer; the canonical companion beside it does not exist yet.
+    fs::remove(fs::path(source).replace_extension(".bin"));
     const auto sourceBuffer = source.parent_path() / "alternate copy.scene.bin";
     auto doc = saveFixture();
     doc.animations = {{.name = "Camera rail",

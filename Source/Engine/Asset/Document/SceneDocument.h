@@ -146,10 +146,16 @@ AssetResult<SceneDocument> readSceneDocument(const std::filesystem::path& path);
 /// Returns canonical glTF JSON for a valid model. bufferUri is a decoded relative filesystem path;
 /// this function percent-encodes it once, just like asset/HDRI paths stored in the model.
 std::string sceneDocumentJson(const SceneDocument& doc, std::string_view bufferUri);
+/// Checks the model invariants a write depends on: finite numbers, valid enums, bounded local
+/// lights and consistent animations. Errors name a JSON pointer; sceneDocumentJson requires
+/// success.
+AssetResult<void> validateSceneDocumentModel(const SceneDocument& doc);
 /// Returns standard little-endian FLOAT animation data in deterministic accessor order.
 std::vector<std::byte> sceneDocumentBuffer(const SceneDocument& doc);
-/// Stages both outputs beside path, checks target permissions and rolls back reported replacement
-/// failures. This is not a crash-atomic transaction. Invalid models and filesystem errors fail.
+/// Stages the glTF and, for animated documents only, its companion beside path, checks target
+/// permissions and rolls back reported replacement failures. An existing companion that the target
+/// document does not reference is never overwritten. This is not a crash-atomic transaction.
+/// Invalid models and filesystem errors fail.
 AssetResult<void> saveSceneDocument(const SceneDocument& doc, const std::filesystem::path& path);
 /// Hashes the on-disk glTF bytes followed by its referenced external buffer bytes, if present.
 AssetResult<std::string> sceneDocumentHash(const std::filesystem::path& path);

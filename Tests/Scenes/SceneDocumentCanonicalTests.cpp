@@ -24,7 +24,10 @@ bool canonicalBytesMatch(const SceneDocument& doc, const fs::path& path) {
     auto binPath = path;
     binPath.replace_extension(".bin");
     const auto jsonBytes = lmx::readWholeFile(path);
-    const auto binBytes = lmx::readWholeFile(binPath);
+    // A document without animations has no companion; a missing file is the empty buffer.
+    using Bytes = decltype(lmx::readWholeFile(binPath));
+    const auto binBytes =
+        fs::exists(binPath) ? lmx::readWholeFile(binPath) : Bytes(std::vector<std::byte>{});
     if (!jsonBytes || !binBytes)
         return false;
     const std::string json(reinterpret_cast<const char*>(jsonBytes->data()), jsonBytes->size());
@@ -88,9 +91,7 @@ TEST_CASE("every catalog scene document equals its canonical rewrite",
         }
     }
     std::sort(paths.begin(), paths.end());
-    if (paths.empty())
-        SKIP("Catalog has no .scene.gltf documents before export; canonical catalog gate did "
-             "not run.");
+    REQUIRE(paths.size() == 6);
 
     for (const auto& path : paths) {
         INFO(path.string());

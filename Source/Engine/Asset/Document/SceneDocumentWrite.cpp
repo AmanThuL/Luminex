@@ -5,9 +5,11 @@
 
 #include "Engine/Asset/Document/SceneDocument.h"
 
+#include "Core/IO/File.h"
 #include "Core/IO/JsonWriter.h"
 #include "Engine/Asset/Document/DocumentUri.h"
 #include "Engine/Asset/Document/SceneDocumentSaveInternal.h"
+#include "Engine/Asset/Model/JsonTokens.h"
 
 #include <algorithm>
 #include <atomic>
@@ -418,6 +420,34 @@ AssetResult<void> writableTarget(const std::filesystem::path& path) {
 }
 
 //======================================================================================================================
+// An existing companion may be replaced only when the existing target document names it; a stray
+// file beside a new Save As destination is somebody else's data.
+AssetResult<void> ownedCompanion(const std::filesystem::path& path,
+                                 const std::filesystem::path& binPath) {
+    std::error_code ec;
+    if (!std::filesystem::exists(binPath, ec) && !ec)
+        return {};
+    // Only the buffer URI matters; an existing document with a damaged companion may still be
+    // replaced by its own save.
+    if (const auto bytes = readWholeFile(path)) {
+        const auto json = JsonTokens::parse(
+            std::string(reinterpret_cast<const char*>(bytes->data()), bytes->size()));
+        const auto buffers = json ? json->root().find("buffers") : std::nullopt;
+        if (buffers && buffers->isArray() && buffers->size() == 1) {
+            const auto uri = buffers->at(0).find("uri");
+            const auto text = uri ? uri->asString() : std::expected<std::string, std::string>();
+            const auto decoded = text ? detail::decodeDocumentUri(*text, "")
+                                      : AssetResult<std::string>(std::unexpected(AssetError{}));
+            if (decoded &&
+                std::filesystem::equivalent(path.parent_path() / *decoded, binPath, ec) && !ec)
+                return {};
+        }
+    }
+    return std::unexpected(ioError(binPath, "companion file exists and is not referenced by the "
+                                            "target document; refusing to overwrite it"));
+}
+
+//======================================================================================================================
 AssetResult<void> writeBytes(const std::filesystem::path& path, const void* data, size_t size) {
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
     if (!file)
@@ -523,6 +553,11 @@ std::string sceneDocumentJson(const SceneDocument& doc, std::string_view bufferU
 }
 
 //======================================================================================================================
+AssetResult<void> validateSceneDocumentModel(const SceneDocument& doc) {
+    return finiteModel(doc);
+}
+
+//======================================================================================================================
 std::vector<std::byte> sceneDocumentBuffer(const SceneDocument& doc) {
     std::vector<std::byte> bytes;
     const auto append = [&](float value) {
@@ -552,7 +587,15 @@ AssetResult<void> detail::saveSceneDocumentWithRename(const SceneDocument& doc,
         return std::unexpected(ioError(path, "scene document must use the .gltf extension"));
     auto binPath = path;
     binPath.replace_extension(".bin");
-    for (const auto& target : {path, binPath})
+    const auto bin = sceneDocumentBuffer(doc);
+    // A document without animations has no buffer and writes no companion file.
+    std::vector<std::filesystem::path> targets{path};
+    if (!bin.empty()) {
+        if (auto owned = ownedCompanion(path, binPath); !owned)
+            return owned;
+        targets.push_back(binPath);
+    }
+    for (const auto& target : targets)
         if (auto writable = writableTarget(target); !writable)
             return writable;
     const auto parent = path.has_parent_path() ? path.parent_path() : std::filesystem::path(".");
@@ -576,9 +619,8 @@ AssetResult<void> detail::saveSceneDocumentWithRename(const SceneDocument& doc,
         std::filesystem::remove_all(staging, ignored);
     };
     const auto json = sceneDocumentJson(doc, binPath.filename().string());
-    const auto bin = sceneDocumentBuffer(doc);
     auto written = writeBytes(staging / path.filename(), json.data(), json.size());
-    if (written)
+    if (written && !bin.empty())
         written = writeBytes(staging / binPath.filename(), bin.data(), bin.size());
     if (!written) {
         cleanup();
@@ -589,9 +631,8 @@ AssetResult<void> detail::saveSceneDocumentWithRename(const SceneDocument& doc,
         cleanup();
         return std::unexpected(checked.error());
     }
-    const std::array<std::filesystem::path, 2> targets{path, binPath};
-    std::array<bool, 2> backedUp{};
-    std::array<bool, 2> installed{};
+    std::vector<bool> backedUp(targets.size());
+    std::vector<bool> installed(targets.size());
     const auto rollback = [&](AssetError error) -> AssetResult<void> {
         bool restored = true;
         for (size_t i = 0; i < targets.size(); ++i) {
