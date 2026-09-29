@@ -34,8 +34,9 @@ assumption for the owner to confirm.
 - There is no light theme, no system-appearance handling and no theme preference in workspace
   schema 4. The pinned ImGui (1.93.0 WIP, 63 `ImGuiCol_` slots, dynamic fonts) and SDL 3.4.12
   (`SDL_GetSystemTheme`, `SDL_EVENT_SYSTEM_THEME_CHANGED`) already provide what themes need.
-- Inter Regular 16 with tabular digits and Codicons 16 are the only type. The UI renders to a
-  `BGRA8Unorm` drawable and blends in gamma space, so sRGB tokens reach the display unchanged.
+- Inter Regular 16 with a forced 9 pt digit advance and Codicons 16 are the only type. The UI
+  renders to a `BGRA8Unorm` drawable and blends in gamma space, so sRGB tokens reach the display
+  unchanged.
 - The Figma baseline holds 55 screens, 348 components and 328 variables in three collections
   (`Luminex · Source values`, `Luminex · UI colors`, `Luminex · Metrics`), each with one mode.
 
@@ -47,6 +48,7 @@ assumption for the owner to confirm.
 | Design language | Working name **Facet**, after the provisional FACET mark: one neutral graphite surface family, blue for the operator, violet for agents, three status hues. The name is provisional with the icon |
 | Appearance | View > Appearance: **Auto (system)**, **Light**, **Dark**; Auto is the default and follows macOS live. Persisted in workspace schema 5 with a `--appearance` CLI override for windowed and gallery runs |
 | Density | View > Density: **Comfortable** (today's metrics) and **Compact**; persisted in schema 5 |
+| Typeface | **Geist Sans** for the interface and **Geist Mono** for data replace Inter, one pair in both themes (owner decision 2026-09-30). Both are OFL 1.1 from the `vercel/geist-font` v1.7.2 release, staged and hash-pinned by setup as Inter is today |
 | Cost rule | Colour, borders and small rounding only. No blur, drop shadows, gradients as layers or ImGui branch merges; rounding at most 6 pt on ordinary surfaces |
 | Collaboration vocabulary | Actors (operator, system, agent), provenance marks, an activity strip and proposal/attention components are part of the system. Operator and system consumers ship in UX4; agent consumers are reserved until an agent session milestone exists |
 | Evidence | Contrast is a unit test over the token tables, not a manual check; a Style Gallery window renders every component in every state so both themes are captured and compared against Figma |
@@ -143,11 +145,18 @@ and debug secondary, info primary, warning and error status hues).
 
 ## Type, shape, space, motion and icons
 
-- **Type ramp:** three sizes and two weights of Inter, never animated: caption 13 Regular
-  (timestamps, diagnostics, chip labels, legend notes), body 16 Regular (unchanged, tabular
-  digits kept), body 16 **Medium** (subject and topic headers, selected tab, dialog actions) and
-  display 20 Medium (dialog titles only). Inter Medium is a second static face staged from the
-  pinned Inter 4.1 archive; Codicons stay merged at 16 px and tint through text tokens.
+- **Type ramp:** Geist Sans at three sizes and two weights, never animated: caption 13 Regular
+  (chip labels, legend notes, secondary captions), body 16 Regular (every control and reading),
+  body 16 **Medium** (subject and topic headers, selected tab, dialog actions) and display 20
+  Medium (dialog titles only); Geist Mono 13 and 16 for timestamps, hashes, paths, Performance
+  tables, graph costs, Diagnostics identifiers, legend ranges and evidence lines, so evidence reads
+  as evidence. A theme changes colour, never metrics: both themes share the pair. Geist Sans
+  figures are proportional by default and ImGui applies no OpenType features, so the merged digit
+  range keeps its forced advance, now 0.6 em (9.6 pt at 16 px, from 9 pt): the measured width of
+  Geist's own tabular figures and of every Geist Mono glyph, so numerals align across both faces.
+  Static instances ship in the release (`Geist/ttf`, `GeistMono/ttf`); the archive's SHA-256 is
+  `7fc800d2ac6b92844895196e5041aca55d814c15db70c44f79b3b83ab82b04e2`. Codicons stay merged at
+  16 px and tint through text tokens.
 - **Shape:** `radius/control` 3 (buttons, inputs, checkboxes, tab tops), `radius/popup` 4 (menus,
   popups, tooltips, notices), `radius/card` 6 (graph cards, legend chip), `radius/pill` 10 for
   chips no taller than 20 pt, 0 for windows and dock surfaces. Every frame, popup, child and
@@ -215,14 +224,16 @@ retints the editor and its detached windows without relaunch, recorded as a manu
 
 ## UX4.2 — Shape, type and density
 
-**Deliver:** rounding, border and spacing tokens; Inter Medium staged by setup; the type ramp;
-density presets; neutral default buttons with accent primaries; tab, frame, header, table and
+**Deliver:** rounding, border and spacing tokens; Geist Sans Regular and Medium and Geist Mono
+Regular staged by setup with licence and provenance, Inter retired; the type ramp and the 0.6 em
+digit advance; density presets; neutral default buttons with accent primaries; tab, frame, header, table and
 scrollbar restyle; graph card, link, plot and overlay tokens; restyled notice and legend chip.
 
 **Exit gate:** the [completion gate](../../roadmap/editor-experience.md#completion-gate) tasks pass
 in both themes at both window sizes; `MetricsRenderIndices` on the default Sponza layout stays
 within 15% of the parent in both themes and both densities, recorded from the same frame; no
-panel stacks labels at the default width.
+panel stacks labels at the default width; gallery captures at 13, 16 and 20 px show no digit
+ink overlap at the forced advance on 1× and 2× displays.
 
 ## UX4.3 — Actors, provenance and activity
 
@@ -258,8 +269,10 @@ system when they are designed, not before.
   to 2 or 0 on dense rows before any other change.
 - **Derived colours.** ImGui derives several slots (tabs, docking preview) in `StyleColorsDark`;
   UX4 sets all 63 explicitly so no derivation runs on a theme table.
-- **Fonts.** If the pinned Inter archive carries no static Medium face, setup instances one from
-  the variable font at fetch time and pins its hash; the design does not depend on synthetic bold.
+- **Fonts.** Geist's x-height is 0.53 em against Inter's 0.546, so 16 px reads a touch smaller;
+  the gallery captures decide whether body stays 16 or moves to 17 before UX4.2 closes. Geist Mono
+  at 0.6 em is wider than the sans, so mono columns budget width in the Console and Performance
+  layouts; nothing depends on synthetic bold or on OpenType features ImGui cannot apply.
 - **Figma plan limits.** The baseline file's plan allows one mode per collection and its MCP
   quota is spent, so themes are two collections and pages are authored through the local
   development plugin with a retheme script; a plan upgrade removes both constraints.
@@ -276,7 +289,8 @@ and provenance, appearance, cost rules and the ImGui mapping), `04 · UX4 Compon
 each with `Theme=Dark|Light` variants and its state axis, plus the Appearance and Density menu)
 and `05 · UX4 Screens` (the default workspace in dark and light, the collaboration scenario with
 a pending proposal, activity strip, attention ring and agent Console row in dark and light, and
-the Style Gallery). Variables sit in `UX4 · Primitives`, `UX4 · Color (Dark)`, `UX4 · Color (Light)` and
-`UX4 · Metrics`, one mode each. The baseline pages stay untouched for comparison. The owner's local
+the Style Gallery), all set in Geist Sans and Geist Mono. Variables sit in `UX4 · Primitives`,
+`UX4 · Color (Dark)`, `UX4 · Color (Light)` and `UX4 · Metrics`, one mode each; text styles are
+`UX4/13/Regular`, `UX4/16/Regular`, `UX4/16/Medium`, `UX4/20/Medium`, `UX4/13/Mono` and `UX4/16/Mono`. The baseline pages stay untouched for comparison. The owner's local
 `Luminex-Identity/ux4-design` workspace holds the token generator, the plugin phases, their
 reports and PNG exports; nothing durable depends on it once UX4.1 moves the generator into `Tools/`.

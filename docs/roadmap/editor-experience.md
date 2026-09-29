@@ -206,8 +206,8 @@ ImGui within a measured budget.
 **Deliver:** semantic token tables for both themes covering every ImGui and node-editor colour,
 the clear colour and every editor colour, with View > Appearance (Auto follows macOS live),
 per-window native appearance, a colour crossfade, workspace schema 5 and contrast unit tests
-(UX4.1); rounding, border, spacing and type tokens with a second Inter weight, Comfortable and
-Compact density, neutral default buttons with accent primaries, and themed graph, plot, overlay,
+(UX4.1); rounding, border, spacing and type tokens with Geist Sans and Geist Mono replacing Inter,
+Comfortable and Compact density, neutral default buttons with accent primaries, and themed graph, plot, overlay,
 notice and legend surfaces (UX4.2); actor and provenance marks for dirty, generated, CLI-masked
 and controller-applied state, an activity strip for measurement, capture, loading and controller
 changes, and the reserved agent vocabulary as tokens, Figma components and gallery renderings only
