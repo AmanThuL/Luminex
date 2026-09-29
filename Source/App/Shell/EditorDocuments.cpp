@@ -193,14 +193,15 @@ bool EditorShell::executeDocumentWork(const PendingDocumentWork& work) {
 void EditorShell::startDocumentDialog() {
     if (!m_documentDialog->begin())
         return;
-    auto* retained =
-        new DocumentDialogRequest{m_documentDialog, m_session.loadedScene()->path.string()};
+    auto* retained = new DocumentDialogRequest{
+        m_documentDialog, m_session.loadedScene()->path.parent_path().string()};
     if (m_documentWorkflow.action() == DocumentAction::SaveAs)
         SDL_ShowSaveFileDialog(documentPathCallback, retained, m_window, kDocumentFilters, 1,
-                               retained->location.c_str());
+                               (retained->location.empty() ? nullptr : retained->location.c_str()));
     else
         SDL_ShowOpenFileDialog(documentPathCallback, retained, m_window, kDocumentFilters, 1,
-                               retained->location.c_str(), false);
+                               (retained->location.empty() ? nullptr : retained->location.c_str()),
+                               false);
 }
 
 //======================================================================================================================
