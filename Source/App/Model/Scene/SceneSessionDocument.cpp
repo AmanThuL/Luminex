@@ -6,6 +6,9 @@
 #include "App/Model/Scene/SceneSession.h"
 
 #include "Core/Math/Aabb.h"
+#include "Engine/Asset/Document/Orientation.h"
+
+#include "Core/Diagnostics/Assert.h"
 
 #include <cmath>
 
@@ -17,6 +20,10 @@ rojoRHI::Result<void> SceneSession::setSceneCamera() {
         return std::unexpected(
             rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
                            "Saved camera requires a document and no active measurement"});
+    // The document decodes yaw in [-pi, pi]; wrap the live camera with the same value so the view
+    // is unchanged and the request stays saveable.
+    if (std::isfinite(m_camera.yaw))
+        m_camera.yaw = asset::unwrapYaw(0.0f, m_camera.yaw);
     const auto& camera = m_camera;
     if (!isFinite(camera.position) || !std::isfinite(camera.yaw) || !std::isfinite(camera.pitch) ||
         !std::isfinite(camera.fovY) || camera.fovY <= 0 || camera.fovY >= glm::pi<float>() ||
@@ -34,5 +41,12 @@ rojoRHI::Result<void> SceneSession::setSceneCamera() {
                                 camera.fovY,     camera.nearZ, camera.farZ};
     notifyPersistentEdit();
     return {};
+}
+
+//======================================================================================================================
+void SceneSession::adoptDocumentCamera(const engine::SceneCamera& camera) {
+    LMX_ASSERT(m_loaded, "saved camera adoption requires a loaded document");
+    if (auto& saved = m_documentStates.at(m_scene).sceneCamera)
+        saved = camera;
 }
 } // namespace lmx::app

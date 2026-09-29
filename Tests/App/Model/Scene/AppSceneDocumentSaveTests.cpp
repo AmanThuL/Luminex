@@ -97,6 +97,90 @@ TEST_CASE("explicit saved camera changes generation without ordinary view persis
 }
 
 //======================================================================================================================
+TEST_CASE("a saved camera yaw beyond a half turn wraps, saves and stays clean",
+          "[app][document-save]") {
+    FakeDevice device;
+    scenes::SceneLibrary library(device);
+    const auto path = savePath("yaw-wrap");
+    auto id = scenes::sceneIdFromPath(path);
+    REQUIRE(library.get(id));
+    app::SceneSession session;
+    session.activate(*library.loaded(id), app::SceneActivationMotion::Reset);
+    session.camera().yaw = 10.0f;
+    session.camera().pitch = 0.25f;
+    REQUIRE(session.setSceneCamera());
+    CHECK(session.camera().yaw == asset::unwrapYaw(0.0f, 10.0f));
+    REQUIRE(dirty(session));
+    REQUIRE(app::saveSessionDocument(library, session, id, path, false));
+    CHECK_FALSE(dirty(session));
+    CHECK(session.scene().initialCamera.yaw == session.camera().yaw);
+    CHECK(session.scene().initialCamera.pitch == 0.25f);
+}
+
+//======================================================================================================================
+TEST_CASE("steep orientations without an exact quaternion save, reload and stay clean",
+          "[app][document-save]") {
+    std::optional<std::pair<float, float>> steepCamera;
+    for (int i = 0; i < 140 && !steepCamera; ++i)
+        for (int j = 0; j < 20 && !steepCamera; ++j) {
+            const float yaw = 0.37f + 0.05f * static_cast<float>(j);
+            const float pitch = 1.5f + 0.0005f * static_cast<float>(i);
+            if (!asset::exactRotationForCamera(yaw, pitch, 0))
+                steepCamera = {yaw, pitch};
+        }
+    std::optional<glm::vec3> steepDirection;
+    for (int i = 1; i <= 128 && !steepDirection; ++i) {
+        const auto direction = glm::normalize(glm::vec3(i, i + 3, i + 7));
+        if (!asset::exactRotationForDirection(direction))
+            steepDirection = direction;
+    }
+    REQUIRE(steepCamera);
+    REQUIRE(steepDirection);
+    auto doc = saveFixture();
+    doc.lights.push_back({.name = "Spot",
+                          .type = asset::DocLightType::Spot,
+                          .intensity = 2,
+                          .range = 8,
+                          .innerCone = .1f,
+                          .outerCone = .5f});
+    doc.lights.push_back({.name = "Key", .colour = {.2, .3, .4}, .intensity = 3.7});
+    doc.nodes.push_back({.name = "Spot node", .translation = {1, 2, 3}, .light = 1});
+    doc.nodes.push_back({.name = "Key node", .light = 2, .role = "key"});
+    doc.rootNodes.insert(doc.rootNodes.end(), {3, 4});
+    FakeDevice device;
+    scenes::SceneLibrary library(device);
+    const auto path = savePath("steep", doc);
+    auto id = scenes::sceneIdFromPath(path);
+    REQUIRE(library.get(id));
+    app::SceneSession session;
+    session.activate(*library.loaded(id), app::SceneActivationMotion::Reset);
+    auto* loaded = session.loadedScene();
+    session.camera().yaw = steepCamera->first;
+    session.camera().pitch = steepCamera->second;
+    REQUIRE(session.setSceneCamera());
+    const auto spot = *loaded->binding.nodes[3].light;
+    auto light = *session.scene().light(spot);
+    light.direction = *steepDirection;
+    REQUIRE(session.scene().updateLight(spot, light));
+    const auto key = *loaded->binding.nodes[4].directional;
+    session.scene().lights[key].direction = *steepDirection;
+    REQUIRE(dirty(session));
+    REQUIRE(app::saveSessionDocument(library, session, id, path, false));
+    CHECK_FALSE(dirty(session));
+    const auto reloaded = asset::readSceneDocument(path);
+    REQUIRE(reloaded);
+    CHECK_FALSE(scenes::documentDirty(loaded->document, *reloaded));
+    CHECK(glm::dot(session.scene().light(spot)->direction, *steepDirection) > 1.0f - 1e-6f);
+    CHECK(glm::dot(session.scene().lights[key].direction, *steepDirection) > 1.0f - 1e-6f);
+    CHECK(session.scene().light(spot)->direction ==
+          asset::directionForRotation(reloaded->nodes[3].rotation));
+    const auto& camera = session.scene().initialCamera;
+    CHECK(camera.pitch == session.documentState().sceneCamera->pitch);
+    CHECK(camera.yaw == session.documentState().sceneCamera->yaw);
+    CHECK(camera.pitch == Catch::Approx(steepCamera->second).margin(1e-3f));
+}
+
+//======================================================================================================================
 TEST_CASE("Save and Save As adopt one snapshot while preserving live identity and own state",
           "[app][document-save]") {
     FakeDevice device;

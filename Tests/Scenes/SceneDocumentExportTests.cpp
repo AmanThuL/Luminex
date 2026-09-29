@@ -517,8 +517,7 @@ TEST_CASE("shared light definitions split only for a changed bound node", "[scen
 }
 
 //======================================================================================================================
-TEST_CASE("orientation export failure is explicit and never substitutes a nearby rotation",
-          "[scene-export]") {
+TEST_CASE("nonfinite or non-unit orientation export fails explicitly", "[scene-export]") {
     FakeDevice device;
     const auto root = fixtureRoot();
     auto loaded = loadFixture(device, root, exportFixture(root));
@@ -535,20 +534,9 @@ TEST_CASE("orientation export failure is explicit and never substitutes a nearby
         REQUIRE(loaded.scene->updateLight(id, light));
         expected = "/nodes/4/rotation";
     }
-    SECTION("finite normalized direction outside the exact search") {
-        std::optional<glm::vec3> unmatched;
-        for (int i = 1; i <= 128 && !unmatched; ++i) {
-            const auto direction = glm::normalize(glm::vec3(i, i + 3, i + 7));
-            if (!asset::exactRotationForDirection(direction))
-                unmatched = direction;
-        }
-        REQUIRE(unmatched);
-        loaded.scene->lights[0].direction = *unmatched;
-        expected = "/nodes/6/rotation";
-    }
     SECTION("camera") {
         state.sceneCamera = loaded.scene->initialCamera;
-        state.sceneCamera->yaw = 10.0f;
+        state.sceneCamera->yaw = std::numeric_limits<float>::quiet_NaN();
         expected = "/nodes/0/rotation";
     }
     const auto before = asset::sceneDocumentJson(loaded.document, "unchanged.bin");
@@ -558,6 +546,81 @@ TEST_CASE("orientation export failure is explicit and never substitutes a nearby
     CHECK(result.error().message.find(expected) != std::string::npos);
     CHECK(result.error().message.find("exact") != std::string::npos);
     CHECK(asset::sceneDocumentJson(loaded.document, "unchanged.bin") == before);
+}
+
+namespace {
+//======================================================================================================================
+std::optional<glm::vec3> directionWithoutExactQuaternion() {
+    for (int i = 1; i <= 128; ++i) {
+        const auto direction = glm::normalize(glm::vec3(i, i + 3, i + 7));
+        if (!asset::exactRotationForDirection(direction))
+            return direction;
+    }
+    return std::nullopt;
+}
+} // namespace
+
+//======================================================================================================================
+TEST_CASE("directions without an exact quaternion save the nearest one and are reported",
+          "[scene-export]") {
+    FakeDevice device;
+    const auto root = fixtureRoot();
+    auto loaded = loadFixture(device, root, exportFixture(root));
+    const auto state = scenes::initialDocumentState(loaded);
+    const auto direction = directionWithoutExactQuaternion();
+    REQUIRE(direction);
+    loaded.scene->lights[0].direction = *direction;
+    const auto id = *loaded.binding.nodes[4].light;
+    auto light = *loaded.scene->light(id);
+    light.direction = *direction;
+    REQUIRE(loaded.scene->updateLight(id, light));
+    scenes::ExportReport report;
+    const auto result = scenes::exportSceneDocument(loaded, *loaded.scene, state, &report);
+    INFO((result ? "ok" : result.error().message));
+    REQUIRE(result);
+    REQUIRE(report.approximations.size() == 2);
+    CHECK(report.approximations[0].node == 4);
+    CHECK(report.approximations[1].node == 6);
+    for (const uint32_t node : {4u, 6u})
+        CHECK(glm::dot(asset::directionForRotation(result->nodes[node].rotation), *direction) >
+              1.0f - 1e-6f);
+    const auto path = root / "nearest.scene.gltf";
+    REQUIRE(asset::saveSceneDocument(*result, path));
+    const auto read = asset::readSceneDocument(path);
+    REQUIRE(read);
+    CHECK_FALSE(scenes::documentDirty(*result, *read));
+    CHECK(scenes::exportSceneDocument(loaded, *loaded.scene, state)); // No report requested.
+}
+
+//======================================================================================================================
+TEST_CASE("a saved camera yaw beyond a half turn wraps and stays exportable", "[scene-export]") {
+    FakeDevice device;
+    const auto root = fixtureRoot();
+    auto loaded = loadFixture(device, root, exportFixture(root));
+    auto state = scenes::initialDocumentState(loaded);
+    state.sceneCamera = loaded.scene->initialCamera;
+    state.sceneCamera->yaw = 10.0f;
+    state.sceneCamera->pitch = 0.25f;
+    const auto result = scenes::exportSceneDocument(loaded, *loaded.scene, state);
+    INFO((result ? "ok" : result.error().message));
+    REQUIRE(result);
+    const auto angles = asset::cameraAnglesForRotation(result->nodes[0].rotation, 0);
+    CHECK(angles.x == asset::unwrapYaw(0.0f, 10.0f));
+    CHECK(angles.y == 0.25f);
+}
+
+//======================================================================================================================
+TEST_CASE("nonfinite look values fail export instead of aborting the dirty comparison",
+          "[scene-export]") {
+    FakeDevice device;
+    const auto root = fixtureRoot();
+    auto loaded = loadFixture(device, root, exportFixture(root));
+    const auto state = scenes::initialDocumentState(loaded);
+    loaded.scene->look.bloom.intensity = std::numeric_limits<float>::infinity();
+    const auto result = scenes::exportSceneDocument(loaded, *loaded.scene, state);
+    REQUIRE_FALSE(result);
+    CHECK(result.error().code == asset::AssetErrorCode::Malformed);
+    CHECK(result.error().message.find("/extensions/LMX_scene/look") != std::string::npos);
 }
 
 //======================================================================================================================

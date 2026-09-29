@@ -6,6 +6,7 @@
 #include "App/Model/Scene/SceneDocumentSave.h"
 
 #include "Core/Diagnostics/Assert.h"
+#include "Core/Diagnostics/Log.h"
 #include "Engine/Asset/Document/Orientation.h"
 #include "Scenes/SceneDocumentExport.h"
 
@@ -48,9 +49,15 @@ asset::AssetResult<void> saveSessionDocument(scenes::SceneLibrary& library, Scen
         return std::unexpected(asset::AssetError{asset::AssetErrorCode::Io,
                                                  "Save As requires a different document and "
                                                  "companion path; use Save for the active file."});
-    auto exported = scenes::exportSceneDocument(*loaded, session.scene(), session.documentState());
+    scenes::ExportReport report;
+    auto exported =
+        scenes::exportSceneDocument(*loaded, session.scene(), session.documentState(), &report);
     if (!exported)
         return std::unexpected(exported.error());
+    for (const auto& approximation : report.approximations)
+        LMX_LOG_INFO("save: the {} at /nodes/{}/rotation has no exact glTF quaternion; saved the "
+                     "nearest one",
+                     approximation.what, approximation.node);
     auto written = io.write ? io.write(*exported, path) : asset::saveSceneDocument(*exported, path);
     if (!written)
         return std::unexpected(written.error());
@@ -79,6 +86,24 @@ asset::AssetResult<void> saveSessionDocument(scenes::SceneLibrary& library, Scen
                            [&](const engine::LoadedScene& old) { session.invalidate(*old.scene); });
     LMX_ASSERT(&saved == loaded, "save adoption must retain the live snapshot address");
     saved.scene->initialCamera = camera;
+    session.adoptDocumentCamera(camera);
+    // Approximated orientations become the live values the file decodes to, so the saved document
+    // is clean; exact ones already match.
+    for (const auto& approximation : report.approximations) {
+        const auto& binding = saved.binding.nodes.at(approximation.node);
+        const auto direction =
+            asset::directionForRotation(saved.document.nodes.at(approximation.node).rotation);
+        if (binding.directional) {
+            session.scene().lights[*binding.directional].direction = direction;
+        } else if (binding.light) {
+            const auto* live = session.scene().light(*binding.light);
+            LMX_ASSERT(live, "an approximated bound light must retain its live identity");
+            auto light = *live;
+            light.direction = direction;
+            const auto updated = session.scene().updateLight(*binding.light, light);
+            LMX_ASSERT(updated.has_value(), "a decoded spot direction must remain valid");
+        }
+    }
     session.adoptDocumentResetBaseline();
     activeId = destination;
     return {};

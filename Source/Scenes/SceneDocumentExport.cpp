@@ -9,6 +9,8 @@
 #include "Core/Math/Aabb.h"
 #include "Engine/Asset/Document/Orientation.h"
 
+#include <glm/gtc/constants.hpp>
+
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -39,17 +41,27 @@ asset::ObjectPose objectPose(const engine::SceneObject& object) {
 }
 
 //======================================================================================================================
-asset::AssetResult<void> replaceRotation(asset::DocNode& node, glm::vec3 direction,
-                                         uint32_t index) {
+void note(ExportReport* report, uint32_t node, std::string what) {
+    if (report)
+        report->approximations.push_back({node, std::move(what)});
+}
+
+//======================================================================================================================
+asset::AssetResult<void> replaceRotation(asset::DocNode& node, glm::vec3 direction, uint32_t index,
+                                         std::string_view what, ExportReport* report) {
     if (same(asset::directionForRotation(node.rotation), direction))
         return {};
-    const auto rotation = asset::exactRotationForDirection(direction);
-    if (!rotation)
+    if (const auto exact = asset::exactRotationForDirection(direction)) {
+        node.rotation = *exact;
+        return {};
+    }
+    if (!isFinite(direction) || std::abs(glm::dot(direction, direction) - 1.0f) > 1e-5f)
         return std::unexpected(asset::AssetError{
             asset::AssetErrorCode::Unsupported,
             "/nodes/" + std::to_string(index) +
-                "/rotation: light direction has no exact glTF quaternion conversion"});
-    node.rotation = *rotation;
+                "/rotation: light direction must be a finite unit vector to convert exactly"});
+    node.rotation = asset::rotationForDirection(direction);
+    note(report, index, std::string(what));
     return {};
 }
 
@@ -109,8 +121,11 @@ asset::AssetResult<void> exportImported(asset::SceneDocument& doc,
 
 //======================================================================================================================
 asset::AssetResult<bool> exportDirectional(asset::DocNode& node, asset::DocLight& saved,
-                                           const engine::DirectionalLight& light, uint32_t index) {
-    if (auto rotation = replaceRotation(node, light.direction, index); !rotation)
+                                           const engine::DirectionalLight& light, uint32_t index,
+                                           ExportReport* report) {
+    if (auto rotation =
+            replaceRotation(node, light.direction, index, "directional light direction", report);
+        !rotation)
         return std::unexpected(rotation.error());
     if (same(asset::decodeStrength({saved.colour, saved.intensity}), light.strength))
         return false;
@@ -127,10 +142,13 @@ asset::AssetResult<bool> exportDirectional(asset::DocNode& node, asset::DocLight
 
 //======================================================================================================================
 asset::AssetResult<bool> exportLocal(asset::DocNode& node, asset::DocLight& saved,
-                                     const engine::LocalLight& light, uint32_t index) {
+                                     const engine::LocalLight& light, uint32_t index,
+                                     ExportReport* report) {
     node.translation = light.position;
     if (light.type == engine::LocalLightType::Spot)
-        if (auto rotation = replaceRotation(node, light.direction, index); !rotation)
+        if (auto rotation =
+                replaceRotation(node, light.direction, index, "spot light direction", report);
+            !rotation)
             return std::unexpected(rotation.error());
     bool changed = false;
     const auto type = light.type == engine::LocalLightType::Spot ? asset::DocLightType::Spot
@@ -168,7 +186,7 @@ asset::AssetResult<bool> exportLocal(asset::DocNode& node, asset::DocLight& save
 //======================================================================================================================
 asset::AssetResult<void> exportLights(asset::SceneDocument& doc,
                                       const engine::SceneBinding& binding,
-                                      const engine::Scene& scene) {
+                                      const engine::Scene& scene, ExportReport* report) {
     std::vector<size_t> references(doc.lights.size());
     for (const auto& node : doc.nodes)
         if (node.light)
@@ -182,11 +200,11 @@ asset::AssetResult<void> exportLights(asset::SceneDocument& doc,
         auto light = doc.lights.at(*node.light);
         asset::AssetResult<bool> changed;
         if (bound.directional) {
-            changed = exportDirectional(node, light, scene.lights[*bound.directional], n);
+            changed = exportDirectional(node, light, scene.lights[*bound.directional], n, report);
         } else {
             const auto* live = scene.light(*bound.light);
             LMX_ASSERT(live, "bound local light must retain its live identity");
-            changed = exportLocal(node, light, *live, n);
+            changed = exportLocal(node, light, *live, n, report);
         }
         if (!changed)
             return std::unexpected(changed.error());
@@ -203,19 +221,27 @@ asset::AssetResult<void> exportLights(asset::SceneDocument& doc,
 }
 
 //======================================================================================================================
-asset::AssetResult<void> exportCamera(asset::SceneDocument& doc,
-                                      const engine::SceneCamera& camera) {
+asset::AssetResult<void> exportCamera(asset::SceneDocument& doc, const engine::SceneCamera& camera,
+                                      ExportReport* report) {
     auto& node = doc.nodes.at(doc.camera);
     LMX_ASSERT(node.camera, "saved scene camera must reference a lens");
     const auto angles = asset::cameraAnglesForRotation(node.rotation, 0);
-    if (!same(angles.x, camera.yaw) || !same(angles.y, camera.pitch)) {
-        const auto rotation = asset::exactRotationForCamera(camera.yaw, camera.pitch, 0);
-        if (!rotation)
-            return std::unexpected(asset::AssetError{
-                asset::AssetErrorCode::Unsupported,
-                "/nodes/" + std::to_string(doc.camera) +
-                    "/rotation: saved camera has no exact glTF quaternion conversion"});
-        node.rotation = *rotation;
+    // The document decodes yaw in [-pi, pi], so any full-turn offset is dropped before matching.
+    if (!std::isfinite(camera.yaw) || !std::isfinite(camera.pitch) ||
+        std::abs(camera.pitch) > glm::half_pi<float>())
+        return std::unexpected(asset::AssetError{
+            asset::AssetErrorCode::Unsupported,
+            "/nodes/" + std::to_string(doc.camera) +
+                "/rotation: saved camera yaw and pitch must be finite with |pitch| <= pi/2 to "
+                "convert exactly"});
+    const float yaw = asset::unwrapYaw(0.0f, camera.yaw);
+    if (!same(angles.x, yaw) || !same(angles.y, camera.pitch)) {
+        if (const auto exact = asset::exactRotationForCamera(yaw, camera.pitch, 0)) {
+            node.rotation = *exact;
+        } else {
+            node.rotation = asset::rotationForCamera(yaw, camera.pitch);
+            note(report, doc.camera, "scene camera");
+        }
     }
     node.translation = camera.position;
     auto lens = doc.cameras.at(*node.camera);
@@ -242,7 +268,8 @@ asset::AssetResult<void> exportCamera(asset::SceneDocument& doc,
 //======================================================================================================================
 asset::AssetResult<asset::SceneDocument> exportSceneDocument(const engine::LoadedScene& loaded,
                                                              const engine::Scene& scene,
-                                                             const SessionDocumentState& state) {
+                                                             const SessionDocumentState& state,
+                                                             ExportReport* report) {
     LMX_ASSERT(loaded.scene.get() == &scene, "export scene must belong to the loaded snapshot");
     auto doc = loaded.document;
     LMX_ASSERT(state.nodeEnabled.size() == doc.nodes.size() &&
@@ -253,11 +280,14 @@ asset::AssetResult<asset::SceneDocument> exportSceneDocument(const engine::Loade
         doc.nodes[n].enabled = state.nodeEnabled[n];
     if (auto imported = exportImported(doc, loaded.binding, scene, state); !imported)
         return std::unexpected(imported.error());
-    if (auto lights = exportLights(doc, loaded.binding, scene); !lights)
+    if (auto lights = exportLights(doc, loaded.binding, scene, report); !lights)
         return std::unexpected(lights.error());
     if (state.sceneCamera)
-        if (auto camera = exportCamera(doc, *state.sceneCamera); !camera)
+        if (auto camera = exportCamera(doc, *state.sceneCamera, report); !camera)
             return std::unexpected(camera.error());
+    // Nonfinite look or lens values would abort canonical formatting; report them like the rest.
+    if (auto valid = asset::validateSceneDocumentModel(doc); !valid)
+        return std::unexpected(valid.error());
     return doc;
 }
 

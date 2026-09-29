@@ -110,7 +110,11 @@ public:
     /// Explicitly requests the current view as the saved rest camera. Ordinary view/playback
     /// changes never call this. Rejects missing documents, Measure and invalid lens/pose values;
     /// a changed request increments persistent generation. The owner requires stopped playback.
+    /// The requested yaw is wrapped into [-pi, pi], on the live camera too.
     rojoRHI::Result<void> setSceneCamera();
+    /// Replaces an explicitly saved camera with its value decoded from the saved document, so an
+    /// approximated orientation compares clean afterwards. No-op without a saved camera request.
+    void adoptDocumentCamera(const engine::SceneCamera& camera);
 
     /// The camera edited by the owner, including fly input and lens changes.
     engine::Camera& camera() { return m_camera; }
