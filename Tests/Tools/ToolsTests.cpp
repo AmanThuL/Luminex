@@ -32,3 +32,17 @@ TEST_CASE("Screenshot parity rounds Python tool tests pass", "[tools][parity-rou
                                 "/Tools/Screenshots/parity_rounds.py\" --selftest 2>&1";
     REQUIRE(std::system(command.c_str()) == 0);
 }
+
+//======================================================================================================================
+TEST_CASE("Screenshot parity Python tool tests pass", "[tools][parity]") {
+    const std::string command = std::string("python3 \"") + LMX_REPO_ROOT +
+                                "/Tools/Screenshots/parity.py\" --selftest 2>&1";
+    REQUIRE(std::system(command.c_str()) == 0);
+}
+
+//======================================================================================================================
+TEST_CASE("Screenshot comparison Python tool tests pass", "[tools][screenshot-compare]") {
+    const std::string command = std::string("python3 \"") + LMX_REPO_ROOT +
+                                "/Tools/Screenshots/compare.py\" --selftest 2>&1";
+    REQUIRE(std::system(command.c_str()) == 0);
+}

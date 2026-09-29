@@ -203,6 +203,15 @@ def run(app: Path, output: Path, reference_path: Path, documents: Path | None = 
     return report["allMatched"]
 
 
+def copy_scene_document(scene: str, destination: Path) -> None:
+    """Copy a catalog scene's glTF and, when it has one, its .bin companion."""
+    catalog = Path(__file__).resolve().parents[2] / "Assets/Scenes"
+    shutil.copyfile(catalog / f"{scene}.scene.gltf", destination / f"{scene}.scene.gltf")
+    buffer = catalog / f"{scene}.scene.bin"
+    if buffer.is_file():
+        shutil.copyfile(buffer, destination / buffer.name)
+
+
 class ParityTests(unittest.TestCase):
     def test_reference_and_exact_commands(self):
         reference = load_reference(Path(__file__).with_name("reference.json"))
@@ -221,9 +230,7 @@ class ParityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for scene in reference["documents"]:
-                for suffix in ("gltf", "bin"):
-                    source = Path(__file__).resolve().parents[2] / "Assets/Scenes" / f"{scene}.scene.{suffix}"
-                    shutil.copyfile(source, root / source.name)
+                copy_scene_document(scene, root)
             self.assertEqual(verify_documents(reference, root), reference["documents"])
             (root / "material-lab.scene.gltf").write_bytes(
                 (root / "material-lab.scene.gltf").read_bytes() + b" ")
@@ -274,9 +281,7 @@ class ParityTests(unittest.TestCase):
             catalog = checkout / "Assets/Scenes"
             catalog.mkdir(parents=True)
             for scene in reference["documents"]:
-                for suffix in ("gltf", "bin"):
-                    source = Path(__file__).resolve().parents[2] / "Assets/Scenes" / f"{scene}.scene.{suffix}"
-                    shutil.copyfile(source, catalog / source.name)
+                copy_scene_document(scene, catalog)
             nearer = app.parent / "Assets/Scenes"
             nearer.mkdir(parents=True)
             (nearer / "sponza.scene.gltf").write_bytes(b"{}")
@@ -287,10 +292,7 @@ class ParityTests(unittest.TestCase):
                 capture.assert_not_called()
             self.assertFalse(output.exists())
             # A valid nearer document is the runtime input, even if the root copy drifts.
-            source = Path(__file__).resolve().parents[2] / "Assets/Scenes/sponza.scene.gltf"
-            shutil.copyfile(source, nearer / source.name)
-            source = source.with_suffix(".bin")
-            shutil.copyfile(source, nearer / source.name)
+            copy_scene_document("sponza", nearer)
             (catalog / "sponza.scene.gltf").write_bytes(b"[]")
             self.assertEqual(verify_documents(reference, catalog, app), reference["documents"])
 
@@ -318,9 +320,7 @@ class ParityTests(unittest.TestCase):
             documents = root / "documents"
             documents.mkdir()
             for scene in reference["documents"]:
-                for suffix in ("gltf", "bin"):
-                    source = Path(__file__).resolve().parents[2] / "Assets/Scenes" / f"{scene}.scene.{suffix}"
-                    shutil.copyfile(source, documents / source.name)
+                copy_scene_document(scene, documents)
             for content in (b"[]", b'{"buffers":[1]}'):
                 with self.subTest(content=content):
                     (documents / "sponza.scene.gltf").write_bytes(content)
@@ -416,9 +416,7 @@ class ParityTests(unittest.TestCase):
             documents = root / "documents"
             documents.mkdir()
             for scene in ("sponza", "material-lab", "temporal-lab"):
-                for suffix in ("gltf", "bin"):
-                    source = Path(__file__).resolve().parents[2] / "Assets/Scenes" / f"{scene}.scene.{suffix}"
-                    shutil.copyfile(source, documents / source.name)
+                copy_scene_document(scene, documents)
             header = bytearray(26)
             header[:2] = b"BM"
             struct.pack_into("<ii", header, 18, 1280, 720)
