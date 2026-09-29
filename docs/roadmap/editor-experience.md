@@ -3,8 +3,9 @@
 **Status**: Accepted
 
 Part IV of the [rendering roadmap](../roadmap.md) owns editor usability and the presentation of
-rendering evidence: UX1 before M7.1, then [UX2](#ux2--editor-surfaces) and
-[UX3](#ux3--scene-documents-and-hierarchy) between R4 and N1. The [2026-09-14 audit](../research/2026-09-14-editor-uiux-audit.md) found that
+rendering evidence: UX1 before M7.1, then [UX2](#ux2--editor-surfaces),
+[UX3](#ux3--scene-documents-and-hierarchy) and [UX4](#ux4--design-system-and-themes) between R4
+and N1, with [UX5](#ux5--agent-session) proposed around it. The [2026-09-14 audit](../research/2026-09-14-editor-uiux-audit.md) found that
 the shipped controls expose substantial capability, but clipped data, ambiguous states and an
 unstable graph make that capability difficult to inspect. This part owns the accepted boundary; the milestone record distinguishes implementation
 from completed acceptance.
@@ -187,6 +188,78 @@ still pass on the new layout; capture manifests and measurement reports record t
 
 **Defer:** create, duplicate, delete and reparent; importing an asset into an open scene;
 persisting renderer configuration; an `.app` bundle; everything the UX1 deferrals above already name.
+
+## UX4 — Design system and themes
+
+**Placement:** [UX3](#ux3--scene-documents-and-hierarchy) → UX4 → N1. The owner asked for it on
+2026-09-29, before the learned-rendering lab, so N1's surfaces are designed once in the new system.
+The [proposed record](../milestones/ux/ux4.md) is a first draft awaiting the owner's revision; this
+section binds nothing until the owner accepts it.
+
+**Outcome:** the editor has one token-driven design system instead of ImGui's default dark style.
+An operator picks Auto, Light or Dark once and the whole editor, including its detached native
+windows, follows; both themes read at WCAG 2.2 AA contrast; the design language says who acted on
+a value (the operator, the editor's own automation, or a future agent), what is session-only and
+what is running, using the same marks on every surface; drawing stays as cheap as today's flat
+ImGui within a measured budget.
+
+**Deliver:** semantic token tables for both themes covering every ImGui and node-editor colour,
+the clear colour and every editor colour, with View > Appearance (Auto follows macOS live),
+per-window native appearance, a colour crossfade, workspace schema 5 and contrast unit tests
+(UX4.1); rounding, border, spacing and type tokens with Geist Sans and Geist Mono replacing Inter,
+Comfortable and Compact density, neutral default buttons with accent primaries, and themed graph, plot, overlay,
+notice and legend surfaces (UX4.2); actor and provenance marks for dirty, generated, CLI-masked
+and controller-applied state, an activity strip for measurement, capture, loading and controller
+changes, and the reserved agent vocabulary as tokens, Figma components and gallery renderings only
+(UX4.3); a Style Gallery window, retained gallery captures in both themes, documentation, an ADR
+for the theme and token contract, and whole-application acceptance (UX4.4); the macOS menu bar as
+native chrome from one platform-neutral menu model, the in-window row reduced to a toolbar for the
+transport, activity and zoom, and the ImGui menus kept for other platforms (UX4.5).
+
+**Exit gate:** contrast tests pass for every required pair in both themes; scene-only screenshots
+for the reference set are byte-identical to the parent; a theme switch rebuilds no font atlas and
+allocates no GPU resource; the [completion gate](#completion-gate) tasks pass in both themes at
+both window sizes; rendered index counts on the default Sponza layout stay within 15% of the
+parent in both themes and densities; schema 4 workspaces open with Auto and Comfortable; every
+existing state keeps its status text and gains a mark whose tooltip names its source; a macOS
+appearance change retints the editor without relaunch, recorded as a manual gesture; every command
+keeps its one named route with unchanged shortcuts and visible disabled reasons through the native
+menus, which the detached windows reach too; unverified gestures are recorded as unverified.
+
+**Defer:** renderer, capture, manifest, measurement and CLI changes beyond `--appearance`; an
+agent runtime, session log or command bridge ([UX5](#ux5--agent-session)); Windows chrome until a
+validated host exists; high-contrast variants; user theme editing; blur, shadows and glow; a new
+icon set; everything UX1–UX3 already defer.
+
+## UX5 — Agent session
+
+**Placement (proposed):** UX5.1 directly after UX4 and before N1, because it is small and gives
+UX4's reserved vocabulary real consumers; UX5.2 and UX5.3 after N1, whose studies would be the
+first work an agent runs from inside the editor. Proposed with the owner on 2026-09-30; no plan
+opens until the owner accepts the placement. Agents keep working as they do today, through
+documents, the CLI and pull requests; UX5 makes that work visible and reviewable in the editor
+without an agent runtime inside it.
+
+**Outcome:** an agent's change to a scene reaches the operator as a proposal with an actor, a
+summary and evidence links, reviewed before it applies; a live session issues the same commands
+the CLI offers, with attribution, permission tiers and plan-level approval; every agent action is
+logged and exportable with its evidence.
+
+**Deliver:** file-based proposals (UX5.1): an external change to the open document plus a sidecar
+naming the actor, summary and evidence paths appears as a proposal with Show (the changed nodes and
+fields), Accept (reload) and Reject, through UX4's proposal card, attention ring and Console actor
+row; a local command bridge (UX5.2): a socket carrying the CLI's commands and editor queries with
+actor attribution, tiers (read-only, propose, apply with approval), plan-level approval for
+multi-step jobs and the activity strip; session log and evidence export (UX5.3): the Console's
+actor filter and an exportable session record joining actions to their evidence.
+
+**Exit gate:** a proposal from a modified document lists exactly the fields the writer reports as
+changed, Accept yields the same scene as opening the file and Reject leaves the in-memory scene
+untouched; the bridge refuses any command outside its tier and records every action with its
+actor; the exported log reproduces the Console view; scene-only screenshots stay byte-identical.
+
+**Defer:** an in-process agent, autonomous apply without approval, Undo/Redo (deferred since UX1),
+multi-user sessions.
 
 ## Candidate — offline pipeline editing
 
