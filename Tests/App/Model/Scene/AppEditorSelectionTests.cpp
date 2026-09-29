@@ -28,8 +28,8 @@ engine::Scene sceneWithObjects(std::vector<std::string> objectNames) {
     return scene;
 }
 
-const scenes::SceneId kSceneA{0};
-const scenes::SceneId kSceneB{1};
+const scenes::SceneId kSceneA{"sponza"};
+const scenes::SceneId kSceneB{"material-lab"};
 constexpr size_t kRenderingCategoryCount = static_cast<size_t>(RenderingCategory::Count);
 template <typename T>
 constexpr bool hasRenderingSubject = requires { T::Rendering; };
@@ -236,8 +236,8 @@ TEST_CASE("rendering topics have stable category identities and independent labe
     const auto scene = sceneWithObjects({});
     const auto rows = buildSceneSelectionRows(scene, "rendering");
     constexpr std::array<std::string_view, kRenderingCategoryCount> labels{
-        "Rendering", "Reconstruction", "Resolution", "Visibility", "Occlusion", "Submission",
-        "Lighting",  "Exposure",       "Bloom",      "Shadows",    "Display",   "Scene tables"};
+        "Rendering",  "Reconstruction", "Resolution", "Visibility",  "Occlusion",
+        "Submission", "Lighting",       "Display",    "Scene tables"};
     REQUIRE(rows.empty());
     for (size_t i = 0; i < labels.size(); ++i) {
         CAPTURE(i);

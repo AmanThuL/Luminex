@@ -25,7 +25,11 @@ MeasurementProvenance testProvenance() {
 TEST_CASE("Measurement plans drain only after every exact frame retires", "[app][measurement]") {
     MeasurementRun run;
     REQUIRE(run.state() == MeasurementState::Idle);
-    REQUIRE(run.start({.warmupFrames = 1, .measuredFrames = 2}, testProvenance()));
+    REQUIRE(run.start({.warmupFrames = 1,
+                       .measuredFrames = 2,
+                       .sceneDocumentPath = "./Scenes/sponza.scene.gltf",
+                       .sceneDocumentHash = "abc123"},
+                      testProvenance()));
     REQUIRE(run.state() == MeasurementState::Warmup);
     REQUIRE_FALSE(run.nextFrame()->ordinal);
     REQUIRE(run.recordCpu({.frameId = 8, .sequenceFrame = 0, .lighting = {.frameNumber = 8}}));
@@ -44,7 +48,10 @@ TEST_CASE("Measurement plans drain only after every exact frame retires", "[app]
     REQUIRE(run.state() == MeasurementState::Complete);
     REQUIRE(run.finishDrain());
     REQUIRE(run.samples().size() == 2);
-    REQUIRE(run.json().find("\"schemaVersion\":4") != std::string::npos);
+    REQUIRE(run.json().find("\"schemaVersion\":5") != std::string::npos);
+    REQUIRE(run.json().find("\"sceneDocument\":{\"path\":\"./Scenes/"
+                            "sponza.scene.gltf\",\"sha256\":\"abc123\",\"dirty\":false}") !=
+            std::string::npos);
     REQUIRE(run.json().find("\"scored\":true") != std::string::npos);
     REQUIRE(run.json().find("serialized-retirement") != std::string::npos);
 }
@@ -125,6 +132,30 @@ TEST_CASE("Measurement instrumentation and interactive scoring are explicit",
 }
 
 //======================================================================================================================
+TEST_CASE("Path-opened document rig may be measured without a catalog id", "[app][measurement]") {
+    MeasurementPlan plan;
+    plan.scene = "./saved/sponza.scene.gltf";
+    plan.sceneDocumentPath = plan.scene;
+    plan.sceneDocumentHash = std::string(64, 'a');
+    plan.localLightRig = true;
+    MeasurementRun run;
+    REQUIRE(run.start(plan, testProvenance()));
+    REQUIRE(run.json().contains(R"("sceneDocument":{"path":"./saved/sponza.scene.gltf")"));
+}
+
+//======================================================================================================================
+TEST_CASE("Report records that the measured document had unsaved edits", "[app][measurement]") {
+    MeasurementPlan plan;
+    plan.scene = "sponza";
+    plan.sceneDocumentPath = "sponza.scene.gltf";
+    plan.sceneDocumentHash = std::string(64, 'a');
+    plan.sceneDocumentDirty = true;
+    MeasurementRun run;
+    REQUIRE(run.start(plan, testProvenance()));
+    REQUIRE(run.json().contains(R"("sha256":")" + std::string(64, 'a') + R"(","dirty":true})"));
+}
+
+//======================================================================================================================
 TEST_CASE("Visibility and measurement options share all run modes", "[app][options][measurement]") {
     const std::array<std::string_view, 16> args = {
         "--measure",       "/tmp/run.json", "--scene",          "visibility-lab",
@@ -158,4 +189,55 @@ TEST_CASE("Scored measurement requires real runtime provenance", "[app][measurem
     provenance.shaderHashes.front().second = "unavailable";
     REQUIRE_FALSE(run.start({}, provenance));
     REQUIRE(run.start({.unscored = true}, provenance));
+}
+
+//======================================================================================================================
+TEST_CASE("Measurement records and enforces the starting enabled population",
+          "[app][measurement][scene-enabled]") {
+    MeasurementRun run;
+    MeasurementPlan plan{.warmupFrames = 0, .measuredFrames = 1};
+    plan.startingPopulation = MeasurementPopulation{
+        .objects = 5, .enabledObjects = 3, .localLights = 4, .enabledLocalLights = 2};
+    REQUIRE(run.start(plan, testProvenance()));
+    MeasurementCpuSample sample{.frameId = 1,
+                                .candidates = 3,
+                                .visible = 3,
+                                .sceneCounters = {.candidates = 3, .disabled = 2},
+                                .lighting = {.effective = lmx::engine::LocalLightMode::Clustered,
+                                             .frameNumber = 1,
+                                             .liveLightCount = 2}};
+    SECTION("matching counts are frozen and serialized") {
+        REQUIRE(run.recordCpu(sample));
+        plan.startingPopulation->enabledObjects = 5;
+        CHECK(run.plan().startingPopulation->enabledObjects == 3);
+        CHECK(run.json().find("\"startingPopulation\":{\"objects\":5,\"enabledObjects\":3,"
+                              "\"disabledObjects\":2") != std::string::npos);
+        CHECK(run.json().find("\"disabled\":2") != std::string::npos);
+    }
+    SECTION("changed enabled object counts fail even when total is unchanged") {
+        sample.candidates = 4;
+        sample.visible = 4;
+        sample.sceneCounters.candidates = 4;
+        sample.sceneCounters.disabled = 1;
+        CHECK_FALSE(run.recordCpu(sample));
+        CHECK(run.failure().find("population") != std::string::npos);
+    }
+    SECTION("changed enabled local light counts fail") {
+        sample.lighting.liveLightCount = 1;
+        CHECK_FALSE(run.recordCpu(sample));
+    }
+    SECTION("GPU retirement cannot replace frozen disabled counts") {
+        sample.classifyMode = lmx::render::ClassifyMode::Gpu;
+        plan.classify = "gpu";
+        MeasurementRun gpu;
+        REQUIRE(gpu.start(plan, testProvenance()));
+        REQUIRE(gpu.recordCpu(sample));
+        lmx::render::VisibilityStatus status;
+        status.frameNumber = 1;
+        status.classifyMode = lmx::render::ClassifyMode::Gpu;
+        status.isRetired = true;
+        status.sceneCounters.candidates = 3;
+        status.sceneCounters.disabled = 1;
+        CHECK_FALSE(gpu.retireVisibility(status));
+    }
 }

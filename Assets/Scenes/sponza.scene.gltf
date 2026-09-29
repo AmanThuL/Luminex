@@ -1,0 +1,581 @@
+{
+  "asset": {
+    "version": "2.0"
+  },
+  "extensionsUsed": ["LMX_scene", "KHR_lights_punctual"],
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "Sponza",
+      "nodes": [0, 1, 2, 3, 4, 5]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "Sponza",
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true,
+          "asset": {
+            "uri": "Fetched/Sponza/Sponza.gltf",
+            "sha256": "9cb459061dc658b17099b2bd67496620ab070cb7de047e0da00bfa5876189142"
+          }
+        }
+      }
+    },
+    {
+      "name": "Tour Camera",
+      "translation": [8.5, 1.6, 0.6],
+      "rotation": [-0.027142398, -0.7046119, -0.026991177, 0.7085597],
+      "camera": 0,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Key",
+      "rotation": [-0.627963, -0.627963, 0, 0.45970085],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 0
+        },
+        "LMX_scene": {
+          "enabled": true,
+          "role": "key",
+          "castsShadow": true
+        }
+      }
+    },
+    {
+      "name": "Fill",
+      "rotation": [-0.627963, 0.627963, 0, 0.45970085],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 1
+        },
+        "LMX_scene": {
+          "enabled": true,
+          "role": "fill",
+          "castsShadow": false
+        }
+      }
+    },
+    {
+      "name": "Rim",
+      "rotation": [-0.38268346, -0, 0, 0.92387956],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 2
+        },
+        "LMX_scene": {
+          "enabled": true,
+          "role": "rim",
+          "castsShadow": false
+        }
+      }
+    },
+    {
+      "name": "Local Lights",
+      "children": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Local Light 1",
+      "translation": [-12, 2.5, -3.5],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 3
+        },
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Local Light 2",
+      "translation": [-4, 2.5, -3.5],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 4
+        },
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Local Light 3",
+      "translation": [4, 2.5, -3.5],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 5
+        },
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Local Light 4",
+      "translation": [12, 2.5, -3.5],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 6
+        },
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Local Light 5",
+      "translation": [-12, 2.5, 3.5],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 7
+        },
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Local Light 6",
+      "translation": [-4, 2.5, 3.5],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 8
+        },
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Local Light 7",
+      "translation": [4, 2.5, 3.5],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 9
+        },
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Local Light 8",
+      "translation": [12, 2.5, 3.5],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 10
+        },
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Local Light 9",
+      "translation": [-12, 6, -6.5],
+      "rotation": [-0.8701999, -0, 0, 0.49269888],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 11
+        },
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Local Light 10",
+      "translation": [-4, 6, -6.5],
+      "rotation": [-0.8701999, -0, 0, 0.49269888],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 12
+        },
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Local Light 11",
+      "translation": [4, 6, -6.5],
+      "rotation": [-0.8701999, -0, 0, 0.49269888],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 13
+        },
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Local Light 12",
+      "translation": [12, 6, -6.5],
+      "rotation": [-0.8701999, -0, 0, 0.49269888],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 14
+        },
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Local Light 13",
+      "translation": [-12, 6, 6.5],
+      "rotation": [-0.49269882, -0, 0, 0.8701998],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 15
+        },
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Local Light 14",
+      "translation": [-4, 6, 6.5],
+      "rotation": [-0.49269882, -0, 0, 0.8701998],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 16
+        },
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Local Light 15",
+      "translation": [4, 6, 6.5],
+      "rotation": [-0.49269882, -0, 0, 0.8701998],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 17
+        },
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Local Light 16",
+      "translation": [12, 6, 6.5],
+      "rotation": [-0.49269882, -0, 0, 0.8701998],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 18
+        },
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    }
+  ],
+  "cameras": [
+    {
+      "name": "Tour Camera",
+      "type": "perspective",
+      "perspective": {
+        "yfov": 0.7853982,
+        "znear": 0.05,
+        "zfar": 463.69727
+      }
+    }
+  ],
+  "animations": [
+    {
+      "name": "Camera Rail",
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "node": 1,
+            "path": "translation"
+          }
+        },
+        {
+          "sampler": 1,
+          "target": {
+            "node": 1,
+            "path": "rotation"
+          }
+        }
+      ],
+      "samplers": [
+        {
+          "input": 0,
+          "output": 1,
+          "interpolation": "LINEAR"
+        },
+        {
+          "input": 0,
+          "output": 2,
+          "interpolation": "LINEAR"
+        }
+      ],
+      "extensions": {
+        "LMX_scene": {
+          "sampleRate": 60
+        }
+      }
+    }
+  ],
+  "buffers": [
+    {
+      "uri": "sponza.scene.bin",
+      "byteLength": 230432
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 28804
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 28804,
+      "byteLength": 86412
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 115216,
+      "byteLength": 115216
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 7201,
+      "type": "SCALAR",
+      "min": [0],
+      "max": [120]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 7201,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 7201,
+      "type": "VEC4"
+    }
+  ],
+  "extensions": {
+    "KHR_lights_punctual": {
+      "lights": [
+        {
+          "name": "Key",
+          "type": "directional",
+          "color": [0.8959768414497375, 0.8959768414497375, 0.8959768414497375],
+          "intensity": 0.5
+        },
+        {
+          "name": "Fill",
+          "type": "directional",
+          "color": [0.5296761989593506, 0.5296761989593506, 0.5296761989593506],
+          "intensity": 0.0625
+        },
+        {
+          "name": "Rim",
+          "type": "directional",
+          "color": [0.5296761989593506, 0.5296761989593506, 0.5296761989593506],
+          "intensity": 0.0625
+        },
+        {
+          "name": "Local Light 1",
+          "type": "point",
+          "color": [1, 0.47699984908103943, 0.17064493894577026],
+          "intensity": 45,
+          "range": 6
+        },
+        {
+          "name": "Local Light 2",
+          "type": "point",
+          "color": [0.17064493894577026, 0.4479884207248688, 1],
+          "intensity": 45,
+          "range": 6
+        },
+        {
+          "name": "Local Light 3",
+          "type": "point",
+          "color": [1, 0.47699984908103943, 0.17064493894577026],
+          "intensity": 45,
+          "range": 6
+        },
+        {
+          "name": "Local Light 4",
+          "type": "point",
+          "color": [0.17064493894577026, 0.4479884207248688, 1],
+          "intensity": 45,
+          "range": 6
+        },
+        {
+          "name": "Local Light 5",
+          "type": "point",
+          "color": [1, 0.47699984908103943, 0.17064493894577026],
+          "intensity": 45,
+          "range": 6
+        },
+        {
+          "name": "Local Light 6",
+          "type": "point",
+          "color": [0.17064493894577026, 0.4479884207248688, 1],
+          "intensity": 45,
+          "range": 6
+        },
+        {
+          "name": "Local Light 7",
+          "type": "point",
+          "color": [1, 0.47699984908103943, 0.17064493894577026],
+          "intensity": 45,
+          "range": 6
+        },
+        {
+          "name": "Local Light 8",
+          "type": "point",
+          "color": [0.17064493894577026, 0.4479884207248688, 1],
+          "intensity": 45,
+          "range": 6
+        },
+        {
+          "name": "Local Light 9",
+          "type": "spot",
+          "color": [1, 0.47699984908103943, 0.17064493894577026],
+          "intensity": 75,
+          "range": 10,
+          "spot": {
+            "innerConeAngle": 0.38397244,
+            "outerConeAngle": 0.6981317
+          }
+        },
+        {
+          "name": "Local Light 10",
+          "type": "spot",
+          "color": [0.17064493894577026, 0.4479884207248688, 1],
+          "intensity": 75,
+          "range": 10,
+          "spot": {
+            "innerConeAngle": 0.38397244,
+            "outerConeAngle": 0.6981317
+          }
+        },
+        {
+          "name": "Local Light 11",
+          "type": "spot",
+          "color": [1, 0.47699984908103943, 0.17064493894577026],
+          "intensity": 75,
+          "range": 10,
+          "spot": {
+            "innerConeAngle": 0.38397244,
+            "outerConeAngle": 0.6981317
+          }
+        },
+        {
+          "name": "Local Light 12",
+          "type": "spot",
+          "color": [0.17064493894577026, 0.4479884207248688, 1],
+          "intensity": 75,
+          "range": 10,
+          "spot": {
+            "innerConeAngle": 0.38397244,
+            "outerConeAngle": 0.6981317
+          }
+        },
+        {
+          "name": "Local Light 13",
+          "type": "spot",
+          "color": [1, 0.47699984908103943, 0.17064493894577026],
+          "intensity": 75,
+          "range": 10,
+          "spot": {
+            "innerConeAngle": 0.38397244,
+            "outerConeAngle": 0.6981317
+          }
+        },
+        {
+          "name": "Local Light 14",
+          "type": "spot",
+          "color": [0.17064493894577026, 0.4479884207248688, 1],
+          "intensity": 75,
+          "range": 10,
+          "spot": {
+            "innerConeAngle": 0.38397244,
+            "outerConeAngle": 0.6981317
+          }
+        },
+        {
+          "name": "Local Light 15",
+          "type": "spot",
+          "color": [1, 0.47699984908103943, 0.17064493894577026],
+          "intensity": 75,
+          "range": 10,
+          "spot": {
+            "innerConeAngle": 0.38397244,
+            "outerConeAngle": 0.6981317
+          }
+        },
+        {
+          "name": "Local Light 16",
+          "type": "spot",
+          "color": [0.17064493894577026, 0.4479884207248688, 1],
+          "intensity": 75,
+          "range": 10,
+          "spot": {
+            "innerConeAngle": 0.38397244,
+            "outerConeAngle": 0.6981317
+          }
+        }
+      ]
+    },
+    "LMX_scene": {
+      "schemaVersion": 1,
+      "camera": 1,
+      "look": {
+        "exposure": {
+          "ev": 0,
+          "autoEnabled": false,
+          "lowPercentile": 50,
+          "highPercentile": 95,
+          "targetGrey": 0.18,
+          "evMin": -8,
+          "evMax": 8,
+          "compensationEv": 0,
+          "adaptUpStopsPerSecond": 3,
+          "adaptDownStopsPerSecond": 1.5
+        },
+        "bloom": {
+          "enabled": true,
+          "threshold": 1,
+          "intensity": 0.2
+        },
+        "shadow": {
+          "filter": "pcf"
+        },
+        "environment": {
+          "skySrgb8": [149, 170, 196]
+        }
+      },
+      "loop": true
+    }
+  }
+}

@@ -166,13 +166,22 @@ Damaged Helmet joining MaterialLab and Milk Truck joining TemporalLab, leaving a
 and measurement (UX3.3); a document-grouped Hierarchy, UX2's Inspector header checkbox extended to
 objects and Open/Save/Save As/Revert (UX3.4); the application icon and whole-application
 acceptance (UX3.5). The scene's look is saved; renderer
-configuration stays with the editor session and CLI. The [proposed record](../milestones/ux/ux3.md)
+configuration stays with the editor session and CLI. The [implemented record](../milestones/ux/ux3.md)
 holds the contract.
+
+Implemented on 2026-09-29; the executor plan is closed and the owner authorized integration by
+squash merge the same day. The image gates failed as measured because the parent's non-unit
+directional rig is now normalized; ADR 0028 stays Proposed. The
+[final validation](../milestones/ux/ux3-final-validation.md) records the build, contract, Metal and
+document checks and the failed gates.
+Native verification covers 62/74 gestures; twelve rows and Dock/switcher appearance remain
+unverified. ADR 0028 stays Proposed. These measured limits do not amend the exit gates.
 
 **Exit gate:** converted scenes match the parent under the exact-image matrix at `--temporal off`
 with identical graph dumps, reported as measured with no tolerance approved in advance; saves are
 byte-stable and pass a pinned glTF validator; the re-baseline lists every retired and new hash and
-carries the owner's acceptance; a disabled object contributes to no target and no counter but its
+carries the owner's acceptance, and the standing matrix becomes Sponza, MaterialLab and
+TemporalLab; a disabled object contributes to no target and no counter but its
 own, identically on CPU and GPU classification; the [completion gate](#completion-gate) tasks
 still pass on the new layout; capture manifests and measurement reports record the document hash.
 

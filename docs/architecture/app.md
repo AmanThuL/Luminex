@@ -6,7 +6,7 @@ App is the editor and headless-runner layer above the renderer. It splits into t
 a static library of ImGui/SDL/Metal-free editor logic, and `App`, the SDL3 shell that hosts ImGui,
 drives the frame loops, and links AppModel. Render depends on neither; the dependency runs
 `Render → AppModel → App`. AppModel and App also link Scenes, which sits above Engine
-([Engine, Asset and Scenes](engine.md#scenes-catalog)).
+([Engine, Asset and Scenes](engine.md#scene-documents-and-catalog)).
 
 ## AppModel and App as units
 
@@ -31,41 +31,55 @@ accepted `CompiledFrameRecord` it returns, appends its own output sink, and owns
 and GPU waits. The frame loop advances and commits animation through the shared scene session around
 frame declaration.
 
-`Source/App/Model` owns its feature directories directly: `Options/`, `Scene/`, `Graph/`, `Performance/`, `Console/`,
-`Capture/`, `Workspace/` and `Rendering/{Settings,Temporal,Lighting,Visibility}/`. The remaining App sources live in
-`Shell/` (`main.cpp` and `EditorShell` partials, including workspace persistence/docking and camera input), `Headless/`
-(`Screenshot`, `Measurement` and `OcclusionValidation`) and `Panels/` (`Scene/`, `Inspector/`, `Viewport/`, `Graph/`,
-`Rendering/`, `Performance/` and `Console/`, with shared controls in `Shared/`); these folders add no contract units of
-their own, and App's root holds only its build file. Inspector's camera, local-light, directional-light and object units
-share private `Panels/Inspector/InspectorInternal.h`, while dispatch and row helpers stay in `InspectorPanel` itself;
-every shell and panel header is private to App, while AppModel's shared model headers stay public.
+`Source/App/Model` owns `Options/`, `Scene/`, `Graph/`, `Performance/`, `Console/`, `Capture/`,
+`Workspace/` and `Rendering/{Settings,Temporal,Lighting,Visibility}/`. App sources use `Shell/`,
+`Headless/` and feature folders under `Panels/`, with shared controls in `Panels/Shared/`. These
+folders add no contract units. Shell/panel headers, including `InspectorInternal.h`, stay private;
+AppModel model headers are public. App's root holds its build file.
 
 ## AppModel feature folders
 
 ### Options
 
 `AppOptions` parses the command line and its defaults for the editor and headless runners.
+`--scene` accepts a catalog ID or a `.scene.gltf` path; asset URIs remain relative to `Assets/`.
 
 ### Scene
 
-The shared `SceneSession` borrows library-owned scenes, owns the camera, prepares playback and borrowed views, forwards
-paced scene-table preparation, and resets or commits motion. `EditorPlayback` owns the Stopped/Playing/Paused state and,
-on the first Play, captures camera and time plus animation-owned object poses, emissive strength and tracked light
-positions; Stop restores them and resets motion, and the shell separately resets temporal and exposure state. Activation
-starts Stopped after restoring the previous run. The preview shares the scene and does not restore rendering settings or
-unrelated edits. `SceneSession` captures each scene's authored transform and light defaults once, on first activation,
-by full `LightId` for lights; returning to a cached scene never replaces those defaults with edited values, and an
-animated object's default samples only that object's rigid track at the current playback time. Resetting a light samples
-its current orbit position while restoring its other authored fields, and `SceneSession` separately retains the actual
-LightLab pile IDs for bounded runtime Apply/Clear without touching grid lights or their tracks. Editing or resetting one
-transform collapses only its own previous transform; the editor separately raises its temporal discontinuity latch.
-Activation resets editor motion but preserves headless loader state, so each path keeps its own first-frame contract.
-`SceneTableDisplay` formats live scene counts and capacities, geometry bytes, writes, slot and growth events, and
-pending release buffers for Rendering's read-only Scene tables topic. `SelectionBounds` uses Core's shared AABB corner
-transform on mesh bounds to frame a selection's reliable world bounds; a rejected selection produces no outline.
-`EditorSelection` holds the current selection and counts the same scene-only rows under search, including disabled
-lights; `SceneLoadState` tracks catalog loading; `SceneDefaults` holds the shared display-space clear value both
-interactive and headless rendering use.
+`SceneSession` borrows library-owned scenes and owns the editor camera, playback, view preparation
+and motion commit/reset. First Play captures camera/time, animation-owned poses/emissive strength
+and tracked light positions; Stop restores that preview. Unrelated edits and rendering settings
+stay outside restoration. Activation starts Stopped and keeps editor and headless first-frame
+contracts separate. Authored defaults are captured once per loaded scene; an animated object's
+Reset samples its own track at the current time, while light Reset restores authored fields and
+its current orbit position. Full `LightId`s keep edits and LightLab pile removal scoped correctly.
+`SceneTableDisplay` supplies read-only table diagnostics. `SelectionBounds` transforms reliable
+mesh bounds for framing; a rejected selection produces no outline. `EditorSelection` retains
+selection through filtering; `SceneLoadState` tracks loading and `SceneDefaults` supplies the
+shared display-space clear value.
+
+`SceneTree` builds the document-order hierarchy, retaining ancestors of search matches and
+source-node identity across multi-primitive assets. Group, object and light headers edit their own
+enabled flags; muted off rows remain distinct from culled rows. Generated children name their lab
+and say “not saved”. The tree is cached and rows are clipped, so large labs scale; tooltips build on hover. Filtering
+preserves selection, and Inspector tests visibility against the same filtered document rows. Environment opens the scene look in Inspector: Exposure, Bloom and
+Shadows edit `Scene::look`, with resets to the loaded or saved document; Sky and IBL are read-only.
+
+`DocumentWorkflow` sequences Open, catalog switches, Save, Save As, Revert and Quit independently
+of windowing. Dirty state derives from canonical export when the session edit generation changes;
+a failed export stays dirty and surfaces its error. Save, Save As and Revert require Stopped and
+no active Measure. Open, switch, Quit and close ask Save, Discard or Cancel before discarding; Revert asks Discard or Cancel.
+For Open, Save finishes before the chooser opens, so cancelling the chooser cannot cancel that
+save. A mutex-protected dialog mailbox keeps the response until the main-thread pump consumes it
+before drawable acquisition; pending Quit is reconsidered after that response.
+
+`SceneSession` prepares replacement scenes before invalidating the old one. Save adoption follows
+successful export, write, canonical reread/equality and hash. It updates path/library identity and
+reset-camera baselines together while retaining live IDs and generated defaults. Save As rejects
+aliases of either active file, including the decoded companion buffer. Ordinary reported write
+failures roll back the pair; crash atomicity is not provided, and a post-write verification error
+can leave new disk bytes without adopting them in memory. Save refuses a companion `.bin` the
+target does not name, and Save As drops stale path metadata when it rekeys. See the [operator guide](../guides/scene-documents.md).
 
 ### Graph
 
@@ -130,8 +144,8 @@ labels.
 ### Rendering
 
 `Rendering/{Settings,Temporal,Lighting,Visibility}` holds rendering-state models. `EditorRenderSettings` carries the
-temporal toggles: enable, jitter, debug view, animation play and camera-track follow. `EditorRenderDefaults` and
-`ExposureReset` hold scoped reset defaults; `DiagnosticRefresh` shares the 0.25-second (4 Hz) editor diagnostic
+temporal toggles: enable, jitter, debug view, animation play and camera-track follow. `EditorRenderDefaults` holds renderer reset defaults; `ExposureReset` responds to changes in the
+active scene look; `DiagnosticRefresh` shares the 0.25-second (4 Hz) editor diagnostic
 publication interval Performance and the Rendering topics use. `TemporalEditorState` tracks scene generation and the
 camera-cut latch, retains the last non-`None` reset reason together with its original declared-frame count, and observes
 compatible live retired timing independently of metric freeze; it separates the current request, the declared execution
@@ -210,15 +224,17 @@ width-aware wrapping; `beginHeaderRow` groups panel actions, `overflowMenu` open
 shares the reflow threshold, and `beginDiagnostics` starts collapsed. `drawNotice` displays the retained result and Copy
 path/Reveal actions in a dismissible, borderless window at the main viewport's bottom-right work area. `ActionFeedback`
 suppresses Ready. File > Open Scene owns catalog availability, loading and retry. Source names are disambiguated within
-each scene; filtering keeps selection. Hierarchy contains directional lights, local lights and objects. View > Editor
+each scene; filtering keeps selection. Hierarchy follows the document and imported source-node tree, with Environment and generated children. View > Editor
 Camera selects the camera in Inspector; View also owns Reset Camera (Home), Frame Selected (F), Selection Outline, Debug
 View and UI Scale. Frame Selected is also a Hierarchy context action. `EditorShortcuts` suppresses F, Home and C during text
 entry, popups, RMB look or Render Graph/Performance focus; C without capture explains why. Help > Controls explains movement. `EditorMenus` and `EditorTransport` share the menu row;
-the latter owns Play/Pause, Stop, Step, time and rail follow. The main window title carries the scene name.
-`RenderingPanel`, `RenderingTopics` and `RenderingLighting` draw eleven collapsing topics, with Reconstruction initially
-open. Seven topic headers have scoped resets that keep the Debug View; controls precede readings and Diagnostics, and Details opens Performance.
-Inspector pages share subject/kind/reset headers, with a local-light enable checkbox that preserves light identity,
-edits and orbit tracks.
+the latter owns Play/Pause, Stop, Step, time and rail follow. The tree root and window title show `*`
+when dirty. Stop restores the preview without adding document edits. View > Set Scene Camera from View
+is the explicit way to save the editor camera.
+`RenderingPanel`, `RenderingTopics` and `RenderingLighting` draw eight collapsing topics, with Reconstruction initially
+open. Topic headers have scoped resets that keep the Debug View; controls precede readings and Diagnostics, and Details opens Performance.
+Inspector pages share subject/kind/reset headers. Enabled controls on groups, objects and lights preserve
+identities and descendant own flags; Measure locks edits. Exposure, Bloom and Shadows live under Environment.
 
 App alone declares `Render/Passes/SelectionOutline/SelectionOutline`, opting into it after scene
 display; see [render-passes.md#selection-outline](render-passes.md#selection-outline) for the pass
@@ -242,7 +258,9 @@ unsaved frames at 60 Hz into a new or empty directory, recording actual camera, 
 reconstruction fallback fails the sequence outright. Renderer exposes its display-domain contract to capture metadata
 and to the read-only Rendering > Display diagnostics
 ([render-passes.md#exposure-bloom-and-display](render-passes.md#exposure-bloom-and-display)). Asset's `PngImage` writes
-deterministic colour-tagged PNGs, and manifest v2 records the display domain, container and UI absence. The offline
+deterministic colour-tagged PNGs. Manifest v3 retains display/container/UI fields and adds
+`sceneDocument: {path, sha256}`; measurement schema 5 carries the same provenance and a frozen enabled
+population. The hash covers loaded JSON then buffer bytes, excluding unsaved edits; PNG `lmx:frame` stays unchanged. The offline
 [temporal comparison workflow](../guides/temporal-comparison.md) synchronizes Raw/Native/MetalFX reports and an optional
 CPU LDR-FLIP map over final sRGB output, against Native TAA as the comparison baseline rather than ground truth; neither
 FLIP nor its Python dependencies enter App. `Headless/Screenshot` runs offscreen screenshots and sequence capture,
@@ -252,7 +270,13 @@ step for unscored occlusion recovery evidence. Operator procedures for capture, 
 [gpu-debugging.md#measure-visibility-and-submission](../guides/gpu-debugging.md#measure-visibility-and-submission);
 frozen comparison evidence is covered in [screenshot-comparison.md](../guides/screenshot-comparison.md).
 
-## Fonts and UI scale
+## Application icon, fonts and UI scale
+
+`Shell/AppIcon.mm` loads the staged `Icons/luminex-icon-1024.png` and sets the AppKit application
+icon after window creation. Only `runWindowed` calls it; headless paths skip it. A missing PNG logs
+one warning and keeps the system icon. The supplied FACET B2.2 artwork remains provisional, with
+owner approval pending; [validation](../milestones/ux/ux3-editor-validation.md#application-icon)
+records the unverified Dock/switcher appearance. The product remains a bare executable.
 
 `EditorFont` loads Inter Regular with fixed-width digits and an embedded fallback, then merges the Codicons glyph range
 on a 16 px grid. Setup pins Inter 4.1 and Codicons 0.0.46-24; App stages their fonts, licenses and Codicons provenance
@@ -265,22 +289,10 @@ canvas's independent navigation. See [gpu-debugging.md#editor-ui-scale](../guide
 
 ## Tests
 
-- `Tests/App/Model/Capture/`: capture metadata, editor action intents and the light-check capture
-  path.
-- `Tests/App/Model/Console/`: Console's bounded storage, filtering, scroll freeze, arrivals and Clear/Copy semantics.
-- `Tests/App/Model/Graph/`: the frame-record ring, graph layout and node model, graph snapshot
-  publication/freshness, scene pin bundles, and the Render Graph inspector model, including one GPU case.
-- `Tests/App/Model/Options/`: editor option parsing and defaults.
-- `Tests/App/Model/Performance/`: pass timing history, the performance model's snapshot join,
-  `MeasurementRun`'s CPU/GPU join, and the lighting join in measurements.
-- `Tests/App/Model/Rendering/Lighting/`: directional-light role, lighting display and history, and
-  lighting diagnostics.
-- `Tests/App/Model/Rendering/Settings/`: editor render defaults and exposure reset scoping.
-- `Tests/App/Model/Rendering/Temporal/`: the diagnostic legend, dynamic resolution and temporal
-  editor state.
-- `Tests/App/Model/Rendering/Visibility/`: GPU visibility, occlusion and visibility display models.
-- `Tests/App/Model/Scene/`: editor playback, selection, scene load state, scene session, selection
-  bounds and the scene table display.
-- `Tests/App/Model/Workspace/`: the workspace persistence schema.
-
-No test covers a `Shell/`, `Headless/` or `Panels/` unit.
+`Tests/App/Model/` mirrors each model folder. Capture tests cover metadata/actions/light-check
+output; Console covers bounded storage and held views; Graph covers records, topology, layout,
+publication and one GPU case. Options tests exercise catalog/path parsing. Performance tests
+check retirement joins and frozen measurement populations. Rendering tests cover lighting,
+visibility, reset scopes, diagnostics, dynamic resolution and temporal state. Scene tests cover
+workflow/mailbox ordering, save adoption, tree/search, enabled edits and playback dirtiness.
+Workspace tests cover schema persistence. Shell, Headless and Panels have no direct unit tests.

@@ -89,3 +89,13 @@ show the typeface in use; the font itself is not relicensed under Apache-2.0.
 `Codicons-LICENSE.txt` and `Codicons-SOURCE.txt` to its `Fonts/` directory; keep them together when
 distributing App. The editor merges the glyphs into its atlas at runtime without modifying the
 font file. The font itself is not relicensed under Apache-2.0.
+
+## glTF Validator
+
+- Source: [KhronosGroup/glTF-Validator 2.0.0-dev.3.10](https://github.com/KhronosGroup/glTF-Validator/releases/tag/2.0.0-dev.3.10)
+- Retrieved archive: `gltf_validator-2.0.0-dev.3.10-macos64.tar.xz`
+- License: [Apache License 2.0](https://github.com/KhronosGroup/glTF-Validator/blob/2.0.0-dev.3.10/LICENSE)
+
+`xmake setup` verifies the archive and executable SHA-256 hashes before using the pinned macOS
+x86_64 binary in `ThirdParty/glTF-Validator/`. It runs under Rosetta on Apple Silicon and is used
+to validate scene documents; it is not linked into App.

@@ -5,6 +5,7 @@
 
 #include "App/Model/Rendering/Temporal/TemporalEditorState.h"
 
+#include "App/Model/Scene/SceneSession.h"
 #include "Render/Passes/Temporal/Temporal.h"
 
 namespace lmx::app {
@@ -93,6 +94,12 @@ TemporalPresentation temporalPresentation(const TemporalEditorState& state,
         }
     }
     return result;
+}
+
+//======================================================================================================================
+void syncSessionTemporalReset(TemporalEditorState& state, SceneSession& session) {
+    if (session.consumeTemporalReset())
+        requestCameraCut(state);
 }
 
 //======================================================================================================================

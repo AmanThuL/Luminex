@@ -94,6 +94,22 @@ class ComparisonTests(unittest.TestCase):
         self.assertIn("bmp", data["frames"][0]["hashes"]["taa"])
         self.assertIn("png", data["frames"][0]["hashes"]["metalfx"])
 
+    def test_v3_document_provenance_is_required_and_aligned(self):
+        for mode in compare.MODES:
+            self.upgrade(mode)
+            path = self.root / mode / "manifest.json"
+            data = json.loads(path.read_text())
+            data.update(schemaVersion=3, sceneDocument={"path": "./test.scene.gltf",
+                                                        "sha256": "a" * 64})
+            path.write_text(json.dumps(data))
+        self.assertEqual(compare.validate_manifests(self.root)["raw"]["schemaVersion"], 3)
+        self.mutate(lambda d: d["sceneDocument"].update(sha256="b" * 64))
+        with self.assertRaisesRegex(ValueError, "scene document differs"):
+            compare.validate_manifests(self.root)
+        self.mutate(lambda d: d["sceneDocument"].update(sha256="bad"))
+        with self.assertRaisesRegex(ValueError, "sceneDocument"):
+            compare.validate_manifests(self.root)
+
     def test_v2_refuses_view_transfer_and_domain_mismatch(self):
         for mode in compare.MODES:
             self.upgrade(mode)

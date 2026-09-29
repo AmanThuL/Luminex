@@ -23,6 +23,8 @@ namespace lmx::engine {
 constexpr uint32_t kInstanceMotionInvalid = 1u;
 /// Bounds cannot safely reject this instance.
 constexpr uint32_t kInstanceBoundsUnreliable = 2u;
+/// Authored-off instances retain their rows but contribute to no render view.
+constexpr uint32_t kInstanceDisabled = 4u;
 /// Visible instance-row list binding in scene and shadow entries.
 constexpr uint32_t kVisibleRowsSlot = 4;
 /// Material samples the resolved normal texture.

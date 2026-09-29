@@ -691,6 +691,95 @@ class IncludeResolutionTests(unittest.TestCase):
         self.assertIsNone(modules.third_party_name(Path("/opt/homebrew/include/SDL3/SDL.h"), root))
 
 
+class PrivateHeaderTestAccessTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name).resolve()
+        write_include_tree(self.root)
+        write_tree(self.root, ["Tests/Friend.cpp", "Tests/Other.cpp", "Tests/Wrapper.h",
+                               "Source/Core/SecondPrivate.h"])
+        (self.root / "Tests/Friend.cpp").write_text('#include "Core/Log.h"\n')
+        (self.root / "Tests/Other.cpp").write_text('#include "Core/Log.h"\n')
+        self.contract = json.loads(json.dumps(INCLUDE_CONTRACT))
+        self.contract["roots"].append("Tests")
+        self.contract["units"]["tests"] = {
+            "paths": ["Tests"], "targets": ["Tests"], "units": ["core", "asset"],
+            "thirdParty": [],
+        }
+        self.contract["targets"]["Tests"] = {"deps": ["Core", "Engine"]}
+        self.contract["units"]["core"]["privateHeaders"] = [
+            "Source/Core/Log.h", "Source/Core/SecondPrivate.h",
+        ]
+        self.entry = {
+            "file": "Tests/Friend.cpp", "header": "Source/Core/Log.h",
+            "reason": "Inject one filesystem failure to verify rollback.",
+        }
+        self.contract["privateHeaderTests"] = [dict(self.entry)]
+
+    def check(self, *names: str) -> list[str]:
+        contract = modules.load_contract(write_contract(self.root, self.contract), self.root)
+        db = include_db(self.root)
+        db.update({name: include_entry(self.root, name)
+                   for name in ("Tests/Friend.cpp", "Tests/Other.cpp")})
+        errors: list[str] = []
+        modules.check_includes([Path(name) for name in names], {}, db, contract, [], errors,
+                               self.root)
+        return errors
+
+    def test_only_the_exact_direct_test_edge_is_permitted(self) -> None:
+        self.assertEqual(self.check("Tests/Friend.cpp"), [])
+        for name in ("Tests/Other.cpp", "Source/Engine/Uses.h"):
+            with self.subTest(file=name):
+                self.assertTrue(any("reaches private header Source/Core/Log.h" in error
+                                    for error in self.check(name)))
+
+    def test_access_does_not_cover_wrappers_or_private_headers_included_by_the_seam(self) -> None:
+        (self.root / "Tests/Wrapper.h").write_text('#include "Core/Log.h"\n')
+        (self.root / "Tests/Friend.cpp").write_text('#include "Wrapper.h"\n')
+        errors = self.check("Tests/Friend.cpp")
+        self.assertTrue(any("reaches private header Source/Core/Log.h" in error for error in errors))
+        self.assertTrue(any("unused privateHeaderTests" in error for error in errors))
+        (self.root / "Tests/Friend.cpp").write_text('#include "Core/Log.h"\n')
+        (self.root / "Source/Core/Log.h").write_text('#include "SecondPrivate.h"\n')
+        errors = self.check("Tests/Friend.cpp")
+        self.assertTrue(any("reaches private header Source/Core/SecondPrivate.h" in error
+                            for error in errors))
+
+    def test_unused_direct_edge_is_reported_when_its_test_file_is_scanned(self) -> None:
+        (self.root / "Tests/Friend.cpp").write_text("")
+        self.assertTrue(any("unused privateHeaderTests" in error
+                            for error in self.check("Tests/Friend.cpp")))
+
+    def test_private_access_does_not_grant_a_unit_dependency(self) -> None:
+        self.contract["units"]["tests"]["units"].remove("core")
+        errors = self.check("Tests/Friend.cpp")
+        self.assertEqual(len(errors), 1)
+        self.assertIn("tests reaches core", errors[0])
+
+    def test_contract_rejects_production_globs_aliases_missing_or_nonprivate_paths(self) -> None:
+        (self.root / "Tests/Alias.cpp").symlink_to("Friend.cpp")
+        (self.root / "Source/Core/Alias.h").symlink_to("Log.h")
+        invalid = [
+            {"file": "Source/Engine/Uses.h"}, {"file": "Tests/*.cpp"},
+            {"file": "Tests/Missing.cpp"}, {"file": "Tests/Wrapper.h"},
+            {"file": "Tests/Alias.cpp"}, {"file": "Tests/./Friend.cpp"},
+            {"header": "Source/Core/Missing.h"}, {"header": "Source/Engine/Allowed.h"},
+            {"header": "Source/Core/Alias.h"}, {"header": "Source/Core/../Core/Log.h"},
+            {"reason": ""}, {"reason": " "}, {"reason": 1}, {"extra": "unrecognized"},
+        ]
+        for change in invalid:
+            with self.subTest(change=change):
+                self.contract["privateHeaderTests"] = [self.entry | change]
+                with self.assertRaisesRegex(modules.ModuleContractError, "privateHeaderTests"):
+                    modules.load_contract(write_contract(self.root, self.contract), self.root)
+        for entries in ({}, [dict(self.entry), dict(self.entry)], [{"file": "Tests/Friend.cpp"}]):
+            with self.subTest(entries=entries):
+                self.contract["privateHeaderTests"] = entries
+                with self.assertRaisesRegex(modules.ModuleContractError, "privateHeaderTests"):
+                    modules.load_contract(write_contract(self.root, self.contract), self.root)
+
+
 class IncludeCheckTests(unittest.TestCase):
     def check(self, root: Path, names: list[str], allowlist: list[dict] | None = None) -> list[str]:
         contract = modules.load_contract(write_contract(root, INCLUDE_CONTRACT), root)

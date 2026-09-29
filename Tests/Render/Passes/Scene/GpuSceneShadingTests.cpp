@@ -1,6 +1,7 @@
 #include "Render/Renderer/SceneViewBuilder.h"
 #include "Scenes/CatalogScenes.h"
 #include "Support/GpuRendererTestSupport.h"
+#include "Support/SceneDocumentTestSupport.h"
 #include "Support/SceneTableTestSupport.h"
 
 #include <array>
@@ -45,7 +46,7 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto scene = lmx::scenes::loadMaterialLabScene(**device);
+    auto scene = lmx::test::loadCatalogScene(**device, "material-lab");
     REQUIRE(scene.has_value());
 
     auto renderer = Renderer::create(**device, kDepthReconstructSize, kDepthReconstructSize);
@@ -90,8 +91,7 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
     CommandList& commands = (*device)->beginFrame();
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
     std::vector<lmx::engine::DrawItem> items;
-    const auto view =
-        lmx::render::buildSceneView(**scene, items, lmx::render::ShadowFilter::PCF, false);
+    const auto view = lmx::render::buildSceneView(**scene, items, false);
     (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, device),
                         /*barrierForSampling=*/false);
     commands.textureBarrier((*renderer)->depthTarget(), TextureUse::RenderTarget,
@@ -177,7 +177,7 @@ TEST_CASE("MaterialLab's sphere grid conserves energy in a white furnace", "[gpu
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto scene = lmx::scenes::loadMaterialLabScene(**device);
+    auto scene = lmx::test::loadCatalogScene(**device, "material-lab");
     INFO(errorOf(scene));
     REQUIRE(scene.has_value());
 
@@ -194,8 +194,7 @@ TEST_CASE("MaterialLab's sphere grid conserves energy in a white furnace", "[gpu
     CommandList& commands = (*device)->beginFrame();
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
     std::vector<lmx::engine::DrawItem> allItems;
-    const auto sceneView =
-        lmx::render::buildSceneView(**scene, allItems, lmx::render::ShadowFilter::PCF, false);
+    const auto sceneView = lmx::render::buildSceneView(**scene, allItems, false);
     std::vector<lmx::engine::DrawItem> items;
     std::vector<glm::vec3> centers;
     std::vector<const lmx::engine::SceneObject*> spheres;

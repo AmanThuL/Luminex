@@ -35,9 +35,10 @@ struct VisibilityCounters {
     uint32_t nearCrossing = 0;          ///< Candidates retained at the source near plane.
     uint32_t outsideSource = 0;         ///< Candidates whose guarded rectangle leaves the source.
     uint32_t rectTooLarge = 0;          ///< Candidates without a sufficiently coarse mip.
-    uint32_t candidates = 0;            ///< Number of input candidates.
+    uint32_t candidates = 0;            ///< Number of enabled input candidates.
     uint32_t visible = 0;               ///< Tested retained candidates.
     uint32_t rejected = 0;              ///< Tested rejected candidates.
+    uint32_t disabled = 0;              ///< Authored-off rows; excluded from every other counter.
     std::array<uint32_t, 5> bypassed{}; ///< Counts indexed by VisibilityReason.
     uint32_t emittedRows = 0;           ///< Rows that fit all capacities.
     uint32_t emittedCommands = 0;       ///< Nonempty commands that fit.
@@ -59,11 +60,12 @@ enum class VisibilityState {
 /// Why the conservative oracle did not reject-test a candidate.
 enum class VisibilityReason {
     None,               ///< Ordinary tested candidate.
-    Disabled,           ///< User disabled camera culling.
+    CullingOff,         ///< User disabled camera culling.
     ViewUnculled,       ///< This view intentionally retains every candidate.
     UnreliableBounds,   ///< Bounds or clipping planes cannot be tested reliably.
     NonFiniteTransform, ///< Object transform contains a nonfinite component.
-    Occluded            ///< Rejected using the previous-frame HZB.
+    Occluded,           ///< Rejected using the previous-frame HZB.
+    AuthoredOff         ///< Authored-off instance, rejected before every culling bypass.
 };
 /// Five inward normalized half-spaces; an invalid frustum conservatively bypasses candidates.
 using FrustumPlanes = Frustum;
@@ -82,6 +84,7 @@ struct VisibilityResult {
     std::vector<uint32_t> visibleItems;         ///< Candidate indices retained for submission.
     uint32_t visible = 0;                       ///< Tested candidates that passed.
     uint32_t rejected = 0;                      ///< Tested candidates outside at least one plane.
+    uint32_t disabled = 0;                      ///< Authored-off rows, counted separately.
     std::array<uint32_t, 5> bypassed{};         ///< Indexed by VisibilityReason; None stays zero.
 };
 /// Published submission diagnostics, with actual commands and bytes for both views.
@@ -112,15 +115,18 @@ struct VisibilityStatus {
     uint64_t pyramidBytes = 0;         ///< Both allocated depth pyramids.
     OcclusionParams occlusionParams;   ///< Source projection retained with this declaration.
     ClassifyMode classifyMode = ClassifyMode::Cpu; ///< Requested classifier.
-    bool isRetired = false;            ///< GPU results have completed and been read back.
-    bool overflow = false;             ///< At least one output capacity dropped work.
-    bool checkEnabled = false;         ///< Declaration captured CPU oracle expectations.
-    uint32_t stateMismatches = 0;      ///< Candidate state or reason differences.
-    uint32_t rowMismatches = 0;        ///< Valid row sequence differences.
-    uint32_t argumentMismatches = 0;   ///< Defined argument word differences.
-    uint32_t counterMismatches = 0;    ///< Counter reconciliation differences.
-    VisibilityCounters sceneCounters;  ///< Retired scene-view counters.
-    VisibilityCounters shadowCounters; ///< Retired shadow-view counters.
+    bool isRetired = false;          ///< GPU results have completed and been read back.
+    bool overflow = false;           ///< At least one output capacity dropped work.
+    bool checkEnabled = false;       ///< Declaration captured CPU oracle expectations.
+    uint32_t stateMismatches = 0;    ///< Candidate state or reason differences.
+    uint32_t rowMismatches = 0;      ///< Valid row sequence differences.
+    uint32_t argumentMismatches = 0; ///< Defined argument word differences.
+    uint32_t counterMismatches = 0;  ///< Counter reconciliation differences.
+    /// CPU results are immediate. GPU declarations publish only candidates/disabled from canonical
+    /// row flags; classification/emission fields remain pending until isRetired becomes true.
+    VisibilityCounters sceneCounters;
+    /// Same immediate-population versus retired-result contract as sceneCounters.
+    VisibilityCounters shadowCounters;
     /// Whether every enabled diagnostic comparison matched.
     bool checkPassed() const {
         return stateMismatches == 0 && rowMismatches == 0 && argumentMismatches == 0 &&
@@ -136,7 +142,8 @@ struct VisibilityStatus {
 };
 /// Extracts the five planes rasterization clips against, with the fixed outward guard.
 FrustumPlanes extractFrustumPlanes(const glm::mat4& viewProjection);
-/// Classifies one shared row; nonfinite inputs are always retained conservatively.
+/// Classifies one shared row; authored-off rows reject before culling bypasses. Nonfinite enabled
+/// rows are retained conservatively.
 InstanceVisibility classifyInstance(const FrustumPlanes& planes, const engine::InstanceRow& row,
                                     uint32_t instanceRow, bool enabled = true,
                                     bool viewUnculled = false);

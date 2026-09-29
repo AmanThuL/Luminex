@@ -1,12 +1,14 @@
+#include "App/Model/Scene/SceneSession.h"
 #include "Scenes/CatalogScenes.h"
 #include "Support/EngineSceneTestSupport.h"
+#include "Support/SceneDocumentTestSupport.h"
 
 //======================================================================================================================
 TEST_CASE("loadTemporalLabScene places its diagnostics at the documented world positions",
           "[gpu]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = lmx::scenes::loadTemporalLabScene(**device);
+    auto scene = lmx::test::loadCatalogScene(**device, "temporal-lab");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -40,15 +42,24 @@ TEST_CASE("loadTemporalLabScene places its diagnostics at the documented world p
     REQUIRE(sign != nullptr);
     REQUIRE(near3(sign->position, glm::vec3(0.0f, 2.5f, -6.0f)));
 
-    // Everything except the floor, the reference cube and the invalid cube is tracked, and no
-    // track ever drives the object the motion sentinel belongs to.
-    REQUIRE((*scene)->animation.tracks.size() == 7);
+    // Seven authored movers and the truck's two wheels are tracked. The invalid-motion sentinel
+    // remains separate, and its class is not changed by adding the imported asset.
+    REQUIRE((*scene)->animation.tracks.size() == 9);
     REQUIRE((*scene)->animation.duration == Catch::Approx(24.0));
     REQUIRE((*scene)->animation.loop);
+    REQUIRE((*scene)->assetAnimations.size() == 1);
+    REQUIRE((*scene)->assetAnimations[0].clips.size() == 1);
+    const double truckDuration = (*scene)->assetAnimations[0].clips[0].duration;
+    REQUIRE(truckDuration > 0.0);
+    REQUIRE(truckDuration < 24.0);
     for (const RigidTrack& track : (*scene)->animation.tracks) {
         REQUIRE((*scene)->objects[track.objectIndex].motionClass ==
                 lmx::engine::MotionClass::Rigid);
-        REQUIRE(track.keys.size() == 24 * 60 + 1);
+        if (track.objectIndex < (*scene)->assetAnimations[0].objectBase) {
+            REQUIRE(track.keys.size() == 24 * 60 + 1);
+        } else {
+            REQUIRE(track.keys.size() == static_cast<size_t>(truckDuration * 60.0) + 1);
+        }
     }
 }
 
@@ -57,7 +68,7 @@ TEST_CASE("loadTemporalLabScene's tracks close their loop and hit their document
           "[gpu]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = lmx::scenes::loadTemporalLabScene(**device);
+    auto scene = lmx::test::loadCatalogScene(**device, "temporal-lab");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -124,13 +135,67 @@ TEST_CASE("loadTemporalLabScene's tracks close their loop and hit their document
 }
 
 //======================================================================================================================
+TEST_CASE("TemporalLab's imported truck wheel loops on its source clip across the lab wrap",
+          "[gpu][scene-doc]") {
+    auto device = rojoRHI::createDevice();
+    REQUIRE(device);
+    auto scene = lmx::test::loadCatalogScene(**device, "temporal-lab");
+    INFO(describeSceneError(scene));
+    REQUIRE(scene);
+    const auto& asset = (*scene)->assetAnimations[0];
+    REQUIRE(asset.clips.size() == 1);
+    const double duration = asset.clips[0].duration;
+    REQUIRE(duration > 0.5);
+    size_t wheel = (*scene)->objects.size();
+    for (const auto& node : asset.nodes) {
+        if (node.animated && !node.instances.empty()) {
+            wheel = asset.objectBase + node.instances.front();
+            break;
+        }
+    }
+    REQUIRE(wheel < (*scene)->objects.size());
+    (*scene)->animate(0.25);
+    const glm::mat4 first = (*scene)->objects[wheel].modelMatrix();
+    (*scene)->animate(duration + 0.25);
+    REQUIRE(matricesNear((*scene)->objects[wheel].modelMatrix(), first, 1e-4f));
+
+    (*scene)->animationTime = 23.75;
+    (*scene)->unwrappedAnimationTime = 23.75;
+    (*scene)->advanceAnimation(0.5);
+    REQUIRE((*scene)->animationTime == Catch::Approx(0.25));
+    (*scene)->animate((*scene)->animationTime, (*scene)->unwrappedAnimationTime);
+    const glm::mat4 throughWrap = (*scene)->objects[wheel].modelMatrix();
+    (*scene)->animate(24.25);
+    REQUIRE(matricesNear((*scene)->objects[wheel].modelMatrix(), throughWrap, 1e-4f));
+    REQUIRE((*scene)->objects[wheel].position.x > 4.0f);
+
+    lmx::app::SceneSession session;
+    session.activate(**scene, lmx::app::SceneActivationMotion::PreserveLoadedMotion);
+    (*scene)->animationTime = 1.5;
+    (*scene)->unwrappedAnimationTime = 1.5;
+    (*scene)->animate((*scene)->animationTime, (*scene)->unwrappedAnimationTime);
+    const glm::mat4 pausedWheel = (*scene)->objects[wheel].modelMatrix();
+    REQUIRE_FALSE(session.objectChanged(wheel));
+    session.editObject(wheel, {.position = {100.0f, 0.0f, 0.0f}});
+    REQUIRE(session.objectChanged(wheel));
+    session.resetObject(wheel);
+    REQUIRE(matricesNear((*scene)->objects[wheel].modelMatrix(), pausedWheel, 1e-4f));
+    REQUIRE_FALSE(session.objectChanged(wheel));
+
+    (*scene)->animationTime = 0.5;
+    (*scene)->unwrappedAnimationTime = 24.5;
+    (*scene)->animate((*scene)->animationTime, (*scene)->unwrappedAnimationTime);
+    REQUIRE_FALSE(session.objectChanged(wheel));
+}
+
+//======================================================================================================================
 // A pure projection check (no rendering): the initial camera frames every probe in a 1280x720
 // viewport, the moving objects do not overlap the still ones they are read against, and the poles
 // stay separated on screen across their whole swing.
 TEST_CASE("loadTemporalLabScene frames its probes and keeps its poles separated", "[gpu]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = lmx::scenes::loadTemporalLabScene(**device);
+    auto scene = lmx::test::loadCatalogScene(**device, "temporal-lab");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 

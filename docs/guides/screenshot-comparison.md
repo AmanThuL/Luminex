@@ -126,7 +126,7 @@ cells report differing pixels, >8/255
 pixels, max/mean delta and LDR-FLIP beside null controls without a new acceptance threshold.
 This scoped requirement is separate from the parent/candidate fifteen-cell zero-light matrix
 and its inherited profile. The original Off/Direct/Clustered zero-live exact gate remains 11/15 FAIL.
-The [follow-up](../milestones/m7/m7.5-followup.md#f5-diagnosis-and-prospective-gate) proposes exact causal
+The [follow-up](../milestones/m7/m7.5-followup.md#f5-diagnosis-and-exact-zero-enabled-causal-gate) proposes exact causal
 invariants plus separately reported temporal repeatability; controlled results are pending. This
 proposal does not replace the original exact requirement before disposition. Preserve failures and controls independently; a temporal difference cannot explain
 away a list-oracle failure. Clustered is now the default after the lossless-list and scoped
@@ -162,7 +162,7 @@ intentional overflow fixture. Unexpected colours, transparency, malformed files 
 are harness failures; both failure classes remain in the report. Output must be new. Exit codes
 are 0 for pass, 1 for renderer failure and 2 for incomplete/malformed evidence.
 
-Capture manifests remain v2. Measurement schema 4 separately joins retired lighting to each
+Capture manifest v3 and measurement schema 5 add loaded document path/hash provenance (older versions remain readable). Schema 5 joins retired lighting to each
 sample and reports `lightingGpuMs` apart from scene shading; see the [paired local/zero cost
 commands](gpu-debugging.md#measure-local-light-costs). Checks and views under `--measure` require
 `--unscored`, as does enabled validation/capture instrumentation. Pixel agreement, list coverage

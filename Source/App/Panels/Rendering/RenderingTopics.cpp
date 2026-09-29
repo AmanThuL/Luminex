@@ -23,13 +23,6 @@
 
 namespace lmx::app {
 
-namespace {
-
-// A non-empty percentile window is required by ExposureResolve.slang's weighted average.
-constexpr float kMinExposurePercentileGap = 1.0f;
-
-} // namespace
-
 using editor_style::checkbox;
 using editor_style::field;
 using editor_style::slider;
@@ -359,85 +352,6 @@ void drawRenderingTopic(const InspectorPanelContext& context, RenderingCategory 
         if (editor_style::beginDiagnostics()) {
             drawRows(true);
             editor_style::endDiagnostics();
-        }
-    }
-    if (category == RenderingCategory::Exposure) {
-        if (editor_style::beginPropertyGrid("exposureFields")) {
-            slider("Manual exposure (EV)", "##exposure", &settings.exposureEv, -6.0f, 6.0f);
-            editorTooltip("Each +1 EV doubles manual exposure. With auto exposure enabled, this "
-                          "value seeds exposure when it resets; Compensation adjusts metering.");
-            bool automatic = settings.autoExposureEnabled;
-            if (checkbox("Auto exposure", "##autoExposure", &automatic)) {
-                setAutoExposureEnabled(settings, context.exposureContext,
-                                       context.exposureResetPending, automatic);
-            }
-            editorTooltip("Meter scene luminance and apply the result on the following frame. "
-                          "Enabling starts from Manual exposure, then adapts toward the target.");
-            editor_style::endFields();
-        }
-        {
-            ImGui::SeparatorText("Metering details");
-            ImGui::BeginDisabled(!settings.autoExposureEnabled);
-            if (editor_style::beginPropertyGrid("meteringFields")) {
-                slider("Low percentile (%)", "##low", &settings.exposureLowPercentile, 0.0f,
-                       settings.exposureHighPercentile - kMinExposurePercentileGap, "%.0f");
-                editorTooltip(
-                    "Exclude the darkest part of the pixel population from metering. "
-                    "50% discards the darkest half; the retained range must stay nonempty.");
-                slider("High percentile (%)", "##high", &settings.exposureHighPercentile,
-                       settings.exposureLowPercentile + kMinExposurePercentileGap, 100.0f, "%.0f");
-                editorTooltip("Upper edge of the retained pixel population. 95% discards the "
-                              "brightest 5%; the remaining log luminance determines exposure.");
-                slider("Target grey", "##grey", &settings.exposureTargetGrey, 0.01f, 1.0f, "%.3f");
-                editorTooltip("Linear luminance the metered average should reach before the "
-                              "display transform. Higher values request a brighter exposure.");
-                slider("Minimum (EV)", "##minimum", &settings.exposureEvMin, -12.0f,
-                       settings.exposureEvMax);
-                editorTooltip("Lower limit on the applied automatic exposure, in stops.");
-                slider("Maximum (EV)", "##maximum", &settings.exposureEvMax, settings.exposureEvMin,
-                       12.0f);
-                editorTooltip("Upper limit on the applied automatic exposure, in stops.");
-                slider("Compensation (EV)", "##compensation", &settings.exposureCompensationEv,
-                       -6.0f, 6.0f);
-                editorTooltip("Bias the automatic metering target before its exposure limits. "
-                              "+1 EV requests twice the exposure.");
-                slider("Adapt up (stops/s)", "##adaptUp", &settings.exposureAdaptUpStopsPerSecond,
-                       0.0f, 16.0f);
-                editorTooltip("Maximum brightening rate, using the fixed 1/60-second step per "
-                              "rendered frame. Zero snaps immediately in this direction.");
-                slider("Adapt down (stops/s)", "##adaptDown",
-                       &settings.exposureAdaptDownStopsPerSecond, 0.0f, 16.0f);
-                editorTooltip("Maximum darkening rate, using the fixed 1/60-second step per "
-                              "rendered frame. Zero snaps immediately in this direction.");
-                editor_style::endFields();
-            }
-            ImGui::EndDisabled();
-            if (!settings.autoExposureEnabled)
-                editor_style::message("Enable auto exposure to edit metering and adaptation.");
-        }
-    }
-    if (category == RenderingCategory::Bloom) {
-        if (editor_style::beginPropertyGrid("bloomFields")) {
-            checkbox("Bloom", "##bloom", &settings.bloomEnabled);
-            ImGui::BeginDisabled(!settings.bloomEnabled);
-            slider("Threshold (linear)", "##threshold", &settings.bloomThreshold, 0.0f, 10.0f);
-            editorTooltip("Bloom extracts highlights above this pre-exposed linear luminance. "
-                          "Changing exposure also changes which highlights cross the threshold.");
-            slider("Intensity", "##intensity", &settings.bloomIntensity, 0.0f, 2.0f);
-            ImGui::EndDisabled();
-            editor_style::endFields();
-        }
-        if (!settings.bloomEnabled)
-            editor_style::message("Enable bloom to edit its threshold and intensity.");
-    }
-    if (category == RenderingCategory::Shadows) {
-        if (editor_style::beginPropertyGrid("shadowFields")) {
-            field("Shadow filter");
-            int filter = static_cast<int>(settings.shadowFilter);
-            constexpr const char* kFilterNames[] = {"PCF", "PCSS"};
-            if (ImGui::Combo("##shadowFilter", &filter, kFilterNames, 2))
-                settings.shadowFilter = static_cast<render::ShadowFilter>(filter);
-            editor_style::endFields();
         }
     }
     if (category == RenderingCategory::Display) {

@@ -1,5 +1,6 @@
 // Fixed GPU visibility ABI. Absolute indices address combined scene-then-shadow tables.
 import SceneTables;
+static const uint kVisibilityCounterWords = 21u;
 struct CandidateRecord { uint instanceRow; uint run; };
 struct RunRecord { uint firstCandidate; uint candidateCount; uint firstSlot; uint argumentIndex; };
 struct ChunkRecord { uint run; uint firstCandidate; uint candidateCount; uint padding; };
@@ -16,6 +17,7 @@ struct VisibilityParams
 };
 uint classifyBounds(InstanceRow row, VisibilityViewParams view)
 {
+    if ((row.flags & kInstanceDisabled) != 0u) return 1u | (6u << 2u);
     if ((view.flags & 1u) == 0u) return 2u | (1u << 2u);
     if ((view.flags & 2u) != 0u) return 2u | (2u << 2u);
     for (uint r = 0u; r < 4u; ++r)

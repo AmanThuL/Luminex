@@ -1,0 +1,163 @@
+//----------------------------------------------------------------------------------------------------------------------
+/// @file SceneDocument.h
+/// @brief Declares CPU scene-document data, deterministic serialization and checked disk I/O.
+//----------------------------------------------------------------------------------------------------------------------
+
+#pragma once
+
+#include "Engine/Asset/Asset.h"
+#include "Engine/Asset/Document/SceneLook.h"
+
+#include <glm/gtc/quaternion.hpp>
+#include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
+
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+namespace lmx::asset {
+
+/// Editable world pose of an imported object, expressed in the editor's own Euler convention.
+struct ObjectPose {
+    glm::vec3 translation{0.0f};  ///< World-space translation in metres.
+    glm::vec3 eulerDegrees{0.0f}; ///< World-space XYZ Euler angles in degrees.
+    glm::vec3 scale{1.0f};        ///< World-space scale.
+};
+
+/// Authored changes applying to every primitive instance of one imported glTF node.
+struct DocOverride {
+    uint32_t node = 0;              ///< Original glTF node index, including empty ancestors.
+    std::string name;               ///< Expected original name; mismatches fail instantiation.
+    std::optional<bool> enabled;    ///< Authored own-enabled state, independent of ancestors.
+    std::optional<ObjectPose> pose; ///< World pose; animated nodes reject pose overrides.
+};
+
+/// Referenced source asset; meshes and material data stay in this external file.
+struct DocAsset {
+    /// Decoded filesystem path relative to Assets/; JSON reading/writing decodes/encodes once.
+    std::string uri;
+    std::string sha256; ///< Lowercase SHA-256 of the referenced file.
+};
+
+/// Lab registry entry with insertion-ordered numeric parameters.
+struct DocGenerator {
+    std::string name;                                   ///< Generator registry name.
+    std::vector<std::pair<std::string, double>> params; ///< Ordered parameter names and values.
+};
+
+/// Punctual-light type in the glTF CPU vocabulary.
+enum class DocLightType {
+    Directional, ///< Infinite light with a node-local -Z direction.
+    Point,       ///< Finite-range point light.
+    Spot,        ///< Finite-range cone with a node-local -Z direction.
+};
+
+/// Standard KHR_lights_punctual definition; placement and enabled state belong to its node.
+struct DocLight {
+    std::string name;                              ///< Authored light name.
+    DocLightType type = DocLightType::Directional; ///< Punctual-light type.
+    glm::dvec3 colour{1.0};                        ///< Linear RGB in [0,1].
+    double intensity = 1.0;                        ///< Nonnegative luminous intensity/illuminance.
+    std::optional<float> range;                    ///< Positive metres; required for local lights.
+    float innerCone = 0.0f;                        ///< Spot inner cone, radians.
+    float outerCone = 0.7853981633974483f;         ///< Spot outer cone, radians.
+};
+
+/// Standard perspective camera; its transform belongs to the referencing document node.
+struct DocCamera {
+    std::string name;                   ///< Authored camera name.
+    float fovY = 1.0471975511965976f;   ///< Vertical field of view in radians.
+    float nearZ = 0.1f;                 ///< Positive near distance in metres.
+    std::optional<float> farZ = 100.0f; ///< Optional far plane; absence means infinite.
+    std::optional<float> aspectRatio;   ///< Optional fixed viewport aspect.
+};
+
+/// Document hierarchy node; indices reference the owning SceneDocument arrays.
+struct DocNode {
+    std::string name;               ///< Display name.
+    std::vector<uint32_t> children; ///< Ordered child node indices.
+    glm::vec3 translation{0.0f};    ///< Node-local metres.
+    /// Node-local glTF orientation, not normalized on read.
+    glm::quat rotation{1.0f, 0.0f, 0.0f, 0.0f};
+    glm::vec3 scale{1.0f};                 ///< Node-local per-axis scale.
+    std::optional<uint32_t> camera;        ///< Perspective camera index.
+    std::optional<uint32_t> light;         ///< Punctual-light index.
+    bool enabled = true;                   ///< Authored own-enabled state.
+    std::optional<DocAsset> asset;         ///< External asset instantiated below this node.
+    std::vector<DocOverride> overrides;    ///< Imported-node edits, valid only with asset.
+    std::optional<DocGenerator> generator; ///< Procedural lab instantiated below this node.
+    std::optional<std::string> role;       ///< Directional role: key, fill or rim.
+    bool castsShadow = false;              ///< Selects the one directional shadow caster.
+};
+
+/// Standard glTF transform target of a uniformly sampled document channel.
+enum class DocChannelPath {
+    Translation, ///< XYZ node-local position; fourth sample component is zero.
+    Rotation,    ///< XYZW quaternion components, retained exactly.
+    Scale,       ///< XYZ node-local scale; fourth sample component is zero.
+};
+
+/// One standard animation channel with samples in source order.
+struct DocChannel {
+    uint32_t node = 0;                                 ///< Target document node.
+    DocChannelPath path = DocChannelPath::Translation; ///< Target transform component.
+    bool step = false;                                 ///< STEP interpolation; otherwise LINEAR.
+    std::vector<glm::vec4> values;                     ///< Exactly DocAnimation::keyCount samples.
+};
+
+/// Uniform animation clock; time of key k is exactly double(k)/sampleRate.
+struct DocAnimation {
+    std::string name;         ///< Authored clip name used in diagnostics.
+    double sampleRate = 60.0; ///< Positive samples per second.
+    uint32_t keyCount = 0;    ///< Shared number of samples in all channels.
+    /// Source order; each node/path pair occurs at most once within this animation.
+    std::vector<DocChannel> channels;
+};
+
+/// Owned glTF scene-document model with no GPU objects or live editor state.
+struct SceneDocument {
+    uint32_t schemaVersion = 1;           ///< Supported LMX_scene schema version.
+    std::string name;                     ///< glTF scene label.
+    uint32_t camera = 0;                  ///< Initial camera's document node index.
+    bool loop = true;                     ///< Whether the one scene clock loops.
+    SceneLook look;                       ///< Authored look.
+    std::vector<uint32_t> rootNodes;      ///< Ordered scene roots.
+    std::vector<DocNode> nodes;           ///< Original document node order.
+    std::vector<DocCamera> cameras;       ///< Standard perspective camera definitions.
+    std::vector<DocLight> lights;         ///< Standard punctual lights in document order.
+    std::vector<DocAnimation> animations; ///< Standard animation clips in source order.
+    std::vector<std::string> warnings;    ///< Read diagnostics; excluded from canonical output.
+    /// Validated decoded buffer URI from the read source. Provenance only: excluded from canonical
+    /// output and dirty comparison; successful save adoption replaces it with the saved source URI.
+    std::optional<std::string> sourceBufferUri;
+};
+
+/// Reads and validates a document plus its standard external animation buffer. All malformed
+/// field errors name a JSON pointer; skipped unbounded local lights produce one warning each.
+/// Referenced asset/HDRI URIs and hashes are syntax-checked here; instantiation resolves the files
+/// and verifies their content hashes before creating GPU resources.
+AssetResult<SceneDocument> readSceneDocument(const std::filesystem::path& path);
+/// Returns canonical glTF JSON for a valid model. bufferUri is a decoded relative filesystem path;
+/// this function percent-encodes it once, just like asset/HDRI paths stored in the model.
+std::string sceneDocumentJson(const SceneDocument& doc, std::string_view bufferUri);
+/// Checks the model invariants a write depends on: finite numbers, valid enums, bounded local
+/// lights and consistent animations. Errors name a JSON pointer; sceneDocumentJson requires
+/// success.
+AssetResult<void> validateSceneDocumentModel(const SceneDocument& doc);
+/// Returns standard little-endian FLOAT animation data in deterministic accessor order.
+std::vector<std::byte> sceneDocumentBuffer(const SceneDocument& doc);
+/// Stages the glTF and, for animated documents only, its companion beside path, checks target
+/// permissions and rolls back reported replacement failures. An existing companion that the target
+/// document does not reference is never overwritten. This is not a crash-atomic transaction.
+/// Invalid models and filesystem errors fail.
+AssetResult<void> saveSceneDocument(const SceneDocument& doc, const std::filesystem::path& path);
+/// Hashes the on-disk glTF bytes followed by its referenced external buffer bytes, if present.
+AssetResult<std::string> sceneDocumentHash(const std::filesystem::path& path);
+
+} // namespace lmx::asset

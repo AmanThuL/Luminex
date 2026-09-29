@@ -11,8 +11,8 @@ using namespace lmx::app;
 
 //======================================================================================================================
 TEST_CASE("editor shortcuts reject text look and popup contexts", "[app][shortcuts]") {
-    for (auto shortcut :
-         {EditorShortcut::FrameSelected, EditorShortcut::ResetCamera, EditorShortcut::Capture}) {
+    for (auto shortcut : {EditorShortcut::FrameSelected, EditorShortcut::ResetCamera,
+                          EditorShortcut::Capture, EditorShortcut::Document}) {
         for (unsigned flags = 1; flags < 8; ++flags) {
             INFO(flags);
             REQUIRE_FALSE(shortcutAllowed(
@@ -24,8 +24,8 @@ TEST_CASE("editor shortcuts reject text look and popup contexts", "[app][shortcu
 
 //======================================================================================================================
 TEST_CASE("editor shortcuts reject focus on a detached surface", "[app][shortcuts]") {
-    for (auto shortcut :
-         {EditorShortcut::FrameSelected, EditorShortcut::ResetCamera, EditorShortcut::Capture}) {
+    for (auto shortcut : {EditorShortcut::FrameSelected, EditorShortcut::ResetCamera,
+                          EditorShortcut::Capture, EditorShortcut::Document}) {
         INFO(static_cast<int>(shortcut));
         REQUIRE_FALSE(
             shortcutAllowed(shortcut, {.otherSurfaceFocused = true, .hasSelection = true}));
@@ -46,4 +46,10 @@ TEST_CASE("capture shortcut reaches the intent without availability so it can ex
     REQUIRE(shortcutAllowed(EditorShortcut::Capture, {}));
     REQUIRE_FALSE(shortcutAllowed(EditorShortcut::Capture, {.textInput = true}));
     REQUIRE_FALSE(shortcutAllowed(EditorShortcut::Capture, {.otherSurfaceFocused = true}));
+}
+
+//======================================================================================================================
+TEST_CASE("document shortcuts need no selected object", "[app][shortcuts]") {
+    REQUIRE(shortcutAllowed(EditorShortcut::Document, {}));
+    REQUIRE_FALSE(shortcutAllowed(EditorShortcut::Document, {.popupOpen = true}));
 }

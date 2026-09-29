@@ -1,4 +1,4 @@
-"""Strict schema-4 local-light plan and exact-frame observation validation."""
+"""Strict schema-4/5 local-light plan and exact-frame observation validation."""
 import math
 
 DEFAULT_PLAN = dict(localLightMode="clustered", localLightRig=False, labLights=256,
@@ -10,7 +10,7 @@ def comparable_plan(schema, expected):
     provided = {key: expected[key] for key in DEFAULT_PLAN if key in expected}
     if provided and provided.keys() != DEFAULT_PLAN.keys():
         raise ValueError("incomplete requested lighting plan")
-    if schema == 4:
+    if schema in (4, 5):
         return {**expected, **(provided or DEFAULT_PLAN)}
     if (expected.get("scene") == "light-lab" or provided.get("localLightRig", False) or
             provided.get("lightCheck", False) or provided.get("lightDebugView", "off") != "off"):

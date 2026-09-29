@@ -65,7 +65,7 @@ TEST_CASE("Measurements join lighting by exact frame independently of timing",
     CHECK(run.samples()[0].lighting->frameNumber == 10);
     CHECK(run.samples()[0].lighting->listBytes == 28);
     const auto json = run.json();
-    CHECK(json.contains("\"schemaVersion\":4"));
+    CHECK(json.contains("\"schemaVersion\":5"));
     CHECK(json.contains("\"lightingGpuMs\":0.375"));
     CHECK(json.contains("\"sceneGpuMs\":2"));
     CHECK(json.contains("\"gpuSumMs\":2.375"));
@@ -214,9 +214,6 @@ TEST_CASE("Invalid lighting measurement plans fail before submission",
     SECTION("pile exceeds hard cap") {
         plan.labLights = 4096;
         plan.labLightPile = 1;
-    }
-    SECTION("rig in another scene") {
-        plan.localLightRig = true;
     }
     REQUIRE_FALSE(run.start(plan, {}));
 }

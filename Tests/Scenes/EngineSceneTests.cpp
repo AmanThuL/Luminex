@@ -3,8 +3,8 @@
 #include "Engine/Lights/LocalLightMath.h"
 #include "Render/Renderer/SceneViewBuilder.h"
 #include "Scenes/CatalogScenes.h"
-#include "Scenes/SponzaLightRig.h"
 #include "Support/EngineSceneTestSupport.h"
+#include "Support/SceneDocumentTestSupport.h"
 #include "Support/SceneTableTestSupport.h"
 
 #include <cstring>
@@ -38,7 +38,7 @@ TEST_CASE("loadSponzaScene loads the fetched Sponza asset", "[gpu]") {
 
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = lmx::scenes::loadSponzaScene(**device);
+    auto scene = lmx::test::loadCatalogScene(**device, "sponza");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -85,7 +85,7 @@ TEST_CASE("loadHelmetScene loads the fetched DamagedHelmet asset", "[gpu]") {
 
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = lmx::scenes::loadHelmetScene(**device);
+    auto scene = loadGltfScene(**device, path->string(), "Damaged Helmet");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -142,7 +142,7 @@ TEST_CASE("loadHelmetScene's unbaked fallback computes the same mip 1 the offlin
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
 
-    auto bakedScene = lmx::scenes::loadHelmetScene(**device);
+    auto bakedScene = loadGltfScene(**device, path->string(), "Damaged Helmet");
     INFO(describeSceneError(bakedScene));
     REQUIRE(bakedScene.has_value());
     rojoRHI::Texture* bakedDiffuse =
@@ -154,7 +154,7 @@ TEST_CASE("loadHelmetScene's unbaked fallback computes the same mip 1 the offlin
     std::vector<uint8_t> fallbackMip1;
     {
         const TemporarilyHiddenDirectory hidden(bakedDir);
-        auto fallbackScene = lmx::scenes::loadHelmetScene(**device);
+        auto fallbackScene = loadGltfScene(**device, path->string(), "Damaged Helmet");
         INFO(describeSceneError(fallbackScene));
         REQUIRE(fallbackScene.has_value());
         rojoRHI::Texture* fallbackDiffuse =
@@ -185,7 +185,7 @@ TEST_CASE("loadSponzaScene's full SceneView renders through Renderer without exh
 
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = lmx::scenes::loadSponzaScene(**device);
+    auto scene = lmx::test::loadCatalogScene(**device, "sponza");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -206,8 +206,7 @@ TEST_CASE("loadSponzaScene's full SceneView renders through Renderer without exh
     rojoRHI::CommandList& commands = (*device)->beginFrame();
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
     std::vector<lmx::engine::DrawItem> items;
-    const render::SceneView view =
-        render::buildSceneView(**scene, items, render::ShadowFilter::PCF, /*wireframe=*/false);
+    const render::SceneView view = render::buildSceneView(**scene, items, /*wireframe=*/false);
     REQUIRE(items.size() == 25);
 
     (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
@@ -245,7 +244,7 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
 
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = lmx::scenes::loadSponzaScene(**device);
+    auto scene = lmx::test::loadCatalogScene(**device, "sponza");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -359,31 +358,23 @@ TEST_CASE("SceneLibrary lists the scenes in a fixed order", "[gpu]") {
     REQUIRE(device.has_value());
     lmx::scenes::SceneLibrary library(**device);
 
-    REQUIRE(library.entries().size() == 8);
+    REQUIRE(library.entries().size() == 6);
     REQUIRE(lmx::scenes::sceneIdString(library.entries()[0].id) == "sponza");
     REQUIRE(library.entries()[0].stableId == "sponza");
     REQUIRE(library.entries()[0].displayName == "Sponza");
-    REQUIRE(lmx::scenes::sceneIdString(library.entries()[1].id) == "damaged-helmet");
-    REQUIRE(library.entries()[1].stableId == "damaged-helmet");
-    REQUIRE(lmx::scenes::sceneIdString(library.entries()[2].id) == "milk-truck");
-    REQUIRE(library.entries()[2].stableId == "milk-truck");
-    REQUIRE(library.entries()[2].displayName == "Milk Truck");
-    REQUIRE(library.entries()[2].role == lmx::scenes::SceneRole::Sample);
-    REQUIRE(lmx::scenes::sceneIdString(library.entries()[3].id) == "material-lab");
-    REQUIRE(library.entries()[3].stableId == "material-lab");
-    REQUIRE(library.entries()[3].displayName == "MaterialLab");
-    REQUIRE(library.entries()[3].role == lmx::scenes::SceneRole::Diagnostic);
-    REQUIRE(lmx::scenes::sceneIdString(library.entries()[4].id) == "temporal-lab");
-    REQUIRE(library.entries()[4].stableId == "temporal-lab");
-    REQUIRE(library.entries()[4].displayName == "TemporalLab");
+    REQUIRE(library.entries()[1].stableId == "material-lab");
+    REQUIRE(library.entries()[1].displayName == "MaterialLab");
+    REQUIRE(library.entries()[1].role == lmx::scenes::SceneRole::Diagnostic);
+    REQUIRE(library.entries()[2].stableId == "temporal-lab");
+    REQUIRE(library.entries()[2].displayName == "TemporalLab");
+    REQUIRE(library.entries()[2].role == lmx::scenes::SceneRole::Diagnostic);
+    REQUIRE(library.entries()[3].stableId == "san-miguel");
+    REQUIRE(library.entries()[3].role == lmx::scenes::SceneRole::Showcase);
+    REQUIRE(library.entries()[4].stableId == "visibility-lab");
     REQUIRE(library.entries()[4].role == lmx::scenes::SceneRole::Diagnostic);
-    REQUIRE(library.entries()[5].stableId == "san-miguel");
-    REQUIRE(library.entries()[5].role == lmx::scenes::SceneRole::Showcase);
-    REQUIRE(library.entries()[6].stableId == "visibility-lab");
-    REQUIRE(library.entries()[6].role == lmx::scenes::SceneRole::Diagnostic);
-    REQUIRE(library.entries()[7].stableId == "light-lab");
-    REQUIRE(library.entries()[7].displayName == "LightLab");
-    REQUIRE(library.entries()[7].role == lmx::scenes::SceneRole::Diagnostic);
+    REQUIRE(library.entries()[5].stableId == "light-lab");
+    REQUIRE(library.entries()[5].displayName == "LightLab");
+    REQUIRE(library.entries()[5].role == lmx::scenes::SceneRole::Diagnostic);
 }
 
 //======================================================================================================================
@@ -402,19 +393,15 @@ TEST_CASE("SceneLibrary reports the fetched scenes' availability from what this 
 
     const bool helmetPresent =
         findRepoAsset("Assets/Fetched/DamagedHelmet/DamagedHelmet.glb").has_value();
-    REQUIRE(library.entries()[1].available == helmetPresent);
-    REQUIRE(library.entries()[1].hint.empty() == helmetPresent);
+    const bool studioPresent =
+        findRepoAsset("Assets/Fetched/MaterialLab/studio_small_09_1k.hdr").has_value();
+    REQUIRE(library.entries()[1].available == (helmetPresent && studioPresent));
+    REQUIRE(library.entries()[1].hint.empty() == (helmetPresent && studioPresent));
 
     const bool truckPresent =
         findRepoAsset("Assets/Fetched/CesiumMilkTruck/CesiumMilkTruck.glb").has_value();
     REQUIRE(library.entries()[2].available == truckPresent);
     REQUIRE(library.entries()[2].hint.empty() == truckPresent);
-
-    // Both labs are code-generated: available regardless of what this checkout fetched.
-    REQUIRE(library.entries()[3].available);
-    REQUIRE(library.entries()[3].hint.empty());
-    REQUIRE(library.entries()[4].available);
-    REQUIRE(library.entries()[4].hint.empty());
 }
 
 //======================================================================================================================
@@ -449,7 +436,7 @@ TEST_CASE("loadMilkTruckScene loads the fetched CesiumMilkTruck asset with its w
 
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = lmx::scenes::loadMilkTruckScene(**device);
+    auto scene = loadGltfScene(**device, path->string(), "Milk Truck");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
     REQUIRE_FALSE((*scene)->objects.empty());
@@ -476,7 +463,7 @@ TEST_CASE("loadMilkTruckScene loads the fetched CesiumMilkTruck asset with its w
     // Nothing has moved yet, so every draw reprojects onto itself.
     std::vector<lmx::engine::DrawItem> items;
     const auto rows = readSceneInstances(**scene, **device);
-    render::buildSceneView(**scene, items, render::ShadowFilter::PCF, false);
+    render::buildSceneView(**scene, items, false);
     REQUIRE(items.size() == (*scene)->objects.size());
     for (const lmx::engine::DrawItem& item : items) {
         const auto& row = rows[item.instanceRow];
@@ -490,7 +477,7 @@ TEST_CASE("loadMilkTruckScene loads the fetched CesiumMilkTruck asset with its w
     (*scene)->advanceAnimation(1.0 / 60.0);
     (*scene)->animate((*scene)->animationTime);
     const auto movedRows = readSceneInstances(**scene, **device);
-    render::buildSceneView(**scene, items, render::ShadowFilter::PCF, false);
+    render::buildSceneView(**scene, items, false);
     bool anyMoved = false;
     for (const lmx::engine::DrawItem& item : items) {
         const auto& row = movedRows[item.instanceRow];
@@ -525,7 +512,7 @@ TEST_CASE("loadGltfScene opens an animated file at the clip's t = 0, not its aut
 
     std::vector<lmx::engine::DrawItem> items;
     const auto rows = readSceneInstances(**scene, **device);
-    render::buildSceneView(**scene, items, render::ShadowFilter::PCF, false);
+    render::buildSceneView(**scene, items, false);
     REQUIRE(items.size() == 1);
     const auto& row = rows[items[0].instanceRow];
     REQUIRE(matricesNear(row.model, clipAtZero, 1e-4f));
@@ -571,90 +558,46 @@ TEST_CASE("loadGltfScene runs authoring before finalize", "[scene][gpu]") {
 }
 
 //======================================================================================================================
-TEST_CASE("Sponza rig is deterministic, idempotent and rejects foreign scenes",
-          "[scene][light-rig]") {
-    Scene scene;
-    scene.name = "Sponza";
-    Scene foreign;
-    foreign.name = "Sponza";
-    lmx::scenes::SponzaLightRig rig;
-    REQUIRE(rig.setEnabled(scene, false));
-    REQUIRE(scene.localLights().empty());
-    REQUIRE(rig.setEnabled(scene, true));
-    REQUIRE(rig.enabled());
-    const std::vector<LightId> ids(rig.lightIds().begin(), rig.lightIds().end());
-    REQUIRE(ids.size() > 0);
-    REQUIRE(ids.size() <= 32);
-    REQUIRE(rig.setEnabled(scene, true));
-    REQUIRE(std::ranges::equal(rig.lightIds(), ids));
-    for (const auto id : ids) {
-        REQUIRE(scene.light(id));
-        REQUIRE(lmx::engine::makeLightRow(*scene.light(id)));
-        REQUIRE_FALSE(foreign.light(id));
-        REQUIRE_FALSE(foreign.removeLight(id));
-    }
-    REQUIRE_FALSE(rig.setEnabled(foreign, false));
-    REQUIRE(scene.localLights().size() == ids.size());
-    REQUIRE(rig.setEnabled(scene, false));
-    REQUIRE_FALSE(rig.enabled());
-    REQUIRE(scene.localLights().size() == ids.size());
-    REQUIRE(scene.enabledLightCount() == 0);
-    for (const auto id : ids) {
-        REQUIRE(scene.light(id));
-        REQUIRE_FALSE(scene.light(id)->enabled);
-    }
-    REQUIRE(rig.setEnabled(scene, true));
-    REQUIRE(rig.lightIds().front() == ids.front());
-    const auto original = *scene.light(ids.front());
-    auto edited = original;
-    edited.intensity = 137.0f;
-    edited.colour = {0.1f, 0.2f, 0.3f};
-    REQUIRE(scene.updateLight(ids.front(), edited));
-    REQUIRE(rig.setEnabled(scene, false));
-    REQUIRE(rig.setEnabled(scene, true));
-    REQUIRE(scene.light(ids.front())->intensity == 137.0f);
-    REQUIRE(scene.light(ids.front())->colour == edited.colour);
-    lmx::scenes::SponzaLightRig rebound;
-    REQUIRE(rebound.setEnabled(scene, true));
-    REQUIRE(std::ranges::equal(rebound.lightIds(), ids));
-    REQUIRE(scene.localLights().size() == ids.size());
-    REQUIRE(scene.updateLight(ids.front(), original));
-    lmx::scenes::SponzaLightRig otherRig;
-    REQUIRE(otherRig.setEnabled(foreign, true));
-    REQUIRE(otherRig.lightIds().size() == rig.lightIds().size());
-    for (size_t i = 0; i < rig.lightIds().size(); ++i) {
-        const auto first = lmx::engine::makeLightRow(*scene.light(rig.lightIds()[i]));
-        const auto second = lmx::engine::makeLightRow(*foreign.light(otherRig.lightIds()[i]));
+TEST_CASE("Document rig masks preserve identity, authored flags and unrelated scenes",
+          "[scene][light-rig][scene-doc]") {
+    auto loaded = lmx::test::documentLightFixture();
+    auto foreign = lmx::test::documentLightFixture();
+    auto& scene = *loaded.scene;
+    lmx::app::SceneSession session;
+    session.activate(loaded, lmx::app::SceneActivationMotion::PreserveLoadedMotion);
+    const std::vector<LightId> ids(scene.rigLightIds().begin(), scene.rigLightIds().end());
+    REQUIRE(ids.size() == 16);
+    REQUIRE(session.localLightRigAvailable());
+    REQUIRE(session.localLightRigEnabled());
+    for (size_t i = 0; i < ids.size(); ++i) {
+        REQUIRE_FALSE(foreign.scene->light(ids[i]));
+        const auto first = lmx::engine::makeLightRow(*scene.light(ids[i]));
+        const auto second =
+            lmx::engine::makeLightRow(*foreign.scene->light(foreign.scene->rigLightIds()[i]));
         REQUIRE(first);
         REQUIRE(second);
         REQUIRE(std::memcmp(&*first, &*second, sizeof(lmx::engine::LightRow)) == 0);
     }
-}
-
-//======================================================================================================================
-TEST_CASE("SceneSession preserves per-scene rig state without touching unrelated scenes",
-          "[app][scene-session][light-rig]") {
-    Scene sponza;
-    sponza.name = "Sponza";
-    Scene other;
-    other.name = "LightLab";
-    lmx::app::SceneSession session;
-    session.activate(sponza, lmx::app::SceneActivationMotion::PreserveLoadedMotion);
-    REQUIRE(session.localLightRigAvailable());
-    REQUIRE_FALSE(session.localLightRigEnabled());
+    const auto group = *loaded.binding.localLightGroup;
+    const bool authored = session.documentState().nodeEnabled[group];
+    auto edited = *scene.light(ids.front());
+    edited.intensity = 137;
+    REQUIRE(scene.updateLight(ids.front(), edited));
+    REQUIRE(session.setLocalLightRig(false));
+    REQUIRE(scene.enabledLightCount() == 0);
+    REQUIRE(session.documentState().nodeEnabled[group] == authored);
     REQUIRE(session.setLocalLightRig(true));
-    const size_t count = sponza.localLights().size();
+    REQUIRE(scene.light(ids.front())->intensity == 137);
+    REQUIRE(std::ranges::equal(scene.rigLightIds(), ids));
+    REQUIRE(scene.localLights().size() == 16);
+    Scene other;
+    other.name = "Sponza";
     session.activate(other, lmx::app::SceneActivationMotion::PreserveLoadedMotion);
     REQUIRE_FALSE(session.localLightRigAvailable());
-    REQUIRE_FALSE(session.localLightRigEnabled());
-    REQUIRE_FALSE(session.setLocalLightRig(true));
+    REQUIRE(session.setLocalLightRig(true));
     REQUIRE(other.localLights().empty());
-    session.activate(sponza, lmx::app::SceneActivationMotion::PreserveLoadedMotion);
+    session.activate(loaded, lmx::app::SceneActivationMotion::PreserveLoadedMotion);
     REQUIRE(session.localLightRigEnabled());
-    REQUIRE(sponza.localLights().size() == count);
-    REQUIRE(session.setLocalLightRig(false));
-    REQUIRE(sponza.localLights().size() == count);
-    REQUIRE(sponza.enabledLightCount() == 0);
 }
 
 //======================================================================================================================
@@ -665,11 +608,13 @@ TEST_CASE("Sponza authored rig preserves geometry rows and has no animation trac
     }
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    auto loaded = lmx::scenes::loadSponzaScene(**device);
+    const auto path = lmx::scenes::catalogDocumentPath("sponza");
+    REQUIRE(path);
+    auto loaded = lmx::scenes::loadSceneDocument(**device, *path);
     REQUIRE(loaded);
-    auto& scene = **loaded;
+    auto& scene = *loaded->scene;
     lmx::app::SceneSession session;
-    session.activate(scene, lmx::app::SceneActivationMotion::PreserveLoadedMotion);
+    session.activate(*loaded, lmx::app::SceneActivationMotion::PreserveLoadedMotion);
     const auto before = readSceneInstances(scene, **device);
     REQUIRE(scene.tables().liveLightCount == 16);
     REQUIRE(scene.tables().lights != nullptr);
@@ -699,29 +644,19 @@ TEST_CASE("Sponza authored rig preserves geometry rows and has no animation trac
 }
 
 //======================================================================================================================
-TEST_CASE("Sponza rig leaves unrelated lights intact and fails capacity without partial additions",
-          "[scene][light-rig]") {
-    Scene scene;
-    scene.name = "Sponza";
-    const auto authored = scene.addLight(lmx::engine::LocalLight{});
-    REQUIRE(authored);
-    lmx::scenes::SponzaLightRig rig;
-    REQUIRE(rig.setEnabled(scene, true));
-    REQUIRE(scene.removeLight(rig.lightIds().front()));
-    REQUIRE(rig.setEnabled(scene, false));
+TEST_CASE("Document rig toggles keep unrelated and removed light identities intact",
+          "[scene][light-rig][scene-doc]") {
+    auto loaded = lmx::test::documentLightFixture();
+    auto& scene = *loaded.scene;
+    const auto unrelated = scene.addLight(lmx::engine::LocalLight{});
+    REQUIRE(unrelated);
+    lmx::app::SceneSession session;
+    session.activate(loaded, lmx::app::SceneActivationMotion::PreserveLoadedMotion);
+    REQUIRE(scene.removeLight(scene.rigLightIds().front()));
+    REQUIRE(session.setLocalLightRig(false));
     REQUIRE(scene.localLights().size() == 16);
     REQUIRE(scene.enabledLightCount() == 1);
-    REQUIRE(scene.light(*authored));
-    REQUIRE(rig.setEnabled(scene, true));
+    REQUIRE(scene.light(*unrelated)->enabled);
+    REQUIRE(session.setLocalLightRig(true));
     REQUIRE(scene.localLights().size() == 16);
-    Scene crowded;
-    crowded.name = "Sponza";
-    lmx::scenes::SponzaLightRig crowdedRig;
-    while (crowded.localLights().size() < lmx::engine::kMaxLocalLights - 8) {
-        REQUIRE(crowded.addLight(lmx::engine::LocalLight{}));
-    }
-    const size_t count = crowded.localLights().size();
-    REQUIRE_FALSE(crowdedRig.setEnabled(crowded, true));
-    REQUIRE_FALSE(crowdedRig.enabled());
-    REQUIRE(crowded.localLights().size() == count);
 }

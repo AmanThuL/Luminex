@@ -15,14 +15,15 @@
 
 namespace lmx::app {
 
-/// Serializes a schema-v2 sequence manifest at full floating-point precision. Records are
+/// Serializes a schema-v3 sequence manifest at full floating-point precision. Records are
 /// JSON objects from captureRecordJson; display describes the renderer's final output. The
 /// offscreen capture has no composited UI. Incomplete runs retain any supplied failure reason.
 std::string captureManifestJson(const AppOptions& options, std::string_view device,
                                 const render::DisplayDomain& display, uint32_t width,
                                 uint32_t height, bool cameraTrack,
                                 const std::vector<std::string>& records, bool complete,
-                                std::string_view failure = {});
+                                std::string_view sceneDocumentPath,
+                                std::string_view sceneDocumentHash, std::string_view failure = {});
 
 /// Serializes one sequence frame's camera, settings, reconstruction, and history state.
 /// Frame is the zero-based simulation frame at 60 Hz; ordinal excludes unsaved warmup frames.

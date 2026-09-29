@@ -26,6 +26,7 @@ void EditorPlayback::capture(const SceneSession& session, bool followRail) {
         snapshot.identity = scene.objects.front().mesh;
     snapshot.camera = session.camera();
     snapshot.time = scene.animationTime;
+    snapshot.unwrappedTime = scene.unwrappedAnimationTime;
     snapshot.followRail = followRail;
     for (const auto& track : scene.animation.tracks) {
         LMX_ASSERT(track.objectIndex < scene.objects.size(), "rigid track object must exist");
@@ -82,6 +83,7 @@ bool EditorPlayback::stop(SceneSession& session, bool& followRail) {
         auto& scene = session.scene();
         session.camera() = m_snapshot->camera;
         scene.animationTime = m_snapshot->time;
+        scene.unwrappedAnimationTime = m_snapshot->unwrappedTime;
         followRail = m_snapshot->followRail;
         // Scan live objects once: slot lookup stays linear for densely animated labs, while the
         // full identity prevents a removed object's recycled slot from inheriting its old pose.

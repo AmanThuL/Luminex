@@ -20,7 +20,7 @@ Explore detailed scenes, temporal reconstruction and the frame behind each image
 - **An inspectable frame.** Coherent GPU timing snapshots, motion diagnostics and a detached
   render graph window with resource connections, frame freeze and export.
 - **A practical editor.** Searchable scene Hierarchy, visible-object selection outlines, scoped
-  resets, playback controls and a log Console. Inter typography and one-click UI zoom fit the workspace.
+  resets, saved scene documents, playback controls and a log Console. Inter typography and one-click UI zoom fit the workspace.
 - **Built close to the GPU.** C++23, Slang shaders and a thin RHI, with explicit resource
   dependencies, transient pooling and Metal validation tests.
 
@@ -50,7 +50,12 @@ xmake run App
 Setup downloads pinned dependencies, Inter and Codicons fonts, and sample assets. The editor opens maximized
 on Sponza. Hold the right mouse button in the viewport and use WASD + Q/E to fly.
 
-Use **File → Open Scene** to switch scenes and **Window → Render Graph** for the detached graph.
+Use **File → Open Scene** to choose Sponza, MaterialLab, TemporalLab, VisibilityLab, LightLab or
+San Miguel (installed with `xmake setup --san-miguel`). MaterialLab includes Damaged Helmet;
+TemporalLab includes the animated Milk Truck. **File → Open…**, **Save** and **Save As…** manage
+[scene documents](docs/guides/scene-documents.md), including object enablement, lights and the
+scene look. Select Environment in Hierarchy for exposure, bloom and shadows.
+**Window → Render Graph** opens the detached graph.
 Use **View → UI Scale** or Cmd+- / Cmd++ to adjust UI scale; click the menu-row percentage or press Cmd+0 to reset it.
 Layout and scale are saved automatically.
 
@@ -60,7 +65,8 @@ Layout and scale are saved automatically.
 |---|---|
 | `Source/Core` | Logging, assertions, math, geometry, and containers with no domain meaning. |
 | `Source/Engine` | Asset loading and baking, plus the GPU-resident scene: geometry, materials, lights, and cameras. |
-| `Source/Scenes` | The scene catalog built on top of Engine. |
+| `Source/Scenes` | Document catalog, lab generators and saved-scene export above Engine. |
+| `Assets/Scenes` | Six checked-in glTF scene documents and their animation buffers. |
 | `Source/Render` | The render graph, the renderer, and the shader-matched rendering pass families. |
 | `Source/App` | The editor's models, its SDL3 and Dear ImGui shell and panels, the frame loops, and the headless screenshot and measurement runners. |
 | `RojoRHI/` | The Metal 4 rendering hardware interface, mounted as a git submodule. |
@@ -74,6 +80,7 @@ Layout and scale are saved automatically.
 [Architecture](docs/architecture/overview.md) ·
 [Frame walkthrough](docs/architecture/frame-pipeline.md) ·
 [GPU debugging](docs/guides/gpu-debugging.md) ·
+[Scene documents](docs/guides/scene-documents.md) ·
 [Temporal comparisons](docs/guides/temporal-comparison.md) ·
 [Roadmap](docs/roadmap.md)
 

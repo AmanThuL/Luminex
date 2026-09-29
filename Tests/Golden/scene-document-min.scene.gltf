@@ -1,0 +1,67 @@
+{
+  "asset": {
+    "version": "2.0"
+  },
+  "extensionsUsed": ["LMX_scene"],
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "Minimal",
+      "nodes": [0]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "Camera",
+      "camera": 0,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    }
+  ],
+  "cameras": [
+    {
+      "name": "Perspective",
+      "type": "perspective",
+      "perspective": {
+        "yfov": 1.0471976,
+        "znear": 0.1,
+        "zfar": 100
+      }
+    }
+  ],
+  "extensions": {
+    "LMX_scene": {
+      "schemaVersion": 1,
+      "camera": 0,
+      "look": {
+        "exposure": {
+          "ev": 0,
+          "autoEnabled": false,
+          "lowPercentile": 50,
+          "highPercentile": 95,
+          "targetGrey": 0.18,
+          "evMin": -8,
+          "evMax": 8,
+          "compensationEv": 0,
+          "adaptUpStopsPerSecond": 3,
+          "adaptDownStopsPerSecond": 1.5
+        },
+        "bloom": {
+          "enabled": true,
+          "threshold": 1,
+          "intensity": 0.2
+        },
+        "shadow": {
+          "filter": "pcf"
+        },
+        "environment": {
+          "skySrgb8": [149, 170, 196]
+        }
+      },
+      "loop": true
+    }
+  }
+}

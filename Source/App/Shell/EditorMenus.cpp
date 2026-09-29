@@ -24,19 +24,42 @@ void EditorShell::buildMainMenu(const render::Renderer& renderer, const rojoRHI:
     if (!ImGui::BeginMainMenuBar())
         return;
     if (ImGui::BeginMenu("File")) {
-        ImGui::BeginDisabled(m_measurement.active());
+        const bool idle = m_documentWorkflow.step() == WorkflowStep::Idle;
+        const auto documentItem = [&](const char* label, const char* shortcut,
+                                      DocumentAction action) {
+            auto reason = DocumentWorkflow::unavailableReason(
+                action, m_playback.state() == PlaybackState::Stopped, m_measurement.active());
+            if (action == DocumentAction::Open && m_measurement.active())
+                reason = "Stop measurement before opening a scene.";
+            if (ImGui::MenuItem(label, shortcut, false, idle && !reason))
+                requestDocumentAction(action);
+            if (reason)
+                editorTooltip(reason->c_str());
+        };
+        documentItem("Open…", "Cmd+O", DocumentAction::Open);
+        ImGui::BeginDisabled(!idle || m_measurement.active());
         const auto requested = drawSceneMenu(SceneMenuContext{
             .library = m_library, .activeSceneId = m_activeSceneId, .loading = m_sceneLoading});
-        if (requested && *requested != m_activeSceneId)
-            m_sceneLoading.request(*requested);
+        if (requested)
+            requestDocumentAction(DocumentAction::OpenCatalog, *requested);
         ImGui::EndDisabled();
         ImGui::Separator();
-        if (ImGui::MenuItem("Quit"))
-            m_actions.requestQuit();
+        documentItem("Save", "Cmd+S", DocumentAction::Save);
+        documentItem("Save As…", "Cmd+Shift+S", DocumentAction::SaveAs);
+        documentItem("Revert", nullptr, DocumentAction::Revert);
+        ImGui::Separator();
+        if (ImGui::MenuItem("Quit", "Cmd+Q"))
+            requestQuit();
         ImGui::EndMenu();
     }
+    ImGui::BeginDisabled(m_documentWorkflow.step() != WorkflowStep::Idle);
     if (ImGui::BeginMenu("View")) {
         ImGui::BeginDisabled(m_measurement.active());
+        const bool stopped = m_playback.state() == PlaybackState::Stopped;
+        if (ImGui::MenuItem("Set Scene Camera from View", nullptr, false, stopped))
+            setSceneCamera();
+        editorTooltip(stopped ? "Use this view as the scene camera on the next Save."
+                              : "Stop playback before setting the saved scene camera.");
         if (ImGui::MenuItem("Reset Camera", "Home"))
             resetCamera();
         const bool canFrame = selectedObjectBounds(m_session.scene(), m_selection).has_value();
@@ -153,6 +176,7 @@ void EditorShell::buildMainMenu(const render::Renderer& renderer, const rojoRHI:
         ImGui::EndMenu();
     }
     buildPlaybackTransport();
+    ImGui::EndDisabled();
     ImGui::EndMainMenuBar();
 }
 

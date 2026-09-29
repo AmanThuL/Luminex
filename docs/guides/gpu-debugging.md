@@ -5,7 +5,7 @@
 Use a capture for wrong rendered output, a timing trace for performance, and a render-graph dump for frame declarations. All three depend on meaningful GPU object and pass labels.
 
 Choose a catalog scene with File > Open Scene. Hierarchy searches and selects scene lights and objects; its count includes disabled lights, and filtering retains selection. View > Editor Camera
-selects the camera in Inspector. Window > Rendering opens eleven topics: Reconstruction, Resolution, Visibility, Occlusion, Submission, Lighting, Exposure, Bloom, Shadows, Display and Scene tables.
+selects the camera in Inspector. Window > Rendering opens eight topics: Reconstruction, Resolution, Visibility, Occlusion, Submission, Lighting, Display and Scene tables. Environment Inspector owns saved Exposure/Bloom/Shadows; see [scene documents](scene-documents.md).
 Each topic puts controls before readings and collapsed Diagnostics; timing Details opens Performance. Inspector headers show subject, kind and scoped Reset. Property grids stack only below 260 base UI
 points; vectors name their XYZ/RGB components. Hover controls for help, including disabled reasons. Display diagnostics describe the SDR output/UI domains, framebuffer scale, target extent and 1:1
 mapping. Resize may briefly stretch the prior image during debounce. PNG preserves display/frame metadata; BMP remains available for historical parity.
@@ -23,14 +23,14 @@ fixed run in Performance > Measure; transport then shows progress and enables on
 Inspector Reset actions affect the named group. Camera Reset restores the scene's initial pose/lens and stops camera-rail following. Directional Light Reset restores authored direction and scene-linear radiance. Local-light Reset restores authored enablement/colour/intensity/range/cones and the current-time orbit position; Stop restores only its captured position, preserving other light edits. Object Reset restores its authored transform or samples that object's animated transform
 at the current playback time, preserving other object edits. Pause scene to retain a manual edit to an animated transform; playback replaces it on the next track sample.
 
-Rendering groups restore these editor defaults without resetting playback or another group:
+Rendering groups restore these editor defaults without resetting playback or another group. Environment Reset restores Exposure, Bloom and Shadows from the loaded or saved document:
 
 | Group | Defaults |
 |---|---|
 | Lighting | Clustered local lights; lighting diagnostic off; CPU list check off; LightLab overflow pile cleared; individual light state unchanged |
-| Exposure | Manual 0 EV; auto off; percentiles 50–95%; target grey 0.18; automatic EV range −8 to 8; compensation 0 EV; adaptation up/down 3/1.5 stops per second |
-| Bloom | Enabled; linear threshold 1; intensity 0.2 |
-| Shadows | PCF |
+| Environment: Exposure | The document's manual/auto EV and metering settings |
+| Environment: Bloom | The document's enabled state, threshold and intensity |
+| Environment: Shadows | The document's shadow filter |
 | Reconstruction | Temporal inputs and jitter enabled; Native TAA; temporal diagnostic off |
 | Resolution | Scale 1; dynamic resolution off; timed-pass budget 16 ms |
 | Display | Encoded sRGB clear RGBA (0.7, 0.7, 0.7, 1); wireframe off; transient pooling on |
@@ -198,7 +198,7 @@ classify/prepare time in Performance metric details. Hierarchy dims frustum-reje
 selection has no outline. Invalid bounds/transforms bypass conservatively. The graph imports `lmx.draw.rows` and `lmx.draw.args` with scene/shadow reads; the default CPU path uploads them, while GPU
 classification declares compute writes. Indirect issues one command per visible object; batched groups shared pipeline/material/mesh runs.
 
-Every run mode accepts `--visibility cull|off` and `--submission direct|indirect|batched`. GPU classification, previous-frame occlusion, retired counters and measurement schema 4: [GPU visibility guide](gpu-visibility.md).
+Every run mode accepts `--visibility cull|off` and `--submission direct|indirect|batched`. GPU classification, previous-frame occlusion, retired counters and measurement schema 5: [GPU visibility guide](gpu-visibility.md).
 VisibilityLab adds `--lab-instances 1..1048576` (default 4096, total including boundary probes);
 that option requires `--scene visibility-lab`. Its seeded grid and 12-second camera rail are fixed.
 
@@ -232,7 +232,7 @@ Failures remain in the output directory; no adoption rule is applied. Use `--sel
 
 ## Measure local-light costs
 
-Measurement JSON schema 4 retains the frozen local-light mode/rig/lab/check/view plan and a `lighting` observation joined to every sample's device frame, including Off, Direct and zero-live frames. It records requested/effective mode, live count, scene generation, retired counters, list bytes and mismatch counts. `lighting.listBytes` is the assigned index prefix ×4; `lighting.allocatedListBytes` covers three paced index buffers and may remain allocated after a mode switch. The sample's outer list-memory fields continue to describe visibility submission.
+Measurement JSON schema 5 retains the frozen local-light mode/rig/lab/check/view plan and a `lighting` observation joined to every sample's device frame, including Off, Direct and zero-live frames. It records requested/effective mode, live count, scene generation, retired counters, list bytes and mismatch counts. `lighting.listBytes` is the assigned index prefix ×4; `lighting.allocatedListBytes` covers three paced index buffers and may remain allocated after a mode switch. The sample's outer list-memory fields continue to describe visibility submission.
 `lightingGpuMs` sums only exact-frame `lmx.pass.light.*` timings, including a selected debug pass in an unscored run; punctual shading itself remains in `sceneGpuMs`. Off/Direct/zero-live frames have zero light-list cost, not zero shading cost. The full timed-pass sum includes both scopes. Missing retirement, mismatched frame/context, inconsistent counters or failed checks invalidate the run; completion waits for the final drain.
 
 ```sh
@@ -264,18 +264,18 @@ Build the baseline from the commit before the change under test (substitute the 
 ```bash
 git worktree add /tmp/lmx-baseline <baseline-commit>
 cd /tmp/lmx-baseline && git submodule update --init && xmake setup -P . && xmake -P .
-for scene in sponza damaged-helmet material-lab; do
+for scene in sponza material-lab temporal-lab; do
   LMX_SCREENSHOT_NO_BLOOM=1 xmake run -P . App --scene "$scene" \
     --screenshot "/tmp/lmx-baseline-$scene.bmp"
 done
 
 cd <worktree-under-test> && xmake -P .
-for scene in sponza damaged-helmet material-lab; do
+for scene in sponza material-lab temporal-lab; do
   LMX_SCREENSHOT_NO_BLOOM=1 xmake run -P . App --scene "$scene" \
     --screenshot "/tmp/lmx-tip-$scene.bmp"
 done
 
-for scene in sponza damaged-helmet material-lab; do
+for scene in sponza material-lab temporal-lab; do
   cmp "/tmp/lmx-baseline-$scene.bmp" "/tmp/lmx-tip-$scene.bmp" && echo "$scene: IDENTICAL"
 done
 ```

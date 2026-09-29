@@ -120,9 +120,11 @@ struct SceneView {
     SubmissionMode submission = SubmissionMode::Indirect; ///< CPU command preparation mode.
     engine::SceneTables tables; ///< Borrowed geometry and paced row buffers for this frame.
     std::span<const engine::DrawItem> items; ///< Borrowed draw list for the current render call.
-    /// Light 0 is the only caster: it drives the shadow map, and it is the light the shadow factor
-    /// multiplies. Lights 1 and 2 contribute without shadowing.
+    /// Directional lights in stable key/fill/rim role order.
     engine::DirectionalLight lights[3];
+    /// Role index receiving the shadow factor, or -1 for no shadow contribution. Default preserves
+    /// key casting.
+    int32_t shadowCaster = 0;
     /// Both absent or both set. A sky needs geometry to rasterise and a cubemap to sample; either
     /// one alone would draw nothing or draw black, so the renderer skips the pass unless it has
     /// the pair.

@@ -7,7 +7,6 @@
 
 #include "Core/Math/Transform.h"
 
-#define CGLTF_IMPLEMENTATION
 #include <cgltf.h>
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -409,6 +408,7 @@ struct AnimationChannel {
     cgltf_node* node = nullptr;
     cgltf_animation_path_type path = cgltf_animation_path_type_invalid;
     bool step = false;
+    bool cubic = false;
     size_t componentsPerKey = 0;
     std::vector<float> times;
     std::vector<float> values;
@@ -447,6 +447,30 @@ void sampleChannel(const AnimationChannel& channel, double time, float* out) {
         weight = std::clamp((time - static_cast<double>(channel.times[earlier])) / span, 0.0, 1.0);
     }
 
+    if (channel.cubic) {
+        const size_t stride = 3 * channel.componentsPerKey;
+        const float* a = channel.values.data() + earlier * stride + channel.componentsPerKey;
+        const float* incoming = channel.values.data() + later * stride;
+        const float* b = incoming + channel.componentsPerKey;
+        const float t = static_cast<float>(weight);
+        const float t2 = t * t;
+        const float t3 = t2 * t;
+        const float dt = static_cast<float>(span);
+        for (size_t c = 0; c < channel.componentsPerKey; ++c) {
+            out[c] = (2 * t3 - 3 * t2 + 1) * a[c] +
+                     (t3 - 2 * t2 + t) * dt * a[channel.componentsPerKey + c] +
+                     (-2 * t3 + 3 * t2) * b[c] + (t3 - t2) * dt * incoming[c];
+        }
+        if (channel.path == cgltf_animation_path_type_rotation) {
+            const glm::quat q = glm::normalize(glm::quat(out[3], out[0], out[1], out[2]));
+            out[0] = q.x;
+            out[1] = q.y;
+            out[2] = q.z;
+            out[3] = q.w;
+        }
+        return;
+    }
+
     const float* a = channel.values.data() + earlier * channel.componentsPerKey;
     const float* b = channel.values.data() + later * channel.componentsPerKey;
     if (channel.path == cgltf_animation_path_type_rotation) {
@@ -479,79 +503,130 @@ void markSubtree(const cgltf_data& data, const cgltf_node& node, std::vector<boo
 }
 
 //======================================================================================================================
-// Resamples the file's first animation into world-space per-instance tracks. Baking rather than
-// keeping the channels lets the renderer treat every animated draw as a flat rigid track without
-// a runtime node hierarchy, at the cost of one key per sample. Sampling writes through the cgltf
-// node poses, so it runs after the instances have captured the file's rest pose and leaves the
-// nodes at the last sampled time -- nothing reads them again.
-AssetResult<void> bakeFirstAnimation(cgltf_data& data, std::string_view path,
-                                     const std::vector<const cgltf_node*>& instanceNodes,
-                                     GltfScene& scene) {
-    if (data.animations_count == 0) {
-        return {};
+AssetResult<AnimationChannel> decodeAnimationChannel(const cgltf_animation_channel& source,
+                                                     std::string_view path) {
+    if (source.target_node == nullptr || source.sampler == nullptr) {
+        return std::unexpected(makeError(path, "animation channel has no target or sampler"));
     }
-    const cgltf_animation& animation = data.animations[0];
+    if (source.target_path == cgltf_animation_path_type_weights) {
+        return std::unexpected(makeError(path, "morph-target animation is not supported",
+                                         AssetErrorCode::Unsupported));
+    }
+    if (source.target_path != cgltf_animation_path_type_translation &&
+        source.target_path != cgltf_animation_path_type_rotation &&
+        source.target_path != cgltf_animation_path_type_scale) {
+        return std::unexpected(makeError(path, "animation channel targets an unknown property",
+                                         AssetErrorCode::Unsupported));
+    }
+    if (source.target_node->has_matrix) {
+        return std::unexpected(makeError(path, "an animated node uses a matrix transform",
+                                         AssetErrorCode::Unsupported));
+    }
 
+    AnimationChannel channel;
+    channel.node = source.target_node;
+    channel.path = source.target_path;
+    channel.step = source.sampler->interpolation == cgltf_interpolation_type_step;
+    channel.cubic = source.sampler->interpolation == cgltf_interpolation_type_cubic_spline;
+    if (source.sampler->input == nullptr || source.sampler->input->type != cgltf_type_scalar) {
+        return std::unexpected(makeError(path, "animation input times must be scalar"));
+    }
+    auto times = unpackAccessor(source.sampler->input, path, "input times");
+    if (!times) {
+        return std::unexpected(times.error());
+    }
+    channel.times = std::move(*times);
+    for (size_t key = 0; key < channel.times.size(); ++key) {
+        if (!std::isfinite(channel.times[key]) || channel.times[key] < 0.0f ||
+            (key > 0 && channel.times[key] <= channel.times[key - 1])) {
+            return std::unexpected(makeError(
+                path, "animation input times must be finite, nonnegative and strictly increasing"));
+        }
+    }
+    auto values = unpackAccessor(source.sampler->output, path, "output values");
+    if (!values) {
+        return std::unexpected(values.error());
+    }
+    channel.values = std::move(*values);
+    channel.componentsPerKey = channel.path == cgltf_animation_path_type_rotation ? 4u : 3u;
+    const auto expectedType =
+        channel.path == cgltf_animation_path_type_rotation ? cgltf_type_vec4 : cgltf_type_vec3;
+    const size_t stride = channel.componentsPerKey * (channel.cubic ? 3u : 1u);
+    if (source.sampler->output->type != expectedType ||
+        channel.values.size() != channel.times.size() * stride) {
+        return std::unexpected(
+            makeError(path, "animation sampler output does not match its input key count"));
+    }
+    if (std::ranges::any_of(channel.values, [](float value) { return !std::isfinite(value); })) {
+        return std::unexpected(makeError(path, "animation output values must be finite"));
+    }
+    return channel;
+}
+
+//======================================================================================================================
+AssetResult<GltfAnimationChannel> bakeLocalChannel(const cgltf_data& data,
+                                                   const AnimationChannel& channel, double duration,
+                                                   std::string_view path) {
+    GltfAnimationChannel result;
+    result.node = static_cast<uint32_t>(cgltf_node_index(&data, channel.node));
+    result.path = channel.path == cgltf_animation_path_type_rotation ? GltfAnimationPath::Rotation
+                  : channel.path == cgltf_animation_path_type_scale
+                      ? GltfAnimationPath::Scale
+                      : GltfAnimationPath::Translation;
+    result.step = channel.step;
+    const auto count = static_cast<size_t>(std::ceil(duration * kAnimationBakeRate - 1e-9)) + 1;
+    result.keys.reserve(count);
+    for (size_t sample = 0; sample < count; ++sample) {
+        GltfAnimationKey key;
+        key.time = std::min(static_cast<double>(sample) / kAnimationBakeRate, duration);
+        sampleChannel(channel, key.time, glm::value_ptr(key.value));
+        for (size_t component = 0; component < channel.componentsPerKey; ++component) {
+            if (!std::isfinite(key.value[component])) {
+                return std::unexpected(makeError(path, "animation sample is not finite"));
+            }
+        }
+        result.keys.push_back(key);
+    }
+    return result;
+}
+
+//======================================================================================================================
+// Retain local component samples for independent clip loops, and also bake the combined world
+// poses for flat-track consumers. Sampling mutates cgltf nodes only after rest poses are copied.
+AssetResult<void> bakeAnimations(cgltf_data& data, std::string_view path,
+                                 const std::vector<const cgltf_node*>& instanceNodes,
+                                 GltfScene& scene) {
     std::vector<AnimationChannel> channels;
-    channels.reserve(animation.channels_count);
-    double duration = 0.0;
-    for (cgltf_size i = 0; i < animation.channels_count; ++i) {
-        const cgltf_animation_channel& source = animation.channels[i];
-        if (source.target_node == nullptr || source.sampler == nullptr) {
-            return std::unexpected(makeError(path, "animation channel has no target or sampler"));
+    scene.clips.reserve(data.animations_count);
+    for (const cgltf_animation& animation : std::span(data.animations, data.animations_count)) {
+        GltfAnimationClip clip;
+        clip.name = animation.name != nullptr ? animation.name : "";
+        const size_t firstChannel = channels.size();
+        for (const cgltf_animation_channel& source :
+             std::span(animation.channels, animation.channels_count)) {
+            auto decoded = decodeAnimationChannel(source, path);
+            if (!decoded) {
+                return std::unexpected(decoded.error());
+            }
+            clip.duration = std::max(clip.duration, static_cast<double>(decoded->times.back()));
+            channels.push_back(std::move(*decoded));
         }
-        if (source.target_path == cgltf_animation_path_type_weights) {
-            return std::unexpected(makeError(path, "morph-target animation is not supported",
-                                             AssetErrorCode::Unsupported));
+        for (size_t c = firstChannel; c < channels.size(); ++c) {
+            auto local = bakeLocalChannel(data, channels[c], clip.duration, path);
+            if (!local) {
+                return std::unexpected(local.error());
+            }
+            clip.channels.push_back(std::move(*local));
         }
-        if (source.target_path != cgltf_animation_path_type_translation &&
-            source.target_path != cgltf_animation_path_type_rotation &&
-            source.target_path != cgltf_animation_path_type_scale) {
-            return std::unexpected(makeError(path, "animation channel targets an unknown property",
-                                             AssetErrorCode::Unsupported));
-        }
-        if (source.sampler->interpolation == cgltf_interpolation_type_cubic_spline) {
-            return std::unexpected(makeError(path,
-                                             "CUBICSPLINE animation samplers are not "
-                                             "supported",
-                                             AssetErrorCode::Unsupported));
-        }
-        if (source.target_node->has_matrix) {
-            return std::unexpected(makeError(path, "an animated node uses a matrix transform",
-                                             AssetErrorCode::Unsupported));
-        }
-
-        AnimationChannel channel;
-        channel.node = source.target_node;
-        channel.path = source.target_path;
-        channel.step = source.sampler->interpolation == cgltf_interpolation_type_step;
-        auto times = unpackAccessor(source.sampler->input, path, "input times");
-        if (!times) {
-            return std::unexpected(times.error());
-        }
-        channel.times = std::move(*times);
-        auto values = unpackAccessor(source.sampler->output, path, "output values");
-        if (!values) {
-            return std::unexpected(values.error());
-        }
-        channel.values = std::move(*values);
-        channel.componentsPerKey = channel.values.size() / channel.times.size();
-        const size_t expected = channel.path == cgltf_animation_path_type_rotation ? 4u : 3u;
-        if (channel.componentsPerKey != expected ||
-            channel.values.size() != channel.times.size() * expected) {
-            return std::unexpected(
-                makeError(path, "animation sampler output does not match its input key count"));
-        }
-        duration = std::max(duration, static_cast<double>(channel.times.back()));
-        channels.push_back(std::move(channel));
+        scene.animationDuration = std::max(scene.animationDuration, clip.duration);
+        scene.clips.push_back(std::move(clip));
     }
-    if (channels.empty()) {
-        return {};
-    }
-
     std::vector<bool> animatedNodes(data.nodes_count, false);
     for (const AnimationChannel& channel : channels) {
         markSubtree(data, *channel.node, animatedNodes);
+    }
+    for (size_t node = 0; node < scene.nodes.size(); ++node) {
+        scene.nodes[node].animated = animatedNodes[node];
     }
     std::vector<uint32_t> animatedInstances;
     for (size_t i = 0; i < instanceNodes.size(); ++i) {
@@ -569,6 +644,7 @@ AssetResult<void> bakeFirstAnimation(cgltf_data& data, std::string_view path,
         scene.tracks.push_back({.instanceIndex = instance});
     }
 
+    const double duration = scene.animationDuration;
     const auto sampleCount =
         static_cast<size_t>(std::ceil(duration * kAnimationBakeRate - 1e-9)) + 1;
     for (GltfAnimationTrack& track : scene.tracks) {
@@ -610,7 +686,6 @@ AssetResult<void> bakeFirstAnimation(cgltf_data& data, std::string_view path,
             scene.tracks[t].keys.push_back(*key);
         }
     }
-    scene.animationDuration = duration;
     return {};
 }
 
@@ -686,6 +761,27 @@ AssetResult<GltfScene> loadGltf(std::string_view path) {
                                                  AssetErrorCode::Unsupported));
             }
         }
+    }
+
+    if (data->nodes_count > static_cast<cgltf_size>(std::numeric_limits<int32_t>::max())) {
+        return std::unexpected(
+            makeError(path, "source node count exceeds the supported index range"));
+    }
+    scene.nodes.reserve(data->nodes_count);
+    for (const cgltf_node& source : std::span(data->nodes, data->nodes_count)) {
+        GltfNode node;
+        node.name = source.name != nullptr ? source.name : "";
+        if (source.parent != nullptr) {
+            node.parent = static_cast<int32_t>(cgltf_node_index(data.get(), source.parent));
+        }
+        node.translation = glm::make_vec3(source.translation);
+        node.rotation = glm::quat(source.rotation[3], source.rotation[0], source.rotation[1],
+                                  source.rotation[2]);
+        node.scale = glm::make_vec3(source.scale);
+        if (source.has_matrix) {
+            node.matrix = glm::make_mat4(source.matrix);
+        }
+        scene.nodes.push_back(std::move(node));
     }
 
     std::vector<bool> usedMaterials(data->materials_count, false);
@@ -862,8 +958,12 @@ AssetResult<GltfScene> loadGltf(std::string_view path) {
         const glm::mat4 world = nodeWorldMatrix(*node);
         for (cgltf_size p = 0; p < node->mesh->primitives_count; ++p) {
             const cgltf_material* material = node->mesh->primitives[p].material;
+            const auto nodeIndex = static_cast<uint32_t>(cgltf_node_index(data.get(), node));
+            scene.nodes[nodeIndex].instances.push_back(
+                static_cast<uint32_t>(scene.instances.size()));
             scene.instances.push_back(
-                {.meshIndex = primitiveFlatIndex[meshIdx][p],
+                {.node = nodeIndex,
+                 .meshIndex = primitiveFlatIndex[meshIdx][p],
                  .materialIndex = primitiveMaterialIndex[meshIdx][p],
                  .world = world,
                  .sourceName = node->name != nullptr && node->name[0] != '\0'
@@ -877,7 +977,7 @@ AssetResult<GltfScene> loadGltf(std::string_view path) {
         }
     }
 
-    if (auto baked = bakeFirstAnimation(*data, path, instanceNodes, scene); !baked) {
+    if (auto baked = bakeAnimations(*data, path, instanceNodes, scene); !baked) {
         return std::unexpected(baked.error());
     }
 

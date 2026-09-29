@@ -13,9 +13,10 @@ namespace lmx::render {
 namespace {
 //======================================================================================================================
 VisibilityCounters cpuCounters(const VisibilityResult& result, uint32_t commands) {
-    return {.candidates = static_cast<uint32_t>(result.candidates.size()),
+    return {.candidates = static_cast<uint32_t>(result.candidates.size()) - result.disabled,
             .visible = result.visible,
             .rejected = result.rejected,
+            .disabled = result.disabled,
             .bypassed = result.bypassed,
             .emittedRows = static_cast<uint32_t>(result.visibleItems.size()),
             .emittedCommands = commands};
@@ -56,12 +57,17 @@ std::array<GraphBuffer, 2> Renderer::prepareVisibility(RenderGraph& graph,
             LMX_ASSERT(item.instanceRow < view.tables.instanceRows.size(),
                        "visibility requires canonical instance rows");
             const auto& row = view.tables.instanceRows[item.instanceRow];
+            if (row.flags & engine::kInstanceDisabled)
+                ++m_visibilityStatus.sceneCounters.disabled;
+            else
+                ++m_visibilityStatus.sceneCounters.candidates;
             m_visibilityStatus.scene.candidates.push_back(
                 {.instanceIdentity = item.instanceIdentity,
                  .instanceRow = item.instanceRow,
                  .worldBounds = {row.worldBoundsMin, row.worldBoundsMax}});
         }
         m_visibilityStatus.shadow.candidates = m_visibilityStatus.scene.candidates;
+        m_visibilityStatus.shadowCounters = m_visibilityStatus.sceneCounters;
         if (!m_gpuVisibility) {
             auto stage = GpuVisibility::create(m_device);
             LMX_ASSERT(stage.has_value(), stage.error().message);

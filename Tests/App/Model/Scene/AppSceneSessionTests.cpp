@@ -1,5 +1,6 @@
 #include "App/Model/Scene/SceneSession.h"
 #include "Support/GraphTestSupport.h"
+#include "Support/SceneDocumentTestSupport.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -173,7 +174,8 @@ TEST_CASE("SceneSession view borrows item storage while commit and rewind preser
     device.frame = 1;
     REQUIRE(session.prepareFrame(device.frameNumber()));
     std::vector<engine::DrawItem> items;
-    const render::SceneView view = session.view(items, render::ShadowFilter::PCSS, true);
+    scene.look.shadowFilter = asset::ShadowFilter::PCSS;
+    const render::SceneView view = session.view(items, true);
     REQUIRE(view.items.data() == items.data());
     REQUIRE(view.items.size() == 1);
     REQUIRE(view.items[0].instanceRow == scene.objects[0].id.slot);
@@ -330,6 +332,44 @@ TEST_CASE(
 }
 
 //======================================================================================================================
+TEST_CASE("SceneSession reset uses each asset clip's unwrapped phase and source hierarchy",
+          "[app][scene-session][ux3]") {
+    engine::Scene scene = makeSessionScene();
+    scene.animation.tracks.clear();
+    scene.animation.duration = 24.0;
+    engine::AssetClipPlayback asset;
+    asset.rootWorld = glm::translate(glm::mat4(1), glm::vec3(10, 0, 0));
+    asset.instances = {scene.objects[0].id};
+    asset.nodes.resize(2);
+    asset.nodes[1].parent = 0;
+    asset.nodes[1].animated = true;
+    asset.nodes[1].instances = {0};
+    asset.clips = {{.duration = 2.0,
+                    .channels = {{.node = 0,
+                                  .path = asset::GltfAnimationPath::Translation,
+                                  .keys = {{.time = 0, .value = {0, 0, 0, 0}},
+                                           {.time = 2, .value = {2, 0, 0, 0}}}}}},
+                   {.duration = 3.5,
+                    .channels = {{.node = 1,
+                                  .path = asset::GltfAnimationPath::Translation,
+                                  .keys = {{.time = 0, .value = {0, 0, 0, 0}},
+                                           {.time = 3.5, .value = {3.5, 0, 0, 0}}}}}}};
+    scene.assetAnimations.push_back(std::move(asset));
+    SceneSession session;
+    session.activate(scene, SceneActivationMotion::Reset);
+    scene.animationTime = 0.5;
+    scene.unwrappedAnimationTime = 24.5;
+    scene.animate(scene.animationTime, scene.unwrappedAnimationTime);
+    REQUIRE(scene.objects[0].position.x == Catch::Approx(10.5f));
+    CHECK_FALSE(session.objectChanged(0));
+    session.editObject(0, {.position = {100, 0, 0}});
+    REQUIRE(session.objectChanged(0));
+    session.resetObject(0);
+    CHECK(scene.objects[0].position.x == Catch::Approx(10.5f));
+    CHECK_FALSE(session.objectChanged(0));
+}
+
+//======================================================================================================================
 TEST_CASE("SceneSession local-light reset uses full identities and current orbit position",
           "[app][scene-session][local-light-editor]") {
     engine::Scene scene;
@@ -371,13 +411,13 @@ TEST_CASE("SceneSession local-light reset uses full identities and current orbit
 TEST_CASE("SceneSession pile edits preserve grid and unrelated identities and obey capacity",
           "[app][scene-session][local-light-editor]") {
     engine::Scene scene;
-    scene.lightLabGridCount = 2;
     const auto grid0 = scene.addLight(engine::LocalLight{});
     const auto grid1 = scene.addLight(engine::LocalLight{});
     const auto authoredPile = scene.addLight(engine::LocalLight{});
     REQUIRE(grid0);
     REQUIRE(grid1);
     REQUIRE(authoredPile);
+    scene.lightLabPopulations.push_back({.grid = {*grid0, *grid1}, .pile = {*authoredPile}});
     SceneSession session;
     session.activate(scene, SceneActivationMotion::PreserveLoadedMotion);
     REQUIRE(session.lightLabPileAvailable());
@@ -397,4 +437,37 @@ TEST_CASE("SceneSession pile edits preserve grid and unrelated identities and ob
     REQUIRE(session.setLightLabPile(0));
     REQUIRE(scene.localLights().size() == 3);
     REQUIRE(scene.light(*unrelated));
+}
+
+//======================================================================================================================
+TEST_CASE("local light rig override is a no-op without a document group", "[app][scene-doc]") {
+    lmx::engine::Scene scene;
+    lmx::app::SceneSession session;
+    session.activate(scene, lmx::app::SceneActivationMotion::Reset);
+    REQUIRE_FALSE(session.localLightRigAvailable());
+    REQUIRE(session.setLocalLightRig(true));
+    REQUIRE(scene.localLights().empty());
+}
+
+//======================================================================================================================
+TEST_CASE("CLI rig override preserves an authored-off child and off group state",
+          "[app][scene-doc]") {
+    auto loaded = lmx::test::documentLightFixture();
+    const auto group = *loaded.binding.localLightGroup;
+    loaded.document.nodes[group].enabled = false;
+    const auto id = loaded.scene->rigLightIds().front();
+    const auto child = loaded.binding.lightNode.at(lmx::engine::sceneLightKey(id));
+    loaded.document.nodes[child].enabled = false;
+    for (const auto lightId : loaded.scene->rigLightIds()) {
+        auto light = *loaded.scene->light(lightId);
+        light.enabled = false;
+        REQUIRE(loaded.scene->updateLight(lightId, light));
+    }
+    lmx::app::SceneSession session;
+    session.activate(loaded, lmx::app::SceneActivationMotion::Reset);
+    REQUIRE(session.setLocalLightRig(true));
+    REQUIRE(loaded.scene->enabledLightCount() == 15);
+    REQUIRE_FALSE(loaded.scene->light(id)->enabled);
+    REQUIRE_FALSE(session.documentState().nodeEnabled[group]);
+    REQUIRE_FALSE(session.documentState().nodeEnabled[child]);
 }

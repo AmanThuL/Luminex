@@ -117,7 +117,8 @@ std::string_view labDescription(scenes::SceneId sceneId) {
     if (id == "material-lab") {
         return "MaterialLab: 5 x 5 spheres. Roughness 0.05 -> 1 left to right; metallic 0 -> 1 "
                "bottom to top "
-               "in the initial view. Texture/normal probes are at X=14; depth probes at X=28. "
+               "in the initial view. The helmet station at X=6.2 marks +X red, +Y green and "
+               "+Z blue. Texture/normal probes are at X=14; depth probes at X=28. "
                "Hold RMB + A/D to move between lanes.";
     }
     if (id == "light-lab") {

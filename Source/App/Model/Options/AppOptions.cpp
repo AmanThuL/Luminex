@@ -126,7 +126,7 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     bool warmupSpecified = false;
     CaptureFormat captureFormat = CaptureFormat::Png;
     bool captureFormatSpecified = false;
-    std::string_view sceneName = scenes::sceneIdString(scenes::defaultSceneId());
+    std::string sceneName = scenes::defaultSceneId().key;
     bool maximized = true;
     uint32_t frames = 1;
     TemporalMode temporal = TemporalMode::Taa;
@@ -278,7 +278,8 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
             warmupSpecified = true;
         } else if (argument == "--scene") {
             if (++i >= arguments.size()) {
-                return fail("--scene needs an ID: App --scene <" + sceneIdList("|") + ">");
+                return fail("--scene needs an ID or document path: App --scene <" +
+                            sceneIdList("|") + "|path>");
             }
             sceneName = arguments[i];
         } else if (argument == "--windowed") {
@@ -355,7 +356,7 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
             return fail(
                 "unknown argument '" + std::string(argument) +
                 "'; usage: App [--screenshot <out.png|out.bmp>] [--scene <" + sceneIdList("|") +
-                ">] [--windowed] [--frames <N>] [--temporal <off|raw|taa|metalfx>] "
+                "|path>] [--windowed] [--frames <N>] [--temporal <off|raw|taa|metalfx>] "
                 "[--temporal-view <off|motion|reprojection|reprojected|rejection|weight|age>] "
                 "[--render-scale <0.5..1.0>] [--capture-sequence <directory> --warmup <N> "
                 "--capture-format <png|bmp>] [--measure <out.json> --unscored] "
@@ -396,7 +397,8 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
         return fail("--hzb-level conflicts with --temporal-view");
     if (hzbDebugLevel >= 0 && !measurementPath.empty() && !unscored)
         return fail("--hzb-level measurement requires --unscored");
-    if (labOccludersSpecified && sceneName != "visibility-lab")
+    if (labOccludersSpecified && sceneName != "visibility-lab" &&
+        std::filesystem::path(sceneName).extension() != ".gltf")
         return fail("--lab-occluders requires --scene visibility-lab");
     if (classifyMode == render::ClassifyMode::Gpu && submission == render::SubmissionMode::Direct)
         return fail("--classify gpu conflicts with --submission direct");
@@ -410,19 +412,20 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     if ((unscored || measurementCameraSpecified) && measurementPath.empty()) {
         return fail("--unscored and --measure-camera require --measure");
     }
-    if (labInstancesSpecified && sceneName != "visibility-lab") {
+    if (labInstancesSpecified && sceneName != "visibility-lab" &&
+        std::filesystem::path(sceneName).extension() != ".gltf") {
         return fail("--lab-instances requires --scene visibility-lab");
     }
-    if (localLightRigSpecified && sceneName != "sponza") {
-        return fail("--local-light-rig requires --scene sponza");
-    }
-    if (labLightsSpecified && sceneName != "light-lab") {
+    if (labLightsSpecified && sceneName != "light-lab" &&
+        std::filesystem::path(sceneName).extension() != ".gltf") {
         return fail("--lab-lights requires --scene light-lab");
     }
-    if (labLightPileSpecified && sceneName != "light-lab") {
+    if (labLightPileSpecified && sceneName != "light-lab" &&
+        std::filesystem::path(sceneName).extension() != ".gltf") {
         return fail("--lab-light-pile requires --scene light-lab");
     }
-    if (uint64_t{labLights} + labLightPile > engine::kMaxLocalLights) {
+    if (labLightsSpecified && labLightPileSpecified &&
+        uint64_t{labLights} + labLightPile > engine::kMaxLocalLights) {
         return fail("--lab-lights plus --lab-light-pile must not exceed " +
                     std::to_string(engine::kMaxLocalLights));
     }
@@ -465,7 +468,9 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
                     "reconstruct a render scale below 1.0");
     }
 
-    const std::optional<scenes::SceneId> sceneId = scenes::parseSceneId(sceneName);
+    std::optional<scenes::SceneId> sceneId = scenes::parseSceneId(sceneName);
+    if (!sceneId && std::filesystem::path(sceneName).extension() == ".gltf")
+        sceneId = scenes::sceneIdFromPath(sceneName);
     if (!sceneId) {
         return fail("unknown scene ID '" + std::string(sceneName) +
                     "'; valid IDs: " + sceneIdList(", "));
@@ -488,6 +493,16 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     options.lightCheck = lightCheck;
     options.lightDebugView = lightDebugView;
     options.localLightRig = localLightRigSpecified ? localLightRig : sceneName == "sponza";
+    if (localLightRigSpecified)
+        options.localLightRigOverride = localLightRig;
+    if (labInstancesSpecified)
+        options.generatorOverrides.instances = labInstances;
+    if (labOccludersSpecified)
+        options.generatorOverrides.occluders = labOccluders;
+    if (labLightsSpecified)
+        options.generatorOverrides.lights = labLights;
+    if (labLightPileSpecified)
+        options.generatorOverrides.pile = labLightPile;
     options.labLights = labLights;
     options.labLightPile = labLightPile;
     options.initialScene = *sceneId;

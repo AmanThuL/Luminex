@@ -18,10 +18,13 @@
 #include "App/Model/Rendering/Temporal/DynamicResolution.h"
 #include "App/Model/Rendering/Temporal/TemporalEditorState.h"
 #include "App/Model/Rendering/Visibility/VisibilityDisplay.h"
+#include "App/Model/Scene/DocumentDialogMailbox.h"
+#include "App/Model/Scene/DocumentWorkflow.h"
 #include "App/Model/Scene/EditorPlayback.h"
 #include "App/Model/Scene/EditorSelection.h"
 #include "App/Model/Scene/SceneLoadState.h"
 #include "App/Model/Scene/SceneSession.h"
+#include "App/Model/Scene/SceneTreeState.h"
 #include "App/Model/Workspace/WorkspaceModel.h"
 #include "App/Panels/Graph/RenderGraphPanel.h"
 #include "App/Panels/Performance/PerformancePanel.h"
@@ -136,7 +139,7 @@ public:
                                           const render::Renderer& renderer);
 
     /// This frame's scene, valid until the next call -- it spans a draw list this shell owns.
-    /// Build the UI first: the Inspector edits the active scene's objects and lights that this
+    /// Build the UI first: controls edit the active scene's look, objects and lights that this
     /// SceneView is derived from. exposureReset is left at its default (false); main.cpp sets it
     /// from consumeExposureReset() before declaring the frame's passes.
     render::SceneView sceneView();
@@ -214,6 +217,13 @@ public:
     /// still drawing into.
     EditorActions& actions() { return m_actions; }
 
+    /// Routes menu, OS Quit and main-window close through the same unsaved-changes workflow.
+    /// An outstanding native dialog must answer before this can publish a quit action.
+    void requestQuit();
+    /// Consumes ready document work and native responses before drawable acquisition, even when
+    /// no frame can render. Dirty confirmation remains pending until buildUI can present it.
+    void pumpDocuments();
+
     /// The active scene's display name, for capture tooling. Empty until a scene is loaded.
     std::string_view activeSceneName() const {
         return m_session.activeScene() != nullptr ? m_session.scene().name : std::string_view{};
@@ -263,11 +273,16 @@ private:
     // close button, and the only place that tells ImGui the ini needs rewriting for a change that
     // moved no window.
     void setPanelVisible(EditorPanel panel, bool visible);
-    // Consumes the preceding presented frame's request, preserving selection/filter on failure.
-    void applyPendingScene(rojoRHI::Device& device);
-    // Drains in-flight scene references and loads one requested catalog entry, retaining an
-    // actionable failure for ScenePanel while the current scene remains renderable.
-    bool selectScene(rojoRHI::Device& device, scenes::SceneId id);
+    void refreshDocumentDirty(bool force = false);
+    void requestDocumentAction(DocumentAction action, std::optional<scenes::SceneId> target = {});
+    bool executeDocumentWork(const PendingDocumentWork& work);
+    void buildDocumentWorkflow();
+    void startDocumentDialog();
+    bool saveDocument(const std::filesystem::path& path, bool saveAs);
+    void setSceneCamera();
+    // Builds a fresh snapshot before discarding the active one; failure retains scene and
+    // selection.
+    bool selectScene(scenes::SceneId id);
     void updateCameraInput(float deltaSeconds);
     uint64_t metricsContextEpoch();
     void startMeasurement(rojoRHI::Device& device, const render::Renderer& renderer);
@@ -288,7 +303,15 @@ private:
     // before panels draw, so a stale scene id or out-of-range index never reaches the Inspector.
     EditorSelection m_selection;
     std::string m_sceneFilter;
+    SceneTreeState m_sceneTree; ///< Hierarchy collapse choices and cached tree.
     SceneLoadState m_sceneLoading;
+    DocumentWorkflow m_documentWorkflow;
+    std::shared_ptr<DocumentDialogMailbox> m_documentDialog =
+        std::make_shared<DocumentDialogMailbox>();
+    const engine::Scene* m_dirtyScene = nullptr;
+    uint64_t m_dirtyGeneration = 0;
+    bool m_documentDirty = false;
+    std::string m_documentExportError;
     MetricsContextRevision m_metricsContextRevision;
 
     std::vector<engine::DrawItem> m_drawItems;
@@ -296,8 +319,7 @@ private:
     bool m_showSelectionOutline = true;
     bool m_viewportUsable = false;
     float m_viewportBackingScale = 1.0f;
-    // Render knobs the Inspector writes and render::buildSceneView() reads. Shell state, not scene
-    // state -- switching scenes does not reset any of them.
+    // Renderer configuration survives scene switches; authored look values belong to the scene.
     EditorRenderSettings m_settings;
     VisibilityDisplay m_visibilityDisplay;
     LightingDisplay m_lightingDisplay;
@@ -315,17 +337,8 @@ private:
     uint32_t m_labOccluders = 0;
     uint32_t m_labLights = 256;
     uint32_t m_labLightPile = 0;
-    // Set by create() (first frame), selectScene() (scene switch), the auto-exposure checkbox's
-    // off->on transition, and a completed applyPendingViewportResize() (resize) -- each of those
-    // four sites decides via shouldResetExposure() (ExposureReset.h) rather than its own inline
-    // condition, so the trigger rules live in one pure, unit-tested place. create() always sets it
-    // true (m_exposureContext starts with sceneId unset, so the pure function agrees), which is why
-    // the default here does not have to. consumeExposureReset() reads and clears it, which is what
-    // makes each trigger fire exactly once rather than on every frame the condition still holds.
+    // Activation, automatic-exposure enable and resize latch feedback reset until consumption.
     bool m_exposureResetPending = false;
-    // The state shouldResetExposure() last compared against, updated at each of the four trigger
-    // sites after the decision is made. Starts with sceneId unset, which is what makes the very
-    // first call at create() read as "first frame" without a separate flag to keep in sync.
     ExposureResetContext m_exposureContext;
     // Scene-generation counter, camera-cut latch, and TemporalLab's once-only defaults
     // (TemporalEditorState.h). onSceneSelected() is called both by create() (the initial scene) and

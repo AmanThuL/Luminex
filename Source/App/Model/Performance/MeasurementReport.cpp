@@ -1,6 +1,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file MeasurementReport.cpp
-/// @brief Serializes schema-4 measurement scopes and exact-frame retired diagnostics.
+/// @brief Serializes schema-5 measurement scopes and exact-frame retired diagnostics.
 //----------------------------------------------------------------------------------------------------------------------
 #include "App/Model/Performance/MeasurementRun.h"
 #include "App/Model/Rendering/Lighting/LightingDiagnostics.h"
@@ -33,7 +33,7 @@ std::string pairsJson(const std::vector<std::pair<std::string, std::string>>& pa
 std::string MeasurementRun::json() const {
     const bool complete = m_state == MeasurementState::Complete;
     std::string out = std::format(
-        "{{\"schemaVersion\":4,\"complete\":{},\"scored\":{},\"interactive\":{},\"failure\":{},",
+        "{{\"schemaVersion\":5,\"complete\":{},\"scored\":{},\"interactive\":{},\"failure\":{},",
         complete, complete && !m_plan.interactive && !m_plan.unscored, m_plan.interactive,
         quote(m_failure));
     out +=
@@ -47,6 +47,20 @@ std::string MeasurementRun::json() const {
         "\"memoryScope\":{\"listBytes\":\"valid emitted row payload; GPU joined on retirement\","
         "\"reservedListBytes\":\"declaration row reservation; includes rejected GPU slots\","
         "\"allocatedListBytes\":\"active list storage across three slots\"},";
+    out += "\"sceneDocument\":{\"path\":" + quote(m_plan.sceneDocumentPath) +
+           ",\"sha256\":" + quote(m_plan.sceneDocumentHash) +
+           ",\"dirty\":" + (m_plan.sceneDocumentDirty ? "true" : "false") + "},";
+    if (const auto& population = m_plan.startingPopulation) {
+        out += std::format("\"startingPopulation\":{{\"objects\":{},\"enabledObjects\":{},"
+                           "\"disabledObjects\":{},\"localLights\":{},\"enabledLocalLights\":{},"
+                           "\"directionalLights\":{},\"enabledDirectionalLights\":{}}},",
+                           population->objects, population->enabledObjects,
+                           population->objects - population->enabledObjects,
+                           population->localLights, population->enabledLocalLights,
+                           population->directionalLights, population->enabledDirectionalLights);
+    } else {
+        out += "\"startingPopulation\":null,";
+    }
     out += std::format(
         "\"plan\":{{\"warmupFrames\":{},\"measuredFrames\":{},\"width\":{},\"height\":{},"
         "\"labInstances\":{},\"scene\":{},\"temporal\":{},\"submission\":{},\"visibilityEnabled\":{"
@@ -77,15 +91,19 @@ std::string MeasurementRun::json() const {
         const uint32_t rejected = c.classifyMode == render::ClassifyMode::Gpu && sample.visibility
                                       ? sample.visibility->sceneCounters.rejected
                                       : c.rejected;
+        const uint32_t disabled = sample.visibility ? sample.visibility->sceneCounters.disabled
+                                                    : c.sceneCounters.disabled;
         out += std::format(
             "{{\"ordinal\":{},\"frameId\":{},\"sequenceFrame\":{},\"classifyMs\":{},\"prepareMs\":{"
             "},\"encodeMs\":{},\"slotWaitMs\":{},\"candidates\":{},\"visible\":{},\"rejected\":{},"
+            "\"disabled\":{},"
             "\"sceneCommands\":{},\"shadowCommands\":{},\"tableBytes\":{},\"listBytes\":{},"
             "\"reservedListBytes\":{},"
             "\"argumentBytes\":{},\"transientBytes\":{},\"retired\":{},\"gpuSumMs\":",
             i, c.frameId, c.sequenceFrame, c.classifyMs, c.prepareMs, c.encodeMs, c.slotWaitMs,
-            c.candidates, visible, rejected, c.sceneCommands, c.shadowCommands, c.tableBytes,
-            c.listBytes, c.reservedListBytes, c.argumentBytes, c.transientBytes, sample.retired);
+            c.candidates, visible, rejected, disabled, c.sceneCommands, c.shadowCommands,
+            c.tableBytes, c.listBytes, c.reservedListBytes, c.argumentBytes, c.transientBytes,
+            sample.retired);
         // Actual reconstruction extents may differ from requested scale under vendor clamps.
         double sum = 0;
         for (const auto& pass : sample.passes)

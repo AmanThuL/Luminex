@@ -106,6 +106,10 @@ rojoRHI::Result<void> OcclusionReference::declare(RenderGraph& graph,
                     .strict = strictView,
                     .buffer = slot.buffer.get()};
     for (const auto& item : view.items) {
+        LMX_ASSERT(item.instanceRow < view.tables.instanceRows.size(),
+                   "reference observations require canonical instance rows");
+        if (view.tables.instanceRows[item.instanceRow].flags & engine::kInstanceDisabled)
+            continue;
         LMX_ASSERT(item.instanceRow != std::numeric_limits<uint32_t>::max(),
                    "reference ID row plus one must not overflow");
         pending.observations.push_back({item.instanceIdentity, item.instanceRow});
@@ -145,6 +149,8 @@ rojoRHI::Result<void> OcclusionReference::declare(RenderGraph& graph,
             for (const auto& item : view.items) {
                 LMX_ASSERT(item.instanceRow < view.tables.instanceCount,
                            "reference draw must name a current instance row");
+                if (view.tables.instanceRows[item.instanceRow].flags & engine::kInstanceDisabled)
+                    continue;
                 const bool masked = item.alphaMode == engine::AlphaMode::Mask;
                 const bool doubleSided = masked && item.doubleSided;
                 commands.bindPipeline(*m_pipelines[(view.wireframe ? 4 : 0) + (masked ? 2 : 0) +

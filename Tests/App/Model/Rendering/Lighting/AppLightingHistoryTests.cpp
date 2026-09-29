@@ -27,10 +27,11 @@ TEST_CASE("zero-live lighting mode changes preserve usable temporal history",
 TEST_CASE("lighting reset and implicit clustered selection use effective content",
           "[app][lighting-history]") {
     using namespace lmx;
+    app::SceneSession session;
     app::EditorRenderSettings settings;
     settings.localLightMode = engine::LocalLightMode::Off;
     const auto previous = settings.localLightMode;
-    app::resetRenderingGroup(settings, app::EditorRenderGroup::Lighting);
+    app::resetRenderingGroup(settings, session, app::EditorRenderGroup::Lighting);
     CHECK_FALSE(app::lightingChangeNeedsHistoryReset(previous, settings.localLightMode, 0, false));
     CHECK(app::lightingChangeNeedsHistoryReset(previous, settings.localLightMode, 16, false));
     CHECK_FALSE(app::lightingChangeNeedsHistoryReset(engine::LocalLightMode::Direct,

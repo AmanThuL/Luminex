@@ -7,13 +7,17 @@
 #include "App/Model/Rendering/Visibility/VisibilityDisplay.h"
 #include "App/Model/Scene/EditorSelection.h"
 #include "App/Model/Scene/SceneLoadState.h"
+#include "App/Model/Scene/SceneTreeState.h"
 #include "Engine/Scene/Scene.h"
+#include "Engine/Scene/SceneInstantiate.h"
 #include "Scenes/SceneLibrary.h"
 
 #include <optional>
 #include <string>
 
 namespace lmx::app {
+
+class SceneSession;
 
 /// Visible Hierarchy title with the original Scene window ID retained for saved docking. The
 /// pinned ImGui hashes a ### suffix exactly as the suffix alone, including window settings.
@@ -29,6 +33,10 @@ struct ScenePanelContext {
     const VisibilityDisplay& visibilityDisplay;       ///< Identity mapping for the displayed image.
     const render::VisibilityStatus& visibilityStatus; ///< Last declared frame.
     uint64_t sceneGeneration = 0;                     ///< Active scene identity revision.
+    const engine::LoadedScene* loadedScene = nullptr; ///< Document and source-node bindings.
+    const SceneSession* session = nullptr;            ///< Current own/effective enabled state.
+    bool dirty = false;                               ///< Canonical document differs from load.
+    SceneTreeState& treeState;                        ///< Collapse choices and the cached tree.
 };
 
 /// Borrowed scene-loading state for File > Open Scene. Loading remains a shell frame-boundary
@@ -46,7 +54,8 @@ std::optional<scenes::SceneId> drawSceneMenu(const SceneMenuContext& context);
 
 /// Draws an indented active-scene tree over a flat scene, with a fixed search/count
 /// header. Groups collapse independently; keyboard Up/Down visits only drawn leaves. Filtering
-/// never clears selection. `open` follows the native ImGui window close button.
-void drawScenePanel(bool& open, const ScenePanelContext& context);
+/// never clears selection. `open` follows the native ImGui window close button. When the document
+/// tree is drawn, returns its final selected-row visibility for the Inspector in the same frame.
+std::optional<bool> drawScenePanel(bool& open, const ScenePanelContext& context);
 
 } // namespace lmx::app

@@ -12,6 +12,18 @@
 #include <unordered_map>
 
 namespace lmx::app {
+
+//======================================================================================================================
+std::string_view visibilityStatusLabel(render::VisibilityState state,
+                                       render::VisibilityReason reason) {
+    if (reason == render::VisibilityReason::AuthoredOff)
+        return "Disabled";
+    if (state == render::VisibilityState::Rejected)
+        return reason == render::VisibilityReason::Occluded ? "Culled: occluded"
+                                                            : "Culled: frustum";
+    return state == render::VisibilityState::Bypassed ? "Bypassed" : "Visible";
+}
+
 namespace {
 
 //======================================================================================================================
@@ -79,12 +91,6 @@ std::string_view renderingCategoryLabel(RenderingCategory category) {
         return "Submission";
     case RenderingCategory::Lighting:
         return "Lighting";
-    case RenderingCategory::Exposure:
-        return "Exposure";
-    case RenderingCategory::Bloom:
-        return "Bloom";
-    case RenderingCategory::Shadows:
-        return "Shadows";
     case RenderingCategory::Display:
         return "Display";
     case RenderingCategory::SceneTables:
@@ -122,6 +128,8 @@ EditorSelection resolveSelection(const EditorSelection& current, scenes::SceneId
         break;
     case EditorSubject::None:
     case EditorSubject::Camera:
+    case EditorSubject::Group:
+    case EditorSubject::Environment:
         break;
     }
 
@@ -178,6 +186,8 @@ bool selectionHiddenByFilter(const engine::Scene& scene, const EditorSelection& 
     std::string compact;
     switch (selection.subject) {
     case EditorSubject::Camera:
+    case EditorSubject::Group:
+    case EditorSubject::Environment:
         return false;
     case EditorSubject::LocalLight:
         label = sceneLocalLightLabel(scene, selection.lightId);

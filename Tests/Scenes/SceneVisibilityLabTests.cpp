@@ -7,6 +7,7 @@
 #include "Render/Renderer/SceneViewBuilder.h"
 #include "Scenes/CatalogScenes.h"
 #include "Scenes/SceneLibrary.h"
+#include "Support/SceneDocumentTestSupport.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -35,7 +36,7 @@ TEST_CASE("visibility lab keeps its requested population and initial boundary la
     (*device)->beginFrame();
     REQUIRE(scene.prepareFrame((*device)->frameNumber()));
     std::vector<engine::DrawItem> items;
-    const auto view = render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
+    const auto view = render::buildSceneView(scene, items, false);
     auto camera = engine::cameraFromScene(scene.initialCamera);
     const auto classify = [&] {
         const auto planes = render::extractFrustumPlanes(camera.projectionMatrix(16.0f / 9.0f) *
@@ -74,11 +75,11 @@ TEST_CASE("visibility lab count includes boundary probes and seeded layout repea
           "[gpu][scene][visibility]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    REQUIRE_FALSE(scenes::loadVisibilityLabScene(**device, 0));
-    REQUIRE_FALSE(scenes::loadVisibilityLabScene(**device, 1048577));
+    REQUIRE_FALSE(lmx::test::loadCatalogScene(**device, "visibility-lab", 0));
+    REQUIRE_FALSE(lmx::test::loadCatalogScene(**device, "visibility-lab", 1048577));
     for (uint32_t count : {1u, 5u, 1024u}) {
-        auto first = scenes::loadVisibilityLabScene(**device, count);
-        auto second = scenes::loadVisibilityLabScene(**device, count);
+        auto first = lmx::test::loadCatalogScene(**device, "visibility-lab", count);
+        auto second = lmx::test::loadCatalogScene(**device, "visibility-lab", count);
         REQUIRE(first);
         REQUIRE(second);
         REQUIRE((*first)->objects.size() == count);
@@ -96,11 +97,11 @@ TEST_CASE("visibility lab occluders append deterministic slabs without altering 
           "[gpu][scene][visibility][occlusion]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    REQUIRE_FALSE(scenes::loadVisibilityLabScene(**device, 32, 1025));
-    auto baseline = scenes::loadVisibilityLabScene(**device, 32);
-    auto explicitZero = scenes::loadVisibilityLabScene(**device, 32, 0);
-    auto occluded = scenes::loadVisibilityLabScene(**device, 32, 4);
-    auto repeated = scenes::loadVisibilityLabScene(**device, 32, 4);
+    REQUIRE_FALSE(lmx::test::loadCatalogScene(**device, "visibility-lab", 32, 1025));
+    auto baseline = lmx::test::loadCatalogScene(**device, "visibility-lab", 32);
+    auto explicitZero = lmx::test::loadCatalogScene(**device, "visibility-lab", 32, 0);
+    auto occluded = lmx::test::loadCatalogScene(**device, "visibility-lab", 32, 4);
+    auto repeated = lmx::test::loadCatalogScene(**device, "visibility-lab", 32, 4);
     REQUIRE(baseline);
     REQUIRE(explicitZero);
     REQUIRE(occluded);

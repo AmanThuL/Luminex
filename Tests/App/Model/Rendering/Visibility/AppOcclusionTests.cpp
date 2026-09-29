@@ -149,7 +149,7 @@ TEST_CASE("Measurement schema separates pyramid build cost and rejects scored re
     REQUIRE(run.retire(1, timings));
     REQUIRE(run.finishDrain());
     const auto json = run.json();
-    REQUIRE(json.contains("\"schemaVersion\":4"));
+    REQUIRE(json.contains("\"schemaVersion\":5"));
     REQUIRE(json.contains("\"hzbGpuMs\":0.5625"));
     REQUIRE(json.contains("\"visibilityGpuMs\":0.25"));
     REQUIRE(json.contains("\"scored\":false"));

@@ -8,6 +8,7 @@
 #include "App/Model/Graph/FrameRecordRing.h"
 #include "App/Model/Options/AppOptions.h"
 #include "App/Model/Scene/SceneDefaults.h"
+#include "App/Shell/AppIcon.h"
 #include "App/Shell/ConsoleLogSink.h"
 #include "App/Shell/EditorShell.h"
 #include "Core/Diagnostics/Log.h"
@@ -101,8 +102,9 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
     }
     LMX_LOG_INFO("Metal 4 device: {}", (*device)->deviceName());
 
-    lmx::scenes::SceneLibrary sceneLibrary(**device, options.labInstances, options.labOccluders,
-                                           options.labLights, options.labLightPile);
+    lmx::scenes::SceneLibrary sceneLibrary(
+        **device, options.generatorOverrides.instances, options.generatorOverrides.occluders,
+        options.generatorOverrides.lights, options.generatorOverrides.pile);
 
     // Swapchain dimensions follow the backing store, not logical window points.
     int pixelWidth = 0;
@@ -198,7 +200,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
             ImGui_ImplSDL3_ProcessEvent(&event);
             switch (event.type) {
             case SDL_EVENT_QUIT:
-                running = false;
+                shell->requestQuit();
                 break;
             case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
                 // Platform viewports are real SDL windows, so the detached Render Graph raises the
@@ -206,7 +208,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
                 // Closing it must not end the run, and its window carries a real close button, so
                 // the id filter is what keeps that button from quitting Luminex.
                 if (event.window.windowID == SDL_GetWindowID(window)) {
-                    running = false;
+                    shell->requestQuit();
                 }
                 break;
             case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
@@ -225,8 +227,9 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
                 break;
             }
         }
-        // The menu's Quit reaches the same exit the window close button does, one frame after it
-        // was chosen -- the frame that drew the menu still finishes normally.
+        // Dialog responses and approved Quit must progress even if acquire has no drawable.
+        // The UI only presents confirmation; completed work runs at this frame boundary.
+        shell->pumpDocuments();
         if (shell->actions().consumeQuit()) {
             running = false;
         }
@@ -465,6 +468,11 @@ int runWindowed(const lmx::app::AppOptions& options,
         SDL_Quit();
         return 1;
     }
+
+    const char* basePath = SDL_GetBasePath();
+    lmx::app::applyApplicationIcon(basePath != nullptr ? std::filesystem::path(basePath) /
+                                                             "Icons/luminex-icon-1024.png"
+                                                       : std::filesystem::path{});
 
     // SDL_MetalView owns the layer and outlives all RHI objects created by run().
     SDL_MetalView view = SDL_Metal_CreateView(window);

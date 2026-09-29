@@ -23,6 +23,18 @@ bool validTime(double value) {
 } // namespace
 
 //======================================================================================================================
+MeasurementPopulation measurementPopulation(const engine::Scene& scene) {
+    return {.objects = static_cast<uint32_t>(scene.objects.size()),
+            .enabledObjects = static_cast<uint32_t>(std::ranges::count_if(
+                scene.objects, [](const auto& object) { return object.enabled; })),
+            .localLights = static_cast<uint32_t>(scene.localLights().size()),
+            .enabledLocalLights = scene.enabledLightCount(),
+            .directionalLights = static_cast<uint32_t>(std::size(scene.lights)),
+            .enabledDirectionalLights = static_cast<uint32_t>(std::ranges::count_if(
+                scene.lights, [](const auto& light) { return light.enabled; }))};
+}
+
+//======================================================================================================================
 bool measurementEnvironmentInstrumented(const MeasurementProvenance& provenance) {
     return std::ranges::any_of(provenance.environment, [](const auto& entry) {
         const auto& [key, value] = entry;
@@ -47,6 +59,14 @@ bool MeasurementRun::start(MeasurementPlan plan, MeasurementProvenance provenanc
     m_submitted = 0;
     m_firstFrameId = 0;
     m_lastFrameId = 0;
+    if (m_plan.startingPopulation &&
+        (m_plan.startingPopulation->enabledObjects > m_plan.startingPopulation->objects ||
+         m_plan.startingPopulation->enabledLocalLights > m_plan.startingPopulation->localLights ||
+         m_plan.startingPopulation->enabledDirectionalLights >
+             m_plan.startingPopulation->directionalLights)) {
+        cancel("Invalid starting measurement population");
+        return false;
+    }
     if (m_plan.measuredFrames == 0 || m_plan.width == 0 || m_plan.height == 0 ||
         uint64_t{m_plan.warmupFrames} + m_plan.measuredFrames >
             std::numeric_limits<uint32_t>::max() ||
@@ -88,7 +108,6 @@ bool MeasurementRun::start(MeasurementPlan plan, MeasurementProvenance provenanc
     if (!validLightMode || !validLightView ||
         (diagnosticLighting && m_plan.localLightMode != "clustered") ||
         (diagnosticLighting && !m_plan.interactive && !m_plan.unscored) ||
-        (m_plan.localLightRig && m_plan.scene != "sponza") ||
         (m_plan.scene == "light-lab" &&
          (m_plan.labLights == 0 ||
           uint64_t{m_plan.labLights} + m_plan.labLightPile > engine::kMaxLocalLights))) {
@@ -152,10 +171,19 @@ bool MeasurementRun::recordCpu(MeasurementCpuSample sample) {
         (!m_lightingDeclarations.empty() &&
          (m_lightingDeclarations.front().sceneGeneration != lighting.sceneGeneration ||
           m_lightingDeclarations.front().liveLightCount != lighting.liveLightCount)) ||
-        (m_plan.scene == "light-lab" && !m_plan.interactive &&
+        (!m_plan.startingPopulation && m_plan.scene == "light-lab" && !m_plan.interactive &&
          lighting.liveLightCount != m_plan.labLights + m_plan.labLightPile) ||
-        (m_plan.localLightRig && (lighting.liveLightCount == 0 || lighting.liveLightCount > 32))) {
+        (!m_plan.startingPopulation && m_plan.localLightRig &&
+         (lighting.liveLightCount == 0 || lighting.liveLightCount > 32))) {
         cancel("Lighting declaration differs from the submitted frame or frozen plan");
+        return false;
+    }
+    if (const auto& population = m_plan.startingPopulation;
+        population &&
+        (sample.candidates != population->enabledObjects ||
+         sample.sceneCounters.disabled != population->objects - population->enabledObjects ||
+         lighting.liveLightCount != population->enabledLocalLights)) {
+        cancel("Declared enabled population differs from the starting measurement population");
         return false;
     }
     if (m_firstFrameId == 0)
@@ -240,6 +268,13 @@ bool MeasurementRun::retireVisibility(const render::VisibilityStatus& status) {
         cancel("GPU visibility publication has no matching submitted measurement frame");
         return false;
     }
+    if (const auto& population = m_plan.startingPopulation;
+        population &&
+        (status.sceneCounters.candidates != population->enabledObjects ||
+         status.sceneCounters.disabled != population->objects - population->enabledObjects)) {
+        cancel("GPU visibility differs from the starting measurement population");
+        return false;
+    }
     const auto found = std::ranges::find_if(
         m_samples, [&](const auto& sample) { return sample.cpu.frameId == status.frameNumber; });
     if (found == m_samples.end()) {
@@ -266,6 +301,10 @@ bool MeasurementRun::retireVisibility(const render::VisibilityStatus& status) {
     if (const auto failure = visibilityFailure(status, false); !failure.empty()) {
         found->visibility = status;
         cancel(failure);
+        return false;
+    }
+    if (status.sceneCounters.disabled != found->cpu.sceneCounters.disabled) {
+        cancel("GPU disabled count differs from the declared measurement population");
         return false;
     }
     if (status.sceneCounters.candidates != found->cpu.candidates) {

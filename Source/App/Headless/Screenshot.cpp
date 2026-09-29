@@ -84,20 +84,6 @@ bool isFlatImage(const std::vector<uint8_t>& bgra) {
 }
 
 //======================================================================================================================
-bool writeManifest(const AppOptions& options, std::string_view device,
-                   const render::DisplayDomain& display, bool cameraTrack,
-                   const std::vector<std::string>& records, bool complete,
-                   std::string_view failure = {}) {
-    std::ofstream file(options.captureSequencePath / "manifest.json", std::ios::trunc);
-    if (!file)
-        return false;
-    file << captureManifestJson(options, device, display, kScreenshotWidth, kScreenshotHeight,
-                                cameraTrack, records, complete, failure);
-    file.close();
-    return static_cast<bool>(file);
-}
-
-//======================================================================================================================
 int runOffscreen(AppOptions options) {
     const auto& outPath = options.screenshotPath;
     const auto sceneId = options.initialScene;
@@ -113,9 +99,6 @@ int runOffscreen(AppOptions options) {
     const auto occlusionEnabled = options.occlusionEnabled;
     const auto occlusionCheck = options.occlusionCheck;
     const auto hzbDebugLevel = options.hzbDebugLevel;
-    const auto labOccluders = options.labOccluders;
-    const auto labLights = options.labLights;
-    const auto labLightPile = options.labLightPile;
     const auto localLightMode = options.localLightMode;
     const auto localLightRig = options.localLightRig;
     EditorRenderSettings resolutionSettings;
@@ -165,7 +148,9 @@ int runOffscreen(AppOptions options) {
     }
     LMX_LOG_INFO("Metal 4 device: {}", (*device)->deviceName());
 
-    scenes::SceneLibrary library(**device, labInstances, labOccluders, labLights, labLightPile);
+    scenes::SceneLibrary library(
+        **device, options.generatorOverrides.instances, options.generatorOverrides.occluders,
+        options.generatorOverrides.lights, options.generatorOverrides.pile);
     const scenes::SceneEntry& entry = library.entry(sceneId);
     if (!entry.available) {
         std::cerr << "Error: " << entry.stableId << " assets missing; " << entry.hint << '\n';
@@ -196,8 +181,8 @@ int runOffscreen(AppOptions options) {
     (*renderer)->clearColor[3] = 1.0f;
 
     SceneSession session;
-    session.activate(*activeScene, SceneActivationMotion::PreserveLoadedMotion);
-    if (session.localLightRigAvailable()) {
+    session.activate(*library.loaded(sceneId), SceneActivationMotion::PreserveLoadedMotion);
+    if (options.localLightRigOverride && session.localLightRigAvailable()) {
         if (auto rig = session.setLocalLightRig(localLightRig); !rig) {
             LMX_LOG_ERROR("local-light rig failed: {}", rig.error().message);
             return 1;
@@ -205,12 +190,25 @@ int runOffscreen(AppOptions options) {
     }
     const engine::Camera& camera = session.camera();
     const bool hasCameraTrack = !activeScene->animation.cameraTrack.empty();
+    const auto& loadedSnapshot = *library.loaded(sceneId);
+    const std::string sceneDocumentPath =
+        sceneId.isCatalog() ? loadedSnapshot.path.string() : sceneId.key;
+    const auto writeManifest = [&](bool complete, std::string_view failure = {}) {
+        std::ofstream file(options.captureSequencePath / "manifest.json", std::ios::trunc);
+        if (!file)
+            return false;
+        file << captureManifestJson(options, (*device)->deviceName(), (*renderer)->displayDomain(),
+                                    kScreenshotWidth, kScreenshotHeight, hasCameraTrack, records,
+                                    complete, sceneDocumentPath, loadedSnapshot.hash, failure);
+        file.close();
+        return static_cast<bool>(file);
+    };
+    options.localLightRig = session.localLightRigEnabled();
     FrameRecordRing frameRecords;
     DynamicResolutionState resolutionState;
     render::ResolutionController resolutionController;
 
-    if (sequence && !writeManifest(*sequence, (*device)->deviceName(), (*renderer)->displayDomain(),
-                                   hasCameraTrack, records, false)) {
+    if (sequence && !writeManifest(false)) {
         return 1;
     }
     const auto scaleStep = readOcclusionScaleStep(true, temporal != TemporalMode::Off);
@@ -241,12 +239,9 @@ int runOffscreen(AppOptions options) {
             return 1;
         }
         std::vector<engine::DrawItem> items;
-        render::SceneView view =
-            session.view(items, render::ShadowFilter::PCF, /*wireframe=*/false);
-        // Bloom defaults on here exactly as in the editor (spec 10); auto-exposure defaults off
-        // (spec 9). LMX_SCREENSHOT_NO_BLOOM exists solely for the M5 parity check against pre-bloom
-        // output -- "with auto exposure off and bloom off, a frame is byte-identical to the
-        // pre-change tip" -- and is not a documented user-facing option.
+        render::SceneView view = session.view(items, /*wireframe=*/false);
+        view.exposureReset = frame == 0;
+        // The capture-only override never changes the persistent document look.
         if (std::getenv("LMX_SCREENSHOT_NO_BLOOM") != nullptr) {
             view.bloomEnabled = false;
         }
@@ -297,8 +292,7 @@ int runOffscreen(AppOptions options) {
         }
         if (const auto failure = lightingFailure(captureLighting); !failure.empty()) {
             if (sequence)
-                writeManifest(*sequence, (*device)->deviceName(), (*renderer)->displayDomain(),
-                              hasCameraTrack, records, false, failure);
+                writeManifest(false, failure);
             LMX_LOG_ERROR("capture refused: {}", failure);
             return 1;
         }
@@ -309,8 +303,7 @@ int runOffscreen(AppOptions options) {
         }
         if (const auto failure = visibilityFailure(captureVisibility); !failure.empty()) {
             if (sequence)
-                writeManifest(*sequence, (*device)->deviceName(), (*renderer)->displayDomain(),
-                              hasCameraTrack, records, false, failure);
+                writeManifest(false, failure);
             LMX_LOG_ERROR("capture refused: {}", failure);
             return 1;
         }
@@ -323,8 +316,7 @@ int runOffscreen(AppOptions options) {
                                 status.vendorFallback == render::VendorFallback::Unsupported
                                     ? "unsupported"
                                     : "creation-failed");
-                if (!writeManifest(*sequence, (*device)->deviceName(), (*renderer)->displayDomain(),
-                                   hasCameraTrack, records, false, failure)) {
+                if (!writeManifest(false, failure)) {
                     LMX_LOG_ERROR("capture could not write fallback metadata");
                 }
                 LMX_LOG_ERROR("capture sequence refused vendor fallback: {}", failure);
@@ -349,8 +341,7 @@ int runOffscreen(AppOptions options) {
                 records.push_back(captureRecordJson(ordinal, frame, camera, view, status, filename,
                                                     temporal, &captureVisibility,
                                                     &captureLighting));
-                if (!writeManifest(*sequence, (*device)->deviceName(), (*renderer)->displayDomain(),
-                                   hasCameraTrack, records, false)) {
+                if (!writeManifest(false)) {
                     return 1;
                 }
                 if (options.lightDebugView != engine::LightDebugView::Missed &&
@@ -374,10 +365,7 @@ int runOffscreen(AppOptions options) {
         }
     }
     if (sequence) {
-        return writeManifest(*sequence, (*device)->deviceName(), (*renderer)->displayDomain(),
-                             hasCameraTrack, records, true)
-                   ? 0
-                   : 1;
+        return writeManifest(true) ? 0 : 1;
     }
 
     std::vector<uint8_t> pixels(size_t{kScreenshotWidth} * kScreenshotHeight * 4);

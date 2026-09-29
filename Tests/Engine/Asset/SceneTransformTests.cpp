@@ -61,6 +61,18 @@ TEST_CASE("sampleRigidTrack clamps before the first key and after the last", "[a
 }
 
 //======================================================================================================================
+TEST_CASE("a rigid track with its own two-second loop repeats at 2.5 seconds", "[asset][ux3]") {
+    RigidTrack track;
+    track.loopDuration = 2.0;
+    track.keys = {{.time = 0.0, .translation = {-1.0f, 0.0f, 0.0f}},
+                  {.time = 1.0, .translation = {1.0f, 0.0f, 0.0f}},
+                  {.time = 2.0, .translation = {-1.0f, 0.0f, 0.0f}}};
+    REQUIRE(near3(glm::vec3(sampleRigidTrack(track, 2.5)[3]),
+                  glm::vec3(sampleRigidTrack(track, 0.5)[3])));
+    REQUIRE(near3(glm::vec3(sampleRigidTrack(track, 0.5)[3]), {0.0f, 0.0f, 0.0f}));
+}
+
+//======================================================================================================================
 TEST_CASE("sampleCameraTrack interpolates position and angles linearly and clamps at the ends",
           "[asset]") {
     const std::array<CameraKey, 2> keys = {

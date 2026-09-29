@@ -58,6 +58,7 @@ struct FixtureMaterial {
 };
 
 struct FixtureDrawItem {
+    bool enabled = true;               ///< Effective authored draw participation.
     const FixtureMesh* mesh = nullptr; ///< Borrowed mesh drawn by this item.
     glm::mat4 model{1.0f};             ///< Object-to-world transform.
     FixtureMaterial material;          ///< Material copied for this frame.
@@ -163,6 +164,7 @@ struct FixtureSceneView : render::SceneView {
             object.scale = pose->scale;
             object.previousModel = input.previousModel;
             object.motionClass = input.motionClass;
+            state->scene.setObjectEnabled(i, input.enabled);
             auto& material = state->scene.material(object.material);
             material.albedo = input.material.albedo;
             material.roughness = input.material.roughness;
@@ -185,8 +187,7 @@ struct FixtureSceneView : render::SceneView {
         auto prepared = state->scene.prepareFrame(frame);
         INFO((prepared ? "" : prepared.error().message));
         REQUIRE(prepared);
-        const auto sceneView =
-            render::buildSceneView(state->scene, state->draws, shadowFilter, wireframe);
+        const auto sceneView = render::buildSceneView(state->scene, state->draws, wireframe);
         render::SceneView view = static_cast<const render::SceneView&>(*this);
         view.tables = sceneView.tables;
         view.items = state->draws;

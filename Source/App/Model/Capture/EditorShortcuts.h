@@ -12,6 +12,7 @@ enum class EditorShortcut {
     FrameSelected, ///< Fit the selected object's reliable bounds.
     ResetCamera,   ///< Restore the scene camera.
     Capture,       ///< Request a GPU capture; an unavailable request reports its recovery.
+    Document,      ///< Request a document action; workflow owns dirty and transport gates.
 };
 
 /// Per-frame keyboard ownership and action prerequisites.

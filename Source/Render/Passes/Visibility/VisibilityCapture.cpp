@@ -69,11 +69,11 @@ void registerVisibilityLayoutsForCapture() {
     // GPU counters use four bypass words; the decoded status has an extra None array entry.
     schema.registerUniformStruct({.name = "VisibilityCounterWords",
                                   .slot = 8,
-                                  .sizeBytes = 80,
+                                  .sizeBytes = kVisibilityCounterWords * sizeof(uint32_t),
                                   .fields = {{"candidates", 0, "uint"},
                                              {"visible", 4, "uint"},
                                              {"rejected", 8, "uint"},
-                                             {"disabled", 12, "uint"},
+                                             {"cullingOff", 12, "uint"},
                                              {"unculled", 16, "uint"},
                                              {"unreliable", 20, "uint"},
                                              {"nonfinite", 24, "uint"},
@@ -87,6 +87,7 @@ void registerVisibilityLayoutsForCapture() {
                                              {"nearCrossing", 56, "uint"},
                                              {"outsideSource", 60, "uint"},
                                              {"rectTooLarge", 64, "uint"},
-                                             {"padding", 68, "uint3"}}});
+                                             {"disabled", 68, "uint"},
+                                             {"padding", 72, "uint3"}}});
 }
 } // namespace lmx::render

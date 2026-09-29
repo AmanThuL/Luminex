@@ -8,7 +8,6 @@
 #include "Core/Math/Aabb.h"
 #include "Core/Math/Color.h"
 #include "Core/Math/Sphere.h"
-#include "Engine/Upload/SceneEnvironment.h"
 
 #include <glm/gtc/constants.hpp>
 
@@ -19,7 +18,6 @@
 
 namespace lmx::scenes {
 namespace {
-constexpr double kDuration = 12.0;
 constexpr float kSpacing = 3.0f;
 
 //======================================================================================================================
@@ -79,8 +77,9 @@ float jitter(uint32_t& state) {
 } // namespace
 
 //======================================================================================================================
-asset::AssetResult<std::unique_ptr<engine::Scene>>
-loadVisibilityLabScene(rojoRHI::Device& device, uint32_t instanceCount, uint32_t occluderCount) {
+asset::AssetResult<void> appendVisibilityLab(rojoRHI::Device& device, engine::Scene& target,
+                                             uint32_t instanceCount, uint32_t occluderCount,
+                                             const engine::EnvironmentHook& environment) {
     if (instanceCount == 0 || instanceCount > 1048576) {
         return std::unexpected(asset::AssetError{asset::AssetErrorCode::Malformed,
                                                  "VisibilityLab instances must be 1..1048576"});
@@ -89,8 +88,7 @@ loadVisibilityLabScene(rojoRHI::Device& device, uint32_t instanceCount, uint32_t
         return std::unexpected(asset::AssetError{asset::AssetErrorCode::Malformed,
                                                  "VisibilityLab occluders must be 0..1024"});
     }
-    auto scene = std::make_unique<engine::Scene>();
-    scene->name = "VisibilityLab";
+    engine::Scene* scene = &target;
     auto cube = engine::makeCube();
     for (size_t i = 0; i < cube.vertices.size(); ++i) {
         cube.vertices[i].u = (i % 4 == 1 || i % 4 == 2) ? 1.0f : 0.0f;
@@ -192,38 +190,14 @@ loadVisibilityLabScene(rojoRHI::Device& device, uint32_t instanceCount, uint32_t
             expand(bounds, position + scale * 0.5f);
         }
     }
-    const Sphere sphere = boundingSphere(bounds);
-    scene->boundingSphere = toVec4(sphere);
-    scene->initialCamera = {{0, 0, 0}, 0, 0, fov, 0.1f, sphere.radius * 8.0f};
-    const glm::vec3 endpoint =
-        sphere.center + glm::vec3(sphere.radius * 0.5f, sphere.radius * 0.2f,
-                                  sphere.radius / std::sin(fov * 0.5f) * 1.2f);
-    const size_t keyCount = static_cast<size_t>(kDuration * asset::kAnimationBakeRate) + 1;
-    scene->animation.cameraTrack.reserve(keyCount);
-    for (size_t i = 0; i < keyCount; ++i) {
-        const double time = static_cast<double>(i) / asset::kAnimationBakeRate;
-        const float phase = static_cast<float>(time / kDuration) * glm::two_pi<float>();
-        const float fraction = (1.0f - std::cos(phase)) * 0.5f;
-        const glm::vec3 position = endpoint * fraction;
-        const glm::vec3 target = glm::mix(glm::vec3(0, 0, -sphere.radius), sphere.center, fraction);
-        const glm::vec3 direction = glm::normalize(target - position);
-        scene->animation.cameraTrack.push_back({.time = time,
-                                                .position = position,
-                                                .yaw = std::atan2(direction.x, -direction.z),
-                                                .pitch = std::asin(direction.y)});
-    }
-    scene->animation.duration = kDuration;
-    scene->animation.loop = true;
+    expand(scene->authoredBounds, bounds.minimum);
+    expand(scene->authoredBounds, bounds.maximum);
+    scene->boundingSphere = toVec4(boundingSphere(scene->authoredBounds));
     scene->resetMotion();
-    if (auto environment = engine::attachNeutralEnvironment(device, *scene, "VisibilityLab");
-        !environment) {
-        return std::unexpected(environment.error());
+    if (auto attached = environment(*scene); !attached) {
+        return std::unexpected(attached.error());
     }
-    if (auto finalized = scene->finalize(device); !finalized) {
-        return std::unexpected(
-            asset::AssetError{asset::AssetErrorCode::UploadFailed, finalized.error().message});
-    }
-    return scene;
+    return {};
 }
 
 } // namespace lmx::scenes

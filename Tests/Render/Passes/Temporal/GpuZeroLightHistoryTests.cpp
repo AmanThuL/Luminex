@@ -1,4 +1,5 @@
 #include "Support/GpuRendererTestSupport.h"
+#include "Support/SceneDocumentTestSupport.h"
 
 #include "Core/Util/Sha256.h"
 #include "Render/Renderer/SceneViewBuilder.h"
@@ -342,7 +343,7 @@ TEST_CASE("Sponza zero-light histories repeat at the frozen baseline camera",
           "[.][gpu][zero-light-history-sponza]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    auto scene = lmx::scenes::loadSponzaScene(**device);
+    auto scene = lmx::test::loadCatalogScene(**device, "sponza");
     REQUIRE(scene);
     const std::vector ids((*scene)->localLights().begin(), (*scene)->localLights().end());
     for (const auto id : ids) {
@@ -362,6 +363,6 @@ TEST_CASE("Sponza zero-light histories repeat at the frozen baseline camera",
     std::vector<lmx::engine::DrawItem> items;
     compareHistories(**device, "sponza-frozen-camera", camera, 1280, 720, [&](uint64_t frame) {
         REQUIRE((*scene)->prepareFrame(frame));
-        return buildSceneView(**scene, items, ShadowFilter::PCF, false);
+        return buildSceneView(**scene, items, false);
     });
 }

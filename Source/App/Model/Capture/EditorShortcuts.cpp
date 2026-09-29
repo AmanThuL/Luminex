@@ -16,6 +16,7 @@ bool shortcutAllowed(EditorShortcut shortcut, const ShortcutContext& context) {
         return context.hasSelection;
     case EditorShortcut::ResetCamera:
     case EditorShortcut::Capture:
+    case EditorShortcut::Document:
         return true;
     }
     return false;

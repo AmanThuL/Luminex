@@ -3,6 +3,7 @@
 /// @brief Pins overflow-free light assignment along the authored lab camera and orbit tracks.
 //----------------------------------------------------------------------------------------------------------------------
 #include "Scenes/LightLab.h"
+#include "Support/SceneDocumentTestSupport.h"
 
 #include "Engine/Lights/LocalLightMath.h"
 #include "Engine/View/Camera.h"
@@ -14,7 +15,8 @@
 TEST_CASE("LightLab populations remain overflow-free across the actual rail and orbits",
           "[scene][light-lab][light-cluster]") {
     using namespace lmx;
-    const auto rail = scenes::lightLabCameraTrack();
+    const auto cameraScene = lmx::test::catalogCamera("light-lab");
+    const auto& rail = cameraScene.animation.cameraTrack;
     for (uint32_t count : {64u, 256u, 1024u, 4096u}) {
         const auto authored = scenes::lightLabLights(count, 0);
         const auto tracks = scenes::lightLabTracks(count, 0);
@@ -34,8 +36,8 @@ TEST_CASE("LightLab populations remain overflow-free across the actual rail and 
             camera.position = pose.position;
             camera.yaw = pose.yaw;
             camera.pitch = pose.pitch;
-            camera.fovY = scenes::kLightLabCameraFovY;
-            camera.nearZ = scenes::kLightLabCameraNearZ;
+            camera.fovY = cameraScene.initialCamera.fovY;
+            camera.nearZ = cameraScene.initialCamera.nearZ;
             for (glm::uvec2 extent : {glm::uvec2{1280, 720}, glm::uvec2{641, 359}}) {
                 CAPTURE(count, seconds, extent.x, extent.y);
                 const auto projection = camera.projectionMatrix(float(extent.x) / float(extent.y));

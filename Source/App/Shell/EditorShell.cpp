@@ -6,6 +6,7 @@
 #include "App/Shell/EditorShell.h"
 
 #include "App/Model/Rendering/Settings/DebugView.h"
+#include "App/Model/Scene/SceneTree.h"
 #include "App/Shell/EditorFont.h"
 
 #include "App/Panels/Console/ConsolePanel.h"
@@ -120,7 +121,7 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
         return nullptr;
     }
     self->m_activeSceneId = initialScene;
-    self->m_session.activate(**scene, SceneActivationMotion::Reset);
+    self->m_session.activate(*library.loaded(initialScene), SceneActivationMotion::Reset);
     SDL_SetWindowTitle(window, (self->m_session.scene().name + " — Luminex").c_str());
     // Startup selects the scene's Camera (spec section 5); every scene provides one.
     self->m_selection = initialSelection(initialScene);
@@ -128,10 +129,8 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
     // its 0-as-unset start, motion has nothing to report yet.
     onSceneSelected(self->m_temporalState, self->m_settings, initialScene);
 
-    ExposureResetContext initial = self->m_exposureContext;
-    initial.sceneId = initialScene;
-    self->m_exposureResetPending = shouldResetExposure(self->m_exposureContext, initial);
-    self->m_exposureContext = initial;
+    activateExposureLook(self->m_exposureContext, self->m_exposureResetPending, initialScene,
+                         self->m_session.look());
 
     // Register before any settings are read so Luminex's section is routed to this handler, and
     // read the ini here rather than letting the first NewFrame() do it: the schema decision below
@@ -251,7 +250,7 @@ void EditorShell::prepareUIFrame() {
 //======================================================================================================================
 void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, float deltaSeconds,
                           const FrameRecordRing& frameRecords) {
-    applyPendingScene(device);
+    refreshDocumentDirty();
     const RetainedFrame* newestTimed = frameRecords.newestTimedFrame();
     observeRetiredTemporal(m_temporalState, newestTimed);
     std::optional<PerformanceFrameSample> sample;
@@ -339,13 +338,17 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
         LMX_LOG_INFO("editor workspace: built the default panel layout ({})", m_layoutBuildReason);
     }
 
+    ImGui::BeginDisabled(m_documentWorkflow.step() != WorkflowStep::Idle);
     buildPanels(device, renderer, frameRecords);
+    ImGui::EndDisabled();
     // Input consumes this frame's hover state and Inspector edits.
     updateCameraInput(deltaSeconds);
     updateEditorShortcuts(renderer);
     if (const auto reason =
             reconcileDebugView(m_settings, effectiveReconstruction(renderer, device)))
         m_notices.post({ActionStatus::Unavailable, *reason, {}}, ImGui::GetTime());
+    refreshDocumentDirty();
+    buildDocumentWorkflow();
     postCaptureNotice();
     editor_style::drawNotice(m_notices, ImGui::GetTime());
 }
@@ -358,17 +361,23 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
     ImGui::BeginDisabled(m_measurement.active());
     // Every panel is drawn only while visible, and hands its window close button back through the
     // same storage the Window menu writes, so the two can never disagree.
+    std::optional<bool> documentSelectionHidden;
     if (m_workspace.visibility.isVisible(EditorPanel::Scene)) {
         bool open = true;
         bool frameSelectionRequested = false;
-        drawScenePanel(open, ScenePanelContext{.activeSceneId = m_activeSceneId,
-                                               .activeScene = m_session.scene(),
-                                               .selection = m_selection,
-                                               .filter = m_sceneFilter,
-                                               .frameSelectionRequested = frameSelectionRequested,
-                                               .visibilityDisplay = m_visibilityDisplay,
-                                               .visibilityStatus = m_visibilityDisplay.status(),
-                                               .sceneGeneration = m_temporalState.sceneGeneration});
+        documentSelectionHidden = drawScenePanel(
+            open, ScenePanelContext{.activeSceneId = m_activeSceneId,
+                                    .activeScene = m_session.scene(),
+                                    .selection = m_selection,
+                                    .filter = m_sceneFilter,
+                                    .frameSelectionRequested = frameSelectionRequested,
+                                    .visibilityDisplay = m_visibilityDisplay,
+                                    .visibilityStatus = m_visibilityDisplay.status(),
+                                    .sceneGeneration = m_temporalState.sceneGeneration,
+                                    .loadedScene = m_session.loadedScene(),
+                                    .session = &m_session,
+                                    .dirty = m_documentDirty,
+                                    .treeState = m_sceneTree});
         if (frameSelectionRequested)
             frameSelected(renderer);
         setPanelVisible(EditorPanel::Scene, open);
@@ -420,6 +429,23 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
     }
 
     m_selection = resolveSelection(m_selection, m_activeSceneId, m_session.scene());
+    bool selectionHidden = false;
+    if (const auto* loaded = m_session.loadedScene()) {
+        if (documentSelectionHidden) {
+            selectionHidden = *documentSelectionHidden;
+        } else if (!m_sceneFilter.empty()) {
+            const auto& tree = m_sceneTree.view(m_activeSceneId.key,
+                                                {.loaded = *loaded,
+                                                 .state = m_session.documentState(),
+                                                 .session = &m_session,
+                                                 .filter = m_sceneFilter,
+                                                 .sceneGeneration = m_temporalState.sceneGeneration,
+                                                 .editGeneration = m_session.editGeneration()});
+            selectionHidden = sceneTreeSelectionHidden(tree.rows, m_selection, m_sceneFilter);
+        }
+    } else {
+        selectionHidden = selectionHiddenByFilter(m_session.scene(), m_selection, m_sceneFilter);
+    }
     const auto inspectorContext =
         InspectorPanelContext{.selection = m_selection,
                               .session = m_session,
@@ -433,8 +459,7 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
                               .viewportWidth = m_viewportWidth,
                               .viewportHeight = m_viewportHeight,
                               .viewportVisible = viewportUsable,
-                              .selectionHiddenByFilter = selectionHiddenByFilter(
-                                  m_session.scene(), m_selection, m_sceneFilter),
+                              .selectionHiddenByFilter = selectionHidden,
                               .visibilityDisplay = &m_visibilityDisplay,
                               .sceneFilter = &m_sceneFilter,
                               .openPerformance =
@@ -527,8 +552,8 @@ rojoRHI::Result<void> EditorShell::primeTemporal(const AppOptions& options) {
     m_settings.occlusionEnabled = options.occlusionEnabled;
     m_settings.occlusionCheck = options.occlusionCheck;
     m_settings.hzbDebugLevel = options.hzbDebugLevel;
-    if (m_session.localLightRigAvailable()) {
-        return m_session.setLocalLightRig(options.localLightRig);
+    if (options.localLightRigOverride && m_session.localLightRigAvailable()) {
+        return m_session.setLocalLightRig(*options.localLightRigOverride);
     }
     return {};
 }
@@ -540,10 +565,7 @@ rojoRHI::Result<void> EditorShell::prepareSceneFrame(uint64_t frameNumber) {
 
 //======================================================================================================================
 render::SceneView EditorShell::sceneView() {
-    render::SceneView view =
-        m_session.view(m_drawItems, m_settings.shadowFilter, m_settings.wireframe);
-    // Exposure is a shell knob rather than scene data, so it is applied after the scene has
-    // described itself -- the same way the wireframe and shadow-filter settings are.
+    render::SceneView view = m_session.view(m_drawItems, m_settings.wireframe);
     view.localLightMode = m_settings.localLightMode;
     view.lightCheck = m_settings.lightCheck;
     view.lightDebugView = m_settings.lightDebugView;
@@ -554,21 +576,6 @@ render::SceneView EditorShell::sceneView() {
     view.occlusionEnabled = m_settings.occlusionEnabled;
     view.occlusionCheck = m_settings.occlusionCheck;
     view.hzbDebugLevel = m_settings.hzbDebugLevel;
-    view.exposureEv = m_settings.exposureEv;
-    view.autoExposureEnabled = m_settings.autoExposureEnabled;
-    // exposureReset is left at SceneView's default (false); main.cpp sets it from
-    // consumeExposureReset() before declaring passes.
-    view.exposureLowPercentile = m_settings.exposureLowPercentile;
-    view.exposureHighPercentile = m_settings.exposureHighPercentile;
-    view.exposureTargetGrey = m_settings.exposureTargetGrey;
-    view.exposureEvMin = m_settings.exposureEvMin;
-    view.exposureEvMax = m_settings.exposureEvMax;
-    view.exposureCompensationEv = m_settings.exposureCompensationEv;
-    view.exposureAdaptUpStopsPerSecond = m_settings.exposureAdaptUpStopsPerSecond;
-    view.exposureAdaptDownStopsPerSecond = m_settings.exposureAdaptDownStopsPerSecond;
-    view.bloomEnabled = m_settings.bloomEnabled;
-    view.bloomThreshold = m_settings.bloomThreshold;
-    view.bloomIntensity = m_settings.bloomIntensity;
     view.temporal.enabled = m_settings.temporalEnabled;
     view.temporal.jitterEnabled = m_settings.jitterEnabled;
     view.temporal.reconstruction = m_settings.reconstruction;
@@ -578,6 +585,7 @@ render::SceneView EditorShell::sceneView() {
     // Consumed here rather than left for main.cpp: a cut is a one-shot camera event, not a render
     // setting, so its latch belongs next to the generation counter it is unrelated to but shares a
     // lifetime with (both are TemporalEditorState.h).
+    syncSessionTemporalReset(m_temporalState, m_session);
     view.temporal.cameraCut = consumeCameraCut(m_temporalState);
     return view;
 }
@@ -678,61 +686,6 @@ FrameMetricsMetadata EditorShell::frameMetrics(const render::Renderer& renderer)
 //======================================================================================================================
 void EditorShell::commitFrame() {
     m_session.commitFrame();
-}
-
-//======================================================================================================================
-void EditorShell::applyPendingScene(rojoRHI::Device& device) {
-    const auto requested = m_sceneLoading.consumeRequest();
-    if (!requested) {
-        return;
-    }
-    const scenes::SceneId requestedFrom = m_activeSceneId;
-    const bool switched = selectScene(device, *requested);
-    const SceneSwitchOutcome outcome =
-        sceneSwitchOutcome(switched, requestedFrom, *requested, m_selection, m_sceneFilter);
-    m_selection = outcome.selection;
-    m_sceneFilter = outcome.filter;
-}
-
-//======================================================================================================================
-bool EditorShell::selectScene(rojoRHI::Device& device, scenes::SceneId id) {
-    if (id == m_activeSceneId) {
-        return false;
-    }
-    // In-flight frames may still reference the current scene's meshes and textures.
-    device.waitIdle();
-    auto scene = m_library.get(id);
-    if (!scene) {
-        // A failed switch leaves the current scene renderable.
-        LMX_LOG_ERROR("scene '{}' failed to load: {}", m_library.entry(id).displayName,
-                      scene.error().message);
-        m_sceneLoading.fail(id, scene.error().message);
-        return false;
-    }
-    if (m_measurement.active())
-        m_measurement.cancel("Scene changed during measurement");
-    stopPlayback();
-    m_activeSceneId = id;
-    m_visibilityDisplay.clear();
-    m_lightingDisplay.clear();
-    m_lightingFailureLogged = false;
-    m_session.activate(**scene, SceneActivationMotion::Reset);
-    SDL_SetWindowTitle(m_window, (m_session.scene().name + " — Luminex").c_str());
-    // The new scene has no motion to report yet, and its generation differs from whatever the
-    // renderer last saw (TemporalEditorState.h), which is what tells the temporal history to reset
-    // rather than reproject the previous scene's pixels onto this one's geometry.
-    onSceneSelected(m_temporalState, m_settings, id);
-    // A scene switch is a reset trigger (spec 9): the previous scene's metering has nothing to say
-    // about the new one's content.
-    ExposureResetContext candidate = m_exposureContext;
-    candidate.sceneId = id;
-    if (shouldResetExposure(m_exposureContext, candidate)) {
-        m_exposureResetPending = true;
-    }
-    m_exposureContext = candidate;
-    LMX_LOG_INFO("scene switched to '{}' ({} objects)", m_session.scene().name,
-                 m_session.scene().objects.size());
-    return true;
 }
 
 //======================================================================================================================

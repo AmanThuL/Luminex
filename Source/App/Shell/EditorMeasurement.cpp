@@ -62,6 +62,13 @@ void EditorShell::startMeasurement(rojoRHI::Device& device, const render::Render
     plan.labInstances = m_labInstances;
     plan.labOccluders = m_labOccluders;
     plan.scene = scenes::sceneIdString(m_activeSceneId);
+    if (const auto* loaded = m_session.loadedScene()) {
+        plan.sceneDocumentPath =
+            m_activeSceneId.isCatalog() ? loaded->path.string() : m_activeSceneId.key;
+        plan.sceneDocumentHash = loaded->hash;
+        refreshDocumentDirty(true);
+        plan.sceneDocumentDirty = m_documentDirty;
+    }
     plan.temporal = temporalName(m_settings);
     plan.submission = submissionName(m_settings.submission);
     plan.classify = classifyModeName(m_settings.classifyMode);
@@ -75,8 +82,11 @@ void EditorShell::startMeasurement(rojoRHI::Device& device, const render::Render
     plan.unscored = true;
     plan.localLightMode = localLightModeName(m_settings.localLightMode);
     plan.localLightRig = m_session.localLightRigEnabled();
+    plan.startingPopulation = measurementPopulation(m_session.scene());
     plan.labLights =
-        m_session.lightLabPileAvailable() ? m_session.scene().lightLabGridCount : m_labLights;
+        m_session.lightLabPileAvailable()
+            ? static_cast<uint32_t>(m_session.scene().lightLabPopulations.front().grid.size())
+            : m_labLights;
     plan.labLightPile =
         m_session.lightLabPileAvailable() ? m_session.lightLabPileCount() : m_labLightPile;
     plan.lightCheck = m_settings.lightCheck;
@@ -85,6 +95,7 @@ void EditorShell::startMeasurement(rojoRHI::Device& device, const render::Render
         m_measurementFeedback = m_measurement.failure();
         return;
     }
+    m_session.setMeasurementActive(true);
     endMouseLook();
     m_playback.play(m_session, m_settings.followCameraTrack);
     m_measurementOwnsPlayback = true;
@@ -115,7 +126,8 @@ void EditorShell::recordMeasurementFrame(uint64_t frameId, double waitMs, double
     const auto next = m_measurement.nextFrame();
     if (!next)
         return;
-    if (frameId != record.frameId || frameId != m_measurementVisibility.frameNumber ||
+    if (m_measurement.plan().startingPopulation != measurementPopulation(m_session.scene()) ||
+        frameId != record.frameId || frameId != m_measurementVisibility.frameNumber ||
         m_measurement.plan().submission != submissionName(m_settings.submission) ||
         m_measurement.plan().classify != classifyModeName(m_settings.classifyMode) ||
         m_measurement.plan().classifyCheck != m_settings.classifyCheck ||
@@ -124,9 +136,10 @@ void EditorShell::recordMeasurementFrame(uint64_t frameId, double waitMs, double
         m_measurement.plan().hzbDebugLevel != m_settings.hzbDebugLevel ||
         m_measurement.plan().localLightMode != localLightModeName(m_settings.localLightMode) ||
         m_measurement.plan().localLightRig != m_session.localLightRigEnabled() ||
-        m_measurement.plan().labLights != (m_session.lightLabPileAvailable()
-                                               ? m_session.scene().lightLabGridCount
-                                               : m_labLights) ||
+        m_measurement.plan().labLights !=
+            (m_session.lightLabPileAvailable()
+                 ? static_cast<uint32_t>(m_session.scene().lightLabPopulations.front().grid.size())
+                 : m_labLights) ||
         m_measurement.plan().labLightPile !=
             (m_session.lightLabPileAvailable() ? m_session.lightLabPileCount() : m_labLightPile) ||
         m_measurement.plan().lightCheck != m_settings.lightCheck ||

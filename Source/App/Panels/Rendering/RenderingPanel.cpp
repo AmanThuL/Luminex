@@ -21,7 +21,7 @@ constexpr std::array kDefaultClearColor{kSceneClearGray, kSceneClearGray, kScene
 //======================================================================================================================
 // Whether the scope's reset would restore anything, including the non-settings state it owns.
 bool topicChanged(const InspectorPanelContext& context, EditorRenderGroup scope) {
-    if (renderingGroupChanged(context.settings, scope))
+    if (renderingGroupChanged(context.settings, context.session, scope))
         return true;
     if (scope == EditorRenderGroup::Lighting)
         return context.session.lightLabPileCount() > 0;
@@ -35,11 +35,7 @@ void resetTopic(const InspectorPanelContext& context, EditorRenderGroup scope) {
     const auto previousMode = context.settings.localLightMode;
     const bool pileChanged =
         scope == EditorRenderGroup::Lighting && context.session.lightLabPileCount() > 0;
-    resetRenderingGroup(context.settings, scope);
-    if (scope == EditorRenderGroup::Exposure) {
-        setAutoExposureEnabled(context.settings, context.exposureContext,
-                               context.exposureResetPending, context.settings.autoExposureEnabled);
-    }
+    resetRenderingGroup(context.settings, context.session, scope);
     if (scope == EditorRenderGroup::Display)
         std::copy(kDefaultClearColor.begin(), kDefaultClearColor.end(),
                   context.renderer.clearColor);

@@ -90,61 +90,6 @@ MeasurementProvenance collectMeasurementProvenance(const rojoRHI::Device& device
 }
 
 //======================================================================================================================
-uint64_t measurementTableBytes(const engine::SceneTableStats& stats) {
-    return 3 * (uint64_t{stats.instanceCapacity} * sizeof(engine::InstanceRow) +
-                uint64_t{stats.meshCapacity} * sizeof(engine::MeshRow) +
-                uint64_t{stats.materialCapacity} * sizeof(engine::MaterialRow) +
-                uint64_t{stats.lightCapacity} * sizeof(engine::LightRow));
-}
-
-//======================================================================================================================
-MeasurementCpuSample measurementCpuSample(uint32_t sequenceFrame, double waitMs, double encodeMs,
-                                          const render::VisibilityStatus& visibility,
-                                          const engine::SceneTableStats& tables,
-                                          const render::CompiledFrameRecord& record, bool hasSky,
-                                          const render::TemporalStatus& temporal,
-                                          const render::LightingStatus& lighting) {
-    MeasurementCpuSample sample{
-        .frameId = record.frameId,
-        .sequenceFrame = sequenceFrame,
-        .classifyMs = visibility.classifyMs,
-        .prepareMs = visibility.prepareMs,
-        .encodeMs = encodeMs,
-        .slotWaitMs = waitMs,
-        .renderWidth = temporal.extents.renderWidth,
-        .renderHeight = temporal.extents.renderHeight,
-        .outputWidth = temporal.extents.outputWidth,
-        .outputHeight = temporal.extents.outputHeight,
-        .effectiveScale = temporal.renderScale,
-        .effectiveReconstruction = static_cast<uint32_t>(temporal.reconstruction),
-        .vendorFallback = static_cast<uint32_t>(temporal.vendorFallback),
-        .candidates = static_cast<uint32_t>(visibility.scene.candidates.size()),
-        .visible = static_cast<uint32_t>(visibility.scene.visibleItems.size()),
-        .rejected = visibility.scene.rejected,
-        .sceneCommands = visibility.submission.sceneCommands + (hasSky ? 1u : 0u),
-        .shadowCommands = visibility.submission.shadowCommands,
-        .tableBytes = measurementTableBytes(tables),
-        .reservedListBytes = visibility.submission.listBytes,
-        .listBytes = visibility.submission.listBytes,
-        .argumentBytes = visibility.submission.argumentBytes,
-        .allocatedListBytes = visibility.submission.allocatedListBytes,
-        .allocatedArgumentBytes = visibility.submission.allocatedArgumentBytes,
-        .candidateBytes = visibility.submission.candidateBytes,
-        .runBytes = visibility.submission.runBytes,
-        .chunkBytes = visibility.submission.chunkBytes,
-        .stateBytes = visibility.submission.stateBytes,
-        .counterBytes = visibility.submission.counterBytes,
-        .classifyMode = visibility.classifyMode,
-        .sceneCounters = visibility.sceneCounters,
-        .shadowCounters = visibility.shadowCounters,
-        .transientBytes = record.debug.memory.highWater,
-        .lighting = lighting};
-    for (uint32_t index : record.debug.schedule.passes)
-        sample.expectedPasses.push_back(record.debug.passes[index].label);
-    return sample;
-}
-
-//======================================================================================================================
 int runMeasurement(const AppOptions& options) {
     if (std::filesystem::exists(options.measurementPath)) {
         LMX_LOG_ERROR("measurement output already exists: {}", options.measurementPath.string());
@@ -190,27 +135,39 @@ int runMeasurement(const AppOptions& options) {
     plan.lightCheck = options.lightCheck;
     plan.lightDebugView = lightDebugViewName(options.lightDebugView);
     MeasurementRun run;
+    scenes::SceneLibrary library(
+        **device, options.generatorOverrides.instances, options.generatorOverrides.occluders,
+        options.generatorOverrides.lights, options.generatorOverrides.pile);
+    auto loaded = library.get(options.initialScene);
+    if (!loaded) {
+        run.start(plan, collectMeasurementProvenance(**device));
+        run.cancel(loaded.error().message);
+        writeReport(options.measurementPath, run);
+        LMX_LOG_ERROR("measurement scene failed to load: {}", loaded.error().message);
+        return 1;
+    }
+    SceneSession session;
+    session.activate(*library.loaded(options.initialScene),
+                     SceneActivationMotion::PreserveLoadedMotion);
+    if (options.localLightRigOverride && session.localLightRigAvailable()) {
+        if (auto rig = session.setLocalLightRig(options.localLightRig); !rig) {
+            run.start(plan, collectMeasurementProvenance(**device));
+            run.cancel(rig.error().message);
+            writeReport(options.measurementPath, run);
+            LMX_LOG_ERROR("measurement local-light rig failed: {}", rig.error().message);
+            return 1;
+        }
+    }
+    const auto& loadedSnapshot = *library.loaded(options.initialScene);
+    plan.sceneDocumentPath =
+        options.initialScene.isCatalog() ? loadedSnapshot.path.string() : options.initialScene.key;
+    plan.sceneDocumentHash = loadedSnapshot.hash;
+    plan.localLightRig = session.localLightRigEnabled();
+    plan.startingPopulation = measurementPopulation(session.scene());
     if (!run.start(plan, collectMeasurementProvenance(**device))) {
         writeReport(options.measurementPath, run);
         LMX_LOG_ERROR("{}", run.failure());
         return 1;
-    }
-    scenes::SceneLibrary library(**device, options.labInstances, options.labOccluders,
-                                 options.labLights, options.labLightPile);
-    auto loaded = library.get(options.initialScene);
-    if (!loaded) {
-        run.cancel(loaded.error().message);
-        writeReport(options.measurementPath, run);
-        return 1;
-    }
-    SceneSession session;
-    session.activate(**loaded, SceneActivationMotion::PreserveLoadedMotion);
-    if (session.localLightRigAvailable()) {
-        if (auto rig = session.setLocalLightRig(options.localLightRig); !rig) {
-            run.cancel(rig.error().message);
-            writeReport(options.measurementPath, run);
-            return 1;
-        }
     }
     render::TransientPool pool(**device);
     auto renderer = render::Renderer::create(**device, plan.width, plan.height);
@@ -239,7 +196,8 @@ int runMeasurement(const AppOptions& options) {
             break;
         }
         std::vector<engine::DrawItem> items;
-        auto view = session.view(items, render::ShadowFilter::PCF, false);
+        auto view = session.view(items, false);
+        view.exposureReset = frame.sequenceFrame == 0;
         view.localLightMode = options.localLightMode;
         view.lightCheck = options.lightCheck;
         view.lightDebugView = options.lightDebugView;

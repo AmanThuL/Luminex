@@ -2,6 +2,11 @@ local metalcpp_pin = "release/metal-cpp_macOS26.4_iOS26.4"
 local metalcpp_commit = "c595afef4a5dc388f4047cd0c69f9e7f9468d9ed"
 local slang_pin    = "v2026.14.1"
 local slang_sha256 = "a1c5ecae0d2425b13fe7f616686f2df7cc7028d3f6a85fb717497cf98bee3d0a"
+local gltf_validator_version = "2.0.0-dev.3.10"
+local gltf_validator_archive_sha256 =
+    "bce89ceea00b4d3191a8779018f41744b84a4539b127465d63ba83ad0f243fef"
+local gltf_validator_binary_sha256 =
+    "4751098c84469231c4e06e2ba0f2fe472f3143a35725c7a168b595d2110d7eef"
 -- The docking-branch pin is the first revision used here with the native Metal 4 backend.
 -- Re-pinning requires rebasing the texture-removal patch and verifying ARC and ImTextureID
 -- conventions; setup rejects a mismatched checkout before applying the patch.
@@ -204,6 +209,32 @@ task("setup")
         assert(slang_hash == slang_sha256,
                format("ThirdParty/slang/bin/slangc checksum mismatch; expected %s",
                       slang_sha256))
+        local validator_dir = "ThirdParty/glTF-Validator"
+        local validator_binary = path.join(validator_dir, "gltf_validator")
+        if not os.isfile(validator_binary) then
+            os.mkdir(validator_dir)
+            local archive_name = format("gltf_validator-%s-macos64.tar.xz",
+                                        gltf_validator_version)
+            local archive = path.join(validator_dir, archive_name .. ".download")
+            local url = format("https://github.com/KhronosGroup/glTF-Validator/releases/download/%s/%s",
+                               gltf_validator_version, archive_name)
+            os.execv("curl", {"-fL", "--retry", "2", "--max-time", "300", "-o", archive, url})
+            local archive_hash = os.iorunv("shasum", {"-a", "256", archive}):match("^(%x+)")
+            assert(archive_hash == gltf_validator_archive_sha256,
+                   format("glTF Validator archive checksum mismatch; expected %s",
+                          gltf_validator_archive_sha256))
+            os.execv("tar", {"-xJf", archive, "-C", validator_dir})
+            os.rm(archive)
+            try {
+                function ()
+                    os.execv("xattr", {"-dr", "com.apple.quarantine", validator_dir})
+                end
+            }
+        end
+        local validator_hash = os.iorunv("shasum", {"-a", "256", validator_binary}):match("^(%x+)")
+        assert(validator_hash == gltf_validator_binary_sha256,
+               format("glTF Validator executable checksum mismatch; expected %s",
+                      gltf_validator_binary_sha256))
         if not os.isdir("ThirdParty/imgui") then
             -- Fetch the exact untagged commit without cloning the rest of the docking branch.
             os.mkdir("ThirdParty/imgui")

@@ -54,7 +54,7 @@ void EditorShell::frameSelected(const render::Renderer& renderer) {
 //======================================================================================================================
 void EditorShell::updateEditorShortcuts(const render::Renderer& renderer) {
     const auto& io = ImGui::GetIO();
-    if (io.AppFocusLost || io.KeyCtrl || io.KeySuper || io.KeyAlt)
+    if (io.AppFocusLost || io.KeyCtrl || io.KeyAlt)
         return;
     const ShortcutContext context{
         .textInput = io.WantTextInput || ImGui::IsAnyItemActive(),
@@ -63,6 +63,19 @@ void EditorShell::updateEditorShortcuts(const render::Renderer& renderer) {
             ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel),
         .otherSurfaceFocused = detachedSurfaceFocused(),
         .hasSelection = selectedObjectBounds(m_session.scene(), m_selection).has_value()};
+    if (io.KeySuper) {
+        if (shortcutAllowed(EditorShortcut::Document, context)) {
+            if (ImGui::IsKeyPressed(ImGuiKey_S, false))
+                requestDocumentAction(io.KeyShift ? DocumentAction::SaveAs : DocumentAction::Save);
+            else if (ImGui::IsKeyPressed(ImGuiKey_O, false))
+                requestDocumentAction(DocumentAction::Open);
+            else if (ImGui::IsKeyPressed(ImGuiKey_Q, false))
+                requestQuit();
+        }
+        return;
+    }
+    if (m_documentWorkflow.step() != WorkflowStep::Idle)
+        return;
     if (!m_measurement.active() && ImGui::IsKeyPressed(ImGuiKey_F, false) &&
         shortcutAllowed(EditorShortcut::FrameSelected, context))
         frameSelected(renderer);
@@ -81,7 +94,7 @@ void EditorShell::updateEditorShortcuts(const render::Renderer& renderer) {
 
 //======================================================================================================================
 void EditorShell::updateCameraInput(float deltaSeconds) {
-    if (m_measurement.active()) {
+    if (m_measurement.active() || m_documentWorkflow.step() != WorkflowStep::Idle) {
         endMouseLook();
         return;
     }

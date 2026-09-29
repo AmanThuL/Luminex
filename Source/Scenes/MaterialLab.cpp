@@ -15,7 +15,6 @@
 #include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Asset/Texture/TextureBake.h"
 #include "Engine/Upload/IblUpload.h"
-#include "Engine/Upload/SceneEnvironment.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
@@ -40,75 +39,9 @@ constexpr float kMaterialLaneX = 0.0f;
 constexpr float kTextureLaneX = 14.0f;
 constexpr float kDepthLaneX = 28.0f;
 constexpr float kCameraDistance = 12.0f;
-constexpr std::string_view kStudioEnvironmentPath =
-    "Assets/Fetched/MaterialLab/studio_small_09_1k.hdr";
-constexpr uint32_t kStudioEnvironmentFaceSize = 128;
-constexpr uint32_t kStudioDiffuseFaceSize = 32;
-constexpr float kStudioEnvironmentYaw = 0.0f;
-constexpr float kStudioEnvironmentScale = 0.25f;
-
 //======================================================================================================================
 asset::AssetError uploadFailure(rojoRHI::Error error) {
     return asset::AssetError{asset::AssetErrorCode::UploadFailed, std::move(error.message)};
-}
-
-//======================================================================================================================
-asset::AssetResult<void> attachStudioEnvironment(rojoRHI::Device& device, engine::Scene& scene,
-                                                 std::string_view label) {
-    // The fetched studio is deliberately optional: a fresh checkout and hosted CI still get a
-    // deterministic scene, while `xmake setup` upgrades both the visible sky and its IBL from the
-    // exact same linear-light cubemap. The fallback is an authored neutral mid-gray bright enough
-    // to keep the roughness sweep readable without the studio asset.
-    asset::ibl::CpuCubemap environment =
-        asset::ibl::makeConstantCubemap(srgbToLinear(glm::vec3(0.65f)), 1);
-    std::optional<asset::ibl::CpuCubemap> diffuseEnvironment;
-    bool usingStudioEnvironment = false;
-    if (const auto path = asset::findRepositoryAsset(kStudioEnvironmentPath)) {
-        auto decoded = asset::loadRadianceHdr(path->string());
-        if (decoded) {
-            auto converted =
-                asset::equirectangularToCubemap(*decoded, kStudioEnvironmentFaceSize,
-                                                kStudioEnvironmentYaw, kStudioEnvironmentScale);
-            if (converted) {
-                // Diffuse convolution integrates every source texel. Keep its established small
-                // radiance copy while the sky and glossy reflections retain the studio detail.
-                auto diffuse =
-                    asset::equirectangularToCubemap(*decoded, kStudioDiffuseFaceSize,
-                                                    kStudioEnvironmentYaw, kStudioEnvironmentScale);
-                if (!diffuse) {
-                    return std::unexpected(std::move(diffuse.error()));
-                }
-                environment = std::move(*converted);
-                diffuseEnvironment = std::move(*diffuse);
-                usingStudioEnvironment = true;
-            } else {
-                LMX_LOG_WARN("{}; using MaterialLab's neutral fallback environment",
-                             converted.error().message);
-            }
-        } else {
-            LMX_LOG_WARN("{}; using MaterialLab's neutral fallback environment",
-                         decoded.error().message);
-        }
-    } else {
-        LMX_LOG_WARN("MaterialLab environment '{}' was not found; run `xmake setup` to fetch the "
-                     "CC0 studio HDRI. Using the neutral fallback environment.",
-                     kStudioEnvironmentPath);
-    }
-
-    auto cubemap = engine::ibl::uploadCubemap(device, environment, std::string(label) + ".sky");
-    if (!cubemap) {
-        return std::unexpected(uploadFailure(std::move(cubemap.error())));
-    }
-
-    // Studio Small 09 already contains its softboxes. The analytic rig exists only to keep the
-    // asset-free fallback useful instead of double-lighting the fetched environment.
-    engine::ibl::GenerationOptions options;
-    if (usingStudioEnvironment) {
-        options.specularBaseFaceSize = kStudioEnvironmentFaceSize;
-        options.irradianceSource = &*diffuseEnvironment;
-    }
-    return engine::attachEnvironment(device, scene, std::move(*cubemap), environment,
-                                     !usingStudioEnvironment, label, options);
 }
 
 //======================================================================================================================
@@ -249,12 +182,13 @@ std::vector<uint8_t> makeCheckerboardPixels() {
 //   makeCheckerboardPixels
 //   -- a dedicated GPU test supplies its own camera on the far side to read it minified.
 //
-//   initialCamera: (0, 0, 12) looking down -Z (yaw=pitch=0), 45 degree vertical FOV. The complete
-//   sphere matrix occupies roughly 70% of a square viewport's height while retaining comfortable
-//   edge clearance. The texture and depth lanes use the identical pose translated to their lane X.
-asset::AssetResult<std::unique_ptr<engine::Scene>> loadMaterialLabScene(rojoRHI::Device& device) {
-    auto scene = std::make_unique<engine::Scene>();
-    scene->name = "MaterialLab";
+//   The camera starts at (0, 0, 12), looking down -Z at 45 degrees vertical. The opening 16:9
+//   view frames the sphere matrix and the optional helmet/axis station together. Archived
+//   documents omit the station parameter. Texture and depth lanes use a horizontal camera pan.
+asset::AssetResult<void> appendMaterialLab(rojoRHI::Device& device, engine::Scene& target,
+                                           const engine::EnvironmentHook& environment,
+                                           bool axisStation) {
+    engine::Scene* scene = &target;
 
     Aabb aabb = emptyAabb();
     const auto expandAabb = [&](const glm::vec3& center, const glm::vec3& halfExtent) {
@@ -293,6 +227,44 @@ asset::AssetResult<std::unique_ptr<engine::Scene>> loadMaterialLabScene(rojoRHI:
                  .mesh = sphereMeshIndex,
                  .material = materialIndex});
             expandAabb(position, glm::vec3(kSphereRadius));
+        }
+    }
+
+    // The document opts this station in when it places the helmet beside the sphere grid.
+    // Coloured +X/+Y/+Z shafts and square tips make the imported asset's axis convention visible
+    // in the rendered scene; their names spell it out in Hierarchy and the viewport legend.
+    if (axisStation) {
+        constexpr glm::vec3 origin{6.2f, -2.0f, 0.0f};
+        struct Axis {
+            const char* name;
+            glm::vec3 direction;
+            glm::vec3 colour;
+        };
+        constexpr std::array<Axis, 3> axes{{
+            {"+X red", {1.0f, 0.0f, 0.0f}, {1.0f, 0.08f, 0.06f}},
+            {"+Y green", {0.0f, 1.0f, 0.0f}, {0.08f, 1.0f, 0.12f}},
+            {"+Z blue", {0.0f, 0.0f, 1.0f}, {0.08f, 0.25f, 1.0f}},
+        }};
+        for (const Axis& axis : axes) {
+            engine::MaterialRecord material;
+            material.albedo = srgbToLinear(glm::vec4(axis.colour, 1.0f));
+            material.roughness = 0.35f;
+            const engine::MaterialId id = scene->addMaterial(material);
+            const glm::vec3 shaftCentre = origin + axis.direction * 0.45f;
+            const glm::vec3 shaftScale = glm::vec3(0.07f) + axis.direction * 0.83f;
+            scene->addObject({.name = std::string("material-lab axis ") + axis.name + " shaft",
+                              .position = shaftCentre,
+                              .scale = shaftScale,
+                              .mesh = cubeMeshIndex,
+                              .material = id});
+            expandAabb(shaftCentre, shaftScale * 0.5f);
+            const glm::vec3 tip = origin + axis.direction;
+            scene->addObject({.name = std::string("material-lab axis ") + axis.name + " tip",
+                              .position = tip,
+                              .scale = glm::vec3(0.16f),
+                              .mesh = cubeMeshIndex,
+                              .material = id});
+            expandAabb(tip, glm::vec3(0.08f));
         }
     }
 
@@ -448,23 +420,15 @@ asset::AssetResult<std::unique_ptr<engine::Scene>> loadMaterialLabScene(rojoRHI:
                       .material = checkerMaterialIndex});
     expandAabb(mipProbePosition, glm::vec3(0.5f, 0.5f, 0.0f));
 
-    scene->boundingSphere = toVec4(boundingSphere(aabb));
+    expand(scene->authoredBounds, aabb.minimum);
+    expand(scene->authoredBounds, aabb.maximum);
+    scene->boundingSphere = toVec4(boundingSphere(scene->authoredBounds));
 
-    if (auto sky = attachStudioEnvironment(device, *scene, "MaterialLab"); !sky) {
+    if (auto sky = environment(*scene); !sky) {
         return std::unexpected(sky.error());
     }
 
-    scene->initialCamera.position = {0.0f, 0.0f, kCameraDistance};
-    scene->initialCamera.yaw = 0.0f;
-    scene->initialCamera.pitch = 0.0f;
-    scene->initialCamera.fovY = glm::radians(45.0f);
-    scene->initialCamera.nearZ = 0.1f;
-    scene->initialCamera.farZ = 100.0f;
-
-    if (auto finalized = scene->finalize(device); !finalized) {
-        return std::unexpected(uploadFailure(std::move(finalized.error())));
-    }
-    return scene;
+    return {};
 }
 
 } // namespace lmx::scenes

@@ -13,6 +13,8 @@
 
 namespace lmx::app {
 
+class SceneSession;
+
 /// Editor-owned temporal bookkeeping the shell keeps across scene switches, entirely separate from
 /// the scene's own animation clock (Engine/Scene/Scene.h): a monotonic counter `TemporalSettings::
 /// sceneGeneration` is built from, and a one-shot camera-cut request the Inspector's "Camera cut"
@@ -66,6 +68,9 @@ TemporalPresentation temporalPresentation(const TemporalEditorState& state,
 /// Names a reconstruction option using the device capability's human-readable vendor name.
 std::string_view reconstructionName(render::ReconstructionMode mode,
                                     const rojoRHI::TemporalScalerSupport& support);
+
+/// Transfers the session content-change reset into the editor camera-cut latch once.
+void syncSessionTemporalReset(TemporalEditorState& state, SceneSession& session);
 
 /// Marks that the camera teleported this frame (the Inspector's "Camera cut" button). One-shot:
 /// `consumeCameraCut` reports it exactly once.

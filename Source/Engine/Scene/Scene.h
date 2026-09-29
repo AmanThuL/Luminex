@@ -8,6 +8,8 @@
 #include "Core/Math/Aabb.h"
 #include "Core/Math/Transform.h"
 #include "Engine/Asset/Asset.h"
+#include "Engine/Asset/Document/SceneLook.h"
+#include "Engine/Asset/Model/GltfLoader.h"
 #include "Engine/Asset/Model/SceneAnimation.h"
 #include "Engine/Geometry/Mesh.h"
 #include "Engine/Lights/DirectionalLight.h"
@@ -22,6 +24,7 @@
 
 #include <glm/glm.hpp>
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -29,6 +32,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -55,9 +59,20 @@ struct SceneObject {
     float emissiveStrength = 1.0f;
     std::string sourceName;        ///< Exact authored node/mesh name, empty for generated objects.
     std::string materialQualifier; ///< Authored primitive material qualifier, empty when unneeded.
+    bool enabled = true; ///< Effective authored participation; false retains identity and row.
 
     /// Builds the object's model matrix from its authored transform fields.
     glm::mat4 modelMatrix() const;
+};
+
+/// Owned asset-local playback inputs. The document binding keeps a separate copy for identity and
+/// export; scene playback never borrows that binding or depends on its lifetime.
+struct AssetClipPlayback {
+    size_t objectBase = 0;     ///< Initial append offset for diagnostics; playback uses instances.
+    glm::mat4 rootWorld{1.0f}; ///< Document transform preceding the source node hierarchy.
+    std::vector<InstanceId> instances;  ///< Stable identity for each source primitive instance.
+    std::vector<asset::GltfNode> nodes; ///< Source indices, rest transforms and instance maps.
+    std::vector<asset::GltfAnimationClip> clips; ///< Source-ordered channels and own durations.
 };
 
 /// Authored initial camera pose copied into a renderer camera at scene activation.
@@ -68,6 +83,15 @@ struct SceneCamera {
 
 /// Copies the authored scene camera pose into a renderer camera.
 engine::Camera cameraFromScene(const SceneCamera& sceneCamera);
+
+/// Explicit ownership for one appended LightLab population; the first population owns the editor
+/// pile control.
+struct LightLabPopulation {
+    /// Owning generator node, or sentinel for direct append callers.
+    uint32_t documentNode = UINT32_MAX;
+    std::vector<LightId> grid; ///< Generated grid identities, never treated as pile by position.
+    std::vector<LightId> pile; ///< This generator's initial and subsequent session pile identities.
+};
 
 /// Owns renderable scene resources, instances, lighting, and initial view state.
 class Scene {
@@ -88,6 +112,9 @@ public:
     MaterialId addMaterial(MaterialRecord material);
     /// Adds an instance with valid mesh/material handles and seeds its own previous pose.
     InstanceId addObject(SceneObject object);
+    /// Sets effective participation by current object index, preserving identity and row. A change
+    /// advances coverageEpoch immediately; an out-of-range index is a contract violation.
+    void setObjectEnabled(size_t index, bool enabled);
     /// Removes a live instance, invalidates its handle and preserves later rows.
     void removeObject(InstanceId id);
     /// Removes an unreferenced texture; stale or still-referenced identities are misuse.
@@ -149,16 +176,21 @@ public:
     /// Reports live counts, allocation capacities and the last preparation's upload work.
     SceneTableStats tableStats() const;
     /// Monotonic coverage revision, refreshed for public object/material edits by prepareFrame.
-    /// Add/remove identities advance it immediately; motion history and lighting edits do not.
+    /// Add/remove identities and enabled changes advance it immediately; motion history and
+    /// lighting edits do not.
     uint64_t coverageEpoch() const;
     /// Returns borrowed bindings for the prepared slot; valid through that frame's execution.
     /// An unfinalized CPU scene returns empty bindings and cannot be submitted to the renderer.
     engine::SceneTables tables() const;
-    std::string name;                   ///< User-facing scene name.
+    asset::SceneLook look; ///< Authored document look; renderer configuration is separate.
+    std::string name;      ///< User-facing scene name.
     std::vector<SceneObject> objects;   ///< Editable draw instances.
-    engine::DirectionalLight lights[3]; ///< Fixed-size analytic light set.
-    glm::vec4 boundingSphere{0.f};      ///< World-space center in xyz and radius in w.
-    std::optional<MeshId> skySphere;    ///< Geometry used by the sky pass without an instance.
+    engine::DirectionalLight lights[3]; ///< Fixed key/fill/rim analytic role order.
+    /// Selected directional role, or no shadow contribution.
+    std::optional<uint32_t> shadowCaster{0};
+    Aabb authoredBounds = emptyAabb(); ///< Combined build-time bounds; excludes sky geometry.
+    glm::vec4 boundingSphere{0.f};     ///< World-space center in xyz and radius in w.
+    std::optional<MeshId> skySphere;   ///< Geometry used by the sky pass without an instance.
     std::unique_ptr<rojoRHI::Texture> skyCubemap; ///< Authored linear-radiance environment.
     /// Image-based lighting generated from the same authored sky radiance skyCubemap carries
     /// (Engine/Asset/Texture/Ibl.h): a cosine-convolved irradiance cube, a GGX-prefiltered radiance
@@ -167,12 +199,13 @@ public:
     std::unique_ptr<rojoRHI::Texture> irradianceMap;     ///< Diffuse irradiance cubemap.
     std::unique_ptr<rojoRHI::Texture> prefilteredEnvMap; ///< GGX-prefiltered environment chain.
     std::unique_ptr<rojoRHI::Texture> dfgLut; ///< Split-sum material response lookup table.
-    /// Immutable authored grid-light count set before finalize; zero outside LightLab. Remaining
-    /// initial local lights are the authored overflow pile, independently editable by the session.
-    uint32_t lightLabGridCount = 0;
+    /// Generated populations in append order; authored document lights never enter these lists.
+    std::vector<LightLabPopulation> lightLabPopulations;
     SceneCamera initialCamera{};     ///< Camera pose restored when the scene becomes active.
     asset::SceneAnimation animation; ///< Tracks this scene plays; empty for a static scene.
     double animationTime = 0.0; ///< Playback position in seconds, advanced by advanceAnimation().
+    double unwrappedAnimationTime = 0.0; ///< Elapsed playback time for independently looping clips.
+    std::vector<AssetClipPlayback> assetAnimations; ///< Owned source clips for document assets.
 
     /// Collapses every object's motion onto its current pose, so the next frame reports no
     /// movement. Called when the scene becomes active or after a discontinuity.
@@ -193,6 +226,14 @@ public:
     /// and sampled poses are validated where tracks are built, so a pose that cannot be decomposed
     /// here is a contract violation.
     void animate(double seconds);
+    /// Supplies elapsed time separately when the scene clock has wrapped. Generator and camera
+    /// tracks use `seconds`; asset clips use `assetSeconds` and wrap against their own durations.
+    void animate(double seconds, double assetSeconds);
+
+    /// Evaluates an imported object's authored pose at its own clip phases without changing the
+    /// scene. Returns none when the identity is not animated by an owned asset clip or when the
+    /// sampled pose is indecomposable.
+    std::optional<DecomposedTransform> authoredAssetPose(InstanceId id, double seconds) const;
 
     /// Samples the nonempty camera track at `animationTime` and assigns position, yaw, and pitch.
     /// Lens state remains owned by the caller and is unchanged.
@@ -206,6 +247,7 @@ public:
 
 private:
     std::vector<LightId> m_rigLightIds;
+    std::unordered_set<uint64_t> m_indecomposableWarned; ///< Instances already warned about.
     void validateObjects() const;
     struct Storage;
     std::unique_ptr<Storage> m_storage;

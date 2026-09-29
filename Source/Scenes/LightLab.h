@@ -31,19 +31,6 @@ constexpr float kLightLabGridHalfExtent = 20.0f;
 /// scene's motion repeats exactly with the rail.
 constexpr float kLightLabOrbitPeriod = 6.0f;
 
-/// Camera-rail loop length, seconds, matching the lab's other procedural scenes.
-constexpr double kLightLabRailDuration = 12.0;
-
-/// Vertical field of view, radians, shared by the authored camera and device-free lab checks.
-constexpr float kLightLabCameraFovY = 50.0f * 3.14159265358979323846f / 180.0f;
-
-/// Camera near-plane distance, metres, shared by the scene and cluster reference checks.
-constexpr float kLightLabCameraNearZ = 0.1f;
-
-/// Builds the lab's 12-second camera rail at the animation bake rate. The first and last keys
-/// provide a field overview; its midpoint passes near the overflow pile. No device is required.
-std::vector<asset::CameraKey> lightLabCameraTrack();
-
 /// Returns the world-space point every `--lab-light-pile` light shares: near the centre of the
 /// camera rail's view, so a saturated froxel is visible across the loop.
 glm::vec3 lightLabPilePosition();
@@ -67,7 +54,7 @@ std::vector<engine::LocalLight> lightLabLights(uint32_t n, uint32_t pile);
 /// Builds the closed-form orbit tracks for `lightLabLights(n, pile)`'s orbiting grid lights (index
 /// % 4 == 2): `LightOrbitTrack::light` is that light's position in the vector `lightLabLights`
 /// returns, so the pair must be called with the same `(n, pile)`. Pile lights never orbit. Every
-/// returned track's `period` is `kLightLabOrbitPeriod`, which divides `kLightLabRailDuration`.
+/// returned track's `period` is `kLightLabOrbitPeriod`, which divides the document rail duration.
 std::vector<asset::LightOrbitTrack> lightLabTracks(uint32_t n, uint32_t pile);
 
 } // namespace lmx::scenes

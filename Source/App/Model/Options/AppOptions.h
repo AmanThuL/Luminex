@@ -84,7 +84,11 @@ struct AppOptions {
     engine::LightDebugView lightDebugView = engine::LightDebugView::Off; ///< Lighting diagnostic.
     /// Capture metadata for the opt-in controller environment hook.
     bool dynamicResolution = false;
-    bool localLightRig = true; ///< Authored Sponza rig; explicit off retains zero-light controls.
+    /// Effective initial rig hint; document group establishes the default.
+    bool localLightRig = true;
+    std::optional<bool>
+        localLightRigOverride; ///< Explicit CLI mask only; absent preserves authored state.
+    scenes::GeneratorOverrides generatorOverrides; ///< Explicit lab parameter masks only.
     uint32_t labLights = 256;  ///< Grid LightLab local-light population, 1..kMaxLocalLights.
     uint32_t labLightPile = 0; ///< Extra LightLab lights stacked at one point, 0..kMaxLocalLights.
     std::filesystem::path measurementPath; ///< New JSON report destination for --measure.

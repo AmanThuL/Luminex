@@ -35,14 +35,13 @@ TEST_CASE("--windowed clears the maximized default", "[app][options]") {
 
 //======================================================================================================================
 TEST_CASE("--windowed composes with --scene", "[app][options]") {
-    constexpr std::array arguments = {std::string_view{"--scene"},
-                                      std::string_view{"damaged-helmet"},
+    constexpr std::array arguments = {std::string_view{"--scene"}, std::string_view{"material-lab"},
                                       std::string_view{"--windowed"}};
     const AppOptionsResult result = parseAppOptions(arguments);
 
     REQUIRE(result);
     REQUIRE_FALSE(result->maximized);
-    REQUIRE(lmx::scenes::sceneIdString(result->initialScene) == "damaged-helmet");
+    REQUIRE(lmx::scenes::sceneIdString(result->initialScene) == "material-lab");
 }
 
 //======================================================================================================================
@@ -88,8 +87,8 @@ TEST_CASE("app options reject unknown scene IDs", "[app][options]") {
 
     REQUIRE_FALSE(result);
     REQUIRE(result.error().message ==
-            "unknown scene ID 'Sponza'; valid IDs: sponza, damaged-helmet, milk-truck, "
-            "material-lab, temporal-lab, san-miguel, visibility-lab, light-lab");
+            "unknown scene ID 'Sponza'; valid IDs: sponza, material-lab, temporal-lab, "
+            "san-miguel, visibility-lab, light-lab");
 }
 
 //======================================================================================================================
@@ -105,9 +104,9 @@ TEST_CASE("app options reject missing option values", "[app][options]") {
             "--screenshot needs an output path: App --screenshot <out.png|out.bmp>");
     REQUIRE_FALSE(sceneResult);
     REQUIRE(sceneResult.error().message ==
-            "--scene needs an ID: App --scene "
-            "<sponza|damaged-helmet|milk-truck|material-lab|temporal-lab|san-miguel|visibility-lab|"
-            "light-lab>");
+            "--scene needs an ID or document path: App --scene "
+            "<sponza|material-lab|temporal-lab|san-miguel|visibility-lab|"
+            "light-lab|path>");
 }
 
 //======================================================================================================================
@@ -118,8 +117,8 @@ TEST_CASE("app options reject unknown arguments", "[app][options]") {
     REQUIRE_FALSE(result);
     REQUIRE(result.error().message ==
             "unknown argument '--unknown'; usage: App [--screenshot <out.png|out.bmp>] [--scene "
-            "<sponza|damaged-helmet|milk-truck|material-lab|temporal-lab|san-miguel|visibility-lab|"
-            "light-lab>"
+            "<sponza|material-lab|temporal-lab|san-miguel|visibility-lab|"
+            "light-lab|path>"
             "] [--windowed] "
             "[--frames <N>] [--temporal <off|raw|taa|metalfx>] "
             "[--temporal-view <off|motion|reprojection|reprojected|rejection|weight|age>] "
@@ -404,9 +403,8 @@ TEST_CASE("--render-scale 1.0 combined with --temporal off is not an error", "[a
 // sceneIdList), not a second hardcoded list -- this pins the catalog's own order/content so the two
 // cannot drift.
 TEST_CASE("the scene catalog's stable IDs match what the CLI advertises", "[app][options]") {
-    const std::array<std::string_view, 8> expected = {
-        "sponza",       "damaged-helmet", "milk-truck",     "material-lab",
-        "temporal-lab", "san-miguel",     "visibility-lab", "light-lab"};
+    const std::array<std::string_view, 6> expected = {
+        "sponza", "material-lab", "temporal-lab", "san-miguel", "visibility-lab", "light-lab"};
     const std::span<const std::string_view> ids = lmx::scenes::sceneStableIds();
 
     REQUIRE(ids.size() == expected.size());
@@ -419,21 +417,17 @@ TEST_CASE("the scene catalog's stable IDs match what the CLI advertises", "[app]
 TEST_CASE("app options keep the last repeated values and ignore a bare separator",
           "[app][options]") {
     constexpr std::array arguments = {
-        std::string_view{"--scene"},
-        std::string_view{"sponza"},
-        std::string_view{"--"},
-        std::string_view{"--scene"},
-        std::string_view{"damaged-helmet"},
-        std::string_view{"--screenshot"},
-        std::string_view{"first.bmp"},
-        std::string_view{"--screenshot"},
+        std::string_view{"--scene"},      std::string_view{"sponza"},
+        std::string_view{"--"},           std::string_view{"--scene"},
+        std::string_view{"material-lab"}, std::string_view{"--screenshot"},
+        std::string_view{"first.bmp"},    std::string_view{"--screenshot"},
         std::string_view{"last.bmp"},
     };
     const AppOptionsResult result = parseAppOptions(arguments);
 
     REQUIRE(result);
     REQUIRE(result->mode == RunMode::Screenshot);
-    REQUIRE(lmx::scenes::sceneIdString(result->initialScene) == "damaged-helmet");
+    REQUIRE(lmx::scenes::sceneIdString(result->initialScene) == "material-lab");
     REQUIRE(result->screenshotPath == "last.bmp");
 }
 
@@ -651,7 +645,7 @@ TEST_CASE("local light options default to Clustered and the authored Sponza rig"
     const auto enabled = parseAppOptions(args);
     REQUIRE(enabled);
     REQUIRE(enabled->localLightRig);
-    for (const auto name : {"light-lab", "damaged-helmet", "temporal-lab"}) {
+    for (const auto name : {"light-lab", "material-lab", "temporal-lab"}) {
         const std::array<std::string_view, 2> sceneArgs{"--scene", name};
         const auto other = parseAppOptions(sceneArgs);
         REQUIRE(other);
@@ -662,13 +656,11 @@ TEST_CASE("local light options default to Clustered and the authored Sponza rig"
 //======================================================================================================================
 TEST_CASE("local light flags reject malformed values and rig use outside Sponza",
           "[app][options]") {
-    for (const auto& args : std::vector<std::vector<std::string_view>>{
-             {"--local-lights"},
-             {"--local-lights", "invalid"},
-             {"--local-light-rig"},
-             {"--local-light-rig", "invalid"},
-             {"--scene", "light-lab", "--local-light-rig", "on"},
-             {"--scene", "damaged-helmet", "--local-light-rig", "off"}}) {
+    for (const auto& args :
+         std::vector<std::vector<std::string_view>>{{"--local-lights"},
+                                                    {"--local-lights", "invalid"},
+                                                    {"--local-light-rig"},
+                                                    {"--local-light-rig", "invalid"}}) {
         CAPTURE(args);
         REQUIRE_FALSE(parseAppOptions(args));
     }
@@ -700,4 +692,16 @@ TEST_CASE("lighting diagnostics require clustered unscored and exclusive views",
         parse({"--local-lights", "clustered", "--light-view", "missed", "--measure", "out.json"}));
     REQUIRE(parse({"--local-lights", "clustered", "--light-check", "--light-view", "missed",
                    "--measure", "out.json", "--unscored"}));
+}
+
+//======================================================================================================================
+TEST_CASE("--scene accepts a document path and rig override without a catalog group",
+          "[app][options][scene-doc]") {
+    constexpr std::array arguments = {
+        std::string_view{"--scene"}, std::string_view{"/tmp/custom.scene.gltf"},
+        std::string_view{"--local-light-rig"}, std::string_view{"on"}};
+    const auto result = parseAppOptions(arguments);
+    REQUIRE(result);
+    REQUIRE(scenes::sceneIdString(result->initialScene) == "/tmp/custom.scene.gltf");
+    REQUIRE_FALSE(result->initialScene.isCatalog());
 }

@@ -41,7 +41,7 @@ VisibilityStatus checkedFrame(Device& device, engine::Scene& scene, Renderer& re
     auto& commands = device.beginFrame();
     REQUIRE(scene.prepareFrame(device.frameNumber()));
     std::vector<engine::DrawItem> items;
-    auto view = buildSceneView(scene, items, ShadowFilter::PCF, false);
+    auto view = buildSceneView(scene, items, false);
     view.classifyMode = ClassifyMode::Gpu;
     view.classifyCheck = true;
     view.occlusionEnabled = true;
@@ -288,7 +288,7 @@ TEST_CASE("occlusion joins overlapping retired frames across slot reuse in both 
             auto& commands = (*device)->beginFrame();
             REQUIRE(scene.prepareFrame((*device)->frameNumber()));
             std::vector<engine::DrawItem> items;
-            auto view = buildSceneView(scene, items, ShadowFilter::PCF, false);
+            auto view = buildSceneView(scene, items, false);
             view.classifyMode = ClassifyMode::Gpu;
             view.submission = mode;
             view.classifyCheck = true;
@@ -332,5 +332,66 @@ TEST_CASE("occlusion joins overlapping retired frames across slot reuse in both 
                 REQUIRE(status.sceneCounters.emittedRows == 1);
             }
         }
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("enabled toggles invalidate positively rejecting occluder history and restore rejection",
+          "[gpu][occlusion-integration][disabled-instance][occlusion-enabled-toggle]") {
+    auto device = createDevice();
+    REQUIRE(device);
+    auto scene = occludedScene();
+    REQUIRE(scene.finalize(**device));
+    const auto foregroundId = scene.objects[0].id;
+    const auto targetId = scene.objects[1].id;
+    engine::Camera camera;
+    camera.fovY = glm::half_pi<float>();
+    for (auto mode : {SubmissionMode::Indirect, SubmissionMode::Batched}) {
+        CAPTURE(static_cast<int>(mode));
+        auto renderer = Renderer::create(**device, 64, 64, true);
+        REQUIRE(renderer);
+        const auto configure = [mode](SceneView& view) { view.submission = mode; };
+        checkedFrame(**device, scene, **renderer, camera, 1, false, configure);
+        const auto hidden = checkedFrame(**device, scene, **renderer, camera, 1, false, configure);
+        REQUIRE(hidden.sceneCounters.occluded == 1);
+        REQUIRE(hidden.scene.candidates[1].reason == VisibilityReason::Occluded);
+        REQUIRE(hidden.occlusionCheck.visibleInstances == 1);
+        const auto coverageBefore = scene.coverageEpoch();
+        scene.setObjectEnabled(0, false);
+        REQUIRE(scene.coverageEpoch() > coverageBefore);
+        const auto revealed =
+            checkedFrame(**device, scene, **renderer, camera, 1, false, configure);
+        REQUIRE(revealed.occlusionInvalidReason == OcclusionInvalidReason::CoverageChanged);
+        REQUIRE(revealed.sceneCounters.occluded == 0);
+        REQUIRE(revealed.sceneCounters.candidates == 1);
+        REQUIRE(revealed.sceneCounters.disabled == 1);
+        REQUIRE(revealed.sceneCounters.historyInvalid == 1);
+        REQUIRE(revealed.sceneCounters.rejected == 0);
+        REQUIRE(revealed.shadowCounters.emittedRows == 1);
+        REQUIRE(revealed.scene.candidates.size() == 2);
+        REQUIRE(revealed.scene.candidates[0].reason == VisibilityReason::AuthoredOff);
+        REQUIRE(revealed.scene.candidates[1].state == VisibilityState::Visible);
+        REQUIRE(revealed.occlusionCheck.falselyRejectedInstances == 0);
+        REQUIRE(revealed.occlusionCheck.visibleInstances == 1);
+        const auto off = checkedFrame(**device, scene, **renderer, camera, 1, false, configure);
+        REQUIRE(off.occlusionInvalidReason == OcclusionInvalidReason::None);
+        REQUIRE(off.sceneCounters.occluded == 0);
+        REQUIRE(off.sceneCounters.disabled == 1);
+        scene.setObjectEnabled(0, true);
+        const auto restored =
+            checkedFrame(**device, scene, **renderer, camera, 1, false, configure);
+        REQUIRE(restored.occlusionInvalidReason == OcclusionInvalidReason::CoverageChanged);
+        REQUIRE(restored.sceneCounters.disabled == 0);
+        REQUIRE(restored.sceneCounters.occluded == 0);
+        REQUIRE(restored.sceneCounters.historyInvalid == 2);
+        const auto hiddenAgain =
+            checkedFrame(**device, scene, **renderer, camera, 1, false, configure);
+        REQUIRE(hiddenAgain.occlusionInvalidReason == OcclusionInvalidReason::None);
+        REQUIRE(hiddenAgain.sceneCounters.occluded == 1);
+        REQUIRE(hiddenAgain.scene.candidates[1].reason == VisibilityReason::Occluded);
+        REQUIRE(hiddenAgain.occlusionCheck.falselyRejectedInstances == 0);
+        REQUIRE(scene.objects.size() == 2);
+        REQUIRE(scene.objects[0].id == foregroundId);
+        REQUIRE(scene.objects[1].id == targetId);
     }
 }

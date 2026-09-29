@@ -1,0 +1,167 @@
+{
+  "asset": {
+    "version": "2.0"
+  },
+  "extensionsUsed": ["LMX_scene", "KHR_lights_punctual"],
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "MaterialLab",
+      "nodes": [0, 1, 2, 3, 4, 5]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "MaterialLab",
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true,
+          "generator": {
+            "name": "material-lab",
+            "params": {
+              "axisStation": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Scene Camera",
+      "translation": [0, 0, 12],
+      "camera": 0,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Key",
+      "rotation": [-0.627963, -0.627963, 0, 0.45970085],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 0
+        },
+        "LMX_scene": {
+          "enabled": false,
+          "role": "key",
+          "castsShadow": true
+        }
+      }
+    },
+    {
+      "name": "Fill",
+      "rotation": [-0.627963, 0.627963, 0, 0.45970085],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 1
+        },
+        "LMX_scene": {
+          "enabled": false,
+          "role": "fill",
+          "castsShadow": false
+        }
+      }
+    },
+    {
+      "name": "Rim",
+      "rotation": [-0.38268346, -0, 0, 0.92387956],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 2
+        },
+        "LMX_scene": {
+          "enabled": false,
+          "role": "rim",
+          "castsShadow": false
+        }
+      }
+    },
+    {
+      "name": "Damaged Helmet · axis station",
+      "translation": [6.2, 0, 0],
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true,
+          "asset": {
+            "uri": "Fetched/DamagedHelmet/DamagedHelmet.glb",
+            "sha256": "a1e3b04de97b11de564ce6e53b95f02954a297f0008183ac63a4f5974f6b32d8"
+          }
+        }
+      }
+    }
+  ],
+  "cameras": [
+    {
+      "name": "Scene Camera",
+      "type": "perspective",
+      "perspective": {
+        "yfov": 0.7853982,
+        "znear": 0.1,
+        "zfar": 100
+      }
+    }
+  ],
+  "extensions": {
+    "KHR_lights_punctual": {
+      "lights": [
+        {
+          "name": "Key",
+          "type": "directional",
+          "color": [0.8959768414497375, 0.8959768414497375, 0.8959768414497375],
+          "intensity": 0.5
+        },
+        {
+          "name": "Fill",
+          "type": "directional",
+          "color": [0.5296761989593506, 0.5296761989593506, 0.5296761989593506],
+          "intensity": 0.0625
+        },
+        {
+          "name": "Rim",
+          "type": "directional",
+          "color": [0.5296761989593506, 0.5296761989593506, 0.5296761989593506],
+          "intensity": 0.0625
+        }
+      ]
+    },
+    "LMX_scene": {
+      "schemaVersion": 1,
+      "camera": 1,
+      "look": {
+        "exposure": {
+          "ev": 0,
+          "autoEnabled": false,
+          "lowPercentile": 50,
+          "highPercentile": 95,
+          "targetGrey": 0.18,
+          "evMin": -8,
+          "evMax": 8,
+          "compensationEv": 0,
+          "adaptUpStopsPerSecond": 3,
+          "adaptDownStopsPerSecond": 1.5
+        },
+        "bloom": {
+          "enabled": true,
+          "threshold": 1,
+          "intensity": 0.2
+        },
+        "shadow": {
+          "filter": "pcf"
+        },
+        "environment": {
+          "skySrgb8": [149, 170, 196],
+          "hdri": {
+            "uri": "Fetched/MaterialLab/studio_small_09_1k.hdr",
+            "sha256": "e7cfda5f4e98e623db12b8bfd0184e048488e4855d9c83e2751fb44a32e80c45",
+            "yaw": 0,
+            "scale": 0.25,
+            "faceSize": 128,
+            "diffuseFaceSize": 32
+          }
+        }
+      },
+      "loop": true
+    }
+  }
+}

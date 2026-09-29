@@ -8,7 +8,7 @@
 #include "Engine/Scene/Scene.h"
 #include "Engine/View/Camera.h"
 #include "Render/Renderer/SceneView.h"
-#include "Scenes/SponzaLightRig.h"
+#include "Scenes/SceneDocuments.h"
 
 #include <array>
 #include <cstdint>
@@ -16,6 +16,8 @@
 #include <vector>
 
 namespace lmx::app {
+
+enum class EditorSubject;
 
 /// How activation treats the scene's existing previous transforms.
 enum class SceneActivationMotion : uint8_t {
@@ -35,12 +37,84 @@ public:
     /// Selects an already-loaded scene and restores its initial camera. Editor activation resets
     /// motion; headless startup preserves the loader's existing previous transforms exactly.
     void activate(engine::Scene& scene, SceneActivationMotion motion);
+    /// Activates a complete document snapshot and retains its separate authored flags.
+    void activate(engine::LoadedScene& loaded, SceneActivationMotion motion);
+    /// Invalidates all pointer-keyed defaults before SceneLibrary replaces an old snapshot. If
+    /// active, detaches it; the caller clears selection and activates the replacement afterward.
+    void invalidate(const engine::Scene& scene);
+    /// Returns the active complete snapshot, or null for CPU-only scene fixtures.
+    engine::LoadedScene* loadedScene() const { return m_loaded; }
+    /// Authored document and imported flags; CLI group overrides leave these values untouched.
+    const scenes::SessionDocumentState& documentState() const;
+
+    /// Own flag of a document node, independent of its ancestors and CLI overrides.
+    bool nodeEnabled(uint32_t node) const;
+    /// Effective document flag including ancestors and the optional CLI group override.
+    bool nodeEffectiveEnabled(uint32_t node) const;
+    /// Own flag at an imported binding index, not a glTF source-node index.
+    bool importedNodeEnabled(uint32_t imported) const;
+    /// Effective imported flag including both document and source-node ancestry.
+    bool importedNodeEffectiveEnabled(uint32_t imported) const;
+    /// Own object flag shared by every primitive of its source node; generated flags are
+    /// session-only.
+    bool objectEnabled(size_t index) const;
+    /// Own local-light flag; false for stale identities, unaffected by ancestor masking.
+    bool localLightEnabled(engine::LightId id) const;
+    /// Identifies generator-owned subjects using bindings, including subsequently added pile
+    /// lights.
+    bool isGenerated(EditorSubject subject, size_t index, engine::LightId id) const;
+    /// Persists one document flag and reapplies descendant effective flags. Editing the CLI group
+    /// clears its session override, including an explicit edit to its unchanged authored value.
+    /// Invalid indices and any call during Measure fail without changing state.
+    rojoRHI::Result<void> setNodeEnabled(uint32_t node, bool enabled);
+    /// Persists an imported own flag and reapplies source descendants, retaining their own flags.
+    /// The index names SceneBinding::importedNodes; invalid indices and Measure edits fail.
+    rojoRHI::Result<void> setImportedNodeEnabled(uint32_t imported, bool enabled);
+    /// Changes all primitives of a bound source node, or only the generated session subject.
+    /// Invalid indices and Measure edits fail; a real transition requests a temporal reset.
+    rojoRHI::Result<void> setObjectEnabled(size_t index, bool enabled);
+    /// Changes a bound node's own flag, or a generated session choice. Stale IDs and Measure fail.
+    rojoRHI::Result<void> setLocalLightEnabled(engine::LightId id, bool enabled);
+    /// Locks authored and generated enablement while a measurement warms up, renders or drains.
+    void setMeasurementActive(bool active) { m_measurementActive = active; }
+    /// Consumes the one-shot reset requested by changed effective content, independently of dirty.
+    bool consumeTemporalReset();
+    /// Adopts current persistent subject values as reset baselines after the caller atomically
+    /// adopts a successfully saved document. Generated defaults and edit generation are preserved.
+    void adoptDocumentResetBaseline();
 
     /// The borrowed scene, or null before the first activation.
     engine::Scene* activeScene() const { return m_scene; }
 
     /// The active scene, editable by its owner; asserts if no scene has been activated.
     engine::Scene& scene() const;
+
+    /// Current persistent look; controls commit a modified copy through editLook.
+    const asset::SceneLook& look() const;
+    /// Loaded or successfully saved look, retained independently of current edits and playback.
+    const asset::SceneLook& lookDefault() const;
+    /// Commits changed persistent look values and increments the active scene's edit generation.
+    /// An unchanged value is a no-op; exposure feedback reconciliation remains caller-owned.
+    void editLook(const asset::SceneLook& look);
+    /// Replaces only the reset baseline after a successful canonical Save/Save As adoption.
+    /// The caller adopts the document/hash/path together; this neither edits the look nor marks it
+    /// dirty. Baseline storage lives until invalidate removes the scene's session state.
+    void adoptLookResetBaseline(const asset::SceneLook& saved);
+    /// Active scene's persistent-edit notification counter, starting at zero on first activation.
+    /// Playback preview and baseline adoption leave it unchanged; switching preserves each count.
+    uint64_t editGeneration() const;
+    /// Shared notification hook for a completed persistent edit outside editLook. Preview-only
+    /// changes must not call it. Dirty tracking uses this as an invalidation, not a dirty verdict.
+    void notifyPersistentEdit();
+
+    /// Explicitly requests the current view as the saved rest camera. Ordinary view/playback
+    /// changes never call this. Rejects missing documents, Measure and invalid lens/pose values;
+    /// a changed request increments persistent generation. The owner requires stopped playback.
+    /// The requested yaw is wrapped into [-pi, pi], on the live camera too.
+    rojoRHI::Result<void> setSceneCamera();
+    /// Replaces an explicitly saved camera with its value decoded from the saved document, so an
+    /// approximated orientation compares clean afterwards. No-op without a saved camera request.
+    void adoptDocumentCamera(const engine::SceneCamera& camera);
 
     /// The camera edited by the owner, including fly input and lens changes.
     engine::Camera& camera() { return m_camera; }
@@ -78,9 +152,9 @@ public:
 
     /// Fills caller-owned items and borrows them in the returned view. The view, items, camera, and
     /// scene resources must stay alive and unmodified through pass declaration and graph execution.
-    /// Render settings and one-shot exposure/temporal state remain the caller's responsibility.
-    render::SceneView view(std::vector<engine::DrawItem>& items, render::ShadowFilter filter,
-                           bool wireframe) const;
+    /// The active look is included; renderer configuration and one-shot exposure/temporal state
+    /// remain the caller's responsibility.
+    render::SceneView view(std::vector<engine::DrawItem>& items, bool wireframe) const;
 
     /// Collapses object motion after an activation or explicit discontinuity. A camera cut alone
     /// is a temporal latch owned by the caller and does not imply resetting object motion.
@@ -97,7 +171,8 @@ public:
     bool objectChanged(size_t index) const;
 
     /// Applies an editor transform at the current playback time and collapses this object's motion.
-    /// Playing tracks replace the edit at the next sample; no other object is modified.
+    /// Playing tracks replace the edit at the next sample; every primitive of a bound source node
+    /// receives the same world pose. Animated and generated edits never notify persistent dirty.
     void editObject(size_t index, const DecomposedTransform& transform);
 
     /// Restores one object's authored/current-track transform, preserving other objects and time.
@@ -106,21 +181,24 @@ public:
     /// The original scene-linear light retained on first activation, before any editor changes.
     const engine::DirectionalLight& lightDefault(size_t index) const;
 
-    /// Restores only the selected light, retaining all other light and object edits.
-    void resetLight(size_t index);
+    /// Commits directional fields; enabled is the own flag for a bound light. Measure rejects
+    /// changes to enabled, and changed persistent fields notify dirty tracking.
+    rojoRHI::Result<void> editLight(size_t index, const engine::DirectionalLight& light);
+
+    /// Restores only the selected light; enabled changes during Measure fail without mutation.
+    rojoRHI::Result<void> resetLight(size_t index);
 
     /// True when direction or scene-linear radiance differs from the authored light.
     bool lightChanged(size_t index) const;
 
-    /// Whether the active scene supports the static Sponza local-light rig.
+    /// Whether the active document has a top-level local-light group.
     bool localLightRigAvailable() const;
 
-    /// Whether any surviving authored Sponza rig light is enabled; false on other scenes.
+    /// Whether any surviving light under the document local-light group is effectively enabled.
     bool localLightRigEnabled() const;
 
-    /// Sets enabled flags on the active Sponza rig before prepareFrame, retaining IDs and edits.
-    /// Authors a missing rig for CPU fixtures; invalid scenes/capacity fail without partial
-    /// additions.
+    /// Applies a session-only group mask without changing authored child flags or saved values.
+    /// A document with no local-light group is a successful no-op.
     rojoRHI::Result<void> setLocalLightRig(bool enabled);
 
     /// Authored light fields with orbit-owned position sampled at current time; null for stale IDs.
@@ -128,35 +206,50 @@ public:
     /// Whether this live light differs from its authored/current-track default.
     bool localLightChanged(engine::LightId id) const;
     /// Validates and edits one live light before prepareFrame, retaining its original reset value.
+    /// The supplied enabled field is its own flag, so callers read it with localLightEnabled.
+    /// Measure rejects enabled changes; generated changes never notify persistent dirty.
     rojoRHI::Result<void> editLocalLight(engine::LightId id, const engine::LocalLight& light);
     /// Restores all authored fields and current orbit position; stale/foreign IDs return
     /// InvalidDesc.
     rojoRHI::Result<void> resetLocalLight(engine::LightId id);
-    /// Whether the active scene exposes an authored LightLab grid and editable overflow pile.
+    /// Whether the active scene has a LightLab population; the first generator owns this control.
     bool lightLabPileAvailable() const;
     /// Number of this session's currently live pile lights; unrelated additions are excluded.
     uint32_t lightLabPileCount() const;
     /// Largest requested pile preserving every current non-pile light under the 4096 live cap.
     uint32_t lightLabPileCapacity() const;
-    /// Replaces only the pile population before prepareFrame. Added lights are static; oversized
-    /// requests fail transactionally. Grid identities, tracks and unrelated runtime lights survive.
+    /// Replaces only the first LightLab generator's pile before prepareFrame. Added lights are
+    /// static; oversized requests fail transactionally. Authored lights, every grid and other
+    /// generator populations retain their identities and bindings.
     rojoRHI::Result<void> setLightLabPile(uint32_t count);
 
 private:
     struct Defaults {
+        asset::SceneLook look;
+        uint64_t editGeneration = 0;
         std::vector<DecomposedTransform> objects;
         std::array<engine::DirectionalLight, 3> lights;
         std::unordered_map<uint64_t, engine::LocalLight> localLights;
         std::vector<engine::LightId> pileLights;
+        std::vector<bool> objectOwnEnabled;
+        std::unordered_map<uint64_t, bool> lightOwnEnabled;
+        std::optional<bool> rigOverride;
     };
 
     void followCameraTrack();
     void rememberLocalLightDefaults();
+    void applyEnabled();
+    std::vector<bool> effectiveNodes() const;
+    std::vector<bool> effectiveImported(const std::vector<bool>& nodes) const;
+    bool persistentObject(size_t index) const;
 
+    bool m_measurementActive = false;
+    bool m_temporalResetPending = false;
     engine::Scene* m_scene = nullptr;
     engine::Camera m_camera;
     std::unordered_map<const engine::Scene*, Defaults> m_defaults;
-    std::unordered_map<const engine::Scene*, scenes::SponzaLightRig> m_lightRigs;
+    engine::LoadedScene* m_loaded = nullptr;
+    std::unordered_map<const engine::Scene*, scenes::SessionDocumentState> m_documentStates;
 };
 
 } // namespace lmx::app

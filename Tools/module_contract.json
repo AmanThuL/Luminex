@@ -17,6 +17,13 @@
     "production": 1000,
     "tests": 1500
   },
+  "privateHeaderTests": [
+    {
+      "file": "Tests/Engine/Asset/Document/SceneDocumentTests.cpp",
+      "header": "Source/Engine/Asset/Document/SceneDocumentSaveInternal.h",
+      "reason": "Inject filesystem rename failures to verify two-file save rollback."
+    }
+  ],
   "units": {
     "core": {
       "paths": [
@@ -47,7 +54,10 @@
         "cgltf",
         "stb"
       ],
-      "privateHeaders": []
+      "privateHeaders": [
+        "Source/Engine/Asset/Document/DocumentUri.h",
+        "Source/Engine/Asset/Document/SceneDocumentSaveInternal.h"
+      ]
     },
     "engine": {
       "paths": [
@@ -206,7 +216,8 @@
         "Tests/Support/GpuTestSupport.h",
         "Tests/Support/GraphTestSupport.h",
         "Tests/Support/RenderGraphTestSupport.h",
-        "Tests/Support/SceneTableTestSupport.h"
+        "Tests/Support/SceneTableTestSupport.h",
+        "Tests/Support/SceneDocumentTestSupport.h"
       ]
     },
     "texture-bake": {

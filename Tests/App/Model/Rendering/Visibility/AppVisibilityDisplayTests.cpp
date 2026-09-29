@@ -39,7 +39,7 @@ TEST_CASE("Visibility fields retain bypass counts and world bounds", "[app][visi
     status.scene.visible = 2;
     status.scene.rejected = 1;
     status.scene.candidates.resize(4);
-    status.scene.bypassed[static_cast<size_t>(render::VisibilityReason::Disabled)] = 1;
+    status.scene.bypassed[static_cast<size_t>(render::VisibilityReason::CullingOff)] = 1;
     const auto fields = app::visibilityFields(status);
     REQUIRE(fields[0].value == "cpu");
     REQUIRE(fields[1].value == "8");
@@ -56,6 +56,8 @@ TEST_CASE("Visibility fields retain bypass counts and world bounds", "[app][visi
     REQUIRE(app::objectVisibilityFields(nullptr).size() == 1);
     object.state = render::VisibilityState::Rejected;
     REQUIRE(app::objectVisibilityFields(&object)[1].value == "Outside camera frustum");
+    object.reason = render::VisibilityReason::AuthoredOff;
+    REQUIRE(app::objectVisibilityFields(&object)[1].value == "Disabled");
 }
 
 //======================================================================================================================
@@ -75,7 +77,7 @@ TEST_CASE("Selected object labels the matching declared or retired frame only",
     const auto cpu = display.objectFields(object.id, 9);
     REQUIRE(cpu[0].label == "Declared frame");
     REQUIRE(cpu[0].value == "12");
-    REQUIRE(cpu[1].value == "Rejected");
+    REQUIRE(cpu[1].value == "Culled: frustum");
 
     status.frameNumber = 13;
     status.classifyMode = render::ClassifyMode::Gpu;
@@ -88,7 +90,7 @@ TEST_CASE("Selected object labels the matching declared or retired frame only",
     const auto gpu = display.objectFields(object.id, 9);
     REQUIRE(gpu[0].label == "Retired frame");
     REQUIRE(gpu[0].value == "13");
-    REQUIRE(gpu[1].value == "Rejected");
+    REQUIRE(gpu[1].value == "Culled: frustum");
     REQUIRE(gpu[2].value == "Outside camera frustum");
 
     // Reused rows and scene switches must not borrow the retained frame's attribution.
