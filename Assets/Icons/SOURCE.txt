@@ -1,0 +1,5 @@
+Luminex application icon artwork (provisional).
+
+luminex-icon.svg and luminex-mark.svg are the owner-authored FACET B2.2 mark, selected on
+2026-09-27. luminex-icon-1024.png is rendered from luminex-icon.svg. The artwork is provisional
+and not yet approved as final. Only the PNG is staged beside the App binary at build time.

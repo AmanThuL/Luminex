@@ -1,6 +1,6 @@
 # UX3 — Scene Documents and Hierarchy
 
-**Status**: Implemented
+**Status**: Implemented — owner authorized integration on 2026-09-29; image gates failed as measured (see validation)
 
 Revised on 2026-09-27 after a survey of the code at the UX2 merge; the owner approved the design
 section by section the same day. UX3 makes a scene a saved document instead of C++ code, rebuilds
@@ -15,18 +15,42 @@ surfaces took that identifier; records and ADRs dated earlier call this mileston
 
 ## Implementation result (2026-09-29)
 
-All five UX3 slices are implemented. The six-scene document catalog, authored enabled state,
-saved look, document Hierarchy and disk workflow are in place; Helmet and Truck remain lab
-fixtures, and windowed startup loads the provisional FACET artwork. The executor plan is closed.
+All five UX3 slices are implemented: the six-scene document catalog, authored enabled state, saved
+look, document Hierarchy, disk workflow and the provisional FACET icon. Helmet and Truck are lab
+fixtures. The executor plan is closed.
 
-[Final validation](ux3-final-validation.md) records the integrated run at tag `ux3-validation`
-(`7875edd`): build, contract, Metal, document and catalog-smoke checks pass; the three image gates
-remain failed at 1/12 original off images, 5/15 original union cases and 10/15 current hashes.
-[Original validation](ux3-validation.md) retains the orientation misses and unresolved independent
-STEP-scale P2. [Editor validation](ux3-editor-validation.md) records 62/74 native gestures,
-twelve unverified rows and unverified Dock/switcher appearance. The lab re-baseline, provisional
-artwork and final behavior await owner acceptance. ADR 0028 remains Proposed; no merge is
-authorized by implementation completion. The design and exit gates below retain their scope.
+On 2026-09-28 the owner asked for execution without manual stops, so the owner checkpoints in the
+design were replaced by recorded verification. On 2026-09-29 the owner reviewed the result and
+authorized squash integration. The image gates remain failed as measured; no tolerance or
+threshold was approved, and ADR 0028 stays Proposed. The
+[final validation](ux3-final-validation.md) has the gate results, the
+[original validation](ux3-validation.md) the parity analysis and the
+[editor validation](ux3-editor-validation.md) the native-gesture ledger and its unverified rows.
+
+## Deviations from the approved design
+
+- **Units.** `SceneLook` lives in `Engine/Asset/Document`, not beside the scene, so Asset keeps its
+  dependency direction; Render converts explicitly. `JsonTokens` reads whole scene documents.
+  `GltfLoader` grew only node indices and animations; instantiation and binding sit in Engine and
+  Scenes as listed in the units table.
+- **Checkpoints.** Owner checkpoints became recorded verification (see above).
+- **Re-baseline order.** The lab re-baseline was committed while Sponza's reference hashes were
+  stale: no current binary, the parent included, reproduces them on the validation machine. The
+  Sponza rows are re-captured from the integrated head with per-row provenance.
+- **Normalized rig.** The parent's key/fill/rim directions were not unit vectors and reached
+  shading unnormalized. A glTF rotation always decodes to a unit vector, so documents deliver
+  normalized directions. Direct light is 0.061% and 0.015% brighter than the parent for the two
+  affected lights, and the shadow view matrix changes by 1–2 ulp. Exact parity through glTF
+  quaternions is unattainable; UX3 accepts the normalized rig as a one-time change
+  ([analysis](ux3-validation.md#parity-root-cause)). Storing raw vectors in `LMX_scene` was
+  rejected as a second definition of orientation.
+- **Exporter misses.** The one-time exporter matched 10,349 of 10,845 orientations; 496 (24
+  directional values, 472 rail keys) fell back to deterministic seed quaternions and are listed in
+  its report. Ordinary Save searches the same neighbourhood; when no exact quaternion exists it
+  uses the nearest one and adopts the decoded value, so the document is clean after the save.
+  Only the one-time export applied the strict exact-or-fail rule.
+- **Empty companion.** A document without animations writes no companion `.bin`; MaterialLab has
+  none.
 
 ## Observed state before UX3
 
@@ -64,12 +88,12 @@ authorized by implementation completion. The design and exit gates below retain 
 | Format | A scene document is a valid glTF 2.0 file, `Assets/Scenes/<id>.scene.gltf`, checked in. Lights use `KHR_lights_punctual`, cameras and rails use glTF cameras and animations, and one vendor extension, `LMX_scene`, carries what glTF lacks |
 | Saved settings | The scene's look is saved: exposure, bloom, shadow filter, environment, lights, cameras, enabled state. Renderer configuration — reconstruction, render scale, classification, submission, occlusion, lighting mode, diagnostic views — stays with the editor session and CLI |
 | Save model | The live scene stays the only place edits happen. Save is a pure function of the loaded document, the node binding and the current scene; dirty means its result differs from the loaded document |
-| Parity | glTF stays the single definition of an orientation. The one-time exporter searches neighbouring float quaternions until the loader reproduces the parent's exact values, and lists any it cannot match; image differences are reported as measured, with no tolerance |
+| Parity | glTF stays the single definition of an orientation. The one-time exporter searches neighbouring float quaternions for the parent's exact values and lists any it cannot match; image differences are reported as measured, with no tolerance (see Deviations) |
 | Hierarchy | Scene tree grouped by the document; the look opens in the Inspector from an Environment node |
 | Editing scope | Save, Save As and Revert for what is editable today. No create, delete, duplicate or reparent |
 | Generated subjects | Lab-generated objects and lights toggle and edit for the session only, marked "not saved"; they never make the document dirty |
 | Fixture scenes | Helmet joins MaterialLab, Milk Truck joins TemporalLab; both leave the catalog. The standing matrix becomes Sponza, MaterialLab and TemporalLab × the same five modes |
-| Delivery | One executor plan and one squash-merged pull request for all five slices, with owner checkpoints |
+| Delivery | One executor plan and one squash-merged pull request for all five slices. Owner checkpoints were replaced by recorded verification at the owner's request |
 
 Rejected: a JSON document referencing glTF (Donut's model, not openable by glTF tools); a
 self-contained glTF per scene (large assets are fetched and hash-pinned, labs have no file form);
@@ -80,7 +104,7 @@ document model as the edit truth (rewrites every edit path, drifting toward defe
 
 It appears in `extensionsUsed`, never `extensionsRequired`, so generic tools still open the file
 and show its lights, cameras and rails. The document never contains meshes. Animation keys live in
-a standard external buffer, `<id>.scene.bin`; Sponza's rail makes it about 230 KB. Save and Save
+a standard external buffer, `<id>.scene.bin`, written only when the document has animations; Sponza's rail makes it about 230 KB. Save and Save
 As write both files with a deterministic writer — fixed key order, shortest round-trip floats — so
 a save is byte-stable.
 
@@ -101,8 +125,8 @@ Nodes above a light or camera carry no transform, so a light's position and a sp
 are the node's own. The light model already matches `KHR_lights_punctual`
 ([ADR 0023](../../decisions/0023-local-light-and-cluster-contract.md)); a point or spot light
 without a range is skipped with a Console warning. A directional strength is written as colour
-times a power-of-two intensity no smaller than its largest component, which is exact in both
-directions. A disabled directional light keeps its role and direction, contributes zero strength
+times a power-of-two intensity no smaller than its largest component, which is exact for strength.
+A direction is exact only when the parent's vector was a unit vector (see Deviations). A disabled directional light keeps its role and direction, contributes zero strength
 and changes no pass declaration; MaterialLab's rig is disabled in its document, and an HDRI a
 document names is required. Loading converts rail rotations to today's yaw-and-pitch keys,
 unwrapping yaw on every rail; the exporter's report proves each key reproduces, San Miguel's
@@ -236,11 +260,11 @@ loss. Unverified gestures are recorded as unverified.
 an LMX shared-edge mark with a slanted outline, blue-violet facets and a diamond-shaped crossing.
 The editable SVGs (`b2.2-facet-icon.svg` and `b2.2-facet-mark.svg`) are in the owner's local
 `Luminex-Identity` design workspace under `svg/round-03/`, whose README records the selection.
-Final artwork approval is a blocking checkpoint of this slice; the approved SVGs then live under
-`Assets/Icons/`, so nothing durable depends on that workspace or the Figma file.
+The SVGs are copied under `Assets/Icons/` with a provenance note, so nothing durable depends on
+that workspace or the Figma file. The artwork stays provisional.
 
-**Deliver:** the approved mark as SVG and a 1024-pixel PNG under `Assets/Icons/`, staged beside the
-binary as `Fonts/` is; `Shell/AppIcon.mm` setting the application icon at windowed startup, which
+**Deliver:** the mark as SVG and a 1024-pixel PNG under `Assets/Icons/`, with only the PNG staged
+beside the binary as `Fonts/` is; `Shell/AppIcon.mm` setting the application icon at windowed startup, which
 macOS uses for the Dock, the switcher and detached windows. Headless runs skip it. An `.app` bundle
 stays rejected: shader, font and scene loading resolve against the working directory. Then the
 whole-application pass, the ADR, the architecture pages, a scene-document guide and `AGENTS.md`.

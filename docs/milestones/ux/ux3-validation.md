@@ -1,42 +1,37 @@
 # UX3 validation
 
-**Status**: Implemented (owner acceptance pending)
+**Status**: Implemented — owner authorized integration on 2026-09-29; image gates failed as measured
 
-This record accompanies [UX3](ux3.md). The owner requested uninterrupted execution, replacing
-the intermediate owner checkpoints with measured agent verification. A failed gate stays failed;
-the lab re-baseline, provisional artwork and final behavior still require owner acceptance.
-ADR 0028 remains Proposed. Nothing in this record authorizes a merge.
+This record accompanies [UX3](ux3.md). On 2026-09-28 the owner asked for execution without manual
+stops, so owner checkpoints were replaced by recorded verification; on 2026-09-29 the owner
+reviewed the result and authorized squash integration. A failed gate stays failed and no
+tolerance or threshold was approved. [ADR 0028](../../decisions/0028-scene-document-contract.md)
+stays Proposed. The [final validation](ux3-final-validation.md) holds the integrated run, and the
+[editor validation](ux3-editor-validation.md) holds the native-gesture ledger.
 
 ## Evidence and environment
 
-Evidence is retained outside source under `../Luminex-evidence/ux3/`, relative to the repository
-root. The frozen parent is `f181d8e`; the UX3.1 candidate is `b9fcc65`. Both use release builds on
-Apple M3 Max, macOS 26.7 (25G229), Xcode 26.6 (17F113), with the unchanged RojoRHI pin
-`8da2a79e82ef66ed67d9642f0f3c5a74d20c33a8`. GPU checks and image captures enable
-`MTL_DEBUG_LAYER=1`; screenshot runs leave `LMX_SCREENSHOT_NO_BLOOM` unset unless explicitly
-testing that override. No performance conclusion is drawn.
+Evidence lives outside source under `../Luminex-evidence/ux3/`, relative to the repository root.
+The frozen parent is `f181d8e`. Parent and candidate use release builds on Apple M3 Max, macOS
+26.7 (25G229), Xcode 26.6 (17F113), with the unchanged RojoRHI pin
+`8da2a79e82ef66ed67d9642f0f3c5a74d20c33a8`. GPU checks and captures enable `MTL_DEBUG_LAYER=1`;
+screenshot runs leave `LMX_SCREENSHOT_NO_BLOOM` unset. No performance conclusion is drawn.
 
-`environment.json` records local setup. `original-reference.json` preserves the original
-15-case reference, while `original-documents/` preserves all eight exported document/buffer
-pairs from tag `ux3-exporter`, with hashes and provenance. Later fixture retirement must not
-overwrite this evidence or erase the original gate result.
+`environment.json` records local setup. `original-reference.json` preserves the original 15-case
+reference and `original-documents/` the eight exported document/buffer pairs from tag
+`ux3-exporter`, with hashes and provenance. Retiring the fixture scenes does not overwrite this
+evidence or the original gate result.
 
 ## Build and contract gates
 
-Tasks 1–9 each passed build, full `Tests/unit`, format and the six direct root checkers before
-commit. Engine, Render and shader commits also passed the full `Tests/gpu` group with Metal
-validation. Every implementation received an independent review; review findings were fixed
-and re-reviewed before the next dependent task began. Per-task logs and `*-gates.json` files
-retain the commands and results. Task 4 and Task 9 have explicit corrected-check records after
-their scoped fixes; unchanged source retains its earlier gate evidence. Task 7's passing run is
-`task7-fixed-gates.json`; the earlier `task7-final-gates.json` retains failed checks and is not
-the accepted corrected run.
-
-Notable corrected failures were URI decoding and save rollback boundaries, cumulative local-light
-capacity, generated versus authored light ownership, selected shadow-caster semantics, a test
-that read scene tables before preparation, headless auto-exposure seeding, a parity subprocess
-crash incorrectly counted as complete, and missing zero-light flags for a schema-4 parent.
-These corrections do not waive any image gate.
+Each implementation step passed build, the full `Tests/unit` group, format and the six direct root
+checkers before commit; Engine, Render and shader changes also passed `Tests/gpu` under Metal
+validation. Independent review preceded each dependent step, and per-step `*-gates.json` files
+retain commands and results. Corrected failures included URI decoding and save rollback
+boundaries, cumulative local-light capacity, generated versus authored light ownership,
+selected shadow-caster semantics, a test that read scene tables before preparation, headless
+auto-exposure seeding, a parity subprocess crash counted as complete, and missing zero-light flags
+for a schema-4 parent. None waives an image gate.
 
 ## UX3.1 — original catalog
 
@@ -44,184 +39,140 @@ Measured on 2026-09-28, before the helmet/truck retirement and lab changes:
 
 | Gate | Result | Evidence |
 |---|---|---|
-| Temporal-off BMP SHA-256, eight scenes at frame 1 plus Sponza/San Miguel at 600 and 3600 | **FAIL: 1/12 exact**; MaterialLab frame 1 passes | `task10/candidate-off/summary.json`, parent captures in `parent-off/` |
-| Exact first-compiled-frame graph dumps for those twelve runs | **PASS: 12/12** | Same summary and paired `.graph.txt` files |
-| Eight alternating rounds per binary, original fifteen cases | **FAIL: 5/15 cases**; all five MaterialLab modes pass | `task10/parity-rounds/summary.json` |
+| Temporal-off BMP SHA-256, eight scenes at frame 1 plus Sponza/San Miguel at 600 and 3600 | **FAIL: 1/12 exact**; MaterialLab frame 1 passes | `task10/candidate-off/summary.json`, `parent-off/` |
+| First-compiled-frame graph dumps for those twelve runs | **PASS: 12/12** | Same summary, paired `.graph.txt` |
+| Eight alternating rounds per binary, original fifteen cases | **FAIL: 5/15**; all five MaterialLab modes pass | `task10/parity-rounds/summary.json` |
 | Document reader/writer, canonical and failure-path tests | **PASS: 82,068 assertions / 22 cases** | `task10/document-tests.log` |
-| Current-head read, save, reload, save to separate directories | **PASS: 8/8 pairs equal each other and the originals** | `task10/roundtrip/summary.json`, `commands.json` |
+| Read, save, reload, save to separate directories | **PASS: 8/8 pairs equal each other and the originals** | `task10/roundtrip/summary.json` |
 | Khronos validation | **PASS: 8 catalog + 46 writer outputs** | `task10/validator.log` |
-| Full candidate Metal-validation suite at this gate | **PASS** | `task10/metal-validation.json`, `.log` |
+| Full candidate Metal-validation suite | **PASS** | `task10/metal-validation.json` |
 
-All twelve temporal-off captures completed successfully. The eleven mismatches comprise Sponza
-at frames 1/600/3600, San Miguel at 1/600/3600, and Damaged Helmet, Milk Truck, TemporalLab,
-VisibilityLab and LightLab at frame 1. `LMX_GRAPH_DUMP` exports the first compiled frame; these
-dumps do not measure frame-600/3600 endpoint topology. Graph equality does not establish image equality.
-Raw images, hashes and commands are retained; no threshold or reference was changed.
+The eleven mismatches are Sponza and San Miguel at frames 1/600/3600, and Damaged Helmet, Milk
+Truck, TemporalLab, VisibilityLab and LightLab at frame 1. `LMX_GRAPH_DUMP` exports the first
+compiled frame, so the dumps say nothing about frame-600/3600 topology, and graph equality does not
+establish image equality. Raw images, hashes and commands are retained.
 
-The alternating run completed all 240 captures. Every Sponza and Damaged Helmet case has
-candidate hashes absent from all eight corresponding parent rounds. Native TAA at full scale
-produced two Helmet hashes in each binary and two Sponza hashes in the candidate; the union
-comparison still fails those cases. All sixteen batches also score **0/15 against the historical
-reference**, including the frozen parent. That separate historical failure does not turn the
-parent-versus-candidate result into a pass or permit replacing Sponza's reference hashes.
-All eighty Helmet capture logs retain the same missing baked-mip/runtime fallback and normal-map
-renormalization warning in both binaries. This is a shared input-path limitation, not a new
-candidate-only failure; its contribution to image variation has not been isolated.
+The alternating run completed all 240 captures. Every Sponza and Helmet case has candidate hashes
+absent from all eight parent rounds. Native TAA at full scale produced two Helmet hashes in each
+binary and two Sponza hashes in the candidate. All sixteen batches also score 0/15 against the
+historical reference, the parent included. Every Helmet capture log in both binaries carries the
+same missing baked-mip fallback and normal-map renormalization warning; its contribution to image
+variation was not isolated.
 
-### Orientation migration failure
+### Orientation migration
 
-The one-time exporter checked 10,845 orientations: 10,349 matched exactly and **496 did not**.
-The failures are 24 directional values and 472 rail keys. All eight initial cameras and Sponza's
-eight spot directions matched. Per-scene failures were Sponza 457, Damaged Helmet 3, Milk Truck 3,
-MaterialLab 3, TemporalLab 18, San Miguel 4, VisibilityLab 5 and LightLab 3.
+The one-time exporter checked 10,845 orientations: 10,349 matched exactly and **496 did not**
+(24 directional values, 472 rail keys). All eight initial cameras and Sponza's eight spot
+directions matched. Misses per scene: Sponza 457, Damaged Helmet 3, Milk Truck 3, MaterialLab 3,
+TemporalLab 18, San Miguel 4, VisibilityLab 5, LightLab 3. The search tried 6,561 neighbouring
+candidates per unmatched key; the largest angle delta is `4.76837158203125e-7` radians. For the
+misses the exporter wrote deterministic seed quaternions, returned failure and recorded each
+original and decoded value, bit delta and fallback; the sixteen final document/buffer hashes were
+identical across three exporter runs (`exporter-report.txt`, `task6/orientation-summary.json`).
 
-The parent neutral rig uses non-unit approximations such as 0.577/0.707 directly in shading;
-the normalized quaternion decoder cannot reproduce those raw vector bits. Camera searches
-exhausted the prescribed 6,561 neighboring candidates per unmatched key. That establishes a
-failure of this search, not a proof that no quaternion could ever match. The largest reported
-angle delta is `4.76837158203125e-7` radians. Rail conversion carries the previous decoded yaw.
+### Parity root cause
 
-To keep the remaining requested work executable, the exporter wrote deterministic seed
-quaternions only for unmatched values, returned failure and recorded each original/decoded
-value, bit delta and fallback. This is an explicit migration deviation from exact export;
-ordinary interactive Save must still fail visibly when its exact orientation search fails.
-Three exporter runs were retained; the final sixteen document/buffer hashes did not change.
-`exporter-report.txt` and `task6/orientation-summary.json` retain the full evidence. The
-orientation failure is a plausible image-difference source, not yet a causal explanation of
-every mismatched pixel.
+Evidence: `../Luminex-evidence/ux3/review-2026-09-29/parity-root-cause/`, with `out/results.json`
+and the difference masks `out/*-mask.png`.
 
-`task10/diagnosis/` independently checks decoded RGB deltas, source assets, look defaults and
-sampled camera brackets. Sponza changes 344/674/1,226 pixels at 1/600/3600, each by at most one
-code value. The other failed scenes range from 1,241 to 96,397 changed pixels; Helmet has a
-localized maximum delta of 23. These measurements describe the failed gate, not a tolerance.
-All initial cameras and the modeled long-frame interpolation brackets have exact exporter
-orientation evidence, so the rail misses do not automatically explain these endpoint failures.
-The active directional-vector change is the strongest supported mechanism. No additional defect
-was established by the focused source audit; runtime uniform equality was not measured, and
-code-generation effects from the new selected-shadow-caster expressions remain unisolated.
+The parent's neutral key/fill/rim rig used non-unit directions, `{±0.577, −0.577, 0.577}` (length
+0.999393) and `{0, −0.707, −0.707}` (length 0.999849). They reach shading unnormalized in N·L,
+the half vector and V_Smith; only the shadow fit normalized them. A glTF rotation always decodes a
+unit vector, so documents deliver normalized directions, with two effects:
 
-### Other implementation deviations and limits
+1. Direct light is 0.061% and 0.015% brighter than the parent for the two affected lights.
+2. The decoded components differ from the parent's by 1–2 ulp, which changes the shadow view
+   matrix.
 
-- `SceneLook` and its shadow enum are Asset-owned CPU vocabulary, with an explicit Render
-  conversion. The record's units table was amended before implementation to preserve dependencies.
-- Asset clips retain source hierarchy, rest transforms and per-clip local channels; CUBICSPLINE
-  was added because the required InterpolationTest exercises it. Independent runtime loops are
-  the following slice's work, not claimed here.
-- Model URI values are decoded Assets-relative paths; serialization encodes once and loading
-  decodes once. Extra private URI/save helpers and one exact direct test-header exception permit
-  shared validation and injected ordinary rename failures. No broader private-header access is
-  allowed. Two-file Save rolls back ordinary reported failures; crash atomicity is not claimed.
-- Runtime preflight currently accepts selected-camera LINEAR translation/rotation document
-  channels, referenced asset clips and generator-owned motion. Other document animation targets,
-  camera STEP/scale and nonidentity generator-root/ancestor transforms fail with field pointers
-  before GPU creation. Static asset-root transforms are supported. Reader validity therefore
-  does not imply that every model can be instantiated; this limits the specification's broader
-  one-clock wording and is not an owner-approved amendment.
-- The existing single LightLab pile control edits the first explicit generator population;
-  other generators and authored lights keep their identities and values.
-- Manifest v3 and measurement schema 5 hash the loaded document and buffer snapshot. The hash
-  does not describe unsaved live edits. Path-opened reports retain the caller's spelling.
-  PNG `lmx:frame` metadata remains unchanged.
+Scaling directional intensity by the parent's vector length in the candidate binary cut Sponza's
+changed pixels from 344 to 92 (maximum difference one code value). With both corrections
+VisibilityLab drops from 25,267 to 16,546 changed pixels. The residuals sit on soft-shadow
+penumbrae and glossy highlights; Helmet's maximum delta is 23. MaterialLab passes because its rig
+is disabled on both sides. Look defaults, sky colour, strengths, spot directions, cameras and
+light order were audited and match.
+
+Exact parity through glTF quaternions is therefore unattainable. UX3 accepts the normalized rig as
+a one-time, explained change. Storing raw vectors in `LMX_scene` was rejected as a duplicate
+definition of orientation. The design's statement that directional orientation is exact in both
+directions was wrong for directions and is corrected in [UX3](ux3.md).
+
+`task10/diagnosis/` separately measured decoded RGB deltas. Sponza changes 344/674/1,226 pixels at
+frames 1/600/3600, each by at most one code value; the other failed scenes change 1,241 to 96,397
+pixels. All initial cameras and the modelled long-frame interpolation brackets have exact
+orientation evidence, so the rail misses do not explain these endpoint failures.
+
+### Other deviations and limits
+
+- `SceneLook` and its shadow enum are Asset-owned CPU vocabulary with an explicit Render
+  conversion; the units table was amended before implementation to preserve dependencies.
+- Asset clips retain source hierarchy, rest transforms and per-clip local channels. CUBICSPLINE
+  was added because the required InterpolationTest exercises it.
+- Model URI values are decoded Assets-relative paths: serialization encodes once, loading decodes
+  once. One exact direct test-header exception permits injected rename failures. Two-file Save
+  rolls back ordinary reported failures; crash atomicity is not claimed.
+- Runtime preflight accepts selected-camera LINEAR translation/rotation channels, referenced asset
+  clips and generator-owned motion. Other document animation targets, camera STEP/scale and
+  nonidentity generator-root or ancestor transforms fail with field pointers before GPU creation.
+  Reader validity does not imply every model can be instantiated.
+- The LightLab pile control edits the first explicit generator population; other generators and
+  authored lights keep their identities and values.
+- Manifest v3 and measurement schema 5 hash the loaded document and buffer snapshot, not unsaved
+  live edits. Path-opened reports keep the caller's spelling. PNG `lmx:frame` metadata is unchanged.
 
 ## UX3.2 — fixture integration
 
-MaterialLab now includes the fetched Helmet beside its sphere grid and RGB axis station;
-TemporalLab includes the fetched Truck beside its generated movers. Their original cameras and
-asset URI/hash pairs remain unchanged. The two standalone IDs and document/buffer pairs retire.
-The generator axis parameter defaults off, preserving explicit-path replay of the archived lab.
-Opening captures in `task11/` show both stations within the frame; the measured five-mode
-re-baseline is recorded below.
+MaterialLab includes the fetched Helmet beside its sphere grid and RGB axis station; TemporalLab
+includes the fetched Truck beside its generated movers. Cameras and asset URI/hash pairs are
+unchanged. The two standalone IDs and their document pairs retire. The generator axis parameter
+defaults off, so explicit-path replay of the archived lab still works. Opening captures in
+`task11/` show both stations in frame.
 
-Asset playback keeps source-local channels and independent clip periods on unwrapped elapsed
-time. Reset uses the same pose evaluator, and stable instance handles prevent removal or slot
-reuse from retargeting animation. CPU tests pass 822 cases / 1,491,957 assertions; the real Truck
-paused Reset and global-wrap check passes 14 assertions under Metal validation. Khronos passes
-57 documents. The combined Task 11/13 tree passes all eleven required checks, including full
-Metal validation (`task11-integrated-gates.json`). The first full run's canonical/layout failures
-remain in `task11-final-*`; the catalog JSON was rewritten canonically without changing its
-companion buffers or source hashes.
+Asset playback keeps source-local channels and independent clip periods on unwrapped elapsed time;
+Reset uses the same pose evaluator, and stable instance handles keep removal or slot reuse from
+retargeting animation. CPU tests pass 822 cases / 1,491,957 assertions; the paused-Reset and
+global-wrap Truck check passes 14 assertions under Metal validation; Khronos passes 57 documents
+(`task11-integrated-gates.json`).
 
-**Review failure retained: P2.** After three repairs to animation preflight, independently looping
-ancestor and child STEP scale clips can still combine into an indecomposable pose and assert.
-The source-level counterexample uses a parent period of 2 seconds with scale `(0,1,1)` during
-`[0.5,1)`, and a child period of 4 seconds with `(1,0,1)` during `[2,3)`; each otherwise uses
-identity. Shared-clock validation sees at most one collapsed axis. Independent phases at 2.5
-seconds produce `(0,0,1)`, which the playback decomposition rejects. This counterexample was
-reviewed from source, not executed as part of the passing suite. The catalog Truck does not use
-this scale pattern. Preflight rejects the tested shear/linear-collapse cases but is incomplete;
-no general fail-closed claim is made.
+The independent-loop case was an open defect at first: an ancestor with STEP scale `(0,1,1)` on
+`[0.5,1)` (period 2 s) and a child with `(1,0,1)` on `[2,3)` (period 4 s) combine at 2.5 s into
+`(0,0,1)`, which the playback decomposition rejects. It is closed by the
+[review corrections](ux3-final-validation.md#review-corrections): STEP scale keys are validated
+and an indecomposable sampled pose holds the previous pose with one warning.
 
-`task11-review-final-against-d568570.patch`, the final report and retained RED/GREEN logs describe
-the repair boundary. Execution deviates from the review-pass dependency rule here: the requested
-three-attempt limit and continuation instruction were applied, so the remaining review failure
-is carried forward without approval. Re-baselining does not accept or hide this defect.
+### Reference re-baseline
 
-### Task 12 measured re-baseline
-
-`Tools/Screenshots/reference.json` now uses schema 2: Sponza, MaterialLab and TemporalLab each
-have Off, Native TAA at 1 and 0.5, and MetalFX at 1 and 0.5. The five Sponza SHA-256 values are
-unchanged from the archived schema-1 `original-reference.json`; Helmet's five values retire,
-MaterialLab's former five are superseded, and the ten new lab values come from the candidate
-captures. `task12/reference-transition-inventory.json` lists every old/new hash, both App hashes,
-document hashes and the unchanged embedded Helmet/Truck asset hashes. The archived original
-reference and all eight document/buffer pairs remain available for explicit-path replay.
+`Tools/Screenshots/reference.json` uses schema 2: Sponza, MaterialLab and TemporalLab, each with
+Off, Native TAA at 1 and 0.5, and MetalFX at 1 and 0.5. Helmet's five rows retire and
+MaterialLab's former five are superseded. The ten lab values come from candidate captures, listed
+with both App hashes, document hashes and the unchanged asset hashes in
+`task12/reference-transition-inventory.json`. The five Sponza rows carried over from schema 1 are
+historical values that no current binary, the parent included, reproduces on the validation
+machine; they are re-captured from the integrated head with per-row provenance (see
+[Reference re-capture](ux3-final-validation.md#reference-re-capture)).
 
 Schema 2 follows App's nearest-first catalog search from its working directory and checks the
-document JSON it will actually load, plus its referenced buffer, before the first image and again
-after each capture. A drifted, missing or malformed document names the scene. Regression tests
-cover a nearer shadowing catalog file or directory and malformed JSON root/buffer shapes. The
-repair's RED and GREEN output is retained in `task12/repair/`. The recorded capture tree had no
-nearer `Assets/Scenes` copy, so those captures remain attributable to the checked catalog.
-Schema 1 remains readable when callers pass the original reference and document directory
-explicitly. The existing image thresholds were not changed.
+document JSON and buffer it will load before the first image and after each capture; a drifted,
+missing or malformed document names the scene. Schema 1 stays readable when callers pass the
+original reference and document directory. Image thresholds are unchanged.
 
-The original Task 12 test-first RED output was not retained, so that chronology is not independently
-auditable. The controller's fresh 246-test Python suite log is `task12/controller-python-suite.log`;
-the independent review separately ran 269 tests on the pre-repair patch. The repair's focused
-tests and a fresh 246-test suite pass are recorded under `task12/repair/`.
-
-The parent `f181d8e` has ten complete lab captures in `parent-lab-modes/captures.json`; their
-commands and hashes were rechecked. The candidate at `2a148f2` captured all fifteen modes with
-Metal validation in `task12/candidate-matrix-final/`, using the shared GPU lock. The current
-strict hash replay is **10/15 exact**: both labs pass all five, while all five retained Sponza
-historical hashes fail (`task12/parity-current/parity.json`). The strict parent/candidate image
-comparison is **1/15 within the existing threshold** (`task12/matrix-strict.json`); only Sponza
-Off passes that threshold, although its exact historical hash still fails. The ten changed lab
-images are the requested fixture differences, not a retrospective pass of UX3.1.
-
-An independent visual check examined all ten parent/candidate lab pairs; MaterialLab's helmet
-and RGB axes and TemporalLab's truck remain visible across the modes, without an obvious missing
-fixture or gross corruption (`task12/visual-inspection.json`). Still frames at 32 do not prove
-animation or pixel equivalence. This is **re-baselined; owner acceptance pending**. Task 10's
-original image/orientation failures and Task 11's P2 remain open. A first Task 12 capture attempt
-used an incorrect BMP height-sign check; its output is retained in `task12/candidate-matrix/`,
-followed by the corrected complete matrix.
+The parent has ten complete lab captures in `parent-lab-modes/captures.json`. The candidate
+captured all fifteen modes with Metal validation in `task12/candidate-matrix-final/`. The
+replay against the historical Sponza rows gave 10/15 exact: both labs pass all five modes and all
+five Sponza rows fail (`task12/parity-current/parity.json`). The strict parent/candidate
+comparison gave 1/15 within the existing threshold (`task12/matrix-strict.json`). The ten changed
+lab images are the requested fixture differences. A visual check of all ten parent/candidate lab
+pairs found the helmet, RGB axes and truck present in every mode and no gross corruption
+(`task12/visual-inspection.json`); still frames at frame 32 do not prove animation.
 
 ## UX3.3 — disabled instance rows
 
-Task 13 is implemented at `e3a6b3f`; independent review and all eleven required gate commands pass
-(`task13-final-gates.json`). Disabled identities retain their rows but produce no scene, shadow,
-outline or independent occlusion-reference contribution. All five submission/classification
-paths restore the exact prior image after re-enabling. The observing-camera test changes 2,739
-pixels when disabled; its subject is Sponza's `column_a` material primitive group, not a separately
-authored pillar node. Persisted source-node edits fan out to every primitive of that node.
+Disabled identities keep their rows but produce no scene, shadow, outline or occlusion-reference
+contribution. All five submission/classification paths restore the exact prior image after
+re-enabling. The observing-camera test changes 2,739 pixels when disabled; its subject is
+Sponza's `column_a` primitive group, not a separately authored pillar node. Persisted source-node
+edits fan out to every primitive of that node.
 
 The positive-occluder test proves history invalidation: holding the old coverage epoch yields one
-false rejection; restoring the production epoch passes 148 assertions across both GPU layouts.
-The temporary negative control is absent from committed code. Independent review remained separate
-from implementation; a reviewer was reused after two fresh-reviewer creation attempts hit the
-runtime thread limit. Session enablement, save/dirty behavior and GUI checks are recorded in the
-[editor validation continuation](ux3-editor-validation.md).
-
-## Editor and icon continuation
-
-[Editor validation](ux3-editor-validation.md) records Tasks 14–18, their required gate passes,
-two extra GUI repair commits, retained failed attempts and per-launch evidence. Native checks
-verified 62/74 gestures across both window sizes; twelve remain unverified. Icon staging/runtime
-checks pass, but Dock and switcher appearance remain unverified. The artwork is provisional.
-These results do not change the original image/orientation failures or the unresolved Task 11 P2.
-
-The [final integrated run](ux3-final-validation.md) records all automated results at `7875edd`
-(tag `ux3-validation`), including the three failed image gates. Owner acceptance of the
-re-baseline, provisional artwork and final behavior remains pending; ADR 0028 remains Proposed.
-The executor plan is closed. No merge is authorized by this record.
+false rejection, and the production epoch passes 148 assertions across both GPU layouts
+(`task13-final-gates.json`). Session enablement, save/dirty behavior and GUI checks are in the
+[editor validation](ux3-editor-validation.md).

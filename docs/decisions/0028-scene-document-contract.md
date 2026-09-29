@@ -9,8 +9,8 @@ with stable source-node identity. The former C++ catalog cannot represent an edi
 copying large fetched assets into every scene would duplicate their content and provenance.
 [UX3](../milestones/ux/ux3.md) specifies glTF scene documents and the editor workflow. Its
 [validation](../milestones/ux/ux3-validation.md) retains failed image gates and implementation
-limits. This ADR remains Proposed while the owner reviews that behavior, the lab re-baseline and
-the provisional icon artwork.
+limits. The owner authorized integration on 2026-09-29; this ADR remains Proposed while the lab
+re-baseline and the provisional icon artwork are unaccepted.
 
 ## Decision
 
@@ -29,12 +29,17 @@ Engine owns validation before upload, instantiation and document/source-to-runti
 Scenes owns the catalog, generators and pure export function. App owns editing and disk-operation
 sequencing. These roles preserve the existing dependency direction; RojoRHI has no document API.
 
-Animation keys use a standard external `<id>.scene.bin` buffer. `sampleRate` gives exact double
+Animation keys use a standard external `<id>.scene.bin` buffer, written only when the document
+has animations; a document without them has no companion file. `sampleRate` gives exact double
 key time `k / sampleRate`; the standard accessor must contain `float(k / sampleRate)`. glTF
 quaternions remain the sole orientation definition, with sequential yaw unwrapping on camera
 rails. Directional strength uses colour times a power-of-two intensity. Ordinary export searches
-neighboring float quaternions and returns an error if exact conversion cannot be represented.
-The one-time migration's unmatched fallback values are a recorded deviation, not a Save rule.
+neighboring float quaternions. When no exact quaternion exists, ordinary Save uses the nearest one
+and adopts the decoded value, so the document is clean after the save. Strict exact-or-fail
+applied only to the one-time migration, whose 496 unmatched values are recorded in the
+[validation](../milestones/ux/ux3-validation.md#orientation-migration). Parent directions that
+were not unit vectors are delivered normalized, an accepted one-time change
+([analysis](../milestones/ux/ux3-validation.md#parity-root-cause)).
 
 ### Live edits and saving
 
@@ -42,13 +47,15 @@ The live scene is the editing authority. Export starts from the loaded document 
 changed persistent values using its binding and `SessionDocumentState`. That state preserves own
 flags, imported-pose baselines and an explicitly chosen scene camera. Imported source-node pose
 and enabled overrides apply to all its primitive instances; the source name checks the index.
-Animated source nodes cannot receive saved pose overrides. Generated subjects, CLI masks,
+Animated source nodes and nodes without meshes cannot receive saved pose overrides. Non-finite
+look values are rejected at export. Generated subjects, CLI masks,
 playback previews and ordinary editor-camera navigation stay outside persistence.
 
 Core's JSON writer uses shortest round-trip float text and a fixed key order. Dirty compares
 canonical JSON and animation-buffer bytes, so source formatting does not make a loaded document
 dirty. A non-canonical valid document can load clean and Save rewrites it canonically. An export
-error remains dirty. Save writes both outputs using temporary files and ordinary failure rollback;
+error remains dirty. Save writes the outputs using temporary files and ordinary failure rollback, and refuses to
+overwrite a `.bin` that the target document does not name;
 this is not a crash-atomic two-file transaction. Path/hash/baseline adoption follows successful
 write, canonical reread/equality and hash. A verification failure after writing may leave changed
 disk bytes without adopting them in memory. Save As cannot overwrite either active file through
@@ -61,9 +68,10 @@ Stop restores only the preview and cannot introduce document edits. Set Scene Ca
 is the explicit camera-persistence action. Save, Save As and Revert require stopped playback and
 no active measurement. Open, catalog switch, Revert, Quit and window close confirm before discarding.
 
-### Amendment to ADR 0021: population and identity
+### Narrowing of ADR 0021: population and identity
 
-[ADR 0021](0021-gpu-scene-handoff-contract.md)'s identity, update and retirement rules remain.
+This decision narrows [ADR 0021](0021-gpu-scene-handoff-contract.md)'s statement about
+population, as ADR 0016 narrowed ADR 0013. Its identity, update and retirement rules remain.
 Authored disabling preserves an instance's identity, row, resources and previous-state ownership;
 it does not remove the entity. Own-enabled flags combine through ancestor AND. Re-enabling a
 parent preserves each descendant's own choice. Generated subjects use the same runtime behavior
@@ -78,7 +86,8 @@ population and rejects edits to it.
 
 Disabled local lights keep full identities and values. Disabled directionals retain their roles
 and directions with zero contribution. A single document-selected caster receives shadowing;
-disabling it changes contribution without changing pass declarations. The document's top-level
+disabling it changes contribution without changing pass declarations. The shadow fit's bounding
+sphere still includes disabled objects, so disabling one does not change the shadow extent. The document's top-level
 local-light group is the target of `--local-light-rig`; a document without one treats it as a no-op.
 
 ### Evidence contract
@@ -87,7 +96,7 @@ Capture manifest v3 and measurement schema 5 add the loaded document path and a 
 bytes followed by buffer bytes. This identifies the loaded snapshot, not unsaved live state.
 PNG frame metadata and workspace schema 4 remain unchanged. The standing image reference uses
 schema 2, checks document hashes before images, and covers Sponza, MaterialLab and TemporalLab in
-five modes. The new lab images are an explicit re-baseline with owner acceptance pending.
+five modes. The new lab images are an explicit re-baseline.
 
 ## Consequences and limits
 
@@ -95,11 +104,11 @@ The catalog has six documents; Helmet remains a MaterialLab fixture and Truck a 
 fixture. Required fetched content or stale hashes fail with a named field. Khronos validation
 checks catalog and writer outputs; deterministic save/load/save checks the Luminex model.
 
-The runtime currently supports LINEAR selected-camera document rails, referenced asset clips and
-generator motion. Other document animation targets and transformed generator roots fail before
-GPU creation. Independent source clips can still combine singular scales outside the preflight's
-sampled phases; the retained P2 counterexample is unresolved. Broader reader validity does not
-promise runtime support. The original exact-image and orientation failures remain failed.
+The runtime supports LINEAR selected-camera document rails, referenced asset clips and generator
+motion. Other document animation targets and transformed generator roots fail before GPU
+creation. STEP scale keys are validated, and an independent-loop pose that cannot be decomposed
+holds the previous pose with one warning. Broader reader validity does not promise runtime
+support. The exact-image and orientation failures stay recorded as failed.
 
 Create/delete/duplicate/reparent, asset import into a finalized scene, environment editing,
 Undo/Redo, gizmos, picking, BLEND, skinning and morph targets remain outside this change.

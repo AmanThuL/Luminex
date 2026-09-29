@@ -19,7 +19,7 @@ xmake run -P . App --scene temporal-lab --temporal off --frames 32 --screenshot 
 ```
 
 An external document still resolves asset URIs relative to the repository's `Assets/` directory.
-Keep the referenced animation `.bin` beside the document. A missing asset, stale SHA-256, invalid
+A document with animations names a companion `.bin`; keep it beside the document. A document without animations has no companion file. A missing asset, stale SHA-256, invalid
 field or unsupported runtime feature reports the affected path. Failed Open leaves the active
 scene available; repair the file or use the catalog to recover.
 
@@ -50,10 +50,10 @@ Measurement disables scene edits while it holds the starting population.
 1. Stop playback and finish or stop Measure. Save (`Cmd+S`), Save As… (`Cmd+Shift+S`) and Revert
    require Stopped with no active measurement.
 2. Edit persistent subjects. The tree root and window title gain `*` when their canonical saved
-   values differ from the loaded document. Restoring those values clears the marker.
-3. Save replaces the active document and companion buffer. Save As writes a new pair, adopts its
+   values differ from the loaded document. Restoring those values clears the marker. Save As and Open dialogs start in the active file's folder.
+3. Save replaces the active document and its companion buffer, if it has one. Save As writes a new pair, adopts its
    path, and makes subsequent Save and Revert use that pair. Use a new path for experiments.
-4. Revert reloads the active file. When dirty, choose Save, Discard or Cancel in the confirmation.
+4. Revert reloads the active file. When dirty, the confirmation offers Discard or Cancel.
 
 Open, a catalog switch, Revert, Quit and window close all confirm before discarding unsaved edits.
 Cancel keeps the current document. Save must finish before the pending action proceeds; when
@@ -69,9 +69,9 @@ reopening after a failed save.
 
 Save canonicalizes a valid hand-edited file, even if it was clean when loaded. Canonical JSON uses
 fixed key order and shortest round-trip floats; repeated save/load/save produces the same pair.
-An edited orientation that has no exact quaternion encoding within the supported search fails
-visibly instead of silently changing its value. Restore that edit or retain the file separately
-before choosing Discard.
+An edited orientation with no exact quaternion encoding in the supported search is saved as the
+nearest quaternion, and the editor adopts that decoded value, so the document stays clean after
+the save. Save refuses to overwrite a `.bin` the target document does not name.
 
 ## Cameras, playback and session overrides
 
@@ -94,8 +94,8 @@ extension fields; [ADR 0028](../decisions/0028-scene-document-contract.md) remai
 Asset/HDRI URIs carry hashes; an asset hash covers the named file, while setup separately pins
 its converted tree. Imported overrides use source-node index and a checked name. Runtime accepts
 selected-camera LINEAR translation/rotation rails, referenced asset clips and generator motion.
-Other document animation targets and transformed generator roots fail preflight. A known
-independent-loop singular-scale case can still assert; see the [validation record](../milestones/ux/ux3-validation.md#ux32--fixture-integration).
+Other document animation targets and transformed generator roots fail preflight. STEP scale keys are
+validated, and an animated asset pose that cannot be decomposed holds the previous pose with one warning.
 
 Run from the worktree root after setup:
 

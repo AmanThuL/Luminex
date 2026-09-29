@@ -61,14 +61,14 @@ shared display-space clear value.
 `SceneTree` builds the document-order hierarchy, retaining ancestors of search matches and
 source-node identity across multi-primitive assets. Group, object and light headers edit their own
 enabled flags; muted off rows remain distinct from culled rows. Generated children name their lab
-and say “not saved”. Filtering preserves selection, and Inspector tests visibility against the
-same filtered document rows. Environment opens the scene look in Inspector: Exposure, Bloom and
+and say “not saved”. The tree is cached and rows are clipped, so large labs scale; tooltips build on hover. Filtering
+preserves selection, and Inspector tests visibility against the same filtered document rows. Environment opens the scene look in Inspector: Exposure, Bloom and
 Shadows edit `Scene::look`, with resets to the loaded or saved document; Sky and IBL are read-only.
 
 `DocumentWorkflow` sequences Open, catalog switches, Save, Save As, Revert and Quit independently
 of windowing. Dirty state derives from canonical export when the session edit generation changes;
 a failed export stays dirty and surfaces its error. Save, Save As and Revert require Stopped and
-no active Measure. Open/switch/Revert/Quit/close ask Save, Discard or Cancel before discarding.
+no active Measure. Open, switch, Quit and close ask Save, Discard or Cancel before discarding; Revert asks Discard or Cancel.
 For Open, Save finishes before the chooser opens, so cancelling the chooser cannot cancel that
 save. A mutex-protected dialog mailbox keeps the response until the main-thread pump consumes it
 before drawable acquisition; pending Quit is reconsidered after that response.
@@ -78,7 +78,8 @@ successful export, write, canonical reread/equality and hash. It updates path/li
 reset-camera baselines together while retaining live IDs and generated defaults. Save As rejects
 aliases of either active file, including the decoded companion buffer. Ordinary reported write
 failures roll back the pair; crash atomicity is not provided, and a post-write verification error
-can leave new disk bytes without adopting them in memory. See the [operator guide](../guides/scene-documents.md).
+can leave new disk bytes without adopting them in memory. Save refuses a companion `.bin` the
+target does not name, and Save As drops stale path metadata when it rekeys. See the [operator guide](../guides/scene-documents.md).
 
 ### Graph
 

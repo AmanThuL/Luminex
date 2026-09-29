@@ -169,10 +169,11 @@ acceptance (UX3.5). The scene's look is saved; renderer
 configuration stays with the editor session and CLI. The [implemented record](../milestones/ux/ux3.md)
 holds the contract.
 
-Implemented on 2026-09-29; the executor plan is closed and owner acceptance remains pending.
-The [final validation](../milestones/ux/ux3-final-validation.md) records passing build, contract,
-Metal and document checks, with image gates failed at 1/12 original off, 5/15 original union
-and 10/15 current hashes. Orientation misses and the independent STEP-scale P2 remain unresolved.
+Implemented on 2026-09-29; the executor plan is closed and the owner authorized integration by
+squash merge the same day. The image gates failed as measured because the parent's non-unit
+directional rig is now normalized; ADR 0028 stays Proposed. The
+[final validation](../milestones/ux/ux3-final-validation.md) records the build, contract, Metal and
+document checks and the failed gates.
 Native verification covers 62/74 gestures; twelve rows and Dock/switcher appearance remain
 unverified. ADR 0028 stays Proposed. These measured limits do not amend the exit gates.
 

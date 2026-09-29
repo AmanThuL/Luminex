@@ -92,7 +92,7 @@ own environment through it.
 optional `LMX_scene` extension. It references fetched assets under `Assets/`, records their file
 hashes, and owns the look, cameras, rails, own-enabled flags and imported-node overrides.
 `SceneDocumentRead` validates fields and buffer access; `SceneDocumentWrite` uses Core's
-`JsonWriter` for canonical JSON plus an external animation buffer. `Orientation` searches exact
+`JsonWriter` for canonical JSON plus an external animation buffer, written only when the document has animations. `Orientation` searches exact
 float quaternion encodings with contraction disabled. `Model/CgltfImplementation` owns the single
 cgltf implementation and `JsonTokens`; `GltfLoader` retains source nodes, primitive bindings and
 all animation clips. The [document guide](../guides/scene-documents.md) describes the file form.
@@ -116,17 +116,17 @@ emissive step tracks and closed-form light orbits stay in Scenes. CLI generator 
 
 `SessionDocumentState` retains own flags, the immutable imported-pose baseline and an explicitly
 set scene camera. `exportSceneDocument` derives a candidate document from the loaded snapshot,
-this state and the live scene. It returns an error for unrepresentable exact orientations or
-inconsistent primitive poses. `documentDirty` compares canonical JSON and buffer bytes; generated
+this state and the live scene. It uses the nearest quaternion when no exact orientation exists and returns an error for
+inconsistent primitive poses, pose overrides on nodes without meshes and non-finite look values. `documentDirty` compares canonical JSON and buffer bytes; generated
 edits, animation preview and ordinary editor-camera movement do not participate. Save adoption
 replaces the document baseline only after write, canonical reread/equality and hash succeed.
 
 Runtime document animation currently accepts LINEAR translation/rotation of the selected camera.
 Referenced asset clips loop on their own durations using retained local hierarchy/channels;
 generators own their other motion. Unsupported document channels and transformed generator roots
-fail preflight. Independent asset scale clips still have a known decomposition limit; the
-[validation record](../milestones/ux/ux3-validation.md#ux32--fixture-integration) retains the
-source-reviewed counterexample and failed migration image gates.
+fail preflight. STEP scale keys are validated, and an indecomposable sampled pose holds the previous pose with one
+warning. The [validation record](../milestones/ux/ux3-validation.md#parity-root-cause) retains the
+failed migration image gates and their cause.
 
 ## Authored enabled state
 
