@@ -49,10 +49,9 @@ TEST_CASE("Measurement plans drain only after every exact frame retires", "[app]
     REQUIRE(run.finishDrain());
     REQUIRE(run.samples().size() == 2);
     REQUIRE(run.json().find("\"schemaVersion\":5") != std::string::npos);
-    REQUIRE(
-        run.json().find(
-            "\"sceneDocument\":{\"path\":\"./Scenes/sponza.scene.gltf\",\"sha256\":\"abc123\",\"dirty\":false}") !=
-        std::string::npos);
+    REQUIRE(run.json().find("\"sceneDocument\":{\"path\":\"./Scenes/"
+                            "sponza.scene.gltf\",\"sha256\":\"abc123\",\"dirty\":false}") !=
+            std::string::npos);
     REQUIRE(run.json().find("\"scored\":true") != std::string::npos);
     REQUIRE(run.json().find("serialized-retirement") != std::string::npos);
 }
