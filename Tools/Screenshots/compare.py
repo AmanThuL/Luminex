@@ -78,7 +78,7 @@ def sequence_inputs(parent: Path, candidate: Path) -> tuple[list[dict], dict, tu
     manifests = []
     for root in (parent, candidate):
         data = json.loads((root / "manifest.json").read_text())
-        if data.get("schemaVersion") != 2 or data.get("complete") is not True or data.get("failure"):
+        if data.get("schemaVersion") not in (2, 3) or data.get("complete") is not True or data.get("failure"):
             raise ValueError(f"{root}: incomplete or unsupported manifest")
         if data.get("scene") != "temporal-lab" or data.get("frameCount") != 3 or len(data.get("frames", [])) != 3:
             raise ValueError(f"{root}: expected exactly three TemporalLab frames")
@@ -104,8 +104,13 @@ def sequence_inputs(parent: Path, candidate: Path) -> tuple[list[dict], dict, tu
         manifests.append(data)
     # Parent and candidate run exactly the same schedule, including camera, reset state and domain.
     def settings(manifest: dict) -> dict:
-        return {**manifest, "frames": [{k: v for k, v in frame.items() if k != "file"}
-                                         for frame in manifest["frames"]]}
+        return {**{k: v for k, v in manifest.items() if k not in ("schemaVersion", "sceneDocument")},
+                "frames": [{k: v for k, v in frame.items() if k != "file"}
+                           for frame in manifest["frames"]]}
+    if all(m["schemaVersion"] == 3 for m in manifests):
+        documents = [m.get("sceneDocument", {}).get("sha256") for m in manifests]
+        if not all(isinstance(d, str) and d for d in documents) or documents[0] != documents[1]:
+            raise ValueError(f"scene document hashes differ or are missing: parent {documents[0]}, candidate {documents[1]}")
     if settings(manifests[0]) != settings(manifests[1]):
         raise ValueError("paired sequence settings or per-frame state differ")
     pairs = [{"name": f"frame-{index:06}", "parent": a["file"], "candidate": b["file"],
@@ -336,6 +341,25 @@ class ComparisonTests(unittest.TestCase):
             (b / "manifest.json").write_text(json.dumps(data))
             with self.assertRaises(ValueError):
                 sequence_inputs(a, b)
+
+    def test_v2_and_v3_manifests_compare_and_v3_documents_must_match(self):
+        a, b = self.root / "a", self.root / "b"
+        a.mkdir()
+        b.mkdir()
+        old = self.manifest()
+        new = self.manifest()
+        new["schemaVersion"] = 3
+        new["sceneDocument"] = {"path": "x.scene.gltf", "sha256": "aa"}
+        (a / "manifest.json").write_text(json.dumps(old))
+        (b / "manifest.json").write_text(json.dumps(new))
+        sequence_inputs(a, b)  # v2 against v3 ignores the document
+        (a / "manifest.json").write_text(json.dumps(new))
+        sequence_inputs(a, b)  # equal documents
+        other = json.loads(json.dumps(new))
+        other["sceneDocument"]["sha256"] = "bb"
+        (b / "manifest.json").write_text(json.dumps(other))
+        with self.assertRaisesRegex(ValueError, "scene document hashes differ"):
+            sequence_inputs(a, b)
 
 
 def main() -> int:
