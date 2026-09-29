@@ -36,7 +36,7 @@ threshold was approved, and ADR 0028 stays Proposed. The
 - **Checkpoints.** Owner checkpoints became recorded verification (see above).
 - **Re-baseline order.** The lab re-baseline was committed while Sponza's reference hashes were
   stale: no current binary, the parent included, reproduces them on the validation machine. The
-  Sponza rows are re-captured from the integrated head with per-row provenance.
+  Sponza rows are re-captured from the integrated head under the file's recorded device provenance.
 - **Normalized rig.** The parent's key/fill/rim directions were not unit vectors and reached
   shading unnormalized. A glTF rotation always decodes to a unit vector, so documents deliver
   normalized directions. Direct light is 0.061% and 0.015% brighter than the parent for the two

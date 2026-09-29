@@ -147,7 +147,7 @@ MaterialLab's former five are superseded. The ten lab values come from candidate
 with both App hashes, document hashes and the unchanged asset hashes in
 `task12/reference-transition-inventory.json`. The five Sponza rows carried over from schema 1 are
 historical values that no current binary, the parent included, reproduces on the validation
-machine; they are re-captured from the integrated head with per-row provenance (see
+machine; they are re-captured from the integrated head under the file's recorded device provenance (see
 [Reference re-capture](ux3-final-validation.md#reference-re-capture)).
 
 Schema 2 follows App's nearest-first catalog search from its working directory and checks the

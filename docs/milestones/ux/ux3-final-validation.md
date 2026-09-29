@@ -89,8 +89,11 @@ contain no Metal or validation errors, error-level lines, assertion failures or 
 
 ## Reference re-capture
 
-The five Sponza rows of `Tools/Screenshots/reference.json` are re-captured from the integrated
-head with per-row provenance.
+No current build, including the parent, reproduces the five historical Sponza rows of
+`Tools/Screenshots/reference.json`. They were re-captured from the corrected head on 2026-09-29
+on the device, macOS and Xcode already recorded in the file's provenance block, so one block now
+describes all fifteen rows. Two rounds gave identical hashes for all fifteen cases; evidence is in
+`../Luminex-evidence/ux3/review-2026-09-29/reference-recapture/`.
 
 ## Retained limits
 
@@ -137,3 +140,16 @@ The owner's review on 2026-09-29 produced these behavior changes.
 Verification of the corrected head is recorded below.
 
 ## Corrected head verification
+
+Run on 2026-09-29 against the release build of the corrected head, on the same device.
+
+| Check | Result |
+|---|---|
+| Build, format, compile database, six root checkers, module link check, shader imports | PASS |
+| Python tool suites and TemporalCompare; `parity.py` and `compare.py` selftests in the unit suite | PASS |
+| `Tests/unit`, `RojoRHITests/unit`, `MTL_DEBUG_LAYER=1` `Tests/gpu` | PASS |
+| Khronos validation: 6 catalog documents and 84 writer outputs | PASS |
+| Current reference matrix: three runs with identical hashes, the last against the updated file | PASS 15/15 |
+
+The ten lab rows reproduce unchanged, so the corrections did not alter catalog rendering. The
+original-matrix and temporal-off parent gates above keep their failed results.
