@@ -3,8 +3,9 @@
 **Status**: Accepted
 
 Part IV of the [rendering roadmap](../roadmap.md) owns editor usability and the presentation of
-rendering evidence: UX1 before M7.1, then [UX2](#ux2--editor-surfaces) and
-[UX3](#ux3--scene-documents-and-hierarchy) between R4 and N1. The [2026-09-14 audit](../research/2026-09-14-editor-uiux-audit.md) found that
+rendering evidence: UX1 before M7.1, then [UX2](#ux2--editor-surfaces),
+[UX3](#ux3--scene-documents-and-hierarchy) and [UX4](#ux4--design-system-and-themes) between R4
+and N1. The [2026-09-14 audit](../research/2026-09-14-editor-uiux-audit.md) found that
 the shipped controls expose substantial capability, but clipped data, ambiguous states and an
 unstable graph make that capability difficult to inspect. This part owns the accepted boundary; the milestone record distinguishes implementation
 from completed acceptance.
@@ -187,6 +188,57 @@ still pass on the new layout; capture manifests and measurement reports record t
 
 **Defer:** create, duplicate, delete and reparent; importing an asset into an open scene;
 persisting renderer configuration; an `.app` bundle; everything the UX1 deferrals above already name.
+
+## UX4 — Design system and themes
+
+**Placement:** [UX3](#ux3--scene-documents-and-hierarchy) → UX4 → N1. The owner asked for it on
+2026-09-29, before the learned-rendering lab, so N1's surfaces are designed once in the new system.
+The [proposed record](../milestones/ux/ux4.md) is a first draft awaiting the owner's revision; this
+section binds nothing until the owner accepts it.
+
+**Outcome:** the editor has one token-driven design system instead of ImGui's default dark style.
+An operator picks Auto, Light or Dark once and the whole editor, including its detached native
+windows, follows; both themes read at WCAG 2.2 AA contrast; the design language says who acted on
+a value (the operator, the editor's own automation, or a future agent), what is session-only and
+what is running, using the same marks on every surface; drawing stays as cheap as today's flat
+ImGui within a measured budget.
+
+**Deliver:** semantic token tables for both themes covering every ImGui and node-editor colour,
+the clear colour and every editor colour, with View > Appearance (Auto follows macOS live),
+per-window native appearance, a colour crossfade, workspace schema 5 and contrast unit tests
+(UX4.1); rounding, border, spacing and type tokens with a second Inter weight, Comfortable and
+Compact density, neutral default buttons with accent primaries, and themed graph, plot, overlay,
+notice and legend surfaces (UX4.2); actor and provenance marks for dirty, generated, CLI-masked
+and controller-applied state, an activity strip for measurement, capture, loading and controller
+changes, and the reserved agent vocabulary as tokens, Figma components and gallery renderings only
+(UX4.3); a Style Gallery window, retained gallery captures in both themes, documentation, an ADR
+for the theme and token contract, and whole-application acceptance (UX4.4).
+
+**Exit gate:** contrast tests pass for every required pair in both themes; scene-only screenshots
+for the reference set are byte-identical to the parent; a theme switch rebuilds no font atlas and
+allocates no GPU resource; the [completion gate](#completion-gate) tasks pass in both themes at
+both window sizes; rendered index counts on the default Sponza layout stay within 15% of the
+parent in both themes and densities; schema 4 workspaces open with Auto and Comfortable; every
+existing state keeps its status text and gains a mark whose tooltip names its source; a macOS
+appearance change retints the editor without relaunch, recorded as a manual gesture; unverified
+gestures are recorded as unverified.
+
+**Defer:** renderer, capture, manifest, measurement and CLI changes beyond `--appearance`; an
+agent runtime, session log or command bridge (the candidate below); high-contrast variants; user
+theme editing; blur, shadows and glow; a new icon set; everything UX1–UX3 already defer.
+
+## Candidate — agent session
+
+**Status:** unscheduled candidate from the owner's 2026-09-29 UX4 request; it has no identifier,
+step or gate until the owner discusses it.
+
+**Idea:** an agent joins the editor session as a named actor. It proposes edits as change sets the
+operator reviews before they apply, runs measurements and captures, and explains diagnostics, with
+every action attributed and linked to its evidence. UX4 supplies the vocabulary (actor colours,
+provenance marks, the activity strip, proposal cards and the attention ring) so this milestone
+would add behaviour, not visual invention. Open questions: whether the agent runs in-process or
+over a local bridge that the CLI already resembles; how proposals relate to scene documents and
+Undo, which UX1 deferred; and placement relative to N1.
 
 ## Candidate — offline pipeline editing
 
