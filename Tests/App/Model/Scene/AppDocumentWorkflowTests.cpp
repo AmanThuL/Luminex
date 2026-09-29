@@ -70,8 +70,7 @@ TEST_CASE("document workflow cancellation never exposes destructive work",
 
 //======================================================================================================================
 TEST_CASE("failed save-first aborts switch and preserves dirty state", "[app][document-workflow]") {
-    for (const auto action :
-         {DocumentAction::OpenCatalog, DocumentAction::Revert, DocumentAction::Quit}) {
+    for (const auto action : {DocumentAction::OpenCatalog, DocumentAction::Quit}) {
         DocumentWorkflow flow;
         flow.setContext(true, true, false);
         REQUIRE(flow.request(action, lmx::scenes::SceneId{"sponza"}));
@@ -299,4 +298,44 @@ TEST_CASE("Quit cannot replace an accepted Open save before its work is taken",
     const auto quit = flow.takeWork();
     REQUIRE(quit);
     CHECK(quit->action == DocumentAction::Quit);
+}
+
+//======================================================================================================================
+TEST_CASE("Quit queues behind Ready Save that was not yet taken", "[app][document-workflow]") {
+    DocumentWorkflow flow;
+    flow.setContext(true, true, false);
+    REQUIRE(flow.request(DocumentAction::Save));
+    REQUIRE(flow.step() == WorkflowStep::Ready);
+    REQUIRE(flow.request(DocumentAction::Quit));
+    const auto save = flow.takeWork();
+    REQUIRE(save);
+    CHECK(save->action == DocumentAction::Save);
+    flow.complete(true);
+    const auto quit = flow.takeWork();
+    REQUIRE(quit);
+    CHECK(quit->action == DocumentAction::Quit);
+}
+
+//======================================================================================================================
+TEST_CASE("Quit queues behind Ready Revert that was not yet taken", "[app][document-workflow]") {
+    DocumentWorkflow flow;
+    flow.setContext(true, true, false);
+    REQUIRE(flow.request(DocumentAction::Revert));
+    flow.confirm(ConfirmChoice::Discard);
+    REQUIRE(flow.step() == WorkflowStep::Ready);
+    REQUIRE(flow.request(DocumentAction::Quit));
+    CHECK(flow.takeWork()->action == DocumentAction::Revert);
+}
+
+//======================================================================================================================
+TEST_CASE("Revert confirmation never offers or accepts Save", "[app][document-workflow]") {
+    CHECK_FALSE(DocumentWorkflow::offersSave(DocumentAction::Revert));
+    CHECK(DocumentWorkflow::offersSave(DocumentAction::Open));
+    CHECK(DocumentWorkflow::offersSave(DocumentAction::Quit));
+    DocumentWorkflow flow;
+    flow.setContext(true, true, false);
+    REQUIRE(flow.request(DocumentAction::Revert));
+    REQUIRE(flow.step() == WorkflowStep::Confirm);
+    flow.confirm(ConfirmChoice::Save);
+    CHECK(flow.step() == WorkflowStep::Confirm);
 }

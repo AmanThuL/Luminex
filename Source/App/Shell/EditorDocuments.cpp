@@ -217,15 +217,18 @@ void EditorShell::buildDocumentWorkflow() {
         const auto reason = DocumentWorkflow::unavailableReason(
             DocumentAction::Save, m_playback.state() == PlaybackState::Stopped,
             m_measurement.active());
-        ImGui::BeginDisabled(reason.has_value());
-        if (ImGui::Button("Save")) {
-            m_documentWorkflow.confirm(ConfirmChoice::Save);
-            ImGui::CloseCurrentPopup();
+        const auto pending = m_documentWorkflow.action();
+        if (!pending || DocumentWorkflow::offersSave(*pending)) {
+            ImGui::BeginDisabled(reason.has_value());
+            if (ImGui::Button("Save")) {
+                m_documentWorkflow.confirm(ConfirmChoice::Save);
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndDisabled();
+            if (reason)
+                editorTooltip(reason->c_str());
+            ImGui::SameLine();
         }
-        ImGui::EndDisabled();
-        if (reason)
-            editorTooltip(reason->c_str());
-        ImGui::SameLine();
         if (ImGui::Button("Discard")) {
             m_documentWorkflow.confirm(ConfirmChoice::Discard);
             ImGui::CloseCurrentPopup();

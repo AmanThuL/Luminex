@@ -28,6 +28,11 @@ std::optional<std::string> DocumentWorkflow::unavailableReason(DocumentAction ac
 }
 
 //======================================================================================================================
+bool DocumentWorkflow::offersSave(DocumentAction action) {
+    return action != DocumentAction::Revert;
+}
+
+//======================================================================================================================
 bool DocumentWorkflow::request(DocumentAction action, std::optional<scenes::SceneId> target) {
     if (unavailableReason(action, m_stopped, m_measuring))
         return false;
@@ -36,7 +41,7 @@ bool DocumentWorkflow::request(DocumentAction action, std::optional<scenes::Scen
             return false;
         if (m_pending->action == DocumentAction::Quit)
             return true;
-        if (m_step == WorkflowStep::ChoosePath || m_issued || savingBeforeOpen()) {
+        if (m_step == WorkflowStep::ChoosePath || m_step == WorkflowStep::Ready) {
             m_quitQueued = true;
             return true;
         }
@@ -79,7 +84,8 @@ void DocumentWorkflow::confirm(ConfirmChoice choice) {
         clear();
     } else if (choice == ConfirmChoice::Discard) {
         advance();
-    } else if (!unavailableReason(DocumentAction::Save, m_stopped, m_measuring)) {
+    } else if (offersSave(m_pending->action) &&
+               !unavailableReason(DocumentAction::Save, m_stopped, m_measuring)) {
         m_pending->saveFirst = true;
         if (savingBeforeOpen())
             m_step = WorkflowStep::Ready;

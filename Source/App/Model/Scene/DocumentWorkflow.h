@@ -45,7 +45,8 @@ public:
     /// Refreshes current canonical dirty and transport state. Does not clear pending user work.
     void setContext(bool dirty, bool stopped, bool measuring);
     /// Queues a request when idle. Quit coalesces while a path dialog or operation is outstanding
-    /// and is reconsidered after that response; other overlapping requests return false.
+    /// and is reconsidered after that response, including behind Ready work not yet taken; other
+    /// overlapping requests return false.
     bool request(DocumentAction action, std::optional<scenes::SceneId> target = {});
     /// Resolves confirmation. Save is ignored unless stopped and not measuring. For Open, Save
     /// work must complete successfully before the native chooser becomes available.
@@ -66,6 +67,9 @@ public:
     bool dirty() const { return m_dirty; }
     /// Requested action while busy; used to choose the native dialog kind.
     std::optional<DocumentAction> action() const;
+    /// Whether a confirmation for the action may offer Save; Revert reloads the file, so only
+    /// Discard and Cancel apply and a Save choice is ignored.
+    static bool offersSave(DocumentAction action);
     /// Save, Save As and Revert require stopped transport and no active measurement.
     static std::optional<std::string> unavailableReason(DocumentAction action, bool stopped,
                                                         bool measuring);
