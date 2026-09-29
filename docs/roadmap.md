@@ -14,7 +14,7 @@ that decomposes the accepted boundary without expanding it.
 | [Rendering Foundations](roadmap/rendering-foundations.md) | M4–M6.5 and interface gate B | Establish image formation, execution, inspection, temporal and display contracts; retain acceptance limits |
 | [GPU-Driven Hybrid Rendering](roadmap/gpu-driven-hybrid-rendering.md) | M7–M11 and independent research | Scale scene data, visibility and lighting, then evaluate geometry, transport, GI and residency |
 | [Codebase Refactoring](roadmap/codebase-module-boundaries.md) | R1 between M6.5 and gate B; [R2–R4](roadmap/codebase-restructuring.md) between M7 and UX2 | Restructure modules and large units between rendering milestones without changing output; move the RHI to its own repository |
-| [Editor Experience](roadmap/editor-experience.md) | UX1 after gate B and before M7.1; UX2–UX4 after R4 and before N1 | Make scene inspection, controls and diagnostic data understandable and reliable for a human operator; give each control one home; make scenes saved documents; give the editor one design system with light, dark and system-following themes |
+| [Editor Experience](roadmap/editor-experience.md) | UX1 after gate B and before M7.1; UX2–UX4 after R4 and before N1; UX5 proposed around N1 | Make scene inspection, controls and diagnostic data understandable and reliable for a human operator; give each control one home; make scenes saved documents; give the editor one design system with light, dark and system-following themes; let agents' work reach the operator as reviewable proposals |
 | [Neural and Learned Rendering](roadmap/neural-rendering.md) | N1–N4 interleaved after M7 | Evaluate learned techniques as bounded experimental features with oracles, fallbacks and hardware gates |
 
 The dividing point is the change from a trustworthy moving image and execution substrate to
@@ -66,6 +66,8 @@ Rows that interleave when their own prerequisites exist, without a fixed step:
   behind its own gates; a D3D12 backend only under [ADR 0007](decisions/0007-d3d12-backend-target.md).
 - [Offline pipeline editing](roadmap/editor-experience.md#candidate--offline-pipeline-editing) is
   an unscheduled candidate awaiting the owner's discussion; it has no step.
+- [UX5](roadmap/editor-experience.md#ux5--agent-session) agent session is proposed: UX5.1 directly
+  after UX4, UX5.2–UX5.3 after N1; it takes a step once the owner accepts the placement.
 
 The order puts visible cluster geometry and the learned-rendering entry before the shadow and
 composition work while preserving every M-slice gate. On 2026-09-19 the owner placed R2, R3, R4
@@ -74,7 +76,8 @@ shader variants are deduplicated if the experiment supports it, and scenes becom
 before new rendering work starts. On 2026-09-25 the owner inserted editor surfaces as UX2 and
 renumbered scene documents to UX3; records and ADRs dated earlier call scene documents UX2. On
 2026-09-29 the owner asked for a design-system and theme overhaul as UX4 before N1; its record is
-proposed and awaits review.
+proposed and awaits review. On 2026-09-30 the owner added native macOS chrome to UX4 and proposed
+UX5, an agent session, in three slices.
 Identifiers are names, not ordinals:
 M8 and M9 keep theirs although M9 delivers first, because frozen research and accepted records
 already use them; the Step column carries the order.
@@ -156,8 +159,8 @@ implementation steps belong in a just-in-time plan or PR, not an expanding serie
 M6's five slices, M7's five and M8's five are fixed in Parts I and II; M9–M11 retain bounded work
 areas until planned. R milestones in Part III restructure code between rendering milestones and add no
 rendering scope; R2 has four slices, R3 seven and R4 two. Part IV owns editor experience and its completion
-criteria independently of the rendering and structural milestones; UX2 has four slices, UX3 five
-and UX4 four. Part V owns the four learned-rendering slices, each an
+criteria independently of the rendering and structural milestones; UX2 has four slices, UX3 five,
+UX4 five and UX5 three. Part V owns the four learned-rendering slices, each an
 independently accepted study that never becomes a correctness dependency of the shared frame; N1
 is itself four slices. The [execution sequence](#execution-sequence) and stated prerequisites,
 rather than numerical order, determine entry. Only one

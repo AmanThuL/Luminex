@@ -4,23 +4,20 @@
 
 First draft for owner revision, written on 2026-09-29 from the merged UX3 editor, its
 [Figma baseline](https://www.figma.com/design/QxllnS3RVkIvzDWoaL6Bcq) and two research passes
-(design languages of collaborative professional tools; Dear ImGui 1.93 and SDL 3.4 theming
-facts). UX4 replaces the inherited `StyleColorsDark` look with one token-driven design system,
-ships light, dark and system-following appearance, and gives the editor a visual vocabulary for a
-workspace where a human operator and software agents act on the same scene and the same evidence.
-It changes the editor only: rendered images, capture, measurement and the CLI stay as they are.
-[Part IV](../../roadmap/editor-experience.md#ux4--design-system-and-themes) owns the outcome and
-gates; this record keeps the design, its evidence and its limits.
+(collaborative-tool design languages; Dear ImGui 1.93 and SDL 3.4 theming facts). UX4 replaces the
+inherited `StyleColorsDark` look with one token-driven design system, ships light, dark and
+system-following appearance, makes the macOS menu bar native, and gives the editor a visual
+vocabulary for a workspace where a human operator and software agents act on the same scene and
+evidence. It changes the editor only. [Part IV](../../roadmap/editor-experience.md#ux4--design-system-and-themes)
+owns the outcome and gates; this record keeps the design, its evidence and its limits.
 
-**Placement:** [UX3](ux3.md) → **UX4** → N1. Before the learned-rendering lab, so N1's new
-surfaces are designed once, in the new system, and no panel is restyled twice.
+**Placement:** [UX3](ux3.md) → **UX4** → N1, so N1's surfaces are designed once in the new system.
 
 **Why this shape.** Luminex is developed as a partnership: the owner sets direction, reviews and
 accepts; agents implement and validate against recorded evidence. The editor is where both look at
-the same frame. A design system for the next five to ten years therefore has to say, on every
-surface, *who did this, what is proposed, what is running and what the evidence is*, while
-staying cheap to draw in immediate-mode ImGui. This reading of the owner's objective is an
-assumption for the owner to confirm.
+the same frame, so a design system for the next five to ten years has to say on every surface who
+did this, what is proposed, what is running and what the evidence is, while staying cheap to draw in
+immediate-mode ImGui. This reading of the owner's objective is an assumption to confirm.
 
 ## Observed state before UX4
 
@@ -29,6 +26,9 @@ assumption for the owner to confirm.
   `EditorStyle` (accent, warning, muted). The main clear colour is a literal in `main.cpp`.
   About 40 literal colours live in the viewport, graph, scene and performance panels; the Render
   Graph's `imgui-node-editor` has its own 19-entry style that ImGui's colours never reach.
+- Menus are ImGui items in an in-window row that also holds the transport; the native title bar is
+  kept, macOS gets only SDL's default application menu, and the detached Render Graph and
+  Performance windows have no menus at all.
 - Corners are square except tabs (5) and graph cards (6). Buttons, frames and headers are all
   tints of one blue, so selection, action and decoration share a colour.
 - There is no light theme, no system-appearance handling and no theme preference in workspace
@@ -49,18 +49,17 @@ assumption for the owner to confirm.
 | Appearance | View > Appearance: **Auto (system)**, **Light**, **Dark**; Auto is the default and follows macOS live. Persisted in workspace schema 5 with a `--appearance` CLI override for windowed and gallery runs |
 | Density | View > Density: **Comfortable** (today's metrics) and **Compact**; persisted in schema 5 |
 | Typeface | **Geist Sans** for the interface and **Geist Mono** for data replace Inter, one pair in both themes (owner decision 2026-09-30). Both are OFL 1.1 from the `vercel/geist-font` v1.7.2 release, staged and hash-pinned by setup as Inter is today |
+| Native chrome | The macOS menu bar becomes native from one platform-neutral menu model (UX4.5); the in-window row keeps the transport, activity and zoom. Windows chrome waits for a validated host; the ImGui menu row stays as the non-macOS rendering |
 | Cost rule | Colour, borders and small rounding only. No blur, drop shadows, gradients as layers or ImGui branch merges; rounding at most 6 pt on ordinary surfaces |
 | Collaboration vocabulary | Actors (operator, system, agent), provenance marks, an activity strip and proposal/attention components are part of the system. Operator and system consumers ship in UX4; agent consumers are reserved until an agent session milestone exists |
 | Evidence | Contrast is a unit test over the token tables, not a manual check; a Style Gallery window renders every component in every state so both themes are captured and compared against Figma |
 | Scope guard | Scene-only screenshots stay byte-identical to the parent; the SDR/UI/capture domains of [ADR 0019](../../decisions/0019-display-domains-and-edr.md) are untouched |
 
-Rejected: a themeable-by-user editor (deferred since UX1); frosted or translucent chrome (needs a
-backend pass per platform window); adopting ImGui's `features/shadows` branch (no docking, a
-merge to maintain); a second icon set; per-theme scene clear colours (the viewport image is not
-UI); keeping the inherited dark style as a selectable "classic" theme (it would carry none of the
-marks and would have to be maintained; the gallery captures document the old look instead); a
-JSON theme loaded at runtime (a missing file is a new failure mode; generated C++ tables give the
-same single source without it).
+Rejected: user theme editing (deferred since UX1); frosted or translucent chrome (a backend pass per
+platform window); ImGui's `features/shadows` branch (no docking, a merge to maintain); a second
+icon set; per-theme scene clear colours (the image is not UI); a selectable "classic" theme (no
+marks, more to maintain; gallery captures document the old look); a runtime JSON theme (a missing
+file is a new failure mode; generated C++ tables give one source without it).
 
 ## Principles
 
@@ -83,8 +82,8 @@ same single source without it).
 
 Primitives are OKLCH ramps generated by a script (`ux4_tokens.py` in the owner's local
 `Luminex-Identity/ux4-design` workspace, moving to `Tools/Theme/` in UX4.1): a near-achromatic
-graphite ramp (hue 255, chroma 0.004, so the chrome never biases colour judgement of the image),
-and blue (248), violet (302), green (152), amber (78) and red (24) ramps at nine lightness steps.
+graphite ramp (hue 255, chroma 0.004, so the chrome never biases colour judgement of the image), and
+blue (248), violet (302), green (152), amber (78) and red (24) ramps at nine lightness steps.
 Semantic roles alias primitives per theme; components consume roles only. The generator is the
 single source: it writes the C++ token tables, the Figma variable JSON, the tables below and the
 contrast audit, and CI fails when the checked-in tables differ from a fresh run.
@@ -107,41 +106,37 @@ contrast audit, and CI fails when the checked-in tables differ from a fresh run.
 | `border/strong` | `#67696B` | `#848688` | `selection/bg` (α .28 / .20) | `#4CABFD` | `#056FB8` |
 | `border/focus` | `#4CABFD` | `#056FB8` | `actor/operator` | `#4CABFD` | `#056FB8` |
 
-`actor/agent` aliases the agent accent; `status/info` aliases `text/secondary`; `accent/*-subtle`
-is the accent at α .18 for docking previews, drag targets and checked backgrounds. Text on a
-selected row always uses `text/primary`. `surface/viewport` is the dark surround of the rendered
-image in both themes, so a light chrome never changes how bright the frame looks. The generated
-audit checks 24 pairs per theme (text on every surface, accent and status text, accent, focus and
-border boundaries, composited selection, the panel-over-canvas island step and overlay labels on
-the viewport surround) and every pair passes; the smallest margins are disabled text (3.29 dark,
+`actor/agent` aliases the agent accent; `status/info` aliases `text/secondary`; `accent/*-subtle` is
+the accent at α .18 for docking previews, drag targets and checked backgrounds. Text on a selected
+row always uses `text/primary`. `surface/viewport` is the dark surround of the rendered image in
+both themes, so a light chrome never changes how bright the frame looks. The generated audit checks
+24 pairs per theme (text on every surface, accent and status text, accent, focus and border
+boundaries, composited selection, the panel-over-canvas island step and overlay labels on the
+viewport surround) and every pair passes; the smallest margins are disabled text (3.29 dark,
 3.64 light against 3.0), secondary text on the light hover surface (4.62 against 4.5) and the
 dark island step (1.12 against a 1.1 floor, where the light floor is 1.2: near black the WCAG
 formula flattens ratios, so dark islands also rely on the 2 pt gutter and hairline).
 
-**ImGui mapping** (all 63 slots set explicitly; `BorderShadow` stays α 0): text slots →
-`text/*`; `WindowBg`, `MenuBarBg`, `TitleBgActive`, `TabSelected`, `TabDimmedSelected` →
-`surface/panel`; `TitleBg`, `TitleBgCollapsed`, `Tab`, `TabDimmed`, `TableHeaderBg`,
-`DockingEmptyBg`, `ScrollbarBg` and the main clear colour → `surface/canvas`; `PopupBg` →
-`surface/raised`; `FrameBg` → `surface/sunken`, hovered/active → `surface/hover`/`active`;
-`Button` → `surface/hover`, hovered → `surface/active`, active → `accent/operator-subtle`;
-`Header` → `selection/bg`, hovered/active → `surface/hover`/`active`; `CheckMark`, `SliderGrab`,
-`TabSelectedOverline`, `SeparatorActive`, `PlotLines`, `DragDropTarget`, `NavCursor`,
-`NavWindowingHighlight` → `accent/operator`; `CheckboxSelectedBg`, `DockingPreview`,
-`DragDropTargetBg` → `accent/operator-subtle`; `TextLink` → `accent/operator-text`;
-`UnsavedMarker` → `actor/operator`; `Border`, `Separator`, `TableBorderLight`, `TreeLines` →
-`border/subtle`; `TableBorderStrong`, `ScrollbarGrab`, `ResizeGrip`,
-`TabDimmedSelectedOverline` → `border/strong`; `TextSelectedBg` → `selection/bg`;
-`TableRowBgAlt` → `surface/hover` at α .35; `ModalWindowDimBg`, `NavWindowingDimBg` →
-`surface/canvas` at α .6. A `static_assert` on `ImGuiCol_COUNT` fails the build when upstream adds
-a slot. Node-editor slots map the same way (`Bg` → `surface/canvas`, `NodeBg` →
-`surface/raised`, borders → `border/*`, hover/selection → `accent/operator*`, groups →
-`surface/panel` at α .5).
+**ImGui mapping** (all 63 slots set explicitly; `BorderShadow` stays α 0): text slots → `text/*`;
+`WindowBg`, `MenuBarBg`, `TitleBgActive`, `TabSelected`, `TabDimmedSelected` → `surface/panel`;
+`TitleBg`, `TitleBgCollapsed`, `Tab`, `TabDimmed`, `TableHeaderBg`, `DockingEmptyBg`,
+`ScrollbarBg` and the main clear colour → `surface/canvas`; `PopupBg` → `surface/raised`;
+`FrameBg` → `surface/sunken`, hovered and active → `surface/hover` and `surface/active`; `Button`
+→ `surface/hover`, hovered → `surface/active`, active → `accent/operator-subtle`; `Header` →
+`selection/bg`; `CheckMark`, `SliderGrab`, `TabSelectedOverline`, `SeparatorActive`, `PlotLines`,
+`DragDropTarget`, `NavCursor`, `NavWindowingHighlight` → `accent/operator`; `CheckboxSelectedBg`,
+`DockingPreview`, `DragDropTargetBg` → `accent/operator-subtle`; `TextLink` →
+`accent/operator-text`; `UnsavedMarker` → `actor/operator`; `Border`, `Separator`,
+`TableBorderLight`, `TreeLines` → `border/subtle`; `TableBorderStrong`, `ScrollbarGrab`,
+`ResizeGrip`, `TabDimmedSelectedOverline` → `border/strong`; `TextSelectedBg` → `selection/bg`;
+`TableRowBgAlt` → `surface/hover` at α .35; the dim backgrounds → `surface/canvas` at α .6. A
+`static_assert` on `ImGuiCol_COUNT` fails the build when upstream adds a slot. Node-editor slots
+map the same way (`Bg` → canvas, `NodeBg` → raised, borders → `border/*`, hover and selection →
+`accent/operator*`, groups → panel at α .5).
 
-**Editor colours** become tokens too: seven graph kind title hues and the eight-hue link
-palette, each with a light variant of matched lightness; `plot/line` (operator accent) and
-`plot/limit` (warning); viewport overlay colours for candidate and selected bounds, the outline
-and labels; the legend chip (`surface/overlay` with `border/subtle`); Console severities (trace
-and debug secondary, info primary, warning and error status hues).
+**Editor colours** become tokens too: the seven graph kind title hues and eight link hues with light
+variants of matched lightness, `plot/line` and `plot/limit`, the viewport overlay colours, the
+legend chip and the Console severities.
 
 ## Type, shape, space, motion and icons
 
@@ -182,21 +177,20 @@ and debug secondary, info primary, warning and error status hues).
 | Attention ring | 2 pt `accent/agent` outline on a row or field | Style Gallery only | Agent focus, never the operator's selection |
 | Console | Severity colours from tokens | All rows | An actor chip and filter |
 
-Selection stays the operator's alone. Agent vocabulary ships as tokens, Figma components and
-gallery renderings so a later milestone consumes a finished design rather than inventing one; no
-fake agent runs in the editor, and no experimental agent source lands on `main`.
+Selection stays the operator's alone. Agent vocabulary ships as tokens, Figma components and gallery
+renderings so a later milestone consumes a finished design; no fake agent runs in the editor and no
+experimental agent source lands on `main`.
 
 ## Appearance behaviour
 
 Auto reads `SDL_GetSystemTheme` at startup and applies `SDL_EVENT_SYSTEM_THEME_CHANGED` without a
 relaunch, treating Unknown as dark. Light and Dark set each platform window's `NSWindow.appearance`
-(Aqua or Dark Aqua) so native title bars match, while `NSApp.appearance` stays unset so SDL keeps
-reporting the true system value; Auto clears the window appearance. The theme is written into the
+(Aqua or Dark Aqua) so native title bars and the menu bar match, while `NSApp.appearance` stays
+unset so SDL keeps reporting the true system value; Auto clears it. The theme is written into the
 shell's base style and applied between `Render` and `NewFrame`, so UI-scale reapplication keeps it
-and pushed colours are never reverted; literal `PushStyleColor` sites are replaced by tokens.
-Workspace schema 5 adds `Appearance` and `Density`; a missing value means Auto and Comfortable, and
-schema 4 migrates without loss. Detached windows stay opaque. High-contrast variants are a named
-candidate, not a UX4 deliverable.
+and pushed colours are never reverted; literal `PushStyleColor` sites become tokens. Workspace
+schema 5 adds `Appearance` and `Density`; a missing value means Auto and Comfortable, and schema 4
+migrates without loss. Detached windows stay opaque. High-contrast variants are a named candidate.
 
 ## Units
 
@@ -207,15 +201,17 @@ candidate, not a UX4 deliverable.
 | `AppAppearance.mm` | `App/Shell` | Per-window appearance, system theme events, Reduce Motion query |
 | `EditorStyle` growth | `App/Panels/Shared` | Chips, actor and provenance marks, activity strip, restyled notice and legend |
 | `StyleGalleryPanel` | `App/Panels/Gallery` | Window > Style Gallery: every component, state, actor and theme |
+| `MenuModel` | `App/Model/Workspace` | Menu tree with shortcuts, checked and enabled state and disabled reasons; rendered by native menus or ImGui |
+| `NativeMenu.mm` | `App/Shell` | NSMenu rendering: key equivalents, tooltips for disabled items, submenus rebuilt on open, app and Edit menus |
 | `Tools/Theme/` | Tools | OKLCH token generator writing the C++ tables and the Figma JSON, with its audit and a CI freshness check |
 | Workspace schema 5 | `App/Model/Workspace` | Appearance and density persistence and migration |
 
 ## UX4.1 — Tokens and appearance
 
-**Deliver:** `EditorTheme` with both themes filling all ImGui and node-editor slots and every
-editor colour; View > Appearance with schema 5 persistence and `--appearance`; system following;
-per-window native appearance; the crossfade; the clear colour as a token; literal colours in
-panels replaced; the contrast tests.
+**Deliver:** `EditorTheme` with both themes filling all ImGui and node-editor slots and every editor
+colour; View > Appearance with schema 5 persistence and `--appearance`; system following; per-window
+native appearance; the crossfade; the clear colour as a token; literal colours in panels replaced;
+the contrast tests.
 
 **Exit gate:** the contrast tests pass for every pair in both themes; scene-only `--screenshot`
 outputs for the reference set are byte-identical to the parent; a theme switch rebuilds no font
@@ -226,14 +222,15 @@ retints the editor and its detached windows without relaunch, recorded as a manu
 
 **Deliver:** rounding, border and spacing tokens; Geist Sans Regular and Medium and Geist Mono
 Regular staged by setup with licence and provenance, Inter retired; the type ramp and the 0.6 em
-digit advance; density presets; neutral default buttons with accent primaries; tab, frame, header, table and
-scrollbar restyle; graph card, link, plot and overlay tokens; restyled notice and legend chip.
+digit advance; density presets; neutral default buttons with accent primaries; tab, frame, header,
+table and scrollbar restyle; graph card, link, plot and overlay tokens; restyled notice and legend
+chip.
 
 **Exit gate:** the [completion gate](../../roadmap/editor-experience.md#completion-gate) tasks pass
 in both themes at both window sizes; `MetricsRenderIndices` on the default Sponza layout stays
-within 15% of the parent in both themes and both densities, recorded from the same frame; no
-panel stacks labels at the default width; gallery captures at 13, 16 and 20 px show no digit
-ink overlap at the forced advance on 1× and 2× displays.
+within 15% of the parent in both themes and both densities, recorded from the same frame; no panel
+stacks labels at the default width; gallery captures at 13, 16 and 20 px show no digit ink overlap
+at the forced advance on 1× and 2× displays.
 
 ## UX4.3 — Actors, provenance and activity
 
@@ -254,43 +251,50 @@ theme and token contract; whole-application acceptance.
 **Exit gate:** every Figma component has a gallery counterpart in both themes; all earlier slice
 gates hold together; unverified gestures are recorded as unverified.
 
+## UX4.5 — Native chrome
+
+**Deliver:** `MenuModel` behind today's ImGui menus; on macOS the application menu bar rendered from
+it (Luminex, File, Edit, View, Window, Debug, Help) with key equivalents, checked state, disabled
+items whose reason is the item's tooltip and submenus that rebuild on open; the in-window row
+reduced to a toolbar for the transport, activity strip and zoom; the ImGui menus kept as the
+rendering for other platforms and headless tests.
+
+**Exit gate:** every command keeps its one named route with unchanged shortcuts; disabled reasons
+stay visible; the detached windows reach the same menus; the bar follows Auto, Light and Dark;
+AppModel tests cover the model's enabled and checked state case by case.
+
 ## Boundaries and deferrals
 
 No renderer, capture, manifest, measurement or CLI change beyond `--appearance`; no agent runtime,
-session log or command bridge (a [candidate](../../roadmap/editor-experience.md#candidate--agent-session)
-for the owner's discussion); no high-contrast themes; no user theme editing; no blur, shadow or
-glow; no new icon set; no `.app` bundle; nothing UX1–UX3 already defer. N1's surfaces adopt the
-system when they are designed, not before.
+session log or command bridge ([UX5](../../roadmap/editor-experience.md#ux5--agent-session)); no
+Windows chrome until a validated host exists; no high-contrast themes; no user theme editing; no
+blur, shadow or glow; no new icon set; no `.app` bundle; nothing UX1–UX3 already defer. N1's
+surfaces adopt the system when they are designed, not before.
 
 ## Risks and open points
 
 - **Retina cost.** A 4 pt corner costs about twenty times the indices of a square fill and each
-  border stroke doubles it. The gate measures it; if the default layout exceeds 15%, rounding drops
-  to 2 or 0 on dense rows before any other change.
+  stroke doubles it; if the default layout exceeds the 15% gate, rounding drops to 2 or 0 first.
 - **Derived colours.** ImGui derives several slots (tabs, docking preview) in `StyleColorsDark`;
   UX4 sets all 63 explicitly so no derivation runs on a theme table.
-- **Fonts.** Geist's x-height is 0.53 em against Inter's 0.546, so 16 px reads a touch smaller;
-  the gallery captures decide whether body stays 16 or moves to 17 before UX4.2 closes. Geist Mono
-  at 0.6 em is wider than the sans, so mono columns budget width in the Console and Performance
-  layouts; nothing depends on synthetic bold or on OpenType features ImGui cannot apply.
-- **Figma plan limits.** The baseline file's plan allows one mode per collection and its MCP
-  quota is spent, so themes are two collections and pages are authored through the local
-  development plugin with a retheme script; a plan upgrade removes both constraints.
-- **Auto on unknown systems.** SDL reports Unknown on some hosts; UX4 treats it as dark and says
-  so in the Appearance menu.
+- **Fonts.** Geist's x-height is 0.53 em against Inter's 0.546; gallery captures decide whether body
+  stays 16 or moves to 17. Geist Mono at 0.6 em is wider than the sans, so Console and Performance
+  columns budget width; nothing depends on synthetic bold or OpenType features ImGui cannot apply.
+- **Figma plan limits.** One mode per collection and a spent MCP quota make the themes two
+  collections authored through the local development plugin; a plan upgrade removes both.
 - Settled: the viewport image, its debug views and the selection outline pass are outside the
   theme; the outline colour follows `accent/operator` per theme through its existing constant.
 
 ## Figma workspace
 
-The design lives beside the baseline in the same file: `03 · UX4 Foundations` (principles,
-ramps, both semantic tables with contrast ratios, editor colours, type, shape, density, actors
-and provenance, appearance, cost rules and the ImGui mapping), `04 · UX4 Components` (21 sets,
-each with `Theme=Dark|Light` variants and its state axis, plus the Appearance and Density menu)
-and `05 · UX4 Screens` (the default workspace in dark and light, the collaboration scenario with
-a pending proposal, activity strip, attention ring and agent Console row in dark and light, and
-the Style Gallery), all set in Geist Sans and Geist Mono. Variables sit in `UX4 · Primitives`,
-`UX4 · Color (Dark)`, `UX4 · Color (Light)` and `UX4 · Metrics`, one mode each; text styles are
-`UX4/13/Regular`, `UX4/16/Regular`, `UX4/16/Medium`, `UX4/20/Medium`, `UX4/13/Mono` and `UX4/16/Mono`. The baseline pages stay untouched for comparison. The owner's local
-`Luminex-Identity/ux4-design` workspace holds the token generator, the plugin phases, their
-reports and PNG exports; nothing durable depends on it once UX4.1 moves the generator into `Tools/`.
+The design lives beside the baseline in the same file: `03 · UX4 Foundations` (principles, ramps,
+both semantic tables with contrast ratios, editor colours, type, shape, density, actors and
+provenance, appearance, cost rules and the ImGui mapping), `04 · UX4 Components` (21 sets with
+`Theme=Dark|Light` variants and their state axes, plus the Appearance and Density menu) and
+`05 · UX4 Screens` (the default workspace and the collaboration scenario in both themes under the
+macOS menu bar and title bar drawn as system references above the toolbar row, and the Style
+Gallery), all set in Geist Sans and Geist Mono. Variables sit in `UX4 · Primitives`,
+`UX4 · Color (Dark)`, `UX4 · Color (Light)` and `UX4 · Metrics`, one mode each, with six `UX4/*`
+text styles. Baseline pages stay untouched for comparison. The owner's local
+`Luminex-Identity/ux4-design` workspace holds the token generator, the plugin phases, reports and
+PNG exports; nothing durable depends on it once UX4.1 moves the generator into `Tools/`.
