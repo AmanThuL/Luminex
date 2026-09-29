@@ -32,6 +32,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -230,7 +231,8 @@ public:
     void animate(double seconds, double assetSeconds);
 
     /// Evaluates an imported object's authored pose at its own clip phases without changing the
-    /// scene. Returns none when the identity is not animated by an owned asset clip.
+    /// scene. Returns none when the identity is not animated by an owned asset clip or when the
+    /// sampled pose is indecomposable.
     std::optional<DecomposedTransform> authoredAssetPose(InstanceId id, double seconds) const;
 
     /// Samples the nonempty camera track at `animationTime` and assigns position, yaw, and pitch.
@@ -245,6 +247,7 @@ public:
 
 private:
     std::vector<LightId> m_rigLightIds;
+    std::unordered_set<uint64_t> m_indecomposableWarned; ///< Instances already warned about.
     void validateObjects() const;
     struct Storage;
     std::unique_ptr<Storage> m_storage;

@@ -6,6 +6,7 @@
 #include "Engine/Scene/Scene.h"
 
 #include "Core/Diagnostics/Assert.h"
+#include "Core/Diagnostics/Log.h"
 #include "Engine/Asset/Model/SceneAnimation.h"
 #include "Engine/Lights/LocalLight.h"
 #include "Engine/Scene/DrawItem.h"
@@ -126,10 +127,9 @@ void sampleAsset(const AssetClipPlayback& asset, double seconds, Consume&& consu
         }
         const glm::mat4& matrix = resolve(resolve, n);
         const auto decomposed = decomposeTransform(matrix);
-        LMX_ASSERT(decomposed.has_value(), "asset clip sampled to an indecomposable pose");
         for (uint32_t instance : node.instances) {
             LMX_ASSERT(instance < asset.instances.size(), "asset clip instance index out of range");
-            consume(asset.instances[instance], *decomposed);
+            consume(asset.instances[instance], decomposed ? &*decomposed : nullptr);
         }
     }
 }
@@ -194,12 +194,25 @@ void Scene::animate(double seconds, double assetSeconds) {
         LMX_ASSERT(updated.has_value(), "an orbit-sampled light must remain valid");
     }
     for (const AssetClipPlayback& asset : assetAnimations) {
-        sampleAsset(asset, assetSeconds, [this](InstanceId id, const DecomposedTransform& pose) {
-            if (SceneObject* object = tryObject(id)) {
-                object->position = pose.position;
-                object->eulerDegrees = pose.eulerDegrees;
-                object->scale = pose.scale;
+        sampleAsset(asset, assetSeconds, [this](InstanceId id, const DecomposedTransform* pose) {
+            SceneObject* object = tryObject(id);
+            if (!object) {
+                return;
             }
+            if (!pose) {
+                // Asset data can sample to a singular pose; hold the last valid one.
+                const uint64_t key =
+                    uint64_t{id.store} << 48 | uint64_t{id.generation} << 32 | id.slot;
+                if (m_indecomposableWarned.insert(key).second) {
+                    LMX_LOG_WARN("scene '{}': asset clip sampled an indecomposable pose for "
+                                 "object '{}'; holding its previous pose",
+                                 name, object->name);
+                }
+                return;
+            }
+            object->position = pose->position;
+            object->eulerDegrees = pose->eulerDegrees;
+            object->scale = pose->scale;
         });
     }
 }
@@ -211,9 +224,9 @@ std::optional<DecomposedTransform> Scene::authoredAssetPose(InstanceId id, doubl
     }
     std::optional<DecomposedTransform> result;
     for (const AssetClipPlayback& asset : assetAnimations) {
-        sampleAsset(asset, seconds, [&](InstanceId sampled, const DecomposedTransform& pose) {
+        sampleAsset(asset, seconds, [&](InstanceId sampled, const DecomposedTransform* pose) {
             if (sampled == id) {
-                result = pose;
+                result = pose ? std::optional(*pose) : std::nullopt;
             }
         });
     }

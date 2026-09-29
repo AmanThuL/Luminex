@@ -1,6 +1,8 @@
 #include "Render/Renderer/SceneViewBuilder.h"
 #include "Support/EngineSceneTestSupport.h"
 
+#include <limits>
+
 //======================================================================================================================
 // A Scene with no IBL attached must still publish a renderable view. Empty objects make the
 // forwarding observable without constructing a GPU device -- and a bare Scene is exactly the case
@@ -417,4 +419,34 @@ TEST_CASE("Scene::animate accepts a track that collapses an object to zero scale
 
     scene.animate(0.0);
     REQUIRE(near3(scene.objects[0].scale, glm::vec3(1.0f)));
+}
+
+//======================================================================================================================
+TEST_CASE("asset playback holds the previous pose when a sampled pose is indecomposable",
+          "[scene][ux3]") {
+    Scene scene = makeMotionTestScene();
+    lmx::engine::AssetClipPlayback asset;
+    asset.instances = {scene.objects[0].id};
+    asset.nodes.resize(1);
+    asset.nodes[0].animated = true;
+    asset.nodes[0].instances = {0};
+    asset.clips = {{.duration = 2.0,
+                    .channels = {{.node = 0,
+                                  .path = lmx::asset::GltfAnimationPath::Translation,
+                                  .keys = {{.time = 0.0, .value = {0, 0, 0, 0}},
+                                           {.time = 2.0, .value = {2, 0, 0, 0}}}},
+                                 {.node = 0,
+                                  .path = lmx::asset::GltfAnimationPath::Scale,
+                                  .keys = {{.time = 0.0, .value = {1, 1, 1, 0}},
+                                           {.time = 2.0, .value = {1, 1, 1, 0}}}}}}};
+    scene.assetAnimations.push_back(asset);
+    scene.animate(1.0);
+    REQUIRE(scene.objects[0].position.x == Catch::Approx(1.0f));
+    // A NaN local translation cannot decompose; the object keeps its last valid pose.
+    scene.assetAnimations[0].clips[0].channels[0].keys[1].value.x =
+        std::numeric_limits<float>::quiet_NaN();
+    scene.animate(1.5);
+    scene.animate(1.75);
+    REQUIRE(scene.objects[0].position.x == Catch::Approx(1.0f));
+    REQUIRE_FALSE(scene.authoredAssetPose(scene.objects[0].id, 1.5));
 }
