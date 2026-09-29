@@ -407,3 +407,57 @@ TEST_CASE("separate document camera clips compose channels in source order",
     REQUIRE(scene.animation.cameraTrack[1].position.x == 0.5f);
     REQUIRE(scene.animation.cameraTrack.back().position.x == 2);
 }
+
+//======================================================================================================================
+TEST_CASE("document pose overrides require a source node with primitives",
+          "[scene-doc][instantiate]") {
+    const auto root = std::filesystem::current_path() / "SceneDocuments" / "instantiate-empty-pose";
+    std::filesystem::create_directories(root);
+    auto doc = fixtureDocument(root);
+    const auto gltf = root / doc.nodes[1].asset->uri;
+    {
+        std::ifstream in(gltf);
+        std::string json((std::istreambuf_iterator<char>(in)), {});
+        const auto replace = [&](std::string_view from, std::string_view to) {
+            const auto at = json.find(from);
+            REQUIRE(at != std::string::npos);
+            json.replace(at, from.size(), to);
+        };
+        replace(R"("scenes": [{"nodes": [0]}])", R"("scenes": [{"nodes": [0, 1]}])");
+        replace(R"("translation": [10.0, 0.0, 0.0]}])",
+                R"("translation": [10.0, 0.0, 0.0]}, {"name": "Empty"}])");
+        std::ofstream out(gltf);
+        out << json;
+    }
+    auto bytes = readWholeFile(gltf);
+    REQUIRE(bytes);
+    doc.nodes[1].asset->sha256 = sha256Hex(*bytes);
+    doc.nodes[1].overrides.push_back({.node = 1, .name = "Empty", .pose = asset::ObjectPose{}});
+    const auto result = engine::prepareSceneDocument(doc, root);
+    REQUIRE_FALSE(result);
+    REQUIRE(result.error().message.find("/nodes/1/extensions/LMX_scene/overrides/0/pose") !=
+            std::string::npos);
+    REQUIRE(result.error().message.find("pose override requires a mesh node") != std::string::npos);
+}
+
+//======================================================================================================================
+TEST_CASE("asset clip validation rejects STEP scale keys that collapse two axes",
+          "[scene-doc][instantiate]") {
+    asset::GltfScene source;
+    source.nodes.resize(1);
+    source.instances.push_back({.node = 0});
+    const auto scaleClip = [](glm::vec4 value) {
+        return asset::GltfAnimationClip{.duration = 1.0,
+                                        .channels = {{.node = 0,
+                                                      .path = asset::GltfAnimationPath::Scale,
+                                                      .step = true,
+                                                      .keys = {{.time = 0.0, .value = {1, 1, 1, 0}},
+                                                               {.time = 1.0, .value = value}}}}};
+    };
+    source.clips = {scaleClip({1, 1, 1, 0})};
+    REQUIRE(engine::validateIndependentAssetClips(source, glm::mat4(1.0f), "/asset"));
+    source.clips = {scaleClip({0, 0, 1, 0})};
+    const auto result = engine::validateIndependentAssetClips(source, glm::mat4(1.0f), "/asset");
+    REQUIRE_FALSE(result);
+    REQUIRE(result.error().message.find("/asset") != std::string::npos);
+}

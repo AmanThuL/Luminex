@@ -210,11 +210,12 @@ asset::AssetResult<void> validateIndependentAssetClips(const asset::GltfScene& s
     };
     for (const auto& clip : source.clips) {
         for (const auto& channel : clip.channels) {
-            if (channel.path != asset::GltfAnimationPath::Scale || channel.step ||
-                !affectsInstance(channel.node))
+            if (channel.path != asset::GltfAnimationPath::Scale || !affectsInstance(channel.node))
                 continue;
-            for (size_t i = 1; i < channel.keys.size(); ++i) {
-                const auto& a = channel.keys[i - 1].value;
+            // STEP keys and a lone key are constant segments: each key is a zero-length interval.
+            const bool pointwise = channel.step || channel.keys.size() == 1;
+            for (size_t i = pointwise ? 0 : 1; i < channel.keys.size(); ++i) {
+                const auto& a = channel.keys[pointwise ? i : i - 1].value;
                 const auto& b = channel.keys[i].value;
                 for (int first = 0; first < 3; ++first) {
                     const auto firstZero = nearZeroInterval(a[first], b[first]);
@@ -224,11 +225,12 @@ asset::AssetResult<void> validateIndependentAssetClips(const asset::GltfScene& s
                         const auto secondZero = nearZeroInterval(a[second], b[second]);
                         if (secondZero && std::max(firstZero->first, secondZero->first) <=
                                               std::min(firstZero->second, secondZero->second))
-                            return std::unexpected(asset::AssetError{
-                                asset::AssetErrorCode::Unsupported,
-                                std::string(assetPointer) +
-                                    ": local scale interpolation can collapse two axes at source " +
-                                    "node " + label(channel.node)});
+                            return std::unexpected(
+                                asset::AssetError{asset::AssetErrorCode::Unsupported,
+                                                  std::string(assetPointer) + ": local scale " +
+                                                      (pointwise ? "key" : "interpolation") +
+                                                      " can collapse two axes at source node " +
+                                                      label(channel.node)});
                     }
                 }
             }
@@ -355,6 +357,12 @@ prepareSceneDocument(const asset::SceneDocument& document,
             if (override.pose && imported.animated)
                 return std::unexpected(
                     malformed(at + "/pose", "animated source nodes cannot have a pose override"));
+            if (override.pose &&
+                std::ranges::none_of(asset.source.instances, [&](const auto& instance) {
+                    return instance.node == override.node;
+                }))
+                return std::unexpected(
+                    malformed(at + "/pose", "pose override requires a mesh node"));
             if (override.enabled)
                 asset.enabled[override.node] = *override.enabled;
         }
