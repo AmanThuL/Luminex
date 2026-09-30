@@ -103,7 +103,7 @@ effective(); choose(Appearance) }`, `choose` clearing the override.
 **Produces:** `kWorkspaceSchemaVersion = 5`; `ParsedWorkspaceSettings` and `WorkspaceDecision` gain
 `appearance = Auto`, `density = Comfortable`; `writeWorkspaceSettings(..., uiScalePercent,
 Appearance = Auto, Density = Comfortable)`; `AppOptions::appearance : std::optional<Appearance>`.
-- [ ] Tests first: schema 5 round-trips both keys; schema 4 restores docks, visibility and scale
+- [x] Tests first: schema 5 round-trips both keys; schema 4 restores docks, visibility and scale
   with Auto and Comfortable and no rebuild; schemas 3 and 2 migrate as today; an unknown value
   keeps the default; `--appearance light` parses; with `--screenshot`, `--capture-sequence` or
   `--measure` it fails naming the windowed editor. Commit `editor: persist appearance (UX4)`.

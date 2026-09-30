@@ -13,6 +13,8 @@ namespace lmx::app {
 namespace {
 
 constexpr std::string_view kSchemaKey = "Schema";
+constexpr std::string_view kAppearanceKey = "Appearance";
+constexpr std::string_view kDensityKey = "Density";
 constexpr std::string_view kUiScaleKey = "UiScalePercent";
 constexpr std::string_view kSceneKey = "Scene";
 constexpr std::string_view kViewportKey = "Viewport";
@@ -161,6 +163,10 @@ ParsedWorkspaceSettings parseWorkspaceSettings(std::string_view sectionText) {
             uint32_t percent = kDefaultUiScalePercent;
             parsed.uiScalePercent = parseNumber(value, percent) ? normalizedUiScalePercent(percent)
                                                                 : kDefaultUiScalePercent;
+        } else if (key == kAppearanceKey) {
+            parsed.appearance = parseAppearance(value).value_or(Appearance::Auto);
+        } else if (key == kDensityKey) {
+            parsed.density = parseDensity(value).value_or(Density::Comfortable);
         } else if (key == kSceneKey) {
             applyBoolValue(value, parsed.visibility.scene);
         } else if (key == kViewportKey) {
@@ -186,7 +192,8 @@ ParsedWorkspaceSettings parseWorkspaceSettings(std::string_view sectionText) {
 
 //======================================================================================================================
 std::string writeWorkspaceSettings(uint32_t schemaVersion, const WorkspaceVisibility& visibility,
-                                   uint32_t uiScalePercent) {
+                                   uint32_t uiScalePercent, Appearance appearance,
+                                   Density density) {
     std::string text;
     text += kSchemaKey;
     text += '=';
@@ -211,17 +218,30 @@ std::string writeWorkspaceSettings(uint32_t schemaVersion, const WorkspaceVisibi
     text += '=';
     text += std::to_string(normalizedUiScalePercent(uiScalePercent));
     text += '\n';
+    text += kAppearanceKey;
+    text += '=';
+    text += appearanceName(appearance);
+    text += '\n';
+    text += kDensityKey;
+    text += '=';
+    text += densityName(density);
+    text += '\n';
     return text;
 }
 
 //======================================================================================================================
 WorkspaceDecision decideWorkspace(const std::optional<ParsedWorkspaceSettings>& parsed) {
     if (parsed.has_value() && parsed->schemaState == WorkspaceSchemaState::Present &&
-        parsed->schemaVersion == kWorkspaceSchemaVersion) {
-        return WorkspaceDecision{.kind = WorkspaceDecisionKind::Restore,
-                                 .visibility = parsed->visibility,
-                                 .uiScalePercent = normalizedUiScalePercent(parsed->uiScalePercent),
-                                 .resetPerformancePlacement = false};
+        (parsed->schemaVersion == kWorkspaceSchemaVersion || parsed->schemaVersion == 4)) {
+        return WorkspaceDecision{
+            .kind = WorkspaceDecisionKind::Restore,
+            .visibility = parsed->visibility,
+            .uiScalePercent = normalizedUiScalePercent(parsed->uiScalePercent),
+            .appearance = parsed->schemaVersion == kWorkspaceSchemaVersion ? parsed->appearance
+                                                                           : Appearance::Auto,
+            .density = parsed->schemaVersion == kWorkspaceSchemaVersion ? parsed->density
+                                                                        : Density::Comfortable,
+            .resetPerformancePlacement = false};
     }
     if (parsed.has_value() && parsed->schemaState == WorkspaceSchemaState::Present &&
         parsed->schemaVersion == 3) {

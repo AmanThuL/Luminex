@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "App/Model/Workspace/EditorTheme.h"
+
 #include <array>
 #include <cstdint>
 #include <optional>
@@ -63,11 +65,13 @@ struct WorkspaceVisibility {
 /// workspace contract or the required default topology changes -- never for cosmetic spacing or
 /// labels.
 ///
-/// Version 4 persists Rendering and the docked Performance summary. Version 3 rebuilds main docks
-/// once while preserving its six visibilities, UI scale and detached window placement. Version 2
-/// rebuilds default visibility and docks while preserving scale. Unknown schemas use defaults.
-/// Visibility and UI scale keys remain optional within the current schema.
-inline constexpr uint32_t kWorkspaceSchemaVersion = 4;
+/// Version 5 adds appearance and density. Version 4 restores without rebuilding and uses
+/// Auto appearance and Comfortable density. Version 4 persists Rendering and the docked Performance
+/// summary. Version 3 rebuilds main docks once while preserving its six visibilities, UI scale and
+/// detached window placement. Version 2 rebuilds default visibility and docks while preserving
+/// scale. Unknown schemas use defaults. Visibility and UI scale keys remain optional within the
+/// current schema.
+inline constexpr uint32_t kWorkspaceSchemaVersion = 5;
 
 /// Whether a settings-section body named a schema version, and if so, whether it was a parseable
 /// non-negative integer.
@@ -86,6 +90,8 @@ struct ParsedWorkspaceSettings {
                                     ///< `WorkspaceVisibility` default.
     /// Parsed scale, or default if missing or invalid.
     uint32_t uiScalePercent = kDefaultUiScalePercent;
+    Appearance appearance = Appearance::Auto; ///< Stored editor appearance preference.
+    Density density = Density::Comfortable;   ///< Stored editor spacing preference.
 };
 
 /// Parses the body of Luminex's workspace settings section: line-oriented `Key=Value` text, the
@@ -96,13 +102,17 @@ struct ParsedWorkspaceSettings {
 /// Unknown keys are ignored. A panel key absent from `sectionText` keeps its `WorkspaceVisibility`
 /// default rather than failing the parse; a boolean value other than `0` or `1` is likewise
 /// ignored, leaving that panel's default in place. UiScalePercent accepts integers in [75,150];
-/// missing, malformed or out-of-range values use kDefaultUiScalePercent.
+/// missing, malformed or out-of-range values use kDefaultUiScalePercent. Appearance and Density
+/// accept lowercase storage names; missing or unknown values keep Auto and Comfortable.
 ParsedWorkspaceSettings parseWorkspaceSettings(std::string_view sectionText);
 
-/// Encodes schema, visibility and normalized UI scale as a deterministic Key=Value section body.
-/// Parsing the result preserves the schema and visibility exactly and returns the normalized scale.
+/// Encodes schema, visibility, appearance, density and normalized UI scale as a deterministic
+/// Key=Value section body. Parsing the result preserves the schema and visibility exactly and
+/// returns the normalized scale.
 std::string writeWorkspaceSettings(uint32_t schemaVersion, const WorkspaceVisibility& visibility,
-                                   uint32_t uiScalePercent = kDefaultUiScalePercent);
+                                   uint32_t uiScalePercent = kDefaultUiScalePercent,
+                                   Appearance appearance = Appearance::Auto,
+                                   Density density = Density::Comfortable);
 
 /// What the workspace shell must do with a parsed settings section (or its absence) at startup.
 enum class WorkspaceDecisionKind {
@@ -117,6 +127,8 @@ struct WorkspaceDecision {
     WorkspaceVisibility visibility; ///< Visibility to apply either way.
     /// Restored scale for the current schema or known version 2/3 migration; default otherwise.
     uint32_t uiScalePercent = kDefaultUiScalePercent;
+    Appearance appearance = Appearance::Auto; ///< Restored editor appearance preference.
+    Density density = Density::Comfortable;   ///< Restored editor spacing preference.
     /// Re-center Performance on its next open only for default recovery, never schema 3 migration.
     bool resetPerformancePlacement = true;
 };
@@ -125,7 +137,8 @@ struct WorkspaceDecision {
 /// the ini had no Luminex workspace section at all -- a clean run, or an M5.2-era ini with no such
 /// section, are both legacy (spec section 4).
 ///
-/// The current schema restores docks and all values. Version 3 rebuilds main docking once while
+/// The current schema restores docks and all values. Version 4 restores docks, visibility and
+/// scale with default appearance and density. Version 3 rebuilds main docking once while
 /// preserving old visibilities/scale and enabling both new docked panels. Its detached window
 /// settings remain valid. Version 2 keeps only scale; unknown schemas reset every preference.
 WorkspaceDecision decideWorkspace(const std::optional<ParsedWorkspaceSettings>& parsed);
