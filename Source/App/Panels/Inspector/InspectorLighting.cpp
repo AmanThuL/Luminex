@@ -37,11 +37,18 @@ void drawLocalLightSection(const InspectorPanelContext& context, engine::LightId
         std::ranges::any_of(session.scene().animation.lightTracks, [&](const auto& track) {
             return session.scene().animationLightId(track.light) == id;
         });
+    const auto baseline = session.localLightDefault(id).value();
+    const auto headerMark = inspectorProvenance(
+        session, context.selection, inspectorSubjectEdited(session, context.selection), {}, true,
+        animated && light.position != baseline.position);
+    const auto enabledMark = inspectorProvenance(
+        session, context.selection, enabledState->own != enabledState->baseline, "Enabled", true);
     if (drawInspectorHeader(enabledState->label.c_str(), enabledState->kind.c_str(),
-                            "Restore the authored enable state, colour, intensity, range, "
+                            "Restore the authored enable state, color, intensity, range, "
                             "direction and cones. An orbiting light resets its position to the "
                             "track at the current playback time.",
-                            session.localLightChanged(id), &light.enabled)) {
+                            session.localLightChanged(id), &light.enabled, headerMark,
+                            enabledMark)) {
         if (const auto result = session.resetLocalLight(id); !result)
             editor_style::message(result.error().message.c_str(), true);
         else
@@ -57,6 +64,8 @@ void drawLocalLightSection(const InspectorPanelContext& context, engine::LightId
         editor_style::message("Off in scene because an ancestor is disabled.");
     bool edited = light.enabled != session.localLightEnabled(id);
     if (editor_style::beginPropertyGrid("localLightFields")) {
+        markInspectorField(context, light.position != baseline.position, "Position (world meters)",
+                           animated);
         edited |=
             editor_style::vector3("Position (world meters)", "position", &light.position.x, 0.05f);
         if (animated)
@@ -64,20 +73,24 @@ void drawLocalLightSection(const InspectorPanelContext& context, engine::LightId
                           "position; other light edits survive Play and Stop.");
         glm::vec3 colour(linearToSrgb(light.colour.r), linearToSrgb(light.colour.g),
                          linearToSrgb(light.colour.b));
+        markInspectorField(context, light.colour != baseline.colour, "Color (sRGB)");
         editor_style::field("Color (sRGB)");
         if (ImGui::ColorEdit3("##colour", &colour.x, ImGuiColorEditFlags_Float)) {
             light.colour = srgbToLinear(colour);
             edited = true;
         }
+        markInspectorField(context, light.intensity != baseline.intensity, "Intensity (relative)");
         editor_style::field("Intensity (relative)");
         edited |= ImGui::DragFloat("##intensity", &light.intensity, 0.1f, 0.0f, 100000.0f, "%.3f",
                                    ImGuiSliderFlags_AlwaysClamp);
         editorTooltip("Relative intensity on opaque and masked surfaces; local lights do not "
                       "cast shadows.");
+        markInspectorField(context, light.range != baseline.range, "Range (meters)");
         editor_style::field("Range (meters)");
         edited |= ImGui::DragFloat("##range", &light.range, 0.05f, 0.01f, 1000.0f, "%.3f",
                                    ImGuiSliderFlags_AlwaysClamp);
         if (light.type == engine::LocalLightType::Spot) {
+            markInspectorField(context, light.direction != baseline.direction, "Direction (world)");
             auto direction = light.direction;
             if (editor_style::vector3("Direction (world)", "direction", &direction.x, 0.01f)) {
                 if (glm::length(direction) > 1e-5f) {
@@ -87,8 +100,12 @@ void drawLocalLightSection(const InspectorPanelContext& context, engine::LightId
             }
             float inner = glm::degrees(light.innerCone);
             float outer = glm::degrees(light.outerCone);
+            markInspectorField(context, light.innerCone != baseline.innerCone,
+                               "Inner cone (degrees)");
             bool coneEdited = editor_style::slider("Inner cone (degrees)", "##innerCone", &inner,
                                                    0.0f, outer - 0.1f);
+            markInspectorField(context, light.outerCone != baseline.outerCone,
+                               "Outer cone (degrees)");
             coneEdited |= editor_style::slider("Outer cone (degrees)", "##outerCone", &outer,
                                                inner + 0.1f, 89.0f);
             if (coneEdited) {

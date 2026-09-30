@@ -6,6 +6,7 @@
 #pragma once
 
 #include "App/Model/Capture/NoticeQueue.h"
+#include "App/Model/Workspace/ActivityModel.h"
 #include "App/Model/Workspace/EditorIcon.h"
 #include "App/Model/Workspace/EditorTheme.h"
 #include "App/Model/Workspace/EditorThemeTokens.h"
@@ -44,6 +45,28 @@ const ThemePalette& activePalette();
 ImVec4 color(ThemeRole role);
 /// Packs an encoded color, multiplying its alpha by alphaScale in [0, 1].
 ImU32 colorU32(ThemeRole role, float alphaScale = 1.0f);
+
+/// Actor symbol diameter in base UI points.
+inline constexpr float kActorMarkSize = 8.0f;
+/// Draws a filled operator dot, system ring or software diamond in the actor's semantic role.
+/// size is a positive diameter in base UI points; this UI-thread item borrows no state.
+void actorMark(Actor actor, float size = kActorMarkSize);
+/// Draws the provenance symbol with a source tooltip; authored values emit no item.
+/// Session-only marks underline the preceding item's label and retain its source text unchanged.
+/// overlay places the symbol inside the preceding row without changing its hit target or layout;
+/// the row consumer supplies a combined source/status tooltip in that mode.
+void provenanceMark(const ProvenanceMark& mark, bool overlay = false);
+/// Full or contracted strip width in scaled UI points, including its optional Stop button.
+float activityStripWidth(const Activity& activity, bool showVerb = true);
+/// Draws one nonwrapping activity, with a 2 pt progress bar; true requests the existing Stop path.
+/// showVerb contracts only the verb. The actor and stoppable action always remain visible.
+bool activityStrip(const Activity& activity, bool showVerb = true);
+/// Sets owned provenance for the next field label only; consumed by field or checkbox.
+void setNextFieldProvenance(std::optional<ProvenanceMark> mark);
+/// Draws and clears the pending field mark beside the preceding label, if any.
+void consumeFieldProvenance();
+/// Space reserved beside a field label for its pending mark, including the gap.
+float fieldProvenanceWidth();
 
 /// Minimum property-grid width in base UI points before labels stack above values.
 inline constexpr float kPropertyGridMinWidth = 260.0f;
@@ -97,6 +120,8 @@ inline bool beginFields(const char* id, float twoColumnWidth = 360.0f) {
     if (wide) {
         ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthStretch, 0.43f);
         ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch, 0.57f);
+    } else {
+        ImGui::TableSetupColumn("Field", ImGuiTableColumnFlags_WidthStretch, 1.0f);
     }
     return true;
 }
@@ -105,7 +130,11 @@ inline bool beginFields(const char* id, float twoColumnWidth = 360.0f) {
 inline void field(const char* label) {
     ImGui::TableNextRow();
     ImGui::TableNextColumn();
-    ImGui::TextWrapped("%s", label);
+    const float labelWidth = ImGui::GetContentRegionAvail().x - fieldProvenanceWidth();
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + (labelWidth > 0 ? labelWidth : 1.0f));
+    ImGui::TextUnformatted(label);
+    ImGui::PopTextWrapPos();
+    consumeFieldProvenance();
     if (ImGui::TableGetColumnCount() == 1) {
         ImGui::TableNextRow();
     }
@@ -148,7 +177,7 @@ inline bool checkbox(const char* label, const char* id, bool* value) {
     ImGui::TableNextRow();
     ImGui::TableNextColumn();
     const float labelWidth = ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() -
-                             ImGui::GetStyle().ItemInnerSpacing.x;
+                             ImGui::GetStyle().ItemInnerSpacing.x - fieldProvenanceWidth();
     ImGui::PushID(id);
     bool changed = false;
     if (ImGui::CalcTextSize(label).x <= labelWidth) {
@@ -156,8 +185,12 @@ inline bool checkbox(const char* label, const char* id, bool* value) {
     } else {
         changed = ImGui::Checkbox("##value", value);
         ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-        ImGui::TextWrapped("%s", label);
+        const float wrappedWidth = ImGui::GetContentRegionAvail().x - fieldProvenanceWidth();
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + (wrappedWidth > 0 ? wrappedWidth : 1.0f));
+        ImGui::TextUnformatted(label);
+        ImGui::PopTextWrapPos();
     }
+    consumeFieldProvenance();
     ImGui::PopID();
     return changed;
 }

@@ -27,6 +27,9 @@ constexpr std::array kCatalog{
     GalleryEntry{GalleryComponent::LegendChip, "Legend chip"},
     GalleryEntry{GalleryComponent::GraphCard, "Graph card"},
     GalleryEntry{GalleryComponent::ConsoleRow, "Console row"},
+    GalleryEntry{GalleryComponent::ActivityStrip, "Activity strip"},
+    GalleryEntry{GalleryComponent::AttentionRing, "Attention ring"},
+    GalleryEntry{GalleryComponent::ProposalCard, "Proposal card"},
 };
 } // namespace
 

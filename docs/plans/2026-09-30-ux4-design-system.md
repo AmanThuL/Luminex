@@ -240,7 +240,7 @@ actor; verb; optional<float> progress; bool stoppable; tooltip; }`.
 **Produces:** `editor_style::actorMark(Actor, float size)`, `provenanceMark(const
 ProvenanceMark&)` (dot, diamond, ring, dashed underline, gear; tooltip names `source`),
 `activityStrip(const Activity&)` (mark, verb, 2 pt bar, Stop); `MenuBarWidths::activity`.
-- [ ] Tests first: `fitMenuBar` drops the activity verb (the mark stays), then the readout, then
+- [x] Tests first: `fitMenuBar` drops the activity verb (the mark stays), then the readout, then
   zoom. Hierarchy rows, Inspector headers and fields and notices use the marks (the title keeps
   its `*`); every status string stays. The gallery adds activity-strip, attention-ring,
   proposal-card and every agent lifecycle state; nothing else draws agent vocabulary. Commit

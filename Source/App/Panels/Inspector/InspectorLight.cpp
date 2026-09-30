@@ -32,11 +32,16 @@ void drawDirectionalLightSection(const InspectorPanelContext& context, size_t in
         editor_style::message("This directional light is unavailable in the document.", true);
         return;
     }
+    const auto& baseline = session.lightDefault(index);
+    const auto headerMark = inspectorProvenance(
+        session, context.selection, inspectorSubjectEdited(session, context.selection), {}, true);
+    const auto enabledMark = inspectorProvenance(
+        session, context.selection, enabledState->own != enabledState->baseline, "Enabled", true);
     bool enabled = enabledState->own;
     if (drawInspectorHeader(enabledState->label.c_str(), "Directional",
                             "Restore this directional light's direction and scene-linear "
                             "radiance and its own enabled state from the document.",
-                            session.lightChanged(index), &enabled)) {
+                            session.lightChanged(index), &enabled, headerMark, enabledMark)) {
         if (const auto result = session.resetLight(index); !result)
             editor_style::message(result.error().message.c_str(), true);
         else {
@@ -49,12 +54,15 @@ void drawDirectionalLightSection(const InspectorPanelContext& context, size_t in
         editor_style::message("Off in scene because an ancestor is disabled.");
     light.enabled = enabled;
     if (editor_style::beginPropertyGrid("directionalLightFields")) {
+        markInspectorField(context, light.direction != baseline.direction, "Direction (world)");
         glm::vec3 direction = light.direction;
         if (editor_style::vector3("Direction (world)", "direction", &direction.x, 0.01f)) {
             if (glm::length(direction) > kMinLightDirectionLength) {
                 light.direction = glm::normalize(direction);
             }
         }
+        markInspectorField(context, light.strength != baseline.strength,
+                           "Radiance (scene-linear RGB)");
         editor_style::vector3("Radiance (scene-linear RGB)", "radiance", &light.strength.x, 0.01f,
                               0.0f, std::numeric_limits<float>::max(), "%.3f",
                               ImGuiSliderFlags_AlwaysClamp, true);

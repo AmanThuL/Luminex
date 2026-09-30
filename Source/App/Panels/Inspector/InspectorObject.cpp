@@ -27,13 +27,19 @@ void drawObjectSection(const InspectorPanelContext& context, size_t index) {
     const bool animated =
         std::ranges::any_of(session.scene().animation.tracks,
                             [index](const auto& track) { return track.objectIndex == index; });
+    const auto baseline = session.objectDefault(index);
+    const auto headerMark = inspectorProvenance(session, context.selection,
+                                                inspectorSubjectEdited(session, context.selection),
+                                                {}, true, animated && session.objectChanged(index));
+    const auto enabledMark = inspectorProvenance(
+        session, context.selection, enabledState->own != enabledState->baseline, "Enabled", true);
     bool enabled = enabledState->own;
     if (drawInspectorHeader(enabledState->label.c_str(), enabledState->kind.c_str(),
                             "Restore this object's authored transform and own enabled state. "
                             "Animated objects use their track at the current time.",
                             session.objectChanged(index) ||
                                 enabledState->own != enabledState->baseline,
-                            &enabled)) {
+                            &enabled, headerMark, enabledMark)) {
         session.resetObject(index);
         if (const auto result = resetInspectorEnabled(session, context.selection); !result)
             editor_style::message(result.error().message.c_str(), true);
@@ -63,13 +69,18 @@ void drawObjectSection(const InspectorPanelContext& context, size_t index) {
     };
     if (editor_style::beginPropertyGrid("objectFields")) {
         DecomposedTransform transform{object.position, object.eulerDegrees, object.scale};
+        markInspectorField(context, object.position != baseline.position, "Position (world)",
+                           animated);
         bool edited =
             editor_style::vector3("Position (world)", "position", &transform.position.x, 0.05f);
         if (animated)
             editorTooltip("Pause playback to edit. Reset samples the authored track at the current "
                           "time; playback replaces transform edits on its next sample.");
+        markInspectorField(context, object.eulerDegrees != baseline.eulerDegrees,
+                           "Rotation (XYZ degrees)", animated);
         edited |= editor_style::vector3("Rotation (XYZ degrees)", "rotation",
                                         &transform.eulerDegrees.x, 1.0f);
+        markInspectorField(context, object.scale != baseline.scale, "Scale", animated);
         edited |= editor_style::vector3("Scale", "scale", &transform.scale.x, 0.01f, 0.01f, 100.0f,
                                         "%.3f", ImGuiSliderFlags_AlwaysClamp);
         if (edited) {

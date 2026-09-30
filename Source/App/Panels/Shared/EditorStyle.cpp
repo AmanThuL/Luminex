@@ -10,7 +10,9 @@
 #include <imgui_internal.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <numbers>
 
 namespace lmx::app::editor_style {
 namespace {
@@ -18,6 +20,57 @@ namespace {
 bool iconFontAvailable = false;
 EditorFonts editorFonts;
 ThemePalette palette = kDarkPalette;
+std::optional<ProvenanceMark> nextFieldMark;
+
+//======================================================================================================================
+ThemeRole actorRole(Actor actor) {
+    switch (actor) {
+    case Actor::Operator:
+        return ThemeRole::ActorOperator;
+    case Actor::System:
+        return ThemeRole::ActorSystem;
+    case Actor::Agent:
+        return ThemeRole::ActorAgent;
+    }
+    return ThemeRole::ActorSystem;
+}
+
+//======================================================================================================================
+void drawActor(ImVec2 center, Actor actor, float size, bool ghost = false) {
+    auto* draw = ImGui::GetWindowDrawList();
+    const float radius = scaled(size) * 0.5f;
+    const auto ink = colorU32(actorRole(actor));
+    if (actor == Actor::Agent) {
+        const std::array points{
+            ImVec2{center.x, center.y - radius}, ImVec2{center.x + radius, center.y},
+            ImVec2{center.x, center.y + radius}, ImVec2{center.x - radius, center.y}};
+        if (ghost)
+            draw->AddPolyline(points.data(), points.size(), ink, ImDrawFlags_Closed,
+                              scaled(kShape.border));
+        else
+            draw->AddConvexPolyFilled(points.data(), points.size(), ink);
+    } else if (actor == Actor::System) {
+        draw->AddCircle(center, radius, ink, 0, scaled(kShape.border));
+    } else {
+        draw->AddCircleFilled(center, radius, ink);
+    }
+}
+
+//======================================================================================================================
+void drawGear(ImVec2 center) {
+    std::array<ImVec2, 32> teeth;
+    for (size_t i = 0; i < teeth.size(); ++i) {
+        const float angle = static_cast<float>(i) * 2.0f * std::numbers::pi_v<float> /
+                            static_cast<float>(teeth.size());
+        const float radius = scaled(kActorMarkSize) * (i % 4 < 2 ? 0.5f : 0.36f);
+        teeth[i] = {center.x + std::cos(angle) * radius, center.y + std::sin(angle) * radius};
+    }
+    auto* draw = ImGui::GetWindowDrawList();
+    draw->AddPolyline(teeth.data(), teeth.size(), colorU32(ThemeRole::ActorSystem),
+                      ImDrawFlags_Closed, scaled(kShape.border));
+    draw->AddCircle(center, scaled(1.5f), colorU32(ThemeRole::ActorSystem), 0,
+                    scaled(kShape.border));
+}
 
 //======================================================================================================================
 ImVec4 glyphInkBounds(const ImFontGlyph& glyph, const ImTextureData& texture) {
@@ -131,6 +184,135 @@ ImU32 colorU32(ThemeRole role, float alphaScale) {
     auto c = color(role);
     c.w *= alphaScale;
     return ImGui::ColorConvertFloat4ToU32(c);
+}
+
+//======================================================================================================================
+void actorMark(Actor actor, float size) {
+    const auto start = ImGui::GetCursorScreenPos();
+    ImGui::Dummy({scaled(size), ImGui::GetTextLineHeight()});
+    drawActor({start.x + scaled(size) * 0.5f, start.y + ImGui::GetTextLineHeight() * 0.5f}, actor,
+              size);
+}
+
+//======================================================================================================================
+void provenanceMark(const ProvenanceMark& mark, bool overlay) {
+    if (mark.kind == Provenance::Authored)
+        return;
+    if (mark.kind == Provenance::SessionOnly) {
+        const auto start = ImGui::GetItemRectMin();
+        const auto end = ImGui::GetItemRectMax();
+        const float width = std::min(end.x - start.x, ImGui::GetContentRegionAvail().x);
+        for (float x = 0; x < width; x += scaled(5.0f))
+            ImGui::GetWindowDrawList()->AddLine(
+                {start.x + x, end.y}, {start.x + std::min(x + scaled(3.0f), width), end.y},
+                colorU32(ThemeRole::ProvSession), scaled(kShape.border));
+    } else {
+        ImVec2 center;
+        if (overlay) {
+            const auto minimum = ImGui::GetItemRectMin();
+            const auto maximum = ImGui::GetItemRectMax();
+            const float right = std::min(maximum.x, ImGui::GetWindowDrawList()->GetClipRectMax().x);
+            center = {right - scaled(kActorMarkSize) * 0.5f - ImGui::GetStyle().FramePadding.x,
+                      (minimum.y + maximum.y) * 0.5f};
+        } else {
+            ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+            const auto start = ImGui::GetCursorScreenPos();
+            ImGui::Dummy({scaled(kActorMarkSize), ImGui::GetTextLineHeight()});
+            center = {start.x + scaled(kActorMarkSize) * 0.5f,
+                      start.y + ImGui::GetTextLineHeight() * 0.5f};
+        }
+        switch (mark.kind) {
+        case Provenance::Edited:
+            drawActor(center, Actor::Operator, kActorMarkSize);
+            break;
+        case Provenance::SystemApplied:
+            drawGear(center);
+            break;
+        case Provenance::Proposed:
+            drawActor(center, Actor::Agent, kActorMarkSize, true);
+            break;
+        case Provenance::AgentApplied:
+            ImGui::GetWindowDrawList()->AddCircleFilled(center, scaled(kActorMarkSize) * 0.5f,
+                                                        colorU32(ThemeRole::ActorAgent));
+            break;
+        case Provenance::Authored:
+        case Provenance::SessionOnly:
+            break;
+        }
+    }
+    if (!overlay)
+        editorTooltip(mark.source.c_str());
+}
+
+//======================================================================================================================
+float activityStripWidth(const Activity& activity, bool showVerb) {
+    const float spacing = ImGui::GetStyle().ItemSpacing.x;
+    return scaled(kActorMarkSize) +
+           (showVerb ? spacing + ImGui::CalcTextSize(activity.verb.c_str()).x : 0) +
+           (activity.stoppable
+                ? spacing + ImGui::CalcTextSize("Stop").x + ImGui::GetStyle().FramePadding.x * 2.0f
+                : 0);
+}
+
+//======================================================================================================================
+bool activityStrip(const Activity& activity, bool showVerb) {
+    const float width = activityStripWidth(activity, showVerb);
+    const float height = ImGui::GetFrameHeight();
+    const auto start = ImGui::GetCursorScreenPos();
+    const float markWidth = scaled(kActorMarkSize);
+    const float spacing = ImGui::GetStyle().ItemSpacing.x;
+    ImGui::BeginGroup();
+    ImGui::Dummy({markWidth, height});
+    auto* draw = ImGui::GetWindowDrawList();
+    drawActor({start.x + markWidth * 0.5f, start.y + height * 0.5f}, activity.actor,
+              kActorMarkSize);
+    if (showVerb) {
+        ImGui::SameLine(0.0f, spacing);
+        ImGui::Dummy({ImGui::CalcTextSize(activity.verb.c_str()).x, height});
+        draw->AddText(
+            {start.x + markWidth + spacing, start.y + (height - ImGui::GetTextLineHeight()) * 0.5f},
+            colorU32(ThemeRole::TextPrimary), activity.verb.c_str());
+    }
+    bool stop = false;
+    if (activity.stoppable) {
+        ImGui::SameLine(0.0f, spacing);
+        stop = ImGui::SmallButton("Stop##Activity");
+    }
+    const float stopWidth = ImGui::CalcTextSize("Stop").x + ImGui::GetStyle().FramePadding.x * 2;
+    const float barWidth = activity.stoppable ? width - stopWidth - spacing : width;
+    const ImVec2 barStart{start.x, start.y + height - scaled(2.0f)};
+    const ImVec2 barEnd{start.x + barWidth, start.y + height};
+    draw->AddRectFilled(barStart, barEnd, colorU32(ThemeRole::SurfaceSunken));
+    const float progress = activity.progress.value_or(0.0f);
+    if (activity.progress)
+        draw->AddRectFilled(barStart, {barStart.x + barWidth * progress, barEnd.y},
+                            colorU32(actorRole(activity.actor)));
+    else
+        draw->AddLine(barStart, {barEnd.x, barStart.y}, colorU32(actorRole(activity.actor)),
+                      scaled(kShape.border));
+    ImGui::EndGroup();
+    editorTooltip(activity.tooltip.c_str());
+    return stop;
+}
+
+//======================================================================================================================
+void setNextFieldProvenance(std::optional<ProvenanceMark> mark) {
+    nextFieldMark = std::move(mark);
+}
+
+//======================================================================================================================
+void consumeFieldProvenance() {
+    if (nextFieldMark)
+        provenanceMark(*nextFieldMark);
+    nextFieldMark.reset();
+}
+
+//======================================================================================================================
+float fieldProvenanceWidth() {
+    return nextFieldMark && nextFieldMark->kind != Provenance::Authored &&
+                   nextFieldMark->kind != Provenance::SessionOnly
+               ? scaled(kActorMarkSize) + ImGui::GetStyle().ItemInnerSpacing.x
+               : 0.0f;
 }
 
 //======================================================================================================================
@@ -313,6 +495,11 @@ void drawNotice(NoticeQueue& notices, double nowSeconds) {
         if (iconButton("dismiss", EditorIcon::Close, true, "Dismiss notice")) {
             notices.dismiss();
         }
+        actorMark(Actor::System);
+        const std::string source = "Editor status report · " + result->message +
+                                   (result->path.empty() ? "" : " · " + result->path);
+        editorTooltip(source.c_str());
+        ImGui::SameLine();
         drawActionFeedback("result", *result);
     }
     ImGui::End();

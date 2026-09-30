@@ -60,13 +60,18 @@ void stateLabel(const char* state) {
 //======================================================================================================================
 void mark(const ImVec2& center, std::string_view kind) {
     auto* draw = ImGui::GetWindowDrawList();
-    const float radius = scaled(3.5f);
+    const float radius = scaled(kActorMarkSize) * 0.5f;
     if (kind == "Proposed" || kind == "Actor") {
         const std::array points{
             ImVec2{center.x, center.y - radius}, ImVec2{center.x + radius, center.y},
             ImVec2{center.x, center.y + radius}, ImVec2{center.x - radius, center.y}};
-        draw->AddConvexPolyFilled(points.data(), static_cast<int>(points.size()),
-                                  colorU32(ThemeRole::AccentAgent));
+        if (kind == "Proposed")
+            draw->AddPolyline(points.data(), static_cast<int>(points.size()),
+                              colorU32(ThemeRole::ActorAgent), ImDrawFlags_Closed,
+                              scaled(kShape.border));
+        else
+            draw->AddConvexPolyFilled(points.data(), static_cast<int>(points.size()),
+                                      colorU32(ThemeRole::ActorAgent));
     } else if (kind == "SystemApplied") {
         draw->AddCircle(center, radius, colorU32(ThemeRole::ActorSystem), 0, scaled(kShape.border));
     } else {
@@ -110,10 +115,16 @@ void fixture(const char* text, ThemeRole fill, ThemeRole ink, float radius = kSh
         if (provenance == "Session")
             dashedLine({start.x + padding, end.y - scaled(2.0f)}, textSize.x,
                        ThemeRole::ProvSession);
-        else if (provenance != "AgentFocus")
+        else if (provenance != "AgentFocus" && provenance != "SystemApplied")
             mark(center, provenance);
     }
     ImGui::Dummy({width, height});
+    if (provenance == "SystemApplied") {
+        provenanceMark(
+            {Provenance::SystemApplied, Actor::System, "Dynamic resolution · Gallery fixture"},
+            true);
+        editorTooltip("Dynamic resolution · Gallery fixture");
+    }
 }
 
 //======================================================================================================================
@@ -217,9 +228,91 @@ void graphCard(std::string_view kind) {
 }
 
 //======================================================================================================================
+void activitySpecimens() {
+    for (const char* state :
+         {"idle", "working", "awaiting", "proposed", "applied", "error", "stale"}) {
+        ImGui::PushID(state);
+        stateLabel(state);
+        const std::string_view lifecycle(state);
+        Activity specimen{Actor::Agent, state,
+                          lifecycle == "working" ? std::optional{0.375f} : std::nullopt, false,
+                          "Reserved lifecycle · Gallery fixture"};
+        activityStrip(specimen, activityStripWidth(specimen) <= ImGui::GetContentRegionAvail().x);
+        if (lifecycle == "proposed" || lifecycle == "applied") {
+            provenanceMark(
+                {lifecycle == "proposed" ? Provenance::Proposed : Provenance::AgentApplied,
+                 Actor::Agent, "Reserved provenance · Gallery fixture"});
+        }
+        if (lifecycle == "error" || lifecycle == "stale")
+            ImGui::TextColored(
+                color(lifecycle == "error" ? ThemeRole::StatusError : ThemeRole::TextDisabled),
+                "%s",
+                lifecycle == "error" ? "Evidence unavailable (fixture)"
+                                     : "Evidence out of date (fixture)");
+        ImGui::PopID();
+    }
+    for (const Activity& specimen :
+         {Activity{Actor::Operator, "Measuring", 0.375f, true, "Measurement · Gallery fixture"},
+          Activity{Actor::System, "Loading", std::nullopt, false,
+                   "Scene load · Gallery fixture"}}) {
+        ImGui::PushID(specimen.verb.c_str());
+        stateLabel(specimen.actor == Actor::Operator ? "Operator" : "System");
+        activityStrip(specimen, activityStripWidth(specimen) <= ImGui::GetContentRegionAvail().x);
+        ImGui::PopID();
+    }
+}
+
+//======================================================================================================================
+void proposalSpecimen() {
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, scaled(kShape.card));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, color(ThemeRole::SurfaceRaised));
+    ImGui::PushStyleColor(ImGuiCol_Border, color(ThemeRole::BorderSubtle));
+    if (ImGui::BeginChild("##proposal", {0, 0},
+                          ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY)) {
+        {
+            const ScopedType strong(TypeRole::BodyStrong);
+            ImGui::TextWrapped("Adjust local-light intensity");
+        }
+        actorMark(Actor::Agent);
+        editorTooltip("Reserved proposal actor · Gallery fixture");
+        ImGui::SameLine();
+        ImGui::TextUnformatted("Agent");
+        ImGui::SameLine();
+        ImGui::TextColored(color(ThemeRole::TextSecondary), "2 changes · proposed");
+        proposedValue();
+        ImGui::TextLink("Evidence: comparison report (fixture)");
+        editorTooltip("Fixture-only evidence reference; no external record is opened.");
+        ImGui::Button("Show");
+        nextInRow(ImGui::CalcTextSize("Accept").x + ImGui::GetStyle().FramePadding.x * 2);
+        primaryButton("Accept");
+        nextInRow(ImGui::CalcTextSize("Reject").x + ImGui::GetStyle().FramePadding.x * 2);
+        ImGui::Button("Reject");
+        message("Gallery fixture; these controls do not change the scene.");
+    }
+    ImGui::EndChild();
+    ImGui::PopStyleColor(2);
+    ImGui::PopStyleVar();
+}
+
+//======================================================================================================================
 void drawComponent(GalleryComponent component) {
     const ScopedType body(TypeRole::Body);
     switch (component) {
+    case GalleryComponent::ActivityStrip:
+        activitySpecimens();
+        break;
+    case GalleryComponent::AttentionRing:
+        stateLabel("Reserved focus");
+        fixture("Local Light 9 · attention", ThemeRole::SurfacePanel, ThemeRole::TextPrimary,
+                kShape.control, ThemeRole::AccentAgent, 22.0f, "AgentFocus");
+        editorTooltip("Software attention · Gallery fixture; operator selection is unchanged.");
+        fixture("Intensity 12.000", ThemeRole::SurfaceSunken, ThemeRole::TextPrimary,
+                kShape.control, ThemeRole::AccentAgent, 22.0f, "AgentFocus");
+        editorTooltip("Software attention · Gallery fixture");
+        break;
+    case GalleryComponent::ProposalCard:
+        proposalSpecimen();
+        break;
     case GalleryComponent::Button:
         for (bool primary : {false, true}) {
             stateLabel(primary ? "Primary" : "Neutral");

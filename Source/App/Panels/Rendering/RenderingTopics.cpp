@@ -174,7 +174,15 @@ static void drawTemporalSection(const InspectorPanelContext& context, RenderingC
             editor_style::message("Scale adjusts automatically to the GPU budget.");
         drawTemporalReadings(context);
         if (editor_style::beginPropertyGrid("resolutionReadings")) {
-            valueRow("Effective scale", std::format("{:.2f}", presentation.effectiveScale));
+            auto mark =
+                resolutionProvenance(dynamicResolutionActive(settings), presentation.effectiveScale,
+                                     settings.gpuBudgetMilliseconds);
+            if (mark) {
+                mark->source += " · latest declared effective scale";
+                if (presentation.waitingForDeclaration)
+                    mark->source += " · awaiting current declaration";
+            }
+            valueRow("Effective scale", std::format("{:.2f}", presentation.effectiveScale), mark);
             valueRow("Controller", dynamicResolutionActive(settings) ? "Active" : "Inactive");
             editor_style::endFields();
         }

@@ -8,6 +8,7 @@
 #include "App/Model/Scene/SceneSession.h"
 #include "App/Model/Scene/SceneTree.h"
 #include "App/Model/Scene/SelectionBounds.h"
+#include "App/Panels/Inspector/InspectorInternal.h"
 #include "App/Panels/Shared/EditorStyle.h"
 
 #include <imgui.h>
@@ -85,8 +86,20 @@ void drawLeaf(const EditorSelectionRow& row, const ScenePanelContext& context,
         selectRow(context.selection, context.activeSceneId, row);
     }
     const std::string& fullName = row.detailLabel.empty() ? row.displayLabel : row.detailLabel;
+    const EditorSelection subject{.sceneId = context.activeSceneId,
+                                  .subject = row.subject,
+                                  .index = row.index,
+                                  .lightId = row.lightId};
+    const auto mark =
+        context.session
+            ? inspectorProvenance(*context.session, subject,
+                                  inspectorSubjectEdited(*context.session, subject), {}, true)
+            : std::nullopt;
+    if (mark)
+        editor_style::provenanceMark(*mark, true);
     const std::string tip = fullName + visibilityTip +
-                            (disabledLight ? "\nDisabled light; enable it in the Inspector." : "");
+                            (disabledLight ? "\nDisabled light; enable it in the Inspector." : "") +
+                            (mark ? "\n" + mark->source : "");
     editorTooltip(tip.c_str());
     if (ImGui::BeginPopupContextItem("SubjectActions")) {
         selectRow(context.selection, context.activeSceneId, row);
@@ -295,12 +308,30 @@ void drawTreeRow(const SceneTreeRow& row, const ScenePanelContext& context) {
     const bool culled = row.effective && primitiveCount > 0 && knownPrimitives == primitiveCount &&
                         rejectedPrimitives == primitiveCount;
     const bool dimmed = !row.effective || culled;
+    const EditorSelection subject{.sceneId = context.activeSceneId,
+                                  .subject = row.subject,
+                                  .index = row.index,
+                                  .lightId = row.lightId,
+                                  .node = row.node,
+                                  .importedNode = row.importedNode};
+    const bool preview =
+        row.subject == EditorSubject::Object && context.session &&
+        context.session->objectChanged(row.index) &&
+        std::ranges::any_of(context.activeScene.animation.tracks,
+                            [&](const auto& track) { return track.objectIndex == row.index; });
+    const auto mark = root && context.loadedScene
+                          ? documentProvenance(context.dirty, context.loadedScene->path.string())
+                      : context.session
+                          ? inspectorProvenance(*context.session, subject,
+                                                inspectorSubjectEdited(*context.session, subject),
+                                                {}, true, preview)
+                          : std::nullopt;
     std::string label = row.label;
     if (!row.enabled)
         label += " [off]";
     else if (!row.effective)
         label += " [off by parent]";
-    if (row.generated)
+    if (row.generated || (mark && mark->kind == Provenance::SessionOnly))
         label += " · not saved";
     // Rows are drawn flat with an explicit indent so a clipper can skip whole ranges; open state
     // comes from the model and is written back only when the user toggles it.
@@ -324,24 +355,16 @@ void drawTreeRow(const SceneTreeRow& row, const ScenePanelContext& context) {
     if (dimmed && !selected)
         ImGui::PushStyleColor(ImGuiCol_Text, editor_style::color(ThemeRole::TextDisabled));
     const bool opened = ImGui::TreeNodeEx("document-row", flags, "%s", label.c_str());
-    if (root && context.dirty) {
-        const auto minimum = ImGui::GetItemRectMin();
-        const auto maximum = ImGui::GetItemRectMax();
-        const float radius = ImGui::GetFontSize() * 0.2f;
-        auto* draw = ImGui::GetWindowDrawList();
-        // A spanning row includes horizontally overflowing content; keep its status in view.
-        const float right = std::min(maximum.x, draw->GetClipRectMax().x);
-        draw->AddCircleFilled(
-            {right - ImGui::GetStyle().FramePadding.x - radius, (minimum.y + maximum.y) * 0.5f},
-            radius, ImGui::GetColorU32(ImGuiCol_UnsavedMarker), 8);
-    }
+    if (mark)
+        editor_style::provenanceMark(*mark, true);
     if (dimmed && !selected)
         ImGui::PopStyleColor();
     if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
         selectTreeRow(row, context);
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled)) {
         const std::string tip =
-            treeRowTooltip(row, context, primitiveCount, rejectedPrimitives, culled, status);
+            treeRowTooltip(row, context, primitiveCount, rejectedPrimitives, culled, status) +
+            (mark ? "\n" + mark->source : "");
         editorTooltip(tip.c_str());
     }
     if (ImGui::BeginPopupContextItem("SubjectActions")) {

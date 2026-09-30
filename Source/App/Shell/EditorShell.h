@@ -25,6 +25,7 @@
 #include "App/Model/Scene/SceneLoadState.h"
 #include "App/Model/Scene/SceneSession.h"
 #include "App/Model/Scene/SceneTreeState.h"
+#include "App/Model/Workspace/ActivityModel.h"
 #include "App/Model/Workspace/WorkspaceModel.h"
 #include "App/Panels/Gallery/StyleGalleryPanel.h"
 #include "App/Panels/Graph/RenderGraphPanel.h"
@@ -365,6 +366,7 @@ private:
     // from one buildUI() to the next (Source/App/Model/Rendering/Temporal/DynamicResolution.h).
     render::ResolutionController m_resolutionController;
     DynamicResolutionState m_dynamicResolutionState;
+    std::optional<ScaleChange> m_lastControllerScaleChange;
 
     // Viewport panel size in *pixels*. ImGui works in points; the scene target has to be sized in
     // the backing store's units or the image is upscaled on a Retina display, exactly as an

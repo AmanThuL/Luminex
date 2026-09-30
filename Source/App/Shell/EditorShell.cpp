@@ -332,6 +332,8 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
                            newestTimed);
     if (dynamicResolutionActive(m_settings) &&
         m_settings.renderScale != renderScaleBeforeDynamicResolution) {
+        m_lastControllerScaleChange = ScaleChange{renderScaleBeforeDynamicResolution,
+                                                  m_settings.renderScale, ImGui::GetTime()};
         LMX_LOG_INFO("render scale {:.2f} -> {:.2f} after {:.2f} ms",
                      renderScaleBeforeDynamicResolution, m_settings.renderScale,
                      m_dynamicResolutionState.lastObservedMilliseconds);
@@ -511,6 +513,7 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
                               .viewportWidth = m_viewportWidth,
                               .viewportHeight = m_viewportHeight,
                               .viewportVisible = viewportUsable,
+                              .documentDirty = m_documentDirty,
                               .selectionHiddenByFilter = selectionHidden,
                               .visibilityDisplay = &m_visibilityDisplay,
                               .sceneFilter = &m_sceneFilter,

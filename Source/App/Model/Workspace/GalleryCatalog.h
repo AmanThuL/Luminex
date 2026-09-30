@@ -30,6 +30,9 @@ enum class GalleryComponent : uint8_t {
     LegendChip,    ///< legend-chip specimen.
     GraphCard,     ///< graph-card specimen.
     ConsoleRow,    ///< console-row specimen.
+    ActivityStrip, ///< activity-strip specimen.
+    AttentionRing, ///< attention-ring specimen.
+    ProposalCard,  ///< proposal-card specimen.
 };
 
 /// A renderer identity and its stable Figma component name.

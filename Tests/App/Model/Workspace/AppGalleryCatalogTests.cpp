@@ -10,11 +10,12 @@ using namespace lmx::app;
 
 //======================================================================================================================
 TEST_CASE("style gallery names and renderer identities are unique", "[app][gallery]") {
-    constexpr std::array names{"Button",         "Icon button",  "Checkbox",      "Chip",
-                               "Field/Text",     "Field/Number", "Field/Select",  "Field/Slider",
-                               "Dock tab",       "Menu item",    "Hierarchy row", "Property row",
-                               "Subject header", "Topic header", "Notice",        "Legend chip",
-                               "Graph card",     "Console row"};
+    constexpr std::array names{"Button",         "Icon button",  "Checkbox",       "Chip",
+                               "Field/Text",     "Field/Number", "Field/Select",   "Field/Slider",
+                               "Dock tab",       "Menu item",    "Hierarchy row",  "Property row",
+                               "Subject header", "Topic header", "Notice",         "Legend chip",
+                               "Graph card",     "Console row",  "Activity strip", "Attention ring",
+                               "Proposal card"};
     const auto catalog = galleryCatalog();
     REQUIRE(catalog.size() == names.size());
     std::set<std::string_view> uniqueNames;
