@@ -8,6 +8,7 @@
 #include "App/Model/Graph/FrameRecordRing.h"
 #include "App/Model/Options/AppOptions.h"
 #include "App/Model/Scene/SceneDefaults.h"
+#include "App/Shell/AppAppearance.h"
 #include "App/Shell/AppIcon.h"
 #include "App/Shell/ConsoleLogSink.h"
 #include "App/Shell/EditorShell.h"
@@ -149,6 +150,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
     }
 
     shell->primeAppearance(options.appearance);
+    shell->onSystemThemeChanged(lmx::app::systemTheme());
     if (auto primed = shell->primeTemporal(options); !primed) {
         LMX_LOG_ERROR("startup lighting failed: {}", primed.error().message);
         return 1;
@@ -194,6 +196,9 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
             // ImGui must observe every event before input ownership is queried.
             ImGui_ImplSDL3_ProcessEvent(&event);
             switch (event.type) {
+            case SDL_EVENT_SYSTEM_THEME_CHANGED:
+                shell->onSystemThemeChanged(lmx::app::systemTheme());
+                break;
             case SDL_EVENT_QUIT:
                 shell->requestQuit();
                 break;
@@ -400,6 +405,8 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         // skipped-drawable path continues above without opening an ImGui frame, so it never reaches
         // here with stale platform draw data.
         ImGui::UpdatePlatformWindows();
+        lmx::app::applyViewportAppearance(
+            lmx::app::forcedWindowAppearance(shell->effectiveAppearance()));
         ImGui::RenderPlatformWindowsDefault();
 
         if (capturingThisFrame) {

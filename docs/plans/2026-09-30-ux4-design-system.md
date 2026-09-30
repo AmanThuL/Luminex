@@ -133,7 +133,7 @@ const -> std::array<float, 4>`; `editor_style::setActivePalette(const ThemePalet
 (`accessibilityDisplayShouldReduceMotion`), `applyViewportAppearance(std::optional<ThemeKind>)`,
 run after `UpdatePlatformWindows`, setting Aqua, Dark Aqua or nil on each viewport's
 `PlatformHandleRaw` whose value differs; `NSApp.appearance` is never written.
-- [ ] Startup reads `systemTheme()`; the SDL theme event calls `onSystemThemeChanged`. **Verify
+- [x] Startup reads `systemTheme()`; the SDL theme event calls `onSystemThemeChanged`. **Verify
   (manual, recorded):** under Auto a system change retints editor, Render Graph and Performance
   live; forced Light keeps Aqua title bars under a Dark system; Render Graph opened later matches;
   Reduce Motion snaps. Commit `editor: follow the system appearance (UX4)`.

@@ -2,7 +2,7 @@
 
 Status: In progress
 
-Execution resumed after the owner authorized continuation. Task 5 implementation and its planned manual gate pass. Earlier clean-release Computer Use failures remain unverified. Tasks 6–19 are pending; no acceptance or merge is implied.
+Execution resumed after the owner authorized continuation. Task 5 implementation and its planned manual gate pass. Earlier clean-release Computer Use failures remain unverified. Task 6 source, automated checks and all planned gestures pass; fresh supplemental review approved it. Execution stopped after Task 7’s third failed checker review. Tasks 7–19 remain incomplete; no acceptance or merge is implied.
 
 ## Builds and automated gates
 
@@ -15,11 +15,11 @@ Execution resumed after the owner authorized continuation. Task 5 implementation
 
 ## System settings and display
 
-Original settings were observed with Computer Use: Appearance Auto and Reduce Motion off. Neither was changed. Original screenshots and settings record are in `../Luminex-evidence/ux4/system/`. System-following verification is pending Task 6.
+Original settings were observed with Computer Use: Appearance Auto and Reduce Motion off. Task 6 switched Appearance to Dark and back to Auto, and Reduce Motion on and back off. Both restored settings were observed. Original records exist in `system/` and `task-6/`; restored captures are listed below.
 
 Both observed displays use 2× backing scale. No 1× gesture or typography capture has been verified. Parent release maximized client bounds were 1674 × 1052 points; windowed startup was 1280 × 720 points.
 
-QA wrappers live only in the evidence directory and contain byte-identical executable copies; recorded hashes identify parent release, clean head and instrumented head. The parent and instrumented head exited normally after validation.
+QA wrappers live only in the evidence directory and contain byte-identical executable copies; recorded hashes identify parent release, clean head and instrumented head. Task 5 runs exited normally. Task 6 clean head, motion probe and parent exited with code 0 after validation.
 
 ## Decisions
 
@@ -103,8 +103,61 @@ The Light choice preceded Cmd+ by 129.829750 ms, inside the 160 ms transition. S
 
 Clean input attempt 1 failed after selecting the main window through the native Window menu. Attempt 2 reset Computer Use, rebound the exact path, and used native Zoom to restore and maximize before retrying. Attempt 3 relaunched with a unique evidence-only QA bundle display name, selected the main window, maximized, and retried. All three failed before input with `windowNotFoundAtPosition((122.5, 78.0))`. No dedicated screenshots were saved for attempts 1 and 2; their visual outcomes remain unverified. `task-5/cua/retry-clean-main-light.png` records earlier clean-window context, while `task-5/cua/retry-clean-input-failure-3.png` captures only attempt 3. Neither is attributed to an earlier failed attempt. Two screenshot-only calls also timed out; combined AX-and-screenshot capture succeeded. No product defect or bundle-name cause is established by these errors.
 
-The byte-identical clean release and the manual probe both quit normally with exit 0. System settings remain Auto / Reduce Motion off. The stated Task 5 gate passes based on real manual-probe gestures, resource measurements and source review. Its plan does not require duplicating those gestures on the clean binary. Additional clean menu switching remains unverified. The earlier stop was honored; the owner subsequently authorized continuation. Task 5 is ready for commit with its passed planned gate and retained additional input limitation.
+The byte-identical clean release and the manual probe both quit normally with exit 0. System settings remain Auto / Reduce Motion off. The stated Task 5 gate passes based on real manual-probe gestures, resource measurements and source review. Its plan does not require duplicating those gestures on the clean binary. Additional clean menu switching remains unverified. The earlier stop was honored; the owner subsequently authorized continuation. Task 5 was committed as `e00a2be`, retaining the additional input limitation. Task 6 later verified clean-release menu switching after a fresh windowed launch and native maximize.
+
+### Task 6 system appearance and native windows
+
+Clean-head gestures use the final Task 6 binary `6e60d936…`; the earlier two input failures retain their separate initial/final launch identities. The third adaptive attempt passed. Parent content stays Dark while its native bars follow the OS. The instrumented motion run uses `fa333d17…`, with concurrent Task 7 panel tokens and a read-only observer; its scope and patch identity are in `task-6/reduce-motion-execution.json`. The original clean Task 6 bundle was preserved.
+
+| Action | Expected | Observed | Status | Screenshot |
+|---|---|---|---|---|
+| Click View in clean Task 6 main editor after native focus | View opens | Computer Use error windowNotFoundAtPosition((122.5, 78.0)); no input delivered | unverified | task-6/input-attempt-1.png |
+| Close native graph; rebind bundle ID directly to only main window; refresh combined screenshot and click View | View opens | Computer Use returned windowNotFoundAtPosition((122.5,78.0)); View remains closed | unverified | task-6/input-attempt-2.png |
+| Launch final clean release windowed with graph closed; fresh Computer Use binding; native maximize; click View | View opens | View menu opened; clean coordinate input is working | passed | task-6/input-attempt-3.png |
+| View > Appearance > Auto under current system Auto (Light) | Main chrome follows resolved system Light | Main remains Light at 100%; native title bar is Light; Auto was checked | passed | task-6/auto-main-light.png |
+| Window > Render Graph under Auto/Light system | Detached graph opens with Light native title and chrome | Graph opened with Light canvas, node bodies, details and native title bar | passed | task-6/auto-graph-light.png |
+| Window > Performance under Auto/Light system | Detached Performance opens with Light native title and chrome | Performance opened with a Light panel and native title bar | passed | task-6/auto-performance-light.png |
+| Launch and maximize parent under system Auto resolving Light | Parent retains its baseline Dark editor with a system Light native title bar | Dark editor remained under the Light native title bar | passed | task-6/parent-main-light-system.png |
+| Window > Render Graph under a Light system | Baseline graph remains Dark with native Light title bar | Detached graph remained Dark and its title bar was Light | passed | task-6/parent-graph-light-system.png |
+| Window > Performance under a Light system | Baseline Performance remains Dark with native Light title bar | Performance opened with Dark panel content and Light native title bar | passed | task-6/parent-performance-light-system.png |
+| System Settings > Appearance > Dark | Dark is selected | Dark was selected in System Settings | passed | task-6/system-dark.png |
+| Change system Light to Dark while Performance is open and editor Auto | Performance retints live including native title bar | Performance panel and native title bar became Dark without relaunch | passed | task-6/auto-performance-dark.png |
+| Change system to Dark with graph open and editor Auto | Graph retints live including native title bar | Graph canvas, node bodies, details and native title bar became Dark without relaunch | passed | task-6/auto-graph-dark.png |
+| Change system to Dark while editor Auto | Main editor and native title retint live | Main editor panels, menu row and native title became Dark without relaunch | passed | task-6/auto-main-dark.png |
+| Change system to Dark with parent Performance open | Baseline content stays Dark; native title follows Dark system | Parent Performance kept Dark content and its native title became Dark | passed | task-6/parent-performance-dark-system.png |
+| Inspect parent graph after system change to Dark | Baseline canvas stays Dark; title follows system | Dark canvas remained; native title bar became Dark | passed | task-6/parent-graph-dark-system.png |
+| Inspect parent main editor after system change to Dark | Editor stays baseline Dark; native title follows system | Main editor retained Dark content; title became Dark | passed | task-6/parent-main-dark-system.png |
+| View > Appearance > Light while system Dark | Editor Light and native Aqua title remain under Dark system | Main editor switched to Light and native title bar became Aqua under Dark system | passed | task-6/forced-light-dark-system.png |
+| Inspect open graph after forcing Light under Dark system | Graph uses Light content and Aqua title | Open graph retinted to Light with an Aqua title bar under the Dark system | passed | task-6/forced-light-graph-dark-system.png |
+| Inspect Performance after forcing Light under Dark system | Performance Light with Aqua title | Performance content and native title remained Light under Dark system | passed | task-6/forced-light-performance-dark-system.png |
+| Close graph, then Window > Render Graph after forcing Light under a Dark system | New native graph window inherits Light and Aqua | Reopened graph showed Light canvas and Aqua title bar under Dark system | passed | task-6/late-graph-forced-light.png |
+| Restore System Settings > Appearance > Auto | Original Auto selected again | Auto was restored | passed | task-6/restored-appearance.png |
+| Inspect parent View menu for Appearance | Parent has no UX4 Appearance command | Parent View menu had camera, debug view and UI scale controls with no Appearance entry | passed | task-6/parent-no-appearance-menu.png |
+| Inspect Reduce Motion before the instrumented check | Original off preference remains | Reduce Motion remained off | passed | task-6/motion-off-confirmed.png |
+| Close detached windows before the logging probe | Main editor remains with chosen Light appearance and clean document | Graph and Performance closed; Light main editor remained with no dirty marker | passed | task-6/clean-head-before-quit.png |
+| View > Appearance > Dark with Reduce Motion off | 160 ms transition with intermediate palette, then exact Dark | Editor remained Light; trace has no target change. This launch used a CLI override, but the missed choice cause is unknown; no transition was exercised. | unverified | task-6/motion-off-dark.png |
+| View > Appearance > Dark without CLI override; Reduce Motion off | Fade samples intermediate palette and finishes exact Dark | Dark editor/title visible; trace frame2150 starts at exact origin, frames2151–2153 are intermediate, frame2156 is exact Dark. | passed | task-6/motion-off-menu-dark.png |
+| System Settings > Accessibility > Motion > Reduce motion on | Switch on; editor reads the real preference | Reduce motion visibly on | passed | task-6/system-motion-on.png |
+| View > Appearance > Light with Reduce Motion on | Exact Light snap in first prepared frame | Light editor/title visible; first changed-target frame5052 has inactive transition and exact whole Light palette. | passed | task-6/motion-on-light.png |
+| View > Appearance > Dark with Reduce Motion on | Exact Dark snap in first prepared frame | Dark editor/title visible; first changed-target frame7429 has inactive transition and exact whole Dark palette. | passed | task-6/motion-on-dark.png |
+| Restore System Settings Reduce motion off | Original off setting restored | Reduce motion switch visibly off | passed | task-6/restored-motion.png |
+| Observe System Settings Appearance after restoring Auto | Original Auto remains selected | Appearance Auto visibly selected | passed | task-6/final-restored-appearance.png |
+| Select parent Sponza in native Window menu after motion preference restored | Parent remains usable with original OS preferences | Parent baseline main window observed after restoration | passed | task-6/parent-motion-restored.png |
+| Focus parent Sponza while Reduce Motion on | Observe unchanged parent baseline under on setting | Window menu helper did not find Sponza while a native submenu remained open; no on-setting parent screenshot captured | unverified | unavailable |
+
+The off control sampled an intermediate palette and reached the exact endpoint after 162.175125 ms. With Reduce Motion on, each opposite-theme choice was already exact at `since_change=0`, with no active or pending transition. Equality covers all RGBA channels in all 63 roles. This proves the first prepared frame that observed the target, not physical click-to-display latency. Logs and assertions are retained in `task-6/reduce-motion-menu-run.log` and `reduce-motion-summary.json`. Startup and the first missed menu choice do not count. Toggling Reduce Motion during an active fade remains unverified.
+
+The observer was reversed and `EditorShell.cpp` restored to SHA-256 `ffad4f5c…`; the clean App was rebuilt. No instrumentation or screenshots are committed. The OS originals were restored even though the supplemental parent-on focus observation failed. Auto changes, forced Aqua bars and late-created graph appearance passed on the clean head. Source review and all Task 6 automated gates passed before the observer was applied.
+
+### Task 7 stopped after three failed reviews
+
+Panel token replacements and xmake/CI wiring have no reported review defects. The literal-color checker remains unapproved and uncommitted. Attempt 1 missed explicitly typed declarations/returns and misattributed nested lambda returns. Attempt 2 fixed those examples but missed `if constexpr` color returns and falsely flagged templated non-color lambdas. Attempt 3 introduced delimiter-aware callable classification; all 16 tests pass, but independent review still found two P2 defects:
+
+- A defaulted function template, `template<typename T = int> ImVec4 ink() { return {1,0,0,1}; }`, escapes checking because the header contains `=`.
+- `operator[]` callable boundaries are missed, producing false positives on a local class’s integer-array returns and missing an explicitly typed ImVec4 operator’s numeric return.
+
+The exact reproductions and logs remain in `task-7/`; no fourth attempt was made and no gate was loosened. The initial C++ layout run also failed with 661 orphan test separators while compile-command regeneration overlapped it. A stable sequential rerun passed 2673 definitions / 352 files; its original cause remains unproven. Build, unit, format, root checks and token freshness passed before the checker reviews. Later partial checks do not override the failed review gate. Task 7 is left for an explicitly authorized retry; Tasks 8–19, push and PR are pending.
 
 ## Remaining verification
 
-Tasks 6–19, system appearance and Reduce Motion toggles, Figma comparisons, Style Gallery typography, density, actor/provenance marks, native menu and shortcut dispatch, the UX1 completion gestures in both themes, exact-image gates and the final GPU suite remain pending. ADR 0029 has not been created; when created it must remain Proposed until separate milestone review.
+Tasks 7–19, Figma comparisons, Style Gallery typography, density, actor/provenance marks, native menu and shortcut dispatch, the UX1 completion gestures in both themes, exact-image gates and the final GPU suite remain pending. ADR 0029 has not been created; when created it must remain Proposed until separate milestone review.

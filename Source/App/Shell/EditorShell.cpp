@@ -7,6 +7,7 @@
 
 #include "App/Model/Rendering/Settings/DebugView.h"
 #include "App/Model/Scene/SceneTree.h"
+#include "App/Shell/AppAppearance.h"
 #include "App/Shell/EditorFont.h"
 #include "App/Shell/EditorThemeApply.h"
 
@@ -228,10 +229,11 @@ void EditorShell::prepareUIFrame() {
     const double now = static_cast<double>(SDL_GetTicksNS()) / 1.0e9;
     const auto target = resolveTheme(m_workspace.appearance.effective(), m_systemTheme);
     const bool themeChanged = !m_appliedTheme || *m_appliedTheme != target;
-    if (themeChanged) {
+    const bool motionReduced = reduceMotion();
+    if (themeChanged || (m_themeTransitionPending && motionReduced)) {
         const bool firstFrame = !m_appliedTheme;
         m_themeTransition.start(m_themeTransition.sample(now), themePalette(target), now,
-                                firstFrame);
+                                firstFrame || motionReduced);
         m_appliedTheme = target;
         m_themeTransitionPending = true;
     }
