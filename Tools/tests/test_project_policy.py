@@ -131,6 +131,46 @@ class ProjectPolicyTests(unittest.TestCase):
                     policy.check_process_narration([Path(path)], errors)
                 self.assertEqual(len(errors), 1)
 
+    def test_gallery_actor_label_is_semantic_copy(self) -> None:
+        errors: list[str] = []
+        with mock.patch.object(policy, "read_text", return_value='kind == "Actor" ? "Agent · working" : "WARN";'):
+            policy.check_process_narration(
+                [Path("Source/App/Panels/Gallery/StyleGalleryPanel.cpp")], errors
+            )
+        self.assertEqual(errors, [])
+
+    def test_gallery_semantic_label_accepts_formatter_alignment(self) -> None:
+        errors: list[str] = []
+        with mock.patch.object(policy, "read_text", return_value='kind == "Actor"      ? "Agent · working" : "WARN";'):
+            policy.check_process_narration(
+                [Path("Source/App/Panels/Gallery/StyleGalleryPanel.cpp")], errors
+            )
+        self.assertEqual(errors, [])
+
+    def test_gallery_semantic_label_does_not_hide_process_narration(self) -> None:
+        for text in (
+            '// The agent completed this.\nkind == "Actor" ? "Agent · working" : "WARN";',
+            '/*\nkind == "Actor" ? "Agent · working" : "WARN";\n*/',
+            '// kind == "Actor" ? "Agent · working" : "WARN";',
+            'const char* text = R"(kind == "Actor" ? "Agent · working" : "WARN";)";',
+
+            'kind == "Actor" ? "Agent · working" : "WARN"; // agent implementation',
+            'kind == "Actor" ? "Agent · working" : "WARN"; // Task 11',
+        ):
+            with self.subTest(text=text):
+                errors: list[str] = []
+                with mock.patch.object(policy, "read_text", return_value=text):
+                    policy.check_process_narration(
+                        [Path("Source/App/Panels/Gallery/StyleGalleryPanel.cpp")], errors
+                    )
+                self.assertTrue(errors)
+
+    def test_actor_label_allowance_stays_in_gallery(self) -> None:
+        errors: list[str] = []
+        with mock.patch.object(policy, "read_text", return_value='kind == "Actor" ? "Agent · working" : "WARN";'):
+            policy.check_process_narration([Path("Source/App/Shell/EditorShell.cpp")], errors)
+        self.assertTrue(errors)
+
     def test_component_paths_are_not_process_roots(self):
         self.assertFalse(any(root.startswith("RojoRHI") for root in policy.PROCESS_ROOTS))
 

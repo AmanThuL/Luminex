@@ -239,6 +239,23 @@ def check_line_budgets(files: list[Path], errors: list[str]) -> None:
                 break
 
 
+def mask_gallery_semantic_copy(text: str) -> str:
+    """Allow the exact actor-chip label only as a C++ string in its specimen expression."""
+    tokens = re.compile(
+        r'//[^\n]*|/\*[\s\S]*?\*/|R"(?P<delimiter>[^ ()\\\t\r\n]{0,16})'
+        r'\([\s\S]*?\)(?P=delimiter)"|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\''
+    )
+    allowed = []
+    for match in tokens.finditer(text):
+        if match.group(0) != '"Agent · working"':
+            continue
+        if re.search(r'kind\s*==\s*"Actor"\s*\?\s*$', text[:match.start()]):
+            allowed.append((match.start() + 1, match.start() + 6))
+    for start, end in reversed(allowed):
+        text = text[:start] + " " * (end - start) + text[end:]
+    return text
+
+
 def check_process_narration(files: list[Path], errors: list[str]) -> None:
     for path in files:
         name = path.as_posix()
@@ -247,6 +264,8 @@ def check_process_narration(files: list[Path], errors: list[str]) -> None:
         text = read_text(path)
         if text is None:
             continue
+        if name == "Source/App/Panels/Gallery/StyleGalleryPanel.cpp":
+            text = mask_gallery_semantic_copy(text)
         reported_lines: set[int] = set()
         for pattern in PROCESS_PATTERNS:
             for match in pattern.finditer(text):

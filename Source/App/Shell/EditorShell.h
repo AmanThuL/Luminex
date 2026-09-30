@@ -26,6 +26,7 @@
 #include "App/Model/Scene/SceneSession.h"
 #include "App/Model/Scene/SceneTreeState.h"
 #include "App/Model/Workspace/WorkspaceModel.h"
+#include "App/Panels/Gallery/StyleGalleryPanel.h"
 #include "App/Panels/Graph/RenderGraphPanel.h"
 #include "App/Panels/Performance/PerformancePanel.h"
 #include "Engine/View/Camera.h"
@@ -401,6 +402,7 @@ private:
     // persist.
     bool m_buildDefaultLayout = false;
     PerformancePanelState m_performancePanel;
+    StyleGalleryPanelState m_styleGallery;
     // Why the pending build was scheduled, for the one line logged when it actually happens.
     std::string_view m_layoutBuildReason;
     // Raised by the main menu and by the keyboard shortcuts, consumed by whoever owns the

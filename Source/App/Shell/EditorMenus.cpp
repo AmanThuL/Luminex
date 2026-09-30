@@ -164,6 +164,7 @@ void EditorShell::buildMainMenu(const render::Renderer& renderer, const rojoRHI:
         visibilityItem(kPerformancePanelWindowName, EditorPanel::Performance);
         visibilityItem(kRenderGraphPanelWindowName, EditorPanel::RenderGraph);
         visibilityItem(kConsolePanelWindowName, EditorPanel::Console);
+        ImGui::MenuItem(kStyleGalleryWindowName, nullptr, &m_styleGallery.open);
         ImGui::Separator();
         if (ImGui::MenuItem("Reset Default Layout"))
             m_actions.requestResetLayout();

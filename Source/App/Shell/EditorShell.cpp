@@ -402,6 +402,7 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
     buildDocumentWorkflow();
     postCaptureNotice();
     editor_style::drawNotice(m_notices, ImGui::GetTime());
+    drawStyleGalleryPanel(m_styleGallery);
 }
 
 //======================================================================================================================

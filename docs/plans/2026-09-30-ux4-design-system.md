@@ -200,7 +200,7 @@ GalleryCatalog.{h,cpp}`, `AppGalleryCatalogTests.cpp`; modify `EditorMenus`, `Ed
 figmaName; }`, `galleryCatalog() -> std::span<const GalleryEntry>`; Window > Style Gallery, a
 detached window closed at launch and not persisted, whose Current/Dark/Light selector pushes that
 palette's 63 colors for its content only.
-- [ ] Test first: names are unique. Render every state of button, icon-button, checkbox, chip,
+- [x] Test first: names are unique. Render every state of button, icon-button, checkbox, chip,
   field-text, field-number, field-select, field-slider, dock-tab, menu-item, hierarchy-row,
   property-row, subject-header, topic-header, notice, legend-chip, graph-card and console-row, and
   the type ramp with digit strings at 13, 16 and 20 px. The draw switch has no `default`, so an

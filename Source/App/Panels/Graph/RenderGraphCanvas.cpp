@@ -60,8 +60,6 @@ constexpr float kTitleGap = 16.0f;
 constexpr float kBodyPadY = 6.0f;
 constexpr float kBodyBottomPad = 6.0f;
 
-/// Corner radius the editor rounds a card with, matched by the title band's top corners.
-
 /// Measured placement, in canvas units: between two columns of cards, between two ranks of one row,
 /// between two rows, and between the last row and the culled band. Pixels are decided here rather
 /// than in `GraphLayout` because only this side can measure the text a card has to hold.
