@@ -3,8 +3,7 @@
 **Status**: In progress
 > Use subagent-driven-development task by task with the execution overrides below.
 
-**Goal:** deliver the binding [UX4 record](../milestones/ux/ux4.md), accepted 2026-09-30, and its
-[roadmap gate](../roadmap/editor-experience.md#ux4--design-system-and-themes) as one pull request.
+**Goal:** deliver the binding [UX4 record](../milestones/ux/ux4.md), accepted 2026-09-30, and its [roadmap gate](../roadmap/editor-experience.md#ux4--design-system-and-themes) as one pull request.
 **Architecture:** a generator in `Tools/Theme/` emits checked-in C++ token tables; AppModel owns
 pure theme, workspace, provenance, activity and menu models, tested first; the shell writes the
 palette into its base style between `Render` and `NewFrame`; AppKit stays in `Shell/*.mm`. Stack:
@@ -44,9 +43,8 @@ C++23, ImGui 1.93, imgui-node-editor, SDL 3.4, AppKit, Python, Catch2, xmake; Fi
 A fresh implementer handles each task: Astra for Tasks 2, 5, 6, 9, 10, 15, 16; Sol for the rest.
 A fresh Astra reviewer reviews each result; the controller commits serially. Only 6/7 may run in
 parallel. W1: 1–4, 5, 6/7, 8; W2: 9–12; W3: 13–14; W4: 15–16; W5: 17–19. Stop after three failed
-attempts on the same issue, except Task 7 (owner override). The controller performs every checkpoint
-in the real App via Computer
-Use with gestures, settings, screenshots, visible Figma deviations and unverified rows; no owner
+attempts on the same issue, except Task 7 (owner override). The controller performs every checkpoint in the real App via Computer Use
+with gestures, settings, screenshots, visible Figma deviations and unverified rows; no owner
 stops. Read/change/restore System Appearance and Reduce Motion via Computer Use with original and
 restored evidence. Owner overrides fix encoded `#4CABFD`, body 16 unless Task 12 proves a remedy,
 and Task 19 gates/push/PR only: no acceptance or merge, plan retained.
@@ -150,10 +148,12 @@ run after `UpdatePlatformWindows`, setting Aqua, Dark Aqua or nil on each viewpo
   colors from tokens (UX4)`.
 
 ### Task 8: UX4.1 gate (main thread)
-- [ ] Contrast tests; parent/head BMP SHA-256 (six scenes, `--temporal off --frames 1`); 8-round
+- [x] Gate run recorded: contrast tests; parent/head BMP SHA-256 (six scenes, `--temporal off --frames 1`); 8-round
   `parity_rounds.py` over fifteen cases; Task 5's atlas check; schema 4 docks restore under Auto
   and Comfortable; Task 6's gestures; all in a new `docs/milestones/ux/ux4-validation.md`.
   **Controller check:** both themes against Figma 05; verify one encoded `#4CABFD` outline constant in both themes (owner override of the record's earlier per-theme sentence).
+
+**Result:** exact-image gates failed (5/6 and 9/15); outline/Gallery checks await Tasks 10/11/17.
 
 ### Task 9: Geist replaces Inter (UX4.2, Astra)
 **Files:** `xmake/setup.lua`, `Source/App/xmake.lua`, `THIRD_PARTY_NOTICES.md`,
