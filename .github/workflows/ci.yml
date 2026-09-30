@@ -65,6 +65,9 @@ jobs:
       - name: Theme token freshness
         run: python3 Tools/Theme/generate_tokens.py --check
 
+      - name: Editor literal color policy
+        run: python3 Tools/check_literal_colors.py
+
       - name: Shader import policy
         run: python3 Tools/check_shader_imports.py
 

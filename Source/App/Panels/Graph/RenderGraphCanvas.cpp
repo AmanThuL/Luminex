@@ -103,46 +103,18 @@ constexpr uintptr_t kGroupIdBase = 100000;
 constexpr float kEdgeThickness = 2.5f;
 constexpr float kLinkStrength = 180.0f;
 constexpr float kDashThickness = 1.4f;
-constexpr ImU32 kAliasLinkColor = IM_COL32(214, 122, 196, 220);
-constexpr ImU32 kCulledBorderColor = IM_COL32(140, 140, 146, 220);
+/// Resource identities keep the same semantic hue across every edge of a displayed frame.
+constexpr std::array<ThemeRole, 8> kLinkRoles = {
+    ThemeRole::GraphLink0, ThemeRole::GraphLink1, ThemeRole::GraphLink2, ThemeRole::GraphLink3,
+    ThemeRole::GraphLink4, ThemeRole::GraphLink5, ThemeRole::GraphLink6, ThemeRole::GraphLink7};
 
-/// Eight readable hues, one per resource by `resource % 8`. A resource keeps its hue for the whole
-/// picture, so two links crossing are told apart by what travels along them rather than by where
-/// they happen to run. None of them is the magenta the alias overlay owns.
-const std::array<ImVec4, 8> kLinkPalette = {
-    ImVec4(0.49f, 0.69f, 0.91f, 0.92f), // blue
-    ImVec4(0.91f, 0.66f, 0.42f, 0.92f), // orange
-    ImVec4(0.53f, 0.82f, 0.60f, 0.92f), // green
-    ImVec4(0.89f, 0.81f, 0.47f, 0.92f), // yellow
-    ImVec4(0.47f, 0.81f, 0.81f, 0.92f), // teal
-    ImVec4(0.91f, 0.56f, 0.56f, 0.92f), // salmon
-    ImVec4(0.69f, 0.63f, 0.91f, 0.92f), // lavender
-    ImVec4(0.77f, 0.77f, 0.59f, 0.92f)  // sand
-};
-
-/// The title band's fill, one per kind, and the text drawn over it. A group is deliberately unlike
-/// any pass kind: it is not one declaration but several folded together.
-const ImVec4 kRasterTitleColor{0.16f, 0.30f, 0.48f, 1.0f};
-const ImVec4 kComputeTitleColor{0.29f, 0.21f, 0.45f, 1.0f};
-const ImVec4 kCopyTitleColor{0.13f, 0.36f, 0.30f, 1.0f};
-const ImVec4 kExternalTitleColor{0.42f, 0.26f, 0.12f, 1.0f};
-const ImVec4 kGroupTitleColor{0.36f, 0.28f, 0.14f, 1.0f};
-const ImVec4 kSinkTitleColor{0.45f, 0.33f, 0.11f, 1.0f};
-const ImVec4 kCulledTitleColor{0.26f, 0.26f, 0.28f, 1.0f};
-constexpr ImU32 kTitleTextColor = IM_COL32(238, 238, 244, 255);
-constexpr ImU32 kCulledTitleTextColor = IM_COL32(196, 196, 202, 255);
-
-/// A collapsed stage's accent, and what a culled item of either kind is accented in.
-const ImVec4 kGroupAccentColor{0.92f, 0.86f, 0.66f, 1.0f};
-const ImVec4 kCulledAccentColor{0.58f, 0.58f, 0.60f, 1.0f};
-
-/// The colours one canvas card is drawn in: the band across its top, the dots and border that
+/// The colors one canvas card is drawn in: the band across its top, the dots and border that
 /// carry its kind, and the text laid over the band.
 struct ItemStyle {
     ImVec4 title;
     ImVec4 accent;
     ImVec4 border;
-    ImU32 titleText = kTitleTextColor;
+    ImU32 titleText = 0;
 };
 
 /// Where the measured pass put the columns, in canvas units: every column's left edge and the width
@@ -215,43 +187,43 @@ std::optional<uint32_t> itemOfCanvasId(const GraphLayout& layout, uintptr_t canv
 // culled pass reads as inert next to the graph that was proved.
 ImVec4 nodeTitleColor(const GraphNode& node) {
     if (node.cullReason) {
-        return kCulledTitleColor;
+        return editor_style::color(ThemeRole::GraphCulled);
     }
     if (node.kind == GraphNodeKind::Sink) {
-        return kSinkTitleColor;
+        return editor_style::color(ThemeRole::GraphSink);
     }
     switch (node.passKind) {
     case render::PassKind::Raster:
-        return kRasterTitleColor;
+        return editor_style::color(ThemeRole::GraphRaster);
     case render::PassKind::Compute:
-        return kComputeTitleColor;
+        return editor_style::color(ThemeRole::GraphCompute);
     case render::PassKind::Copy:
-        return kCopyTitleColor;
+        return editor_style::color(ThemeRole::GraphCopy);
     case render::PassKind::External:
-        return kExternalTitleColor;
+        return editor_style::color(ThemeRole::GraphExternal);
     }
-    return kRasterTitleColor;
+    return editor_style::color(ThemeRole::GraphRaster);
 }
 
 //======================================================================================================================
 ImVec4 nodeAccentColor(const GraphNode& node) {
     if (node.cullReason) {
-        return kCulledAccentColor;
+        return editor_style::color(ThemeRole::TextSecondary);
     }
     if (node.kind == GraphNodeKind::Sink) {
-        return ImVec4(1.00f, 0.83f, 0.45f, 1.0f);
+        return editor_style::color(ThemeRole::GraphLink3);
     }
     switch (node.passKind) {
     case render::PassKind::Raster:
-        return ImVec4(0.58f, 0.76f, 1.00f, 1.0f);
+        return editor_style::color(ThemeRole::GraphLink0);
     case render::PassKind::Compute:
-        return ImVec4(0.80f, 0.66f, 1.00f, 1.0f);
+        return editor_style::color(ThemeRole::GraphLink6);
     case render::PassKind::Copy:
-        return ImVec4(0.55f, 0.94f, 0.80f, 1.0f);
+        return editor_style::color(ThemeRole::GraphLink2);
     case render::PassKind::External:
-        return ImVec4(1.00f, 0.75f, 0.48f, 1.0f);
+        return editor_style::color(ThemeRole::GraphLink1);
     }
-    return ImVec4(0.58f, 0.76f, 1.00f, 1.0f);
+    return editor_style::color(ThemeRole::GraphLink0);
 }
 
 //======================================================================================================================
@@ -260,16 +232,16 @@ ImVec4 nodeAccentColor(const GraphNode& node) {
 ItemStyle itemStyleOf(const GraphNodeModel& model, const GraphLayoutItem& item) {
     ItemStyle style;
     if (item.kind == GraphLayoutItemKind::Group) {
-        style.title = item.culled ? kCulledTitleColor : kGroupTitleColor;
-        style.accent = item.culled ? kCulledAccentColor : kGroupAccentColor;
+        style.title = item.culled ? editor_style::color(ThemeRole::GraphCulled)
+                                  : editor_style::color(ThemeRole::GraphGroup);
+        style.accent = item.culled ? editor_style::color(ThemeRole::TextSecondary)
+                                   : editor_style::color(ThemeRole::GraphLink7);
     } else {
         style.title = nodeTitleColor(model.nodes[item.index]);
         style.accent = nodeAccentColor(model.nodes[item.index]);
     }
-    style.titleText = item.culled ? kCulledTitleTextColor : kTitleTextColor;
-    style.border = item.culled ? ImVec4(0.0f, 0.0f, 0.0f, 0.0f)
-                               : ImVec4(style.accent.x * 0.7f, style.accent.y * 0.7f,
-                                        style.accent.z * 0.7f, 0.9f);
+    style.titleText = editor_style::colorU32(ThemeRole::TextPrimary);
+    style.border = item.culled ? ImVec4(0.0f, 0.0f, 0.0f, 0.0f) : style.accent;
     return style;
 }
 
@@ -379,7 +351,8 @@ void drawPin(const GraphLayoutPin& pin, ed::PinId id, ed::PinKind kind, float ed
                                                        : "\nDouble-click to expand scene imports.";
         }
     }
-    ImGui::GetWindowDrawList()->AddCircleFilled(dot, scaled(kPinDotRadius), ImColor(accent));
+    ImGui::GetWindowDrawList()->AddCircleFilled(dot, scaled(kPinDotRadius),
+                                                ImGui::ColorConvertFloat4ToU32(accent));
 }
 
 //======================================================================================================================
@@ -411,7 +384,7 @@ void addDashedRect(ImDrawList* drawList, const ImVec2& min, const ImVec2& max, I
 }
 
 //======================================================================================================================
-// One card, whether it draws one declaration or a folded stage: a title band in the kind's colour
+// One card, whether it draws one declaration or a folded stage: a title band in the kind's color
 // across the full width, then a body with the versions arriving down the left edge and the versions
 // leaving down the right. Its width is measured from the text this frame actually puts in it, so
 // selection does not change card geometry; details retain complete physical labels.
@@ -447,7 +420,7 @@ void drawItem(const GraphNodeModel& model, const GraphLayout& layout, uint32_t i
     const float titleHeight = lineHeight + scaled(kTitlePadY) * 2.0f;
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     drawList->AddRectFilled(origin, ImVec2(origin.x + cardWidth, origin.y + titleHeight),
-                            ImColor(style.title), scaled(kCardRounding),
+                            ImGui::ColorConvertFloat4ToU32(style.title), scaled(kCardRounding),
                             ImDrawFlags_RoundCornersTop);
     drawList->AddText(ImVec2(origin.x + scaled(kTitlePadX), origin.y + scaled(kTitlePadY)),
                       style.titleText, title.left.c_str());
@@ -510,7 +483,7 @@ void drawItemOverlays(const GraphNodeModel& model, const GraphLayout& layout) {
         const ImVec2 size = ed::GetNodeSize(id);
         if (item.culled) {
             addDashedRect(drawList, position, ImVec2(position.x + size.x, position.y + size.y),
-                          kCulledBorderColor);
+                          editor_style::colorU32(ThemeRole::BorderStrong));
             continue;
         }
         const float middle = position.y + size.y * 0.5f;
@@ -518,7 +491,8 @@ void drawItemOverlays(const GraphNodeModel& model, const GraphLayout& layout) {
         drawList->AddTriangleFilled(
             ImVec2(position.x + size.x, middle - scaled(kSinkMarkerHalfHeight)),
             ImVec2(position.x + size.x + scaled(kSinkMarkerLength), middle),
-            ImVec2(position.x + size.x, middle + scaled(kSinkMarkerHalfHeight)), ImColor(accent));
+            ImVec2(position.x + size.x, middle + scaled(kSinkMarkerHalfHeight)),
+            ImGui::ColorConvertFloat4ToU32(accent));
     }
 
     for (const GraphLayoutAliasLink& link : layout.aliasLinks) {
@@ -532,9 +506,10 @@ void drawItemOverlays(const GraphNodeModel& model, const GraphLayout& layout) {
         const ImVec2 fromSize = ed::GetNodeSize(fromId);
         const ImVec2 toPosition = ed::GetNodePosition(toId);
         const ImVec2 toSize = ed::GetNodeSize(toId);
-        addDashedLine(
-            drawList, ImVec2(fromPosition.x + fromSize.x * 0.5f, fromPosition.y + fromSize.y),
-            ImVec2(toPosition.x + toSize.x * 0.5f, toPosition.y + toSize.y), kAliasLinkColor);
+        addDashedLine(drawList,
+                      ImVec2(fromPosition.x + fromSize.x * 0.5f, fromPosition.y + fromSize.y),
+                      ImVec2(toPosition.x + toSize.x * 0.5f, toPosition.y + toSize.y),
+                      editor_style::colorU32(ThemeRole::GraphLink6));
     }
 }
 
@@ -798,7 +773,8 @@ void drawCanvas(const GraphNodeModel& model, const GraphLayout& layout,
             static_cast<uint32_t>(layout.items[edge.fromItem].inputs.size()) + edge.fromPin;
         ed::Link(ed::LinkId(static_cast<uintptr_t>(index) + 1), pinIdOf(fromId, fromOrdinal),
                  pinIdOf(itemIdValue(layout, edge.toItem), edge.toPin),
-                 kLinkPalette[edge.resource % kLinkPalette.size()], scaled(kEdgeThickness));
+                 editor_style::color(kLinkRoles[edge.resource % kLinkRoles.size()]),
+                 scaled(kEdgeThickness));
     }
 
     drawItemOverlays(model, layout);

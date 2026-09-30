@@ -52,7 +52,7 @@ LegendChipResult drawLegendChip(const ViewportPanelContext& context, ImVec2 orig
     if (width <= 0 || imageSize.y <= inset * 2)
         return {};
     ImGui::SetCursorScreenPos(ImVec2(origin.x + inset, origin.y + inset));
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.08f, 0.08f, 0.09f, 0.9f));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, editor_style::color(ThemeRole::SurfaceOverlay));
     ImGui::SetNextWindowSizeConstraints(ImVec2(0, 0), ImVec2(width, imageSize.y - inset * 2));
     bool hovered = false;
     if (ImGui::BeginChild("debug-legend", ImVec2(width, 0),
@@ -164,7 +164,7 @@ void drawOcclusionOverlay(const ViewportPanelContext& context, ImVec2 origin, Im
                 continue;
             if (rejected == 128)
                 break;
-            bounds(candidate, IM_COL32(255, 105, 80, 150));
+            bounds(candidate, editor_style::colorU32(ThemeRole::OverlayBoundsCandidate));
             ++rejected;
         }
     }
@@ -175,19 +175,20 @@ void drawOcclusionOverlay(const ViewportPanelContext& context, ImVec2 origin, Im
         if (const auto* candidate =
                 display.find(id, status, context.temporalState.sceneGeneration)) {
             selected = true;
-            bounds(*candidate, IM_COL32(255, 220, 80, 230));
+            bounds(*candidate, editor_style::colorU32(ThemeRole::OverlayBoundsSelected));
             const auto& rectangle = candidate->occlusion.rectangle;
             if (rectangle[2] > rectangle[0] && rectangle[3] > rectangle[1])
                 draw->AddRect(pixel(rectangle[0], rectangle[1]), pixel(rectangle[2], rectangle[3]),
-                              IM_COL32(70, 220, 255, 240), 0, 0, 2.0f);
+                              editor_style::colorU32(ThemeRole::OverlayOutline), 0, 0, 2.0f);
         }
     }
     if (selected || context.settings.showOcclusionBounds) {
         const auto label = std::format(
-            "HZB source frame {}: yellow bounds / cyan test rectangle; rejected {} / 128",
+            "HZB source frame {}: yellow bounds / blue test rectangle; rejected {} / 128",
             status.occlusionSourceFrame, rejected);
         const float labelY = chipBottom ? *chipBottom + 8 : origin.y + 8;
-        draw->AddText(ImVec2(origin.x + 8, labelY), IM_COL32(255, 240, 180, 255), label.c_str());
+        draw->AddText(ImVec2(origin.x + 8, labelY), editor_style::colorU32(ThemeRole::OverlayLabel),
+                      label.c_str());
     }
     draw->PopClipRect();
 }

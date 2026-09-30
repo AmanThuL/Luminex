@@ -1,7 +1,6 @@
 # UX4 — Design system and themes implementation
 
 **Status**: In progress
-
 > Use subagent-driven-development task by task with the execution overrides below.
 
 **Goal:** deliver the binding [UX4 record](../milestones/ux/ux4.md), accepted 2026-09-30, and its
@@ -45,7 +44,8 @@ C++23, ImGui 1.93, imgui-node-editor, SDL 3.4, AppKit, Python, Catch2, xmake; Fi
 A fresh implementer handles each task: Astra for Tasks 2, 5, 6, 9, 10, 15, 16; Sol for the rest.
 A fresh Astra reviewer reviews each result; the controller commits serially. Only 6/7 may run in
 parallel. W1: 1–4, 5, 6/7, 8; W2: 9–12; W3: 13–14; W4: 15–16; W5: 17–19. Stop after three failed
-attempts on the same issue. The controller performs every checkpoint in the real App via Computer
+attempts on the same issue, except Task 7 (owner override). The controller performs every checkpoint
+in the real App via Computer
 Use with gestures, settings, screenshots, visible Figma deviations and unverified rows; no owner
 stops. Read/change/restore System Appearance and Reduce Motion via Computer Use with original and
 restored evidence. Owner overrides fix encoded `#4CABFD`, body 16 unless Task 12 proves a remedy,
@@ -142,7 +142,7 @@ run after `UpdatePlatformWindows`, setting Aqua, Dark Aqua or nil on each viewpo
 **Files:** `RenderGraphCanvas`, `ViewportPanel`, `ScenePanel`, `ConsolePanel`, `PlaybackToolbar`,
 `PerformancePanel`, `EditorStyle` sources; new `Tools/check_literal_colors.py`, run by `xmake policy`
 (`xmake/tasks.lua`) and CI's policy job, with `Tools/tests/test_check_literal_colors.py`.
-- [ ] Test first: under `Source/App/Panels` and `Source/App/Shell` the checker rejects `IM_COL32(`,
+- [x] Test first: under `Source/App/Panels` and `Source/App/Shell` the checker rejects `IM_COL32(`,
   `ImColor(` and `ImVec4` from numeric literals other than all-zero. Graph kinds and links →
   `graph/*`, plots → `plot/*`, overlays and legend chip → `overlay/*`, `surface/overlay`, Console →
   `console/*`; `kAccent`, `kWarning`, `kMuted` → `accent/operator-text`, `status/warning`,

@@ -152,10 +152,10 @@ void drawIntervalPlot(const PerformanceSnapshot& snapshot) {
     }
     const float targetY = plotMax.y - (plotMax.y - plotMin.y) * kTargetIntervalMs / ceilingMs;
     draw->AddLine(ImVec2(plotMin.x, targetY), ImVec2(plotMax.x, targetY),
-                  ImGui::GetColorU32(editor_style::kWarning), editor_style::scaled(1.0f));
+                  editor_style::colorU32(ThemeRole::PlotLimit), editor_style::scaled(1.0f));
     draw->AddText(ImVec2(plotMin.x + editor_style::scaled(4.0f),
                          std::max(plotMin.y, targetY - ImGui::GetFontSize())),
-                  ImGui::GetColorU32(editor_style::kWarning), "16.7 ms - 60 Hz");
+                  editor_style::colorU32(ThemeRole::PlotLimit), "16.7 ms - 60 Hz");
     const float totalMs =
         std::accumulate(snapshot.frameIntervalsMs.begin(), snapshot.frameIntervalsMs.end(), 0.0f);
     float elapsedMs = 0.0f;
@@ -166,7 +166,7 @@ void drawIntervalPlot(const PerformanceSnapshot& snapshot) {
             plotMin.x + (plotMax.x - plotMin.x) * (totalMs > 0.0f ? elapsedMs / totalMs : 1.0f),
             plotMax.y - (plotMax.y - plotMin.y) * snapshot.frameIntervalsMs[i] / ceilingMs);
         if (i > 0) {
-            draw->AddLine(previous, point, ImGui::GetColorU32(editor_style::kAccent),
+            draw->AddLine(previous, point, editor_style::colorU32(ThemeRole::PlotLine),
                           editor_style::scaled(1.5f));
         }
         previous = point;

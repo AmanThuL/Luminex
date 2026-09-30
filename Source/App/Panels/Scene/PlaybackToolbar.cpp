@@ -60,7 +60,7 @@ PlaybackToolbarAction drawPlaybackToolbar(const PlaybackToolbarContext& context,
     if (context.hasCameraRail) {
         ImGui::SameLine();
         if (context.followCameraRail)
-            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_Header));
+            ImGui::PushStyleColor(ImGuiCol_Button, editor_style::color(ThemeRole::SelectionBg));
         const bool changed = editor_style::iconButton(
             "rail", EditorIcon::Rail, !context.measurementActive,
             context.measurementActive  ? "Camera rail settings are fixed during measurement."

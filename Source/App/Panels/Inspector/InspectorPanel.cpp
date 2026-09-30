@@ -38,7 +38,7 @@ bool drawInspectorHeader(const char* name, const char* kind, const char* resetTo
         editorTooltip(name);
         ImGui::TableNextColumn();
         ImGui::AlignTextToFramePadding();
-        ImGui::TextColored(editor_style::kMuted, "%s", kind);
+        ImGui::TextColored(editor_style::color(ThemeRole::TextSecondary), "%s", kind);
         if (enabled) {
             ImGui::TableNextColumn();
             ImGui::Checkbox("##enabled", enabled);

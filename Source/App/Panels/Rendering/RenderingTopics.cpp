@@ -35,7 +35,7 @@ static void drawTemporalReadings(const InspectorPanelContext& context) {
         temporalPresentation(context.temporalState, context.settings, status,
                              context.temporalSupport, renderer.width(), renderer.height());
     {
-        ImGui::TextColored(editor_style::kAccent, "%s · %.0f%%",
+        ImGui::TextColored(editor_style::color(ThemeRole::AccentOperatorText), "%s · %.0f%%",
                            std::string(presentation.effectiveName).c_str(),
                            presentation.effectiveScale * 100.0f);
         ImGui::TextWrapped("Render %u × %u px  /  Output %u × %u px",

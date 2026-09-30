@@ -77,7 +77,7 @@ void drawLeaf(const EditorSelectionRow& row, const ScenePanelContext& context,
     }
     const bool dimmed = (culled || disabledLight) && !isRowSelected(row, context.selection);
     if (dimmed)
-        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::PushStyleColor(ImGuiCol_Text, editor_style::color(ThemeRole::TextDisabled));
     ImGui::TreeNodeEx("subject", flags, "%s", row.displayLabel.c_str());
     if (dimmed)
         ImGui::PopStyleColor();
@@ -322,7 +322,7 @@ void drawTreeRow(const SceneTreeRow& row, const ScenePanelContext& context) {
     if (indent > 0.0f)
         ImGui::Indent(indent);
     if (dimmed && !selected)
-        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::PushStyleColor(ImGuiCol_Text, editor_style::color(ThemeRole::TextDisabled));
     const bool opened = ImGui::TreeNodeEx("document-row", flags, "%s", label.c_str());
     if (dimmed && !selected)
         ImGui::PopStyleColor();
@@ -451,7 +451,7 @@ std::optional<bool> drawScenePanel(bool& open, const ScenePanelContext& context)
         const ImVec2 searchEnd{searchPosition.x + width,
                                searchPosition.y + ImGui::GetFrameHeight()};
         ImGui::GetWindowDrawList()->AddRectFilled(searchPosition, searchEnd,
-                                                  ImGui::GetColorU32(ImGuiCol_FrameBg),
+                                                  editor_style::colorU32(ThemeRole::SurfaceSunken),
                                                   ImGui::GetStyle().FrameRounding);
         ImGui::BeginGroup();
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,

@@ -59,13 +59,6 @@ inline constexpr float kSpaceMedium = 8.0f;
 inline constexpr float kSpaceLarge = 12.0f;
 /// Control row target in logical points.
 inline constexpr float kControlHeight = 24.0f;
-/// Selection and active-mode text color in the encoded UI domain.
-inline const ImVec4 kAccent{0.40f, 0.72f, 0.95f, 1.0f};
-/// Warning text color; always accompanied by an explanation.
-inline const ImVec4 kWarning{1.0f, 0.76f, 0.38f, 1.0f};
-/// Secondary readable text color.
-inline const ImVec4 kMuted{0.65f, 0.69f, 0.74f, 1.0f};
-
 /// Converts a base UI measurement to the user's global editor scale (not framebuffer pixels).
 inline float scaled(float points) {
     return points * ImGui::GetStyle().FontScaleMain;
@@ -110,7 +103,8 @@ inline void readOnly(const char* label, const char* value) {
 
 /// Draws a wrapped explanation with secondary or warning text emphasis.
 inline void message(const char* text, bool warning = false) {
-    ImGui::PushStyleColor(ImGuiCol_Text, warning ? kWarning : kMuted);
+    ImGui::PushStyleColor(ImGuiCol_Text,
+                          color(warning ? ThemeRole::StatusWarning : ThemeRole::TextSecondary));
     ImGui::TextWrapped("%s", text);
     ImGui::PopStyleColor();
 }
