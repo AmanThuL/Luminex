@@ -81,3 +81,25 @@ TEST_CASE("theme fades finish at 160 ms and restart without a jump", "[app][them
         for (auto channel : {&ThemeColor::r, &ThemeColor::g, &ThemeColor::b, &ThemeColor::a})
             REQUIRE(fade.sample(2.0)[i].*channel == kLightPalette[i].*channel);
 }
+
+//======================================================================================================================
+TEST_CASE("editor type roles keep their face and unscaled size", "[app][theme][type]") {
+    const struct {
+        TypeRole role;
+        TypeFace face;
+        float size;
+    } cases[] = {
+        {TypeRole::Caption, TypeFace::Sans, 13.0f},
+        {TypeRole::Body, TypeFace::Sans, 16.0f},
+        {TypeRole::BodyStrong, TypeFace::SansMedium, 16.0f},
+        {TypeRole::Display, TypeFace::SansMedium, 20.0f},
+        {TypeRole::MonoCaption, TypeFace::Mono, 13.0f},
+        {TypeRole::MonoBody, TypeFace::Mono, 16.0f},
+    };
+    for (const auto& entry : cases) {
+        REQUIRE(typeSpec(entry.role).face == entry.face);
+        REQUIRE(typeSpec(entry.role).size == entry.size);
+    }
+    REQUIRE(kDigitAdvanceEm == Catch::Approx(0.6f));
+    REQUIRE(kDigitAdvanceEm * typeSpec(TypeRole::Body).size == Catch::Approx(9.6f));
+}

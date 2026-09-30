@@ -34,7 +34,10 @@ bool drawInspectorHeader(const char* name, const char* kind, const char* resetTo
                                 editor_style::iconButtonWidth(EditorIcon::Reset));
         ImGui::TableNextColumn();
         ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted(name);
+        {
+            const editor_style::ScopedType type(TypeRole::BodyStrong);
+            ImGui::TextUnformatted(name);
+        }
         editorTooltip(name);
         ImGui::TableNextColumn();
         ImGui::AlignTextToFramePadding();

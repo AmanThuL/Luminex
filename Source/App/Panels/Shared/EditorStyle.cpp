@@ -7,6 +7,8 @@
 
 #include "App/Panels/Shared/ActionFeedback.h"
 
+#include <imgui_internal.h>
+
 #include <algorithm>
 #include <cmath>
 
@@ -14,6 +16,7 @@ namespace lmx::app::editor_style {
 namespace {
 
 bool iconFontAvailable = false;
+EditorFonts editorFonts;
 ThemePalette palette = kDarkPalette;
 
 //======================================================================================================================
@@ -49,7 +52,63 @@ ImVec4 glyphInkBounds(const ImFontGlyph& glyph, const ImTextureData& texture) {
             glyph.Y0 + (bottom - y0) * dy};
 }
 
+//======================================================================================================================
+float tabLabelWidth(const char* label, ImGuiTabItemFlags flags) {
+    float width = 0.0f;
+    for (const auto role : {TypeRole::Body, TypeRole::BodyStrong}) {
+        const ScopedType type(role);
+        width = std::max(
+            width,
+            ImGui::TabItemCalcSize(label, (flags & ImGuiTabItemFlags_UnsavedDocument) != 0).x);
+    }
+    return width;
+}
+
 } // namespace
+
+//======================================================================================================================
+void setEditorFonts(const EditorFonts& fonts) {
+    editorFonts = fonts;
+    iconFontAvailable = fonts.icons;
+}
+
+//======================================================================================================================
+ScopedType::ScopedType(TypeRole role) {
+    const auto spec = typeSpec(role);
+    auto* face = spec.face == TypeFace::Mono         ? editorFonts.mono
+                 : spec.face == TypeFace::SansMedium ? editorFonts.sansMedium
+                                                     : editorFonts.sans;
+    ImGui::PushFont(face ? face : ImGui::GetIO().FontDefault, spec.size);
+}
+
+//======================================================================================================================
+ScopedType::~ScopedType() {
+    ImGui::PopFont();
+}
+
+//======================================================================================================================
+bool beginTabItem(const char* label, ImGuiTabItemFlags flags) {
+    auto* bar = ImGui::GetCurrentContext()->CurrentTabBar;
+    // ImGui lays out every retained tab in the first submitted tab's font. Refresh widths before
+    // that layout, including scale changes, so either face fits without changing selection.
+    if (bar && bar->WantLayout) {
+        for (auto& tab : bar->Tabs)
+            tab.RequestedWidth = tabLabelWidth(ImGui::TabBarGetTabName(bar, &tab), tab.Flags);
+    }
+    ImGui::SetNextItemWidth(tabLabelWidth(label, flags));
+    const auto id = bar ? ImGui::GetID(label) : 0;
+    // Pending selection is committed by the first tab's layout. Requests queued during tab
+    // submission take effect next frame, so later labels use the selection already laid out.
+    const auto selectedId = bar && bar->WantLayout && bar->NextSelectedTabId != 0
+                                ? bar->NextSelectedTabId
+                            : bar ? bar->SelectedTabId
+                                  : 0;
+    const bool selected =
+        bar && (selectedId == id ||
+                (selectedId == 0 && (bar->Tabs.empty() || bar->Tabs.front().ID == id)));
+    const ScopedType type(selected ? TypeRole::BodyStrong : TypeRole::Body);
+    return ImGui::BeginTabItem(label, nullptr, flags);
+}
 
 //======================================================================================================================
 void setActivePalette(const ThemePalette& active) {
@@ -75,12 +134,8 @@ ImU32 colorU32(ThemeRole role, float alphaScale) {
 }
 
 //======================================================================================================================
-void setIconFontAvailable(bool available) {
-    iconFontAvailable = available;
-}
-
-//======================================================================================================================
 float iconButtonWidth(EditorIcon icon) {
+    const ScopedType type(TypeRole::Body);
     const auto info = editorIconInfo(icon);
     const bool hasGlyph = iconFontAvailable && ImGui::GetFontBaked()->FindGlyphNoFallback(
                                                    static_cast<ImWchar>(info.codepoint));
@@ -92,6 +147,7 @@ float iconButtonWidth(EditorIcon icon) {
 
 //======================================================================================================================
 bool iconButton(const char* id, EditorIcon icon, bool enabled, const char* tooltip) {
+    const ScopedType type(TypeRole::Body);
     const auto info = editorIconInfo(icon);
     const float height = ImGui::GetFrameHeight();
     const float width = iconButtonWidth(icon);
@@ -157,11 +213,15 @@ bool beginPropertyGrid(const char* id) {
 //======================================================================================================================
 bool beginDiagnostics() {
     // A plain tree node, not a framed header, so it never reads as another Rendering topic.
-    return ImGui::TreeNodeEx("Diagnostics", ImGuiTreeNodeFlags_SpanAvailWidth);
+    const bool open = ImGui::TreeNodeEx("Diagnostics", ImGuiTreeNodeFlags_SpanAvailWidth);
+    if (open)
+        ImGui::PushFont(editorFonts.mono, typeSpec(TypeRole::MonoBody).size);
+    return open;
 }
 
 //======================================================================================================================
 void endDiagnostics() {
+    ImGui::PopFont();
     ImGui::TreePop();
 }
 

@@ -7,13 +7,34 @@
 
 #include "App/Model/Capture/NoticeQueue.h"
 #include "App/Model/Workspace/EditorIcon.h"
+#include "App/Model/Workspace/EditorTheme.h"
 #include "App/Model/Workspace/EditorThemeTokens.h"
+#include "App/Shell/EditorFont.h"
 
 #include <imgui.h>
 
 #include <cfloat>
 
 namespace lmx::app::editor_style {
+
+/// Borrows atlas faces on the UI thread; call again with {} before destroying the context.
+void setEditorFonts(const EditorFonts& fonts);
+
+/// Applies a semantic face and unscaled size until destruction; never rebuilds the atlas.
+class ScopedType {
+public:
+    /// Pushes the requested role, resolving unavailable faces to ImGui's default font.
+    explicit ScopedType(TypeRole role);
+    /// Restores the previous face and size.
+    ~ScopedType();
+    ScopedType(const ScopedType&) = delete;            ///< Font stack scopes cannot be copied.
+    ScopedType& operator=(const ScopedType&) = delete; ///< Font stack scopes cannot be assigned.
+};
+
+/// Begins an editor-owned tab with Medium when selected, reserving width for either weight.
+/// Pair success with ImGui::EndTabItem.
+/// Dock tabs are drawn by ImGui and retain Regular.
+bool beginTabItem(const char* label, ImGuiTabItemFlags flags = 0);
 
 /// Copies the frame's palette; call on the UI thread before building any panels.
 void setActivePalette(const ThemePalette& palette);
@@ -27,8 +48,6 @@ ImU32 colorU32(ThemeRole role, float alphaScale = 1.0f);
 /// Minimum property-grid width in base UI points before labels stack above values.
 inline constexpr float kPropertyGridMinWidth = 260.0f;
 
-/// Selects glyphs or readable text labels for all shared icon controls.
-void setIconFontAvailable(bool available);
 /// Width of an icon button at the current font and scale, including its labelled fallback.
 float iconButtonWidth(EditorIcon icon);
 /// Draws a square glyph button, or a label-sized fallback, with delayed help when disabled too.

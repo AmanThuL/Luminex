@@ -91,7 +91,10 @@ LegendChipResult drawLegendChip(const ViewportPanelContext& context, ImVec2 orig
                                 DebugView{DebugViewTopic::Occlusion, static_cast<uint8_t>(level)});
             }
             editorTooltip("HZB mip level. Higher levels summarize a larger source region.");
-            ImGui::TextWrapped("Farthest reversed depth; black is uncovered.");
+            {
+                const editor_style::ScopedType type(TypeRole::Caption);
+                ImGui::TextWrapped("Farthest reversed depth; black is uncovered.");
+            }
             if (active->value > top)
                 ImGui::Text("Requested level %u; showing available level %d", active->value, top);
         } else {
@@ -99,16 +102,21 @@ LegendChipResult drawLegendChip(const ViewportPanelContext& context, ImVec2 orig
                 active->topic == DebugViewTopic::Temporal
                     ? diagnosticLegend(static_cast<render::TemporalDebugView>(active->value))
                     : diagnosticLegend(static_cast<engine::LightDebugView>(active->value));
-            ImGui::TextWrapped("%.*s", static_cast<int>(legend.description.size()),
-                               legend.description.data());
+            {
+                const editor_style::ScopedType type(TypeRole::MonoCaption);
+                ImGui::TextWrapped("%.*s", static_cast<int>(legend.description.size()),
+                                   legend.description.data());
+            }
             if (active->topic == DebugViewTopic::Lighting && context.scene.enabledLightCount() == 0)
                 ImGui::TextWrapped("No enabled local lights. Showing Final.");
             if (active->topic == DebugViewTopic::Temporal) {
                 const auto note =
                     diagnosticModeNote(static_cast<render::TemporalDebugView>(active->value),
                                        context.renderer.temporalStatus().reconstruction);
-                if (!note.empty())
+                if (!note.empty()) {
+                    const editor_style::ScopedType type(TypeRole::Caption);
                     ImGui::TextWrapped("%.*s", static_cast<int>(note.size()), note.data());
+                }
             }
         }
     }

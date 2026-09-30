@@ -5,6 +5,7 @@
 
 #include "App/Shell/EditorFont.h"
 
+#include "App/Model/Workspace/EditorTheme.h"
 #include "Core/Diagnostics/Log.h"
 
 #include <SDL3/SDL.h>
@@ -13,63 +14,98 @@
 #include <filesystem>
 
 namespace lmx::app {
+namespace {
 
 //======================================================================================================================
-bool configureEditorFont() {
-    constexpr float kReferenceSize = 16.0f;
-    // The variable file's default outlines are Regular. ImGui scales these advances with the
-    // requested size; no font-file modification or OpenType shaping is required for stable digits.
-    constexpr float kDigitAdvance = 9.0f;
+ImFont* loadSans(ImFontAtlas& atlas, const std::filesystem::path& path) {
     static constexpr ImWchar kDigits[] = {'0', '9', 0};
     static constexpr ImWchar kExceptDigits[] = {1, '0' - 1, '9' + 1, IM_UNICODE_CODEPOINT_MAX, 0};
-    ImGuiIO& io = ImGui::GetIO();
-    const char* basePath = SDL_GetBasePath();
-    const auto fontPath = basePath != nullptr
-                              ? std::filesystem::path(basePath) / "Fonts/InterVariable.ttf"
-                              : std::filesystem::path{};
+    const float size = typeSpec(TypeRole::Body).size;
     ImFontConfig config;
     config.Flags = ImFontFlags_NoLoadError;
     config.GlyphExcludeRanges = kDigits;
-    ImFont* face = nullptr;
-    if (!fontPath.empty()) {
-        face = io.Fonts->AddFontFromFileTTF(fontPath.c_str(), kReferenceSize, &config);
-    }
-    if (face != nullptr) {
-        config.MergeMode = true;
-        config.GlyphExcludeRanges = kExceptDigits;
-        config.GlyphMinAdvanceX = kDigitAdvance;
-        config.GlyphMaxAdvanceX = kDigitAdvance;
-        face = io.Fonts->AddFontFromFileTTF(fontPath.c_str(), kReferenceSize, &config);
-    }
-    if (face == nullptr) {
-        io.Fonts->Clear();
-        ImFontConfig fallback;
-        fallback.SizePixels = kReferenceSize;
-        io.FontDefault = io.Fonts->AddFontDefault(&fallback);
-        LMX_LOG_WARN("Editor font unavailable at '{}'; using embedded fallback. Run xmake setup "
-                     "and rebuild App to restore Inter.",
-                     fontPath.string());
-        return false;
-    }
-    io.FontDefault = face;
-    LMX_LOG_INFO("Editor font: Inter Regular, {} logical points, tabular digits", kReferenceSize);
-    const auto iconPath = std::filesystem::path(basePath) / "Fonts/codicon.ttf";
+    auto* face = atlas.AddFontFromFileTTF(path.c_str(), size, &config);
+    if (!face)
+        return nullptr;
+    config.MergeMode = true;
+    config.GlyphExcludeRanges = kExceptDigits;
+    config.GlyphMinAdvanceX = kDigitAdvanceEm * size;
+    config.GlyphMaxAdvanceX = kDigitAdvanceEm * size;
+    atlas.AddFontFromFileTTF(path.c_str(), size, &config);
+    return face;
+}
+
+//======================================================================================================================
+bool mergeIcons(ImFontAtlas& atlas, ImFont* face, const std::filesystem::path& path) {
     static constexpr ImWchar kIcons[] = {0xEA60, 0xEC40, 0};
-    // Exclusions also constrain the dynamic atlas, which does not use legacy glyph ranges.
     static constexpr ImWchar kExceptIcons[] = {1, 0xEA5F, 0xEC41, IM_UNICODE_CODEPOINT_MAX, 0};
+    const float size = typeSpec(TypeRole::Body).size;
     ImFontConfig icons;
     icons.Flags = ImFontFlags_NoLoadError;
     icons.MergeMode = true;
-    icons.GlyphMinAdvanceX = kReferenceSize;
+    icons.DstFont = face;
+    icons.GlyphMinAdvanceX = size;
+    icons.GlyphMaxAdvanceX = size;
     icons.GlyphExcludeRanges = kExceptIcons;
-    if (io.Fonts->AddFontFromFileTTF(iconPath.c_str(), kReferenceSize, &icons, kIcons) == nullptr) {
+    return atlas.AddFontFromFileTTF(path.c_str(), size, &icons, kIcons) != nullptr;
+}
+
+//======================================================================================================================
+void warnMissing(const std::filesystem::path& path, const char* fallback, bool& warned) {
+    if (warned)
+        return;
+    warned = true;
+    LMX_LOG_WARN("Editor font unavailable at '{}'; using {}. Run xmake setup and rebuild App "
+                 "to restore Geist.",
+                 path.string(), fallback);
+}
+
+} // namespace
+
+//======================================================================================================================
+EditorFonts configureEditorFonts() {
+    static bool warnedRegular = false, warnedMedium = false, warnedMono = false,
+                warnedIcons = false;
+    auto& io = ImGui::GetIO();
+    const char* basePath = SDL_GetBasePath();
+    const auto directory = std::filesystem::path(basePath ? basePath : "") / "Fonts";
+    EditorFonts fonts;
+    fonts.sans = loadSans(*io.Fonts, directory / "Geist-Regular.ttf");
+    if (!fonts.sans) {
+        ImFontConfig fallback;
+        fallback.SizePixels = typeSpec(TypeRole::Body).size;
+        fonts.sans = io.Fonts->AddFontDefault(&fallback);
+        warnMissing(directory / "Geist-Regular.ttf", "embedded fallback", warnedRegular);
+    }
+    io.FontDefault = fonts.sans;
+    fonts.sansMedium = loadSans(*io.Fonts, directory / "Geist-Medium.ttf");
+    if (!fonts.sansMedium) {
+        fonts.sansMedium = fonts.sans;
+        warnMissing(directory / "Geist-Medium.ttf", "Sans", warnedMedium);
+    }
+    ImFontConfig mono;
+    mono.Flags = ImFontFlags_NoLoadError;
+    fonts.mono = io.Fonts->AddFontFromFileTTF((directory / "GeistMono-Regular.ttf").c_str(),
+                                              typeSpec(TypeRole::MonoBody).size, &mono);
+    if (!fonts.mono) {
+        fonts.mono = fonts.sans;
+        warnMissing(directory / "GeistMono-Regular.ttf", "Sans", warnedMono);
+    }
+    const auto iconPath = directory / "codicon.ttf";
+    fonts.icons = mergeIcons(*io.Fonts, fonts.sans, iconPath);
+    if (fonts.icons && fonts.sansMedium != fonts.sans)
+        fonts.icons = mergeIcons(*io.Fonts, fonts.sansMedium, iconPath);
+    if (!fonts.icons && !warnedIcons) {
+        warnedIcons = true;
         LMX_LOG_WARN("Editor icons unavailable at '{}'; using text labels. Run xmake setup "
                      "and rebuild App to restore Codicons.",
                      iconPath.string());
-        return false;
     }
-    LMX_LOG_INFO("Editor icons: Codicons, {} logical points", kReferenceSize);
-    return true;
+    LMX_LOG_INFO("Editor fonts: {}, {}, {}; body {} logical points, Sans digits {} em; Codicons {}",
+                 fonts.sans->GetDebugName(), fonts.sansMedium->GetDebugName(),
+                 fonts.mono->GetDebugName(), typeSpec(TypeRole::Body).size, kDigitAdvanceEm,
+                 fonts.icons ? "16 logical points" : "unavailable");
+    return fonts;
 }
 
 } // namespace lmx::app

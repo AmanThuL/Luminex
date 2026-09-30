@@ -10,6 +10,25 @@
 namespace lmx::app {
 
 //======================================================================================================================
+TypeSpec typeSpec(TypeRole role) {
+    switch (role) {
+    case TypeRole::Caption:
+        return {TypeFace::Sans, 13.0f};
+    case TypeRole::Body:
+        return {TypeFace::Sans, 16.0f};
+    case TypeRole::BodyStrong:
+        return {TypeFace::SansMedium, 16.0f};
+    case TypeRole::Display:
+        return {TypeFace::SansMedium, 20.0f};
+    case TypeRole::MonoCaption:
+        return {TypeFace::Mono, 13.0f};
+    case TypeRole::MonoBody:
+        return {TypeFace::Mono, 16.0f};
+    }
+    return {TypeFace::Sans, 16.0f};
+}
+
+//======================================================================================================================
 ThemeKind resolveTheme(Appearance appearance, SystemTheme system) {
     return appearance == Appearance::Light ||
                    (appearance == Appearance::Auto && system == SystemTheme::Light)

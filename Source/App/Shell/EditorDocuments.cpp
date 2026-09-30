@@ -213,6 +213,10 @@ void EditorShell::buildDocumentWorkflow() {
         ImGui::OpenPopup("Unsaved scene changes");
     if (ImGui::BeginPopupModal("Unsaved scene changes", nullptr,
                                ImGuiWindowFlags_AlwaysAutoResize)) {
+        {
+            const editor_style::ScopedType type(TypeRole::Display);
+            ImGui::TextUnformatted("Unsaved scene changes");
+        }
         ImGui::TextUnformatted("Save changes before continuing?");
         ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + editor_style::scaled(420));
         ImGui::TextUnformatted(m_session.scene().name.c_str());
@@ -220,28 +224,31 @@ void EditorShell::buildDocumentWorkflow() {
         const auto reason = DocumentWorkflow::unavailableReason(
             DocumentAction::Save, m_playback.state() == PlaybackState::Stopped,
             m_measurement.active());
-        const auto pending = m_documentWorkflow.action();
-        if (!pending || DocumentWorkflow::offersSave(*pending)) {
-            ImGui::BeginDisabled(reason.has_value());
-            if (ImGui::Button("Save")) {
-                m_documentWorkflow.confirm(ConfirmChoice::Save);
+        {
+            const editor_style::ScopedType type(TypeRole::BodyStrong);
+            const auto pending = m_documentWorkflow.action();
+            if (!pending || DocumentWorkflow::offersSave(*pending)) {
+                ImGui::BeginDisabled(reason.has_value());
+                if (ImGui::Button("Save")) {
+                    m_documentWorkflow.confirm(ConfirmChoice::Save);
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndDisabled();
+                if (reason)
+                    editorTooltip(reason->c_str());
+                ImGui::SameLine();
+            }
+            if (ImGui::Button("Discard")) {
+                m_documentWorkflow.confirm(ConfirmChoice::Discard);
                 ImGui::CloseCurrentPopup();
             }
-            ImGui::EndDisabled();
-            if (reason)
-                editorTooltip(reason->c_str());
             ImGui::SameLine();
+            if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+                m_documentWorkflow.confirm(ConfirmChoice::Cancel);
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SetItemDefaultFocus();
         }
-        if (ImGui::Button("Discard")) {
-            m_documentWorkflow.confirm(ConfirmChoice::Discard);
-            ImGui::CloseCurrentPopup();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
-            m_documentWorkflow.confirm(ConfirmChoice::Cancel);
-            ImGui::CloseCurrentPopup();
-        }
-        ImGui::SetItemDefaultFocus();
         if (!m_documentExportError.empty()) {
             ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + editor_style::scaled(420));
             ImGui::TextUnformatted(m_documentExportError.c_str());

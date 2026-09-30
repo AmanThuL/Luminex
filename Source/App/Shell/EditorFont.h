@@ -4,10 +4,20 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
+struct ImFont;
+
 namespace lmx::app {
 
-/// Loads the bundled Regular face with stable digit advances, or logs and uses the embedded
-/// fallback. Merges Codicons when available and returns true only when icons loaded.
-bool configureEditorFont();
+/// Borrowed atlas faces, valid until the owning ImGui context is destroyed.
+struct EditorFonts {
+    ImFont* sans = nullptr;       ///< Regular, or the embedded fallback.
+    ImFont* sansMedium = nullptr; ///< Medium, falling back to sans.
+    ImFont* mono = nullptr;       ///< Mono, falling back to sans.
+    bool icons = false;           ///< Codicons loaded into the Sans faces.
+};
+
+/// Loads bundled Geist before the first frame. Sans digits use fixed 0.6 em advances.
+/// Missing faces warn once per process; Medium/Mono use Sans and Regular uses the embedded face.
+EditorFonts configureEditorFonts();
 
 } // namespace lmx::app

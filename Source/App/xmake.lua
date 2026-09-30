@@ -12,14 +12,16 @@ target("App")
         local appicondir = path.join(target:targetdir(), "Icons")
         os.mkdir(appicondir)
         os.cp(path.join(os.projectdir(), "Assets/Icons/luminex-icon-1024.png"), appicondir)
-        local fontdir = path.join(os.projectdir(), "ThirdParty/Inter")
+        local fontdir = path.join(os.projectdir(), "ThirdParty/Geist")
         local dest = path.join(target:targetdir(), "Fonts")
         os.mkdir(dest)
-        for _, name in ipairs({"InterVariable.ttf", "LICENSE.txt", "SOURCE.txt"}) do
+        for _, name in ipairs({"Geist-Regular.ttf", "Geist-Medium.ttf", "GeistMono-Regular.ttf", "OFL.txt", "SOURCE.txt"}) do
             local source = path.join(fontdir, name)
             assert(os.isfile(source), "Missing editor font resource; run xmake setup first")
             os.cp(source, path.join(dest, name))
         end
+        os.tryrm(path.join(dest, "InterVariable.ttf"))
+        os.tryrm(path.join(dest, "LICENSE.txt"))
         local icondir = path.join(os.projectdir(), "ThirdParty/Codicons")
         local iconfiles = {
             {source = "codicon.ttf", staged = "codicon.ttf"},

@@ -22,6 +22,14 @@ void drawGroupSection(const InspectorPanelContext& context) {
         drawInspectorHeader(name, "Scene", "The scene root has no editable enabled flag.", false);
         editor_style::message(
             "Select a document group or source node to inspect its enabled state.");
+        if (loaded && editor_style::beginDiagnostics()) {
+            if (editor_style::beginPropertyGrid("documentIdentity")) {
+                valueRow("Document path", loaded->path.string());
+                valueRow("Loaded pair hash", loaded->hash);
+                editor_style::endFields();
+            }
+            editor_style::endDiagnostics();
+        }
         return;
     }
     bool enabled = state->own;

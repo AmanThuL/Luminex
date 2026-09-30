@@ -401,7 +401,11 @@ void drawItem(const GraphNodeModel& model, const GraphLayout& layout, uint32_t i
     const ItemStyle style = itemStyleOf(model, item);
     const CardTitle title = isGroup ? groupTitleText(layout.groups[item.index])
                                     : nodeTitleText(model.nodes[item.index]);
-    const float rightWidth = ImGui::CalcTextSize(title.right.c_str()).x;
+    float rightWidth;
+    {
+        const editor_style::ScopedType type(TypeRole::MonoBody);
+        rightWidth = ImGui::CalcTextSize(title.right.c_str()).x;
+    }
     const float titleWidth = scaled(kTitlePadX) * 2.0f + ImGui::CalcTextSize(title.left.c_str()).x +
                              scaled(kTitleGap) + rightWidth;
     const float inputsWidth = pinColumnWidth(item.inputs, fullLabels);
@@ -424,9 +428,12 @@ void drawItem(const GraphNodeModel& model, const GraphLayout& layout, uint32_t i
                             ImDrawFlags_RoundCornersTop);
     drawList->AddText(ImVec2(origin.x + scaled(kTitlePadX), origin.y + scaled(kTitlePadY)),
                       style.titleText, title.left.c_str());
-    drawList->AddText(ImVec2(origin.x + cardWidth - scaled(kTitlePadX) - rightWidth,
-                             origin.y + scaled(kTitlePadY)),
-                      style.titleText, title.right.c_str());
+    {
+        const editor_style::ScopedType type(TypeRole::MonoBody);
+        drawList->AddText(ImVec2(origin.x + cardWidth - scaled(kTitlePadX) - rightWidth,
+                                 origin.y + scaled(kTitlePadY)),
+                          style.titleText, title.right.c_str());
+    }
     ImGui::Dummy(ImVec2(cardWidth, titleHeight));
 
     const float pinsTop = origin.y + titleHeight + scaled(kBodyPadY);

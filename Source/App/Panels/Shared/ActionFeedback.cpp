@@ -5,6 +5,8 @@
 
 #include "App/Panels/Shared/ActionFeedback.h"
 
+#include "App/Panels/Shared/EditorStyle.h"
+
 #include <SDL3/SDL.h>
 #include <imgui.h>
 
@@ -64,7 +66,10 @@ void drawActionFeedback(const char* id, ActionResult& result) {
     ImGui::PushID(id);
     ImGui::TextWrapped("%s: %s", actionStatusName(result.status), result.message.c_str());
     if (!result.path.empty()) {
-        ImGui::TextWrapped("%s", result.path.c_str());
+        {
+            const editor_style::ScopedType type(TypeRole::MonoCaption);
+            ImGui::TextWrapped("%s", result.path.c_str());
+        }
         if (ImGui::Button("Copy path")) {
             result.pathActionError = SDL_SetClipboardText(result.path.c_str())
                                          ? std::string{}

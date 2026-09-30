@@ -167,7 +167,7 @@ run after `UpdatePlatformWindows`, setting Aqua, Dark Aqua or nil on each viewpo
 `typeSpec(TypeRole { Caption, Body, BodyStrong, Display, MonoCaption, MonoBody }) -> TypeSpec {
 TypeFace face; float size; }` (13, 16, 16 Medium, 20 Medium, 13 Mono, 16 Mono), `kDigitAdvanceEm =
 0.6f`; `editor_style::setEditorFonts`, `ScopedType(TypeRole)`.
-- [ ] Tests first: `typeSpec` values; the advance is 9.6 at 16. Sans and Medium merge digits at
+- [x] Tests first: `typeSpec` values; the advance is 9.6 at 16. Sans and Medium merge digits at
   `kDigitAdvanceEm ×` body size, Codicons at 16; Mono keeps its advances; a missing Medium or Mono
   warns once and uses Sans (Review focus 5). Mono serves timestamps, Performance tables, graph
   costs, Diagnostics IDs, hashes, paths and legend ranges; Medium serves subject and topic headers,

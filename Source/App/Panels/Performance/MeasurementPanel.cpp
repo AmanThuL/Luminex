@@ -72,8 +72,11 @@ void drawMeasurementSection(MeasurementPanelContext& context) {
         std::array<char, 1024> path{};
         context.exportPath.copy(path.data(), path.size() - 1);
         ImGui::SetNextItemWidth(-1);
-        if (ImGui::InputText("##measurementExport", path.data(), path.size()))
-            context.exportPath = path.data();
+        {
+            const editor_style::ScopedType type(TypeRole::MonoCaption);
+            if (ImGui::InputText("##measurementExport", path.data(), path.size()))
+                context.exportPath = path.data();
+        }
         if (ImGui::Button("Export measurement JSON"))
             context.action = MeasurementAction::Export;
     }

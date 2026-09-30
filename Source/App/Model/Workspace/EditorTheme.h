@@ -7,6 +7,35 @@
 #include "App/Model/Workspace/EditorThemeTokens.h"
 
 namespace lmx::app {
+/// Font families loaded by the shell; fallbacks are resolved there.
+enum class TypeFace {
+    Sans,       ///< Geist Sans Regular.
+    SansMedium, ///< Geist Sans Medium.
+    Mono        ///< Geist Mono Regular.
+};
+
+/// Semantic typography in unscaled logical points, shared by both themes and densities.
+enum class TypeRole {
+    Caption,     ///< Secondary captions and legend notes.
+    Body,        ///< Controls and readings.
+    BodyStrong,  ///< Subject/topic headers, selected editor tabs and dialog actions.
+    Display,     ///< Dialog titles.
+    MonoCaption, ///< Compact timestamps, paths and evidence.
+    MonoBody     ///< Numeric tables, costs, identifiers and ranges.
+};
+
+/// Face and base logical size; UI scale is applied by ImGui once.
+struct TypeSpec {
+    TypeFace face; ///< Requested face; the shell supplies a fallback if unavailable.
+    float size;    ///< Unscaled logical points.
+};
+
+/// Returns the immutable typography specification for a semantic role.
+TypeSpec typeSpec(TypeRole role);
+
+/// Fixed Sans digit advance in em; Mono retains its native glyph advances.
+inline constexpr float kDigitAdvanceEm = 0.6f;
+
 /// Stored appearance preference.
 enum class Appearance {
     Auto,  ///< Follow the system, defaulting to Dark when unknown.

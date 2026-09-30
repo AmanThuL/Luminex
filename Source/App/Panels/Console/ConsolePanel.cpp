@@ -220,7 +220,11 @@ void drawConsolePanel(bool& open, ConsoleModel& model) {
                         continue;
                     ImGui::TableNextRow();
                     ImGui::TableNextColumn();
-                    ImGui::TextUnformatted(consoleTimestamp(entry.timestampMilliseconds).c_str());
+                    {
+                        const editor_style::ScopedType type(TypeRole::MonoCaption);
+                        ImGui::TextUnformatted(
+                            consoleTimestamp(entry.timestampMilliseconds).c_str());
+                    }
                     ImGui::TableNextColumn();
                     ImGui::PushStyleColor(ImGuiCol_Text, severityColor(entry.severity));
                     ImGui::TextUnformatted(

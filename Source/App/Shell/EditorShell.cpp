@@ -74,16 +74,18 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
     // Metal 4 ImGui backend creates a CAMetalLayer per extra window and renders it with its own
     // command buffer on the shared device queue. main.cpp drives them after each presented frame.
     io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
-    editor_style::setIconFontAvailable(configureEditorFont());
+    editor_style::setEditorFonts(configureEditorFonts());
 
     if (!ImGui_ImplSDL3_InitForMetal(window)) {
         LMX_LOG_ERROR("ImGui_ImplSDL3_InitForMetal failed: {}", SDL_GetError());
+        editor_style::setEditorFonts({});
         ImGui::DestroyContext();
         return nullptr;
     }
     // ImGui's pipeline format must match the swapchain drawable.
     if (!rojoRHI::metal4::imguiInit(device, rojoRHI::Format::BGRA8Unorm)) {
         ImGui_ImplSDL3_Shutdown();
+        editor_style::setEditorFonts({});
         ImGui::DestroyContext();
         return nullptr;
     }
@@ -115,6 +117,7 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
         releaseRenderGraphPanelState(self->m_renderGraphPanel);
         ImGui_ImplSDL3_Shutdown();
         rojoRHI::metal4::imguiShutdown();
+        editor_style::setEditorFonts({});
         ImGui::DestroyContext();
         return nullptr;
     }
@@ -180,6 +183,7 @@ EditorShell::~EditorShell() {
     // Backends unregister from the ImGui context, so destroy the context last.
     ImGui_ImplSDL3_Shutdown();
     rojoRHI::metal4::imguiShutdown();
+    editor_style::setEditorFonts({});
     ImGui::DestroyContext();
 }
 

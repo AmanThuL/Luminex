@@ -58,13 +58,13 @@ void drawLocalLightSection(const InspectorPanelContext& context, engine::LightId
     bool edited = light.enabled != session.localLightEnabled(id);
     if (editor_style::beginPropertyGrid("localLightFields")) {
         edited |=
-            editor_style::vector3("Position (world metres)", "position", &light.position.x, 0.05f);
+            editor_style::vector3("Position (world meters)", "position", &light.position.x, 0.05f);
         if (animated)
             editorTooltip("Orbit playback replaces position on its next sample. Pause to edit "
                           "position; other light edits survive Play and Stop.");
         glm::vec3 colour(linearToSrgb(light.colour.r), linearToSrgb(light.colour.g),
                          linearToSrgb(light.colour.b));
-        editor_style::field("Colour (sRGB)");
+        editor_style::field("Color (sRGB)");
         if (ImGui::ColorEdit3("##colour", &colour.x, ImGuiColorEditFlags_Float)) {
             light.colour = srgbToLinear(colour);
             edited = true;
@@ -74,7 +74,7 @@ void drawLocalLightSection(const InspectorPanelContext& context, engine::LightId
                                    ImGuiSliderFlags_AlwaysClamp);
         editorTooltip("Relative intensity on opaque and masked surfaces; local lights do not "
                       "cast shadows.");
-        editor_style::field("Range (metres)");
+        editor_style::field("Range (meters)");
         edited |= ImGui::DragFloat("##range", &light.range, 0.05f, 0.01f, 1000.0f, "%.3f",
                                    ImGuiSliderFlags_AlwaysClamp);
         if (light.type == engine::LocalLightType::Spot) {

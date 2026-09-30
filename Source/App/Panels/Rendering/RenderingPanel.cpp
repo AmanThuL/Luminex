@@ -90,8 +90,11 @@ void drawRenderingPanel(bool& open, const InspectorPanelContext& context) {
             if (topic == RenderingCategory::Reconstruction)
                 flags |= ImGuiTreeNodeFlags_DefaultOpen;
             const float contentRight = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
-            const bool expanded =
-                ImGui::CollapsingHeader(renderingCategoryLabel(topic).data(), flags);
+            bool expanded;
+            {
+                const editor_style::ScopedType type(TypeRole::BodyStrong);
+                expanded = ImGui::CollapsingHeader(renderingCategoryLabel(topic).data(), flags);
+            }
             if (const auto scope = renderingTopicResetGroup(topic)) {
                 ImGui::SameLine(contentRight - editor_style::iconButtonWidth(EditorIcon::Reset));
                 std::string tooltip =

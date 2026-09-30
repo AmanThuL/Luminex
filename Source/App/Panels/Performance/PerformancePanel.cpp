@@ -70,7 +70,11 @@ bool beginPerformanceWindow(bool& open, PerformancePanelState& state) {
 
 //======================================================================================================================
 void summary(const char* label, const char* value) {
-    ImGui::TextDisabled("%s", label);
+    {
+        const editor_style::ScopedType type(TypeRole::Caption);
+        ImGui::TextDisabled("%s", label);
+    }
+    const editor_style::ScopedType type(TypeRole::MonoBody);
     ImGui::TextWrapped("%s", value);
 }
 
@@ -184,6 +188,7 @@ void drawIntervalPlot(const PerformanceSnapshot& snapshot) {
 
 //======================================================================================================================
 void numericCell(double value, const char* format = "%.3f") {
+    const editor_style::ScopedType type(TypeRole::MonoBody);
     std::array<char, 48> text{};
     std::snprintf(text.data(), text.size(), format, value);
     const float padding = ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize(text.data()).x;
@@ -196,6 +201,7 @@ void numericCell(double value, const char* format = "%.3f") {
 //======================================================================================================================
 const PassTimingSummary* drawPassTable(const PerformanceSnapshot& snapshot, float height,
                                        bool individualRows = false) {
+    const editor_style::ScopedType type(TypeRole::MonoBody);
     static std::string selectedLabel;
     static size_t selectedOccurrence = 0;
     if (snapshot.waitingForSamples)
@@ -220,22 +226,23 @@ const PassTimingSummary* drawPassTable(const PerformanceSnapshot& snapshot, floa
                             static_cast<ImGuiID>(PassTimingSort::Schedule));
     ImGui::TableSetupColumn(
         "Stage / pass", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoSort, 1.0f);
-    ImGui::TableSetupColumn(
-        "Average (ms)",
-        ImGuiTableColumnFlags_DefaultSort | ImGuiTableColumnFlags_PreferSortDescending,
-        editor_style::scaled(105.0f), static_cast<ImGuiID>(PassTimingSort::Average));
+    ImGui::TableSetupColumn("Average (ms)",
+                            ImGuiTableColumnFlags_DefaultSort |
+                                ImGuiTableColumnFlags_PreferSortDescending,
+                            ImGui::CalcTextSize("Average (ms)").x + ImGui::GetFrameHeight(),
+                            static_cast<ImGuiID>(PassTimingSort::Average));
     ImGui::TableSetupColumn("Latest (ms)", ImGuiTableColumnFlags_PreferSortDescending,
-                            editor_style::scaled(95.0f),
+                            ImGui::CalcTextSize("Latest (ms)").x + ImGui::GetFrameHeight(),
                             static_cast<ImGuiID>(PassTimingSort::Latest));
     if (individualRows) {
         ImGui::TableSetupColumn("Min (ms)", ImGuiTableColumnFlags_PreferSortDescending,
-                                editor_style::scaled(75.0f),
+                                ImGui::CalcTextSize("Min (ms)").x + ImGui::GetFrameHeight(),
                                 static_cast<ImGuiID>(PassTimingSort::Minimum));
         ImGui::TableSetupColumn("Max (ms)", ImGuiTableColumnFlags_PreferSortDescending,
-                                editor_style::scaled(75.0f),
+                                ImGui::CalcTextSize("Min (ms)").x + ImGui::GetFrameHeight(),
                                 static_cast<ImGuiID>(PassTimingSort::Maximum));
         ImGui::TableSetupColumn("Samples", ImGuiTableColumnFlags_PreferSortDescending,
-                                editor_style::scaled(70.0f),
+                                ImGui::CalcTextSize("Samples").x + ImGui::GetFrameHeight(),
                                 static_cast<ImGuiID>(PassTimingSort::Samples));
     }
     ImGui::TableSetupScrollFreeze(0, 1);
@@ -384,9 +391,8 @@ void drawPerformancePanel(bool& open, PerformanceModel& model, PerformancePanelS
         ImGui::End();
         return;
     }
-    const bool showLive = ImGui::BeginTabItem("Live", nullptr,
-                                              state.requestLiveTab ? ImGuiTabItemFlags_SetSelected
-                                                                   : ImGuiTabItemFlags_None);
+    const bool showLive = editor_style::beginTabItem(
+        "Live", state.requestLiveTab ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None);
     state.requestLiveTab = false;
     if (showLive) {
         static bool individualRows = false;
@@ -503,7 +509,7 @@ void drawPerformancePanel(bool& open, PerformanceModel& model, PerformancePanelS
         }
         ImGui::EndTabItem();
     }
-    if (measurement && ImGui::BeginTabItem("Measure")) {
+    if (measurement && editor_style::beginTabItem("Measure")) {
         drawMeasurementSection(*measurement);
         ImGui::EndTabItem();
     }
