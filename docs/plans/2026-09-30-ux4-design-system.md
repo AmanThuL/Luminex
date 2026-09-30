@@ -21,7 +21,7 @@ C++23, ImGui 1.93, imgui-node-editor, SDL 3.4, AppKit, Python, Catch2, xmake; Fi
   from Task 2, `python3 Tools/Theme/generate_tokens.py --check`; Task 10 also passes
   `MTL_DEBUG_LAYER=1 xmake test -P . Tests/gpu`.
 - Nothing under `RojoRHI/`; no new xrepo dependency; ImGui and node-editor pins and patches stay.
-  No renderer, capture, manifest, measurement or CLI change beyond `--appearance`. Colour, 1 px
+  No renderer, capture, manifest, measurement or CLI change beyond `--appearance`. Color, 1 px
   borders and rounding ≤ 6 pt (pill 10) only; no blur, shadow, gradient or glow.
 - Geist: `https://github.com/vercel/geist-font/releases/download/v1.7.2/geist-font-v1.7.2.zip`,
   SHA-256 `7fc800d2ac6b92844895196e5041aca55d814c15db70c44f79b3b83ab82b04e2`, OFL 1.1.
@@ -91,10 +91,10 @@ SystemTheme)`; `forcedWindowAppearance(Appearance) -> std::optional<ThemeKind>`;
 (8×5, 8×8, 12 / 6×3, 6×4, 8); `ThemeTransition` `start(from, to, now, reduceMotion)`,
 `sample(now)`, `active(now)` over 0.160 s; `AppearanceState { persisted; optional override;
 effective(); choose(Appearance) }`, `choose` clearing the override.
-- [ ] Tests first: all 24 pairs per theme meet their floors through an independent WCAG 2.2
+- [x] Tests first: all 24 pairs per theme meet their floors through an independent WCAG 2.2
   formula; `resolveTheme(Auto, Unknown) == Dark` and forced modes ignore the system, Auto forcing
   no window appearance (Review focus 4); a transition samples `from` at start and exactly `to` from
-  160 ms; a restart mid-fade starts from the sampled colour and ends exactly on the new target
+  160 ms; a restart mid-fade starts from the sampled color and ends exactly on the new target
   (Review focus 1); reduce motion returns `to` at once. Commit `editor: model editor themes (UX4)`.
 
 ### Task 4: Workspace schema 5 and `--appearance` (UX4.1)
@@ -119,8 +119,8 @@ const -> std::array<float, 4>`; `editor_style::setActivePalette(const ThemePalet
 `color(ThemeRole) -> ImVec4`, `colorU32(ThemeRole, float alphaScale = 1.0f) -> ImU32`.
 - [ ] Replace `StyleColorsDark` and its overrides. `prepareUIFrame` keys on scale, density, theme
   and transition: a size change rebuilds `m_baseUiStyle` from `densityMetrics` and rescales as
-  today; a colour change writes only `m_baseUiStyle->Colors` and `style.Colors`. The graph canvas
-  applies node-editor colours as it begins; `kUiClearColor` becomes `uiClearColor()`; View >
+  today; a color change writes only `m_baseUiStyle->Colors` and `style.Colors`. The graph canvas
+  applies node-editor colors as it begins; `kUiClearColor` becomes `uiClearColor()`; View >
   Appearance holds Auto (system), Light and Dark, persisted with the density.
 - [ ] **Verify:** each mode retints the main window and graph canvas; a switch then ⌘+ within 160
   ms ends on the target palette at the new scale (Review focus 1); head-only `theme-switch.patch`
@@ -138,7 +138,7 @@ run after `UpdatePlatformWindows`, setting Aqua, Dark Aqua or nil on each viewpo
   live; forced Light keeps Aqua title bars under a Dark system; Render Graph opened later matches;
   Reduce Motion snaps. Commit `editor: follow the system appearance (UX4)`.
 
-### Task 7: Editor colours become tokens (UX4.1)
+### Task 7: Editor colors become tokens (UX4.1)
 **Files:** `RenderGraphCanvas`, `ViewportPanel`, `ScenePanel`, `ConsolePanel`, `PlaybackToolbar`,
 `PerformancePanel`, `EditorStyle` sources; new `Tools/check_literal_colors.py`, run by `xmake policy`
 (`xmake/tasks.lua`) and CI's policy job, with `Tools/tests/test_check_literal_colors.py`.
@@ -147,7 +147,7 @@ run after `UpdatePlatformWindows`, setting Aqua, Dark Aqua or nil on each viewpo
   `graph/*`, plots → `plot/*`, overlays and legend chip → `overlay/*`, `surface/overlay`, Console →
   `console/*`; `kAccent`, `kWarning`, `kMuted` → `accent/operator-text`, `status/warning`,
   `text/secondary`. Shader-derived legend swatches stay image data. Commit `editor: draw panel
-  colours from tokens (UX4)`.
+  colors from tokens (UX4)`.
 
 ### Task 8: UX4.1 gate (main thread)
 - [ ] Contrast tests; parent/head BMP SHA-256 (six scenes, `--temporal off --frames 1`); 8-round
@@ -199,7 +199,7 @@ GalleryCatalog.{h,cpp}`, `AppGalleryCatalogTests.cpp`; modify `EditorMenus`, `Ed
 **Produces:** `GalleryComponent`, `GalleryEntry { GalleryComponent component; std::string_view
 figmaName; }`, `galleryCatalog() -> std::span<const GalleryEntry>`; Window > Style Gallery, a
 detached window closed at launch and not persisted, whose Current/Dark/Light selector pushes that
-palette's 63 colours for its content only.
+palette's 63 colors for its content only.
 - [ ] Test first: names are unique. Render every state of button, icon-button, checkbox, chip,
   field-text, field-number, field-select, field-slider, dock-tab, menu-item, hierarchy-row,
   property-row, subject-header, topic-header, notice, legend-chip, graph-card and console-row, and
@@ -259,7 +259,7 @@ bool checked, enabled, separator; std::string disabledReason; std::vector<MenuIt
 - [ ] Tests first: each command appears once; shortcuts equal today's (⌘O, ⌘S, ⌘⇧S, ⌘Q, Home, F,
   ⌘−, ⌘+, ⌘0, C); every disabled item has a reason; checked state per case (outline, debug view,
   UI scale, appearance, density, panels). ImGui menus render from the model, reasons as tooltips,
-  behaviour unchanged. Commit `editor: build menus from one model (UX4)`.
+  behavior unchanged. Commit `editor: build menus from one model (UX4)`.
 
 ### Task 16: Native macOS menu bar and toolbar row (UX4.5, Astra)
 **Files:** create `Source/App/Shell/NativeMenu.{h,mm}`; modify `EditorShell.{h,cpp}`, `main.cpp`,
