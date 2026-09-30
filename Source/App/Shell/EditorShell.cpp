@@ -254,6 +254,24 @@ void EditorShell::prepareUIFrame() {
     if (m_appliedUiScalePercent == percent && m_appliedDensity == m_workspace.density)
         return;
     const auto metrics = densityMetrics(m_workspace.density);
+    m_baseUiStyle->FrameRounding = kShape.control;
+    m_baseUiStyle->GrabRounding = kShape.control;
+    m_baseUiStyle->TabRounding = kShape.control;
+    m_baseUiStyle->ScrollbarRounding = kShape.control;
+    m_baseUiStyle->PopupRounding = kShape.popup;
+    m_baseUiStyle->WindowRounding = 0.0f;
+    m_baseUiStyle->ChildRounding = 0.0f;
+    m_baseUiStyle->WindowBorderSize = kShape.border;
+    m_baseUiStyle->ChildBorderSize = kShape.border;
+    m_baseUiStyle->PopupBorderSize = kShape.border;
+    m_baseUiStyle->FrameBorderSize = kShape.border;
+    m_baseUiStyle->ImageBorderSize = kShape.border;
+    m_baseUiStyle->TabBorderSize = kShape.border;
+    m_baseUiStyle->TabBarBorderSize = kShape.border;
+    m_baseUiStyle->DragDropTargetBorderSize = kShape.border;
+    m_baseUiStyle->SeparatorTextBorderSize = kShape.border;
+    m_baseUiStyle->DockingSeparatorSize = kShape.dockGutter;
+    m_baseUiStyle->TreeLinesFlags = ImGuiTreeNodeFlags_DrawLinesToNodes;
     m_baseUiStyle->FramePadding = {metrics.framePaddingX, metrics.framePaddingY};
     m_baseUiStyle->ItemSpacing = {metrics.itemSpacingX, metrics.itemSpacingY};
     m_baseUiStyle->WindowPadding = {metrics.windowPadding, metrics.windowPadding};
@@ -268,6 +286,12 @@ void EditorShell::prepareUIFrame() {
     style.WindowBorderSize = m_baseUiStyle->WindowBorderSize;
     style.ChildBorderSize = m_baseUiStyle->ChildBorderSize;
     style.PopupBorderSize = m_baseUiStyle->PopupBorderSize;
+    style.FrameBorderSize = m_baseUiStyle->FrameBorderSize;
+    style.ImageBorderSize = m_baseUiStyle->ImageBorderSize;
+    style.TabBorderSize = m_baseUiStyle->TabBorderSize;
+    style.TabBarBorderSize = m_baseUiStyle->TabBarBorderSize;
+    style.DragDropTargetBorderSize = m_baseUiStyle->DragDropTargetBorderSize;
+    style.SeparatorTextBorderSize = m_baseUiStyle->SeparatorTextBorderSize;
     style.MouseCursorScale = m_baseUiStyle->MouseCursorScale * scale;
     m_appliedUiScalePercent = percent;
     m_appliedDensity = m_workspace.density;

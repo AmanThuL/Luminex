@@ -2,7 +2,7 @@
 
 **Status**: In progress
 
-Tasks 1–7 and 9 are complete; Task 8's gate run and independent evidence review are recorded. Task 7's authorized retry failed three fresh reviews and stopped. After the owner waived its stop limit, the trailing-comma correction passed all required automated checks and a fresh independent review. Earlier failures and Computer Use limitations remain recorded below. Tasks 10–19 and Task 8's forward outline/Gallery checks remain incomplete; no push, pull request, acceptance or merge occurred.
+Tasks 1–7 and 9 are complete; Task 8's gate run and independent evidence review are recorded. Task 7's authorized retry failed three fresh reviews and stopped. After the owner waived its stop limit, the trailing-comma correction passed all required automated checks and a fresh independent review. Earlier failures and Computer Use limitations remain recorded below. Task 10 passes its corrected verification and fresh independent review; Tasks 11–19 and Task 8's Gallery check remain incomplete; no push, pull request, acceptance or merge occurred.
 
 ## Builds and automated gates
 
@@ -11,7 +11,7 @@ Tasks 1–7 and 9 are complete; Task 8's gate run and independent evidence revie
 - Task 1 retains a failed debug unit gate: MilkTruck baked-key hash was `dc545f78c9574809c6102cf9f411bdcde3cf5eff18c54c6d02d28bec5341129e`, expected `602b44cf9bffe5e549fae7979de90f667fed0db71c5fbe350ce04c5a4314a1d3`. The source pin matched. Release passed; the exact arithmetic cause remains unknown. No hash, tolerance or assertion changed.
 - Task 5 implementation and its validation are committed together. Release build, unit tests, format, direct root checkers and token freshness pass. The original fresh review found no production code defect. Fresh retry review confirms the stated Task 5 gesture gate passes in the manually operated instrumented editor. Duplicate clean-build menu verification is additional evidence, not a separate requirement in that task.
 - The evidence-only twenty-switch probe passed: all 21 samples retained font atlas ID 2, one platform texture and 384811008 allocated GPU bytes. The instrumentation patch was reversed from production. This does not verify real menu gestures.
-- Task 8 fresh parent/head captures failed the six-scene exact gate (5/6) and eight-round exact gate (9/15); complete capture execution and full failure evidence are recorded below. GPU gates are pending Tasks 10 and 19.
+- Task 8 fresh parent/head captures failed the six-scene exact gate (5/6) and eight-round exact gate (9/15); complete capture execution and full failure evidence are recorded below. Task 10's corrected full GPU suite passes. Task 19's final GPU gate remains pending.
 
 ## System settings and display
 
@@ -23,7 +23,7 @@ QA wrappers live only in the evidence directory and contain byte-identical execu
 
 ## Decisions
 
-- Selection outline keeps the plan default: one encoded `#4CABFD` constant for both themes. The shader change belongs to Task 10 and has not run; the current outline remains amber. Task 8 must record this pending check and revisit it after Task 10.
+- Selection outline keeps the plan default: one encoded `#4CABFD` constant for both themes. Task 10 applied that constant. Real Light and Dark editor gestures show the same blue perimeter, removed and restored through Selection Outline; the parent retains amber under both system appearances. This closes Task 8's forward outline observation.
 - Body size remains 16 pending Task 12. The required 13/16/20 px gallery captures and the conditional 17 px comparison have not been performed.
 
 ## Computer Use record
@@ -34,39 +34,28 @@ Every row names the action, expected result, observed result, status and screens
 
 | Action | Expected | Observed | Status | Screenshot |
 |---|---|---|---|---|
-| Window > Render Graph | Detached graph window opens | Render Graph native window opened with controls and graph | passed | parent-ui/graph-open.png |
-| Select scene node and leave Native TAA live for more than ten seconds | Selection and graph navigation remain stable across history alternation | Scene node remains selected at the same position; live costs changed | passed | parent-ui/graph-live-selection.png |
-| Click Freeze | Displayed frame and matched timings latch | Header shows Frozen \| frame 6517 | passed | parent-ui/graph-freeze.png |
-| More > Dump frame | Export the frozen frame | Dump file graph-dump-frame-6517.txt exists; graph remains Frozen \| frame 6517 | passed | parent-ui/graph-dump.png |
+| ① Window > Render Graph<br>② Select scene node and leave Native TAA live for more than ten seconds | ① Detached graph window opens<br>② Selection and graph navigation remain stable across history alternation | ① Render Graph native window opened with controls and graph<br>② Scene node remains selected at the same position; live costs changed | passed | ① parent-ui/graph-open.png<br>② parent-ui/graph-live-selection.png |
+| ① Click Freeze<br>② More > Dump frame | ① Displayed frame and matched timings latch<br>② Export the frozen frame | ① Header shows Frozen \| frame 6517<br>② Dump file graph-dump-frame-6517.txt exists; graph remains Frozen \| frame 6517 | passed | ① parent-ui/graph-freeze.png<br>② parent-ui/graph-dump.png |
 | Click Resume | Return to live graph publication | Frozen header removed and displayed frame advanced to 10622 | passed | parent-ui/graph-resume.png |
 
 ### Parent release baseline
 
 | Action | Expected | Observed | Status | Screenshot |
 |---|---|---|---|---|
-| Launch parent release with --windowed | 1280 × 720 pt editor with readable labels and native title bar | Native title visible; hierarchy, viewport, camera inspector and compact Performance rendered at 2×. Long imported source label scrolls horizontally. | passed | parent-release-ui/windowed-start.png |
-| Window > Reset Default Layout at 1280 × 720 pt | Default dock groups restored, Inspector and Console selected | Default dock groups restored; camera Inspector and Console visible; reset notice appears in Console. | passed | parent-release-ui/reset-windowed.png |
-| Use native title-bar Zoom action | Editor resizes to usable display bounds; essential labels remain reachable | Editor maximized; Inspector and Console remain visible, viewport resized; source row has horizontal scrolling. | passed | parent-release-ui/maximize.png |
-| Type Local Light 9 in Hierarchy search | Matching subject remains reachable; filter preserves current selection | Search shows Local Light 9 under Local Lights; count2/24; Editor Camera Inspector retains its explicit subject heading. | passed | parent-release-ui/search-light.png |
-| Click filtered Local Light 9 | Inspector names matching light and shows editable fields | Inspector shows Local Light 9, Spot, enabled checkbox, position, color, intensity75,range10,cones. | passed | parent-release-ui/select-light.png |
-| Double-click light intensity, replace75 with76 and commit Enter | Value changes and document reports unsaved edits | Intensity76.000; title and document root show*; source file was not saved. | passed | parent-release-ui/edit-light.png |
-| Click light subject Reset | Authored intensity restored; dirty document returns clean when canonical data matches | Intensity75.000 and title/root* cleared; reset tooltip names authored values and orbit behavior. | passed | parent-release-ui/reset-light.png |
-| While search edits are active, press F, Home and C | Text/caret editing proceeds; no frame/reset/capture command fires | Query changes and Home places caret at beginning; C inserts c. Viewpoint stays on lion; no capture notice; selected light remains and hidden-selection reason is visible. | passed | parent-release-ui/text-shortcuts.png |
-| Click search Clear then native Zoom to restore | Selection becomes visible; client returns1280 ×720 pt | Local Light9 reappears selected; hidden-selection warning clears; Console logs swapchain2560×1440. | passed | parent-release-ui/clear-and-windowed.png |
-| Window > Performance | Detached native Performance opens with readable average/latest costs and plot units | Native Performance window opens; light stage leads descending average; Average/Latest milliseconds and wall-clock interval plot units visible. | passed | parent-release-ui/performance-open.png |
-| Expand Metric definitions & exact memory | Snapshot frame/sample/freshness and timing scope are explicit | Definitions show60/60samples,4updates/s,latest retired frame,controllerN/A; timed pass sum excludes present/driver/untimed work. | passed | parent-release-ui/performance-definitions.png |
-| Click Freeze metrics | Frozen coherent snapshot retains values/frame independently of playback | Frozen status visible;frame22462,published297.09s,60/60samples held; Resume tooltip explicitly waits for fresh samples. | passed | parent-release-ui/performance-freeze.png |
-| More > Clear history while frozen | Frozen snapshot becomes empty; missing values say N/A or Waiting | Frozen—empty;0/60samples;latestGPU sumN/A;waiting messages shown, empty plot history. | passed | parent-release-ui/performance-clear.png |
-| Click Resume metrics | Fresh sample window populates after empty state | Frozen label cleared;frame25456,new32/60samples and32intervals; values populated from freshretirements. | passed | parent-release-ui/performance-resume.png |
-| Click detached Performance native Close | Performance closes; main editor remains open | Main Sponza editor remains with Hierarchy, Inspector and Console; Performance window closed. | passed | parent-release-ui/performance-close.png |
-| Cmd+Q from the clean parent editor | Editor quits without a dirty-document prompt | Application exited; shell reported frame loop finished, exit0; app inventory is no longer running. | passed | parent-release-ui/before-quit.png |
+| ① Launch parent release with --windowed<br>② Window > Reset Default Layout at 1280 × 720 pt | ① 1280 × 720 pt editor with readable labels and native title bar<br>② Default dock groups restored, Inspector and Console selected | ① Native title visible; hierarchy, viewport, camera inspector and compact Performance rendered at 2×. Long imported source label scrolls horizontally.<br>② Default dock groups restored; camera Inspector and Console visible; reset notice appears in Console. | passed | ① parent-release-ui/windowed-start.png<br>② parent-release-ui/reset-windowed.png |
+| ① Use native title-bar Zoom action<br>② Type Local Light 9 in Hierarchy search | ① Editor resizes to usable display bounds; essential labels remain reachable<br>② Matching subject remains reachable; filter preserves current selection | ① Editor maximized; Inspector and Console remain visible, viewport resized; source row has horizontal scrolling.<br>② Search shows Local Light 9 under Local Lights; count2/24; Editor Camera Inspector retains its explicit subject heading. | passed | ① parent-release-ui/maximize.png<br>② parent-release-ui/search-light.png |
+| ① Click filtered Local Light 9<br>② Double-click light intensity, replace75 with76 and commit Enter | ① Inspector names matching light and shows editable fields<br>② Value changes and document reports unsaved edits | ① Inspector shows Local Light 9, Spot, enabled checkbox, position, color, intensity75,range10,cones.<br>② Intensity76.000; title and document root show*; source file was not saved. | passed | ① parent-release-ui/select-light.png<br>② parent-release-ui/edit-light.png |
+| ① Click light subject Reset<br>② While search edits are active, press F, Home and C | ① Authored intensity restored; dirty document returns clean when canonical data matches<br>② Text/caret editing proceeds; no frame/reset/capture command fires | ① Intensity75.000 and title/root* cleared; reset tooltip names authored values and orbit behavior.<br>② Query changes and Home places caret at beginning; C inserts c. Viewpoint stays on lion; no capture notice; selected light remains and hidden-selection reason is visible. | passed | ① parent-release-ui/reset-light.png<br>② parent-release-ui/text-shortcuts.png |
+| ① Click search Clear then native Zoom to restore<br>② Window > Performance | ① Selection becomes visible; client returns1280 ×720 pt<br>② Detached native Performance opens with readable average/latest costs and plot units | ① Local Light9 reappears selected; hidden-selection warning clears; Console logs swapchain2560×1440.<br>② Native Performance window opens; light stage leads descending average; Average/Latest milliseconds and wall-clock interval plot units visible. | passed | ① parent-release-ui/clear-and-windowed.png<br>② parent-release-ui/performance-open.png |
+| ① Expand Metric definitions & exact memory<br>② Click Freeze metrics | ① Snapshot frame/sample/freshness and timing scope are explicit<br>② Frozen coherent snapshot retains values/frame independently of playback | ① Definitions show60/60samples,4updates/s,latest retired frame,controllerN/A; timed pass sum excludes present/driver/untimed work.<br>② Frozen status visible;frame22462,published297.09s,60/60samples held; Resume tooltip explicitly waits for fresh samples. | passed | ① parent-release-ui/performance-definitions.png<br>② parent-release-ui/performance-freeze.png |
+| ① More > Clear history while frozen<br>② Click Resume metrics | ① Frozen snapshot becomes empty; missing values say N/A or Waiting<br>② Fresh sample window populates after empty state | ① Frozen—empty;0/60samples;latestGPU sumN/A;waiting messages shown, empty plot history.<br>② Frozen label cleared;frame25456,new32/60samples and32intervals; values populated from freshretirements. | passed | ① parent-release-ui/performance-clear.png<br>② parent-release-ui/performance-resume.png |
+| ① Click detached Performance native Close<br>② Cmd+Q from the clean parent editor | ① Performance closes; main editor remains open<br>② Editor quits without a dirty-document prompt | ① Main Sponza editor remains with Hierarchy, Inspector and Console; Performance window closed.<br>② Application exited; shell reported frame loop finished, exit0; app inventory is no longer running. | passed | ① parent-release-ui/performance-close.png<br>② parent-release-ui/before-quit.png |
 
 ### Instrumented Task 5 head
 
 | Action | Expected | Observed | Status | Screenshot |
 |---|---|---|---|---|
-| Launch manual probe with appearanceDark | Dark token palette applied to graph editor chrome | Dark chrome and graph background; custom card colors remain existing values pendingTask7. Graph was already open on startup; its opening cause was not established. The retained patch auto-opens only in automatic resource-probe mode. | passed | task-5/cua/probe-graph-start.png |
-| Close probe-opened graph to inspect main editor | Main editor remains dark from CLIoverride | Dark surfaces/neutral controls and dark canvas contrast applied; outline/cardliteral tokens pendinglatersteps. | passed | task-5/cua/probe-dark-main.png |
+| ① Launch manual probe with appearanceDark<br>② Close probe-opened graph to inspect main editor | ① Dark token palette applied to graph editor chrome<br>② Main editor remains dark from CLIoverride | ① Dark chrome and graph background; custom card colors remain existing values pendingTask7. Graph was already open on startup; its opening cause was not established. The retained patch auto-opens only in automatic resource-probe mode.<br>② Dark surfaces/neutral controls and dark canvas contrast applied; outline/cardliteral tokens pendinglatersteps. | passed | ① task-5/cua/probe-graph-start.png<br>② task-5/cua/probe-dark-main.png |
 
 ### Blocked Task 5 gesture
 
@@ -84,8 +73,7 @@ The manual probe accepted input after a fresh session and native maximize. The c
 
 | Action | Expected | Observed | Status | Screenshot |
 |---|---|---|---|---|
-| Fresh session; native zoom; click View | View menu opens | Maximized editor accepted coordinate input and displayed View menu. This resolves the prior mapping blockage in maximized bounds. | passed | task-5/cua/retry-view-open.png |
-| View > Appearance > Light, immediately Cmd+ | Within 160 ms, scale changes and settles on exact Light palette | Main UI is Light at 110%; probe choice120.435691666, scale120.565521416:129.829750ms. Final panel RGB1,1,1 at110%, transition inactive. | passed | task-5/cua/retry-light-scale.png |
+| ① Fresh session; native zoom; click View<br>② View > Appearance > Light, immediately Cmd+ | ① View menu opens<br>② Within 160 ms, scale changes and settles on exact Light palette | ① Maximized editor accepted coordinate input and displayed View menu. This resolves the prior mapping blockage in maximized bounds.<br>② Main UI is Light at 110%; probe choice120.435691666, scale120.565521416:129.829750ms. Final panel RGB1,1,1 at110%, transition inactive. | passed | ① task-5/cua/retry-view-open.png<br>② task-5/cua/retry-light-scale.png |
 | Cmd+0 | UI scale returns to100% preserving Light palette | 100% readout; Light controls retained. | passed | task-5/cua/retry-scale-reset.png |
 | Window > Render Graph while Light | New graph inherits Light palette | Light controls, white nodes/details and light gray canvas visible; custom title/link hues remain Task7 work. | passed | task-5/cua/retry-graph-light.png |
 | View > Appearance > Dark | Main editor retints Dark | Dark backgrounds/text/fields and100%readout; selected camera unchanged. | passed | task-5/cua/retry-main-dark.png |
@@ -233,7 +221,7 @@ Task 8 Figma comparison uses editor exports 01/02 and page 05's component vocabu
 - The restored hierarchy/Inspector/bottom regions are about 219/359/210 logical points, compared with 244/380/300 in the export. XYZ fields stack vertically at this restored width; the export has a horizontal vector row. Position's unit label wraps. No digit overlap is observed in these editor captures; the required gallery type ramp remains Task 12.
 - Existing labels still show “Colour” and “metres”; user-facing spelling must be converted to US English during the relevant panel/document tasks, preserving external names and identifiers.
 - Style Gallery does not exist before Task 11; the page 05 runtime comparison remains unverified until Tasks 11/17. No Gallery capture or state is claimed passed here.
-- The shader still contains amber `float3(1.0, 0.76, 0.38)` at line 62. The single encoded `#4CABFD` outline check is unverified until its explicit Task 10 producer; it must be revisited in both themes. This pending check is not waived.
+- At the Task 8 checkpoint, the shader retained amber `float3(1.0, 0.76, 0.38)` and the forward outline check was unverified. Task 10's real Light/Dark comparison below now verifies the single encoded blue constant.
 
 
 All seventeen final automated checks pass: release build, unit tests, format, seven worktree-root checkers, token freshness, literal scan, focused checker tests and Python policy suite. Compile commands were generated before both AST scans; layout passed 2673 definitions / 352 files. The source inventories match before and after. Logs and exit codes are in `task-8/gates.json`, `version-before.json` and `version-after.json`. These checks do not override the failed exact-image gates.
@@ -265,6 +253,48 @@ The production-code dynamic-font probe passes complete resources and missing Med
 
 Sans and Medium digits have the required 9.6 advance at body 16. Unmodified Mono digits measure 7.384615: the pinned loader scales a 600-unit glyph by 16 / 1300 ascent/descent units, rather than 1000 units per em (`mono-native-metrics.json`). Native Mono spacing stays as required; the design's equal-advance explanation is not observed. Body stays 16 pending Task 12's real Gallery captures. Dock tabs remain Regular; selected editor tabs use Medium. CPU probes establish no native-editor screenshot, legibility or GPU pass.
 
+### Task 10 shape and density verification
+
+All seventeen initial global checks and the complete Metal validation GPU suite passed before the marker correction. Focused native ImGui probes verified neutral headers, both density metrics, shape values, primary colors, and responsive vector markers. The first real dirty edit failed: a long Hierarchy label extended the scrollable row, placing its root marker outside the visible clip. An independent draw probe reproduced that failure (row right 1012, clip right 218), then passed with the marker capped to the visible edge in both themes/densities at two scroll offsets. The corrected seventeen global checks and full Metal validation GPU suite pass (GPU group 53.102 s). Real Dark and Light edits now show the dot at the unchanged 219-point Hierarchy width; Reset clears it and restores 6.200. This verifies the recorded root, not arbitrary long-label layouts. Initial results are preserved separately; no failed gesture is rewritten as passed. Evidence: `task-10/pre-marker-correction/`, `marker-probe-red.log`, `marker-probe.log`.
+
+Screenshots below are relative to `task-10/cua/` inside the evidence root. Both QA executables match their recorded production builds. Original Auto/Reduce Motion off and exact original head/parent INI bytes were restored after normal exits.
+
+| Action | Expected | Observed | Status | Screenshot |
+|---|---|---|---|---|
+| Read System Settings Appearance | Record original setting before testing | Auto selected | passed | system-original-appearance.png |
+| Read Reduce Motion | Record original setting | Reduce Motion off | passed | system-original-motion.png |
+| Launch MaterialLab and native Zoom | Maximized editor keeps panels reachable | Geist labels, neutral controls, XYZ color markers and bordered viewport visible at 100%; no viewport scrollbars | passed | head-start-max.png |
+| Type Helmet in Hierarchy search | Find imported Helmet without changing selection | Two matching subjects remain; camera still selected | passed | head-search-helmet.png |
+| Select Helmet and press F in head Dark | Frame selected subject with blue outline | Helmet centered with blue perimeter; interior material retained | passed | head-dark-outline.png |
+| Open head View menu | Expose outline, appearance and density | All three entries visible; outline checked | passed | head-view-menu.png |
+| View > Selection Outline off in Dark | Remove perimeter, retain subject | Blue perimeter removed; Helmet selected and visible | passed | head-dark-outline-off.png |
+| View > Selection Outline on in Dark | Restore blue perimeter | Blue perimeter returned | passed | head-dark-outline-on.png |
+| View > Appearance > Light | Retint editor with same blue outline | Light content and Aqua title; blue perimeter remains on Helmet | passed | head-light-outline.png |
+| View > Selection Outline off in Light | Remove only perimeter | Perimeter removed, material retained | passed | head-light-outline-off.png |
+| View > Selection Outline on in Light | Restore same blue perimeter | Blue perimeter restored | passed | head-light-outline-on.png |
+| View > Density > Compact in Light | Reduce padding, preserve palette and editable labels | Control heights and row gaps reduced; Light retained, Helmet outline blue, XYZ and values readable | passed | head-light-compact.png |
+| Choose Dark while Compact | Change colors without resetting density | Dark content/title; compact controls retained, blue outline unchanged | passed | head-dark-compact.png |
+| View > Density > Comfortable in Dark | Restore comfortable metrics, preserve theme | Larger padding and gaps restored, Dark retained | passed | head-dark-comfortable.png |
+| Select Rendering tab | Topic headers stay neutral; selected controls retain accent | Reconstruction and collapsed topic headers are gray; active checkboxes remain blue. | passed | head-rendering-headers.png |
+| Select Inspector tab | XYZ labels and RGB color markers remain visible | Position, rotation, and scale show XYZ labels with red, green, and blue field-edge markers. | passed | head-inspector-markers.png |
+| Edit Helmet Position X from 6.2 to 6.3 | Title reports dirty and root shows UnsavedMarker | Position is 6.300 and title shows *; root marker is not visible at default Hierarchy width. | failed | head-dirty-marker.png |
+| Drag Hierarchy horizontal scrollbar right | Determine whether root marker lies in scrolled content | Screenshot shows no discernible horizontal shift and no visible root marker; placement remains unresolved. | unverified | head-dirty-marker-scroll.png |
+| Cmd+Q while document is dirty | Confirmation uses primary confirm actions with readable title | Unsaved scene changes dialog has Display title, blue Save and Discard actions, neutral Cancel; no file write. | passed | head-dirty-dialog.png |
+| Cancel dirty confirmation; click subject Reset | Dialog closes; authored transform restored and dirty state clears | Dialog closed; title lost * and authored transform restored; reset tooltip visible. | passed | head-reset-clean.png |
+| Launch parent MaterialLab and native Zoom | Baseline editor maximizes using original Inter styling | Parent is maximized, dark with blue inherited controls and original camera. | passed | parent-max-start.png |
+| Type Helmet in parent Hierarchy search | Same imported child remains selectable | Two matching subjects shown under MaterialLab; camera unchanged. | passed | parent-search-helmet.png |
+| Select parent Helmet child and press F under system Auto resolving Dark | Baseline selected Helmet is framed with amber outline | Helmet is centered with amber perimeter and original Inter Inspector fields. | passed | parent-auto-dark-outline.png |
+| System Settings Appearance > Dark | System is explicitly Dark for baseline comparison | Dark selected; original Auto setting retained in original capture. | passed | system-parent-dark.png |
+| Observe parent after system Dark | Parent keeps baseline amber outline | Dark title bar and inherited dark editor; selected Helmet amber perimeter. | passed | parent-system-dark-outline.png |
+| System Settings Appearance > Light | System Light selected | Light selected and Settings uses light chrome. | passed | system-parent-light.png |
+| Observe parent after system Light | Baseline editor retains inherited dark content and amber outline | Native title bar is light; editor stays dark and Helmet keeps amber perimeter. | passed | parent-system-light-outline.png |
+| Restore System Appearance to Auto | Original Auto preference restored | Auto selected and system resolves Dark again. | passed | system-restored-appearance.png |
+| Verify original Reduce Motion preference after comparison | Original off remains unchanged | Reduce motion switch is off; no motion setting was changed in Task10. | passed | system-restored-motion.png |
+| Cmd+Q from clean head and parent; restore original build-local INIs | Both apps quit without saving scene edits; workspace bytes restored | Both shell sessions exited 0. Head and parent INI SHA-256 match their recorded originals. | passed | head-reset-clean.png; parent-system-light-outline.png |
+| 1. Relaunch corrected head, native Zoom, search Helmet, select child and press F 2. Edit corrected Helmet Position X from 6.2 to 6.3 | 1. Default-width Hierarchy and subject editing remain usable 2. Dirty title and root UnsavedMarker both visible at default Hierarchy width | 1. Maximized Dark editor frames selected Helmet; root label visible at original 219-point width 2. Title shows *; Position X is 6.300 and blue root dot visible beside MaterialLab at unchanged width | passed | 1. head-corrected-select.png 2. head-corrected-dirty-marker.png |
+| View > Appearance > Light with corrected dirty document | Dirty marker stays visible while palette/title retint | Light content and Aqua title; root dot visible and title retains * | passed | head-corrected-light-dirty.png |
+| 1. Click authored Reset after corrected marker test 2. Cmd+Q from clean corrected head and restore exact original build-local INI | 1. Position returns 6.2, title loses * and root dot disappears 2. Normal exit without Save and original workspace restored | 1. Position is 6.200; clean title and no root dot in Light; scene was not saved 2. Shell session exited 0; original INI SHA-256 1f1e1a2780df02bb3a0e47f0687e8236407e74fdaeaeaa8b1100c223955e6134 restored; System Settings were unchanged during correction | passed | 1. head-corrected-reset-clean.png 2. head-corrected-reset-clean.png |
+
 ## Remaining verification
 
-Task 8 global checks and independent evidence review pass with no actionable findings. Its exact-image gates have run and failed. Tasks 10–19, complete Figma comparisons, Style Gallery typography, density, actor/provenance marks, native menu and shortcut dispatch, the UX1 completion gestures in both themes and final GPU suite remain pending. ADR 0029 has not been created; when created it must remain Proposed until separate milestone review.
+Task 8 global checks and independent evidence review pass; its exact-image gates remain failed. Task 10's corrected gates, native recheck and fresh independent review pass. Tasks 11–19 still require Gallery typography, full Figma comparisons, cost measurements, actor/provenance marks, native menus and shortcuts, UX1 gestures in both themes and final GPU validation. ADR 0029 has not been created; when created it must remain Proposed until separate milestone review.

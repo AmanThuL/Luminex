@@ -187,6 +187,28 @@ bool iconButton(const char* id, EditorIcon icon, bool enabled, const char* toolt
 }
 
 //======================================================================================================================
+bool primaryButton(const char* label) {
+    const ScopedType type(TypeRole::BodyStrong);
+    ImGui::PushStyleColor(ImGuiCol_Button, color(ThemeRole::AccentOperator));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, color(ThemeRole::AccentOperatorHover));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, color(ThemeRole::AccentOperatorActive));
+    ImGui::PushStyleColor(ImGuiCol_Text, color(ThemeRole::TextOnAccent));
+    const bool clicked = ImGui::Button(label);
+    ImGui::PopStyleColor(4);
+    return clicked;
+}
+
+//======================================================================================================================
+bool collapsingHeader(const char* label, ImGuiTreeNodeFlags flags) {
+    ImGui::PushStyleColor(ImGuiCol_Header, color(ThemeRole::SurfaceHover));
+    ImGui::PushStyleColor(ImGuiCol_HeaderHovered, color(ThemeRole::SurfaceHover));
+    ImGui::PushStyleColor(ImGuiCol_HeaderActive, color(ThemeRole::SurfaceActive));
+    const bool open = ImGui::CollapsingHeader(label, flags);
+    ImGui::PopStyleColor(3);
+    return open;
+}
+
+//======================================================================================================================
 void beginHeaderRow() {
     ImGui::BeginGroup();
     ImGui::AlignTextToFramePadding();
@@ -226,6 +248,37 @@ void endDiagnostics() {
 }
 
 //======================================================================================================================
+bool vector3(const char* label, const char* id, float* values, float speed, float minimum,
+             float maximum, const char* format, ImGuiSliderFlags flags, bool rgb) {
+    flags |= ImGuiSliderFlags_ColorMarkers;
+    field(label);
+    const int columns = ImGui::GetContentRegionAvail().x >= scaled(300.0f) ? 3 : 1;
+    bool changed = false;
+    if (ImGui::BeginTable(id, columns, ImGuiTableFlags_SizingStretchSame)) {
+        constexpr const char* kAxes[] = {"X", "Y", "Z"};
+        constexpr const char* kChannels[] = {"R", "G", "B"};
+        for (int axis = 0; axis < 3; ++axis) {
+            ImGui::TableNextColumn();
+            ImGui::PushID(axis);
+            ImGui::TextUnformatted(rgb ? kChannels[axis] : kAxes[axis]);
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            // The N-component API supplies markers automatically; separate responsive scalar
+            // rows need the pinned ImGui RGB component colors before submitting the field.
+            const ImVec4 marker{(axis == 0 ? 240.0f : 20.0f) / 255.0f,
+                                (axis == 1 ? 240.0f : 20.0f) / 255.0f,
+                                (axis == 2 ? 240.0f : 20.0f) / 255.0f, 1.0f};
+            ImGui::SetNextItemColorMarker(ImGui::ColorConvertFloat4ToU32(marker));
+            changed |= ImGui::DragFloat("##component", values + axis, speed, minimum, maximum,
+                                        format, flags);
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+    return changed;
+}
+
+//======================================================================================================================
 void nextInRow(float width) {
     const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
     if (right - ImGui::GetItemRectMax().x >= width + ImGui::GetStyle().ItemSpacing.x) {
@@ -247,7 +300,8 @@ void drawNotice(NoticeQueue& notices, double nowSeconds) {
                              viewport->WorkPos.y + viewport->WorkSize.y - margin},
                             ImGuiCond_Always, {1.0f, 1.0f});
     ImGui::SetNextWindowSize({width, 0.0f});
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, scaled(kShape.popup));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, color(ThemeRole::SurfaceOverlay));
     constexpr ImGuiWindowFlags kFlags =
         ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoDocking |
         ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
@@ -262,6 +316,7 @@ void drawNotice(NoticeQueue& notices, double nowSeconds) {
         drawActionFeedback("result", *result);
     }
     ImGui::End();
+    ImGui::PopStyleColor();
     ImGui::PopStyleVar();
 }
 

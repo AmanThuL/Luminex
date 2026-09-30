@@ -295,7 +295,7 @@ void drawTreeRow(const SceneTreeRow& row, const ScenePanelContext& context) {
     const bool culled = row.effective && primitiveCount > 0 && knownPrimitives == primitiveCount &&
                         rejectedPrimitives == primitiveCount;
     const bool dimmed = !row.effective || culled;
-    std::string label = root ? documentTitle(row.label, context.dirty) : row.label;
+    std::string label = row.label;
     if (!row.enabled)
         label += " [off]";
     else if (!row.effective)
@@ -324,6 +324,17 @@ void drawTreeRow(const SceneTreeRow& row, const ScenePanelContext& context) {
     if (dimmed && !selected)
         ImGui::PushStyleColor(ImGuiCol_Text, editor_style::color(ThemeRole::TextDisabled));
     const bool opened = ImGui::TreeNodeEx("document-row", flags, "%s", label.c_str());
+    if (root && context.dirty) {
+        const auto minimum = ImGui::GetItemRectMin();
+        const auto maximum = ImGui::GetItemRectMax();
+        const float radius = ImGui::GetFontSize() * 0.2f;
+        auto* draw = ImGui::GetWindowDrawList();
+        // A spanning row includes horizontally overflowing content; keep its status in view.
+        const float right = std::min(maximum.x, draw->GetClipRectMax().x);
+        draw->AddCircleFilled(
+            {right - ImGui::GetStyle().FramePadding.x - radius, (minimum.y + maximum.y) * 0.5f},
+            radius, ImGui::GetColorU32(ImGuiCol_UnsavedMarker), 8);
+    }
     if (dimmed && !selected)
         ImGui::PopStyleColor();
     if (ImGui::IsItemClicked(ImGuiMouseButton_Left))

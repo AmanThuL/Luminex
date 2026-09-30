@@ -229,7 +229,7 @@ void EditorShell::buildDocumentWorkflow() {
             const auto pending = m_documentWorkflow.action();
             if (!pending || DocumentWorkflow::offersSave(*pending)) {
                 ImGui::BeginDisabled(reason.has_value());
-                if (ImGui::Button("Save")) {
+                if (editor_style::primaryButton("Save")) {
                     m_documentWorkflow.confirm(ConfirmChoice::Save);
                     ImGui::CloseCurrentPopup();
                 }
@@ -238,7 +238,7 @@ void EditorShell::buildDocumentWorkflow() {
                     editorTooltip(reason->c_str());
                 ImGui::SameLine();
             }
-            if (ImGui::Button("Discard")) {
+            if (editor_style::primaryButton("Discard")) {
                 m_documentWorkflow.confirm(ConfirmChoice::Discard);
                 ImGui::CloseCurrentPopup();
             }

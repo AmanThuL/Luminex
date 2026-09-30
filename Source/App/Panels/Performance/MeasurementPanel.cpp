@@ -23,7 +23,7 @@ void drawMeasurementSection(MeasurementPanelContext& context) {
                                         "retirement. Closing this window keeps the run active.";
     // A labelled button: the shared Play glyph's text fallback would read "Play" here.
     ImGui::BeginDisabled(run.active() || !context.startDisabledReason.empty());
-    if (ImGui::Button("Start measurement##StartMeasurement"))
+    if (editor_style::primaryButton("Start measurement##StartMeasurement"))
         context.action = MeasurementAction::Start;
     ImGui::EndDisabled();
     editorTooltip(startHelp.c_str());

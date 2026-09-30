@@ -476,7 +476,7 @@ def callable_bodies(code: str) -> list[tuple[int, int, ColorType]]:
 
 
 def check_text(source: str, path: str) -> list[str]:
-    """Return diagnostics for literal colors; data-derived vectors and zero sentinels pass."""
+    """Check literal colors and require the shared neutral collapsing-header helper."""
     code = code_only(source)
     bodies = callable_bodies(code)
     findings: dict[int, str] = {}
@@ -511,7 +511,12 @@ def check_text(source: str, path: str) -> list[str]:
                         findings[element] = "ImVec4 array return element"
                 elif nonzero_numeric_color(code[brace + 1 : end]):
                     findings[start] = "ImVec4 return"
-    return [
+    errors = []
+    if Path(path).as_posix() != "Source/App/Panels/Shared/EditorStyle.cpp":
+        for match in re.finditer(r"\bImGui\s*::\s*CollapsingHeader\s*\(", code):
+            line = code.count("\n", 0, match.start()) + 1
+            errors.append(f"{path}:{line}: use editor_style::collapsingHeader for neutral headers")
+    return errors + [
         f"{path}:{code.count(chr(10), 0, offset) + 1}: {construct} must use an editor theme role"
         for offset, construct in sorted(findings.items())
     ]

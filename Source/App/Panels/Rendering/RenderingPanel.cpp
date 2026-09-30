@@ -15,8 +15,8 @@
 #include <string>
 namespace lmx::app {
 namespace {
-// The editor's documented clear colour, restored by the Display reset.
-// The editor's own clear colour, set by main.cpp and the headless paths, not Renderer's default.
+// The editor's documented clear color, restored by the Display reset.
+// The editor's own clear color, set by main.cpp and the headless paths, not Renderer's default.
 constexpr std::array kDefaultClearColor{kSceneClearGray, kSceneClearGray, kSceneClearGray, 1.0f};
 //======================================================================================================================
 // Whether the scope's reset would restore anything, including the non-settings state it owns.
@@ -93,7 +93,8 @@ void drawRenderingPanel(bool& open, const InspectorPanelContext& context) {
             bool expanded;
             {
                 const editor_style::ScopedType type(TypeRole::BodyStrong);
-                expanded = ImGui::CollapsingHeader(renderingCategoryLabel(topic).data(), flags);
+                expanded =
+                    editor_style::collapsingHeader(renderingCategoryLabel(topic).data(), flags);
             }
             if (const auto scope = renderingTopicResetGroup(topic)) {
                 ImGui::SameLine(contentRight - editor_style::iconButtonWidth(EditorIcon::Reset));

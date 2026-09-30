@@ -153,7 +153,7 @@ run after `UpdatePlatformWindows`, setting Aqua, Dark Aqua or nil on each viewpo
   and Comfortable; Task 6's gestures; all in a new `docs/milestones/ux/ux4-validation.md`.
   **Controller check:** both themes against Figma 05; verify one encoded `#4CABFD` outline constant in both themes (owner override of the record's earlier per-theme sentence).
 
-**Result:** exact-image gates failed (5/6 and 9/15); outline/Gallery checks await Tasks 10/11/17.
+**Result:** exact-image gates failed (5/6 and 9/15); Task 10 verifies the blue outline in both themes; Gallery checks await Tasks 11/17.
 
 ### Task 9: Geist replaces Inter (UX4.2, Astra)
 **Files:** `xmake/setup.lua`, `Source/App/xmake.lua`, `THIRD_PARTY_NOTICES.md`,
@@ -184,7 +184,7 @@ TypeFace face; float size; }` (13, 16, 16 Medium, 20 Medium, 13 Mono, 16 Mono), 
 = 2 }` as `kShape`; `editor_style::primaryButton(const char*) -> bool`;
 `editor_style::collapsingHeader(const char*, ImGuiTreeNodeFlags = 0) -> bool` pushing
 `surface/hover`, `surface/hover`, `surface/active` into the `Header*` slots (Review focus 2).
-- [ ] Test first: the checker also rejects `ImGui::CollapsingHeader(` outside `EditorStyle`; the
+- [x] Test first: the checker also rejects `ImGui::CollapsingHeader(` outside `EditorStyle`; the
   three calls move to the helper. The base style takes frame, grab, tab and scrollbar rounding
   `control`, popup `popup`, windows and children 0, every border 1, `DockingSeparatorSize` 2 and
   `TreeLinesFlags` `DrawLinesToNodes`; `vector3` fields pass `ImGuiSliderFlags_ColorMarkers`; the

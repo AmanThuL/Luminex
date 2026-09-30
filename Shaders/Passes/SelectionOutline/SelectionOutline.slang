@@ -58,8 +58,9 @@ float4 fragmentMain(VSOutput input): SV_Target
             edge = max(edge, abs(center - neighbor) * falloff);
         }
     }
-    // Warm, restrained UI color; filled interiors keep their exact display bytes.
-    return float4(lerp(scene.rgb, float3(1.0, 0.76, 0.38), edge * 0.72), scene.a);
+    // Encoded sRGB #4CABFD is shared by both editor themes; interiors keep their display bytes.
+    static const float3 kOutlineColor = float3(76.0, 171.0, 253.0) / 255.0;
+    return float4(lerp(scene.rgb, kOutlineColor, edge * 0.72), scene.a);
 }
 
 // Rejected selections still refresh the texture the UI selected before frame declaration.

@@ -437,7 +437,7 @@ void drawPerformancePanel(bool& open, PerformanceModel& model, PerformancePanelS
                 drawIntervalPlot(snapshot);
             }
             ImGui::EndChild();
-        } else if (ImGui::CollapsingHeader("Frame interval history")) {
+        } else if (editor_style::collapsingHeader("Frame interval history")) {
             if (ImGui::BeginChild("Intervals", ImVec2(0.0f, editor_style::scaled(130.0f)))) {
                 drawIntervalPlot(snapshot);
             }
@@ -446,7 +446,7 @@ void drawPerformancePanel(bool& open, PerformanceModel& model, PerformancePanelS
         const char* detailsLabel = selected != nullptr
                                        ? "Selected pass & metric details###MetricDetails"
                                        : "Metric definitions & exact memory###MetricDetails";
-        if (ImGui::CollapsingHeader(detailsLabel)) {
+        if (editor_style::collapsingHeader(detailsLabel)) {
             ImGui::TextWrapped(
                 "Frame %llu | published %.2f s | %zu / %zu samples | %.0f updates/s",
                 static_cast<unsigned long long>(snapshot.frameId), snapshot.publishedAtSeconds,

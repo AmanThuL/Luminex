@@ -53,6 +53,7 @@ LegendChipResult drawLegendChip(const ViewportPanelContext& context, ImVec2 orig
         return {};
     ImGui::SetCursorScreenPos(ImVec2(origin.x + inset, origin.y + inset));
     ImGui::PushStyleColor(ImGuiCol_ChildBg, editor_style::color(ThemeRole::SurfaceOverlay));
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, editor_style::scaled(kShape.card));
     ImGui::SetNextWindowSizeConstraints(ImVec2(0, 0), ImVec2(width, imageSize.y - inset * 2));
     bool hovered = false;
     if (ImGui::BeginChild("debug-legend", ImVec2(width, 0),
@@ -121,6 +122,7 @@ LegendChipResult drawLegendChip(const ViewportPanelContext& context, ImVec2 orig
         }
     }
     ImGui::EndChild();
+    ImGui::PopStyleVar();
     ImGui::PopStyleColor();
     return {hovered, ImGui::GetItemRectMax().y};
 }
@@ -215,8 +217,9 @@ ViewportPanelResult drawViewportPanel(bool& open, const ViewportPanelContext& co
     ViewportPanelResult result;
     if (ImGui::Begin(kViewportPanelWindowName, &open)) {
         const auto available = ImGui::GetContentRegionAvail();
-        const ImVec2 imageSize(available.x, std::max(available.y, 1.0f));
-        result.measured = available.x > 0.0f && available.y > 0.0f;
+        const float border = ImGui::GetStyle().ImageBorderSize;
+        const ImVec2 imageSize(available.x - 2.0f * border, available.y - 2.0f * border);
+        result.measured = imageSize.x > 0.0f && imageSize.y > 0.0f;
         result.focused = ImGui::IsWindowFocused();
         if (result.measured) {
             const bool outlineReady = context.outlineTarget.width() == context.renderer.width() &&
@@ -227,8 +230,11 @@ ViewportPanelResult drawViewportPanel(bool& open, const ViewportPanelContext& co
                                                              ? context.outlineTarget
                                                              : context.renderer.colorTarget()),
                          imageSize);
-            result.hovered = ImGui::IsItemHovered();
-            const auto origin = ImGui::GetItemRectMin();
+            const auto outerOrigin = ImGui::GetItemRectMin();
+            const ImVec2 origin(outerOrigin.x + border, outerOrigin.y + border);
+            result.hovered = ImGui::IsItemHovered() &&
+                             ImGui::IsMouseHoveringRect(
+                                 origin, ImVec2(origin.x + imageSize.x, origin.y + imageSize.y));
             const auto chip = drawLegendChip(context, origin, imageSize);
             if (chip.hovered)
                 result.hovered = false;

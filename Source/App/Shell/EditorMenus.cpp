@@ -16,6 +16,7 @@
 #include "App/Panels/Viewport/ViewportPanel.h"
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 namespace lmx::app {
 
@@ -117,6 +118,18 @@ void EditorShell::buildMainMenu(const render::Renderer& renderer, const rojoRHI:
                 setAppearance(Appearance::Light);
             if (ImGui::MenuItem("Dark", nullptr, current == Appearance::Dark))
                 setAppearance(Appearance::Dark);
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu("Density")) {
+            if (ImGui::MenuItem("Comfortable", nullptr,
+                                m_workspace.density == Density::Comfortable)) {
+                m_workspace.density = Density::Comfortable;
+                ImGui::MarkIniSettingsDirty();
+            }
+            if (ImGui::MenuItem("Compact", nullptr, m_workspace.density == Density::Compact)) {
+                m_workspace.density = Density::Compact;
+                ImGui::MarkIniSettingsDirty();
+            }
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("UI Scale")) {

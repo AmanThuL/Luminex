@@ -13,6 +13,29 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class LiteralColorTests(unittest.TestCase):
+    def test_collapsing_headers_require_the_shared_neutral_helper(self) -> None:
+        for expression in (
+            'ImGui::CollapsingHeader("Topic");',
+            '::ImGui /* namespace */ :: CollapsingHeader ("Topic", flags);',
+            'ImGui::\nCollapsingHeader("Topic");',
+        ):
+            with self.subTest(expression=expression):
+                errors = check_text(expression, "Source/App/Panels/Panel.cpp")
+                self.assertEqual(len(errors), 1)
+                self.assertIn("editor_style::collapsingHeader", errors[0])
+                self.assertEqual(
+                    check_text(expression, "Source/App/Panels/Shared/EditorStyle.cpp"), []
+                )
+        for source in (
+            '// ImGui::CollapsingHeader("Topic");',
+            'const char* text = "ImGui::CollapsingHeader(";',
+            'editor_style::collapsingHeader("Topic");',
+        ):
+            self.assertEqual(check_text(source, "Panel.cpp"), [])
+        self.assertEqual(
+            len(check_text('ImGui::CollapsingHeader("Topic");', "Elsewhere/EditorStyle.cpp")), 1
+        )
+
     def test_packed_and_imcolor_calls_are_rejected(self) -> None:
         for expression in (
             "IM_COL32(0, 0, 0, 0)",

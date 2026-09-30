@@ -52,6 +52,10 @@ inline constexpr float kPropertyGridMinWidth = 260.0f;
 float iconButtonWidth(EditorIcon icon);
 /// Draws a square glyph button, or a label-sized fallback, with delayed help when disabled too.
 bool iconButton(const char* id, EditorIcon icon, bool enabled, const char* tooltip);
+/// Draws an accent-filled primary action in the strong body face; true when activated.
+bool primaryButton(const char* label);
+/// Draws a neutral topic header; does not use the selected-row background.
+bool collapsingHeader(const char* label, ImGuiTreeNodeFlags flags = 0);
 /// Begins a panel's grouped action row; place following controls with nextInRow or SameLine.
 void beginHeaderRow();
 /// Ends the current panel header group.
@@ -159,29 +163,9 @@ inline bool checkbox(const char* label, const char* id, bool* value) {
 }
 
 /// Draws explicitly labeled XYZ or RGB components with enough width for each scalar value.
-inline bool vector3(const char* label, const char* id, float* values, float speed,
-                    float minimum = 0.0f, float maximum = 0.0f, const char* format = "%.3f",
-                    ImGuiSliderFlags flags = 0, bool rgb = false) {
-    field(label);
-    const int columns = ImGui::GetContentRegionAvail().x >= scaled(300.0f) ? 3 : 1;
-    bool changed = false;
-    if (ImGui::BeginTable(id, columns, ImGuiTableFlags_SizingStretchSame)) {
-        constexpr const char* kAxes[] = {"X", "Y", "Z"};
-        constexpr const char* kChannels[] = {"R", "G", "B"};
-        for (int axis = 0; axis < 3; ++axis) {
-            ImGui::TableNextColumn();
-            ImGui::PushID(axis);
-            ImGui::TextUnformatted(rgb ? kChannels[axis] : kAxes[axis]);
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(-FLT_MIN);
-            changed |= ImGui::DragFloat("##component", values + axis, speed, minimum, maximum,
-                                        format, flags);
-            ImGui::PopID();
-        }
-        ImGui::EndTable();
-    }
-    return changed;
-}
+bool vector3(const char* label, const char* id, float* values, float speed, float minimum = 0.0f,
+             float maximum = 0.0f, const char* format = "%.3f", ImGuiSliderFlags flags = 0,
+             bool rgb = false);
 
 } // namespace lmx::app::editor_style
 

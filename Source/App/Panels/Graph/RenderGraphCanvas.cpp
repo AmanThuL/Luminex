@@ -61,7 +61,6 @@ constexpr float kBodyPadY = 6.0f;
 constexpr float kBodyBottomPad = 6.0f;
 
 /// Corner radius the editor rounds a card with, matched by the title band's top corners.
-constexpr float kCardRounding = 6.0f;
 
 /// Measured placement, in canvas units: between two columns of cards, between two ranks of one row,
 /// between two rows, and between the last row and the culled band. Pixels are decided here rather
@@ -309,12 +308,12 @@ float pinColumnWidth(const std::vector<GraphLayoutPin>& pins, bool fullLabels) {
 
 //======================================================================================================================
 // A pin reads outwards: an input's dot leads its label and an output's label leads its dot, so the
-// two columns point the way the versions travel, and both dots are centred on the card's edge so a
+// two columns point the way the versions travel, and both dots are centered on the card's edge so a
 // link lands on the silhouette rather than somewhere inside it.
 //
 // The dot is drawn by hand into the node's content channel, which the editor keeps above the node
 // background and border, and it is deliberately not an ImGui item: an item half outside the card
-// would grow the card's bounds around it and the edge the dot is centred on would move.
+// would grow the card's bounds around it and the edge the dot is centered on would move.
 //
 // The full label the short one abbreviates is what a hover reports; the caller shows it once, after
 // every node has been submitted.
@@ -424,7 +423,7 @@ void drawItem(const GraphNodeModel& model, const GraphLayout& layout, uint32_t i
     const float titleHeight = lineHeight + scaled(kTitlePadY) * 2.0f;
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     drawList->AddRectFilled(origin, ImVec2(origin.x + cardWidth, origin.y + titleHeight),
-                            ImGui::ColorConvertFloat4ToU32(style.title), scaled(kCardRounding),
+                            ImGui::ColorConvertFloat4ToU32(style.title), scaled(kShape.card),
                             ImDrawFlags_RoundCornersTop);
     drawList->AddText(ImVec2(origin.x + scaled(kTitlePadX), origin.y + scaled(kTitlePadY)),
                       style.titleText, title.left.c_str());
@@ -640,7 +639,7 @@ bool applyMeasuredPositions(const GraphLayout& layout, MeasuredColumns& columns)
 
 //======================================================================================================================
 // Opens the picture on as much of the chain as can be read: a graph the reader has to zoom into is
-// worse than one they have to pan across. A graph that already fits the view is centred at the
+// worse than one they have to pan across. A graph that already fits the view is centered at the
 // zoom in force; a longer one is opened on the leading columns, zoomed so those columns fill the
 // view rather than so the whole chain does.
 //
@@ -684,7 +683,7 @@ void navigateToLeadingColumns(const GraphLayout& layout, const MeasuredColumns& 
     }
     // zoomIn = false is ZoomMode::None, which recentres and leaves the scale exactly as the reader
     // left it; true is ZoomMode::WithMargin, which fits the leading columns with a 5% margin, so
-    // they start at that margin instead of centred in a half-empty canvas.
+    // they start at that margin instead of centered in a half-empty canvas.
     ed::NavigateToSelection(!wholeGraphFits, 0.0f);
     ed::ClearSelection();
 }
@@ -720,15 +719,13 @@ void drawCanvas(const GraphNodeModel& model, const GraphLayout& layout,
     // pin dot sits on the silhouette. The two link directions are the editor's own defaults, stated
     // here so the round curves below are read against something explicit rather than a default.
     ed::PushStyleVar(ed::StyleVar_NodePadding, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-    ed::PushStyleVar(ed::StyleVar_NodeRounding, scaled(kCardRounding));
+    ed::PushStyleVar(ed::StyleVar_NodeRounding, scaled(kShape.card));
     ed::PushStyleVar(ed::StyleVar_LinkStrength, scaled(kLinkStrength));
     ed::PushStyleVar(ed::StyleVar_SourceDirection, ImVec2(1.0f, 0.0f));
     ed::PushStyleVar(ed::StyleVar_TargetDirection, ImVec2(-1.0f, 0.0f));
-    ed::PushStyleVar(ed::StyleVar_NodeBorderWidth, scaled(ed::GetStyle().NodeBorderWidth));
-    ed::PushStyleVar(ed::StyleVar_HoveredNodeBorderWidth,
-                     scaled(ed::GetStyle().HoveredNodeBorderWidth));
-    ed::PushStyleVar(ed::StyleVar_SelectedNodeBorderWidth,
-                     scaled(ed::GetStyle().SelectedNodeBorderWidth));
+    ed::PushStyleVar(ed::StyleVar_NodeBorderWidth, kShape.border);
+    ed::PushStyleVar(ed::StyleVar_HoveredNodeBorderWidth, kShape.border);
+    ed::PushStyleVar(ed::StyleVar_SelectedNodeBorderWidth, kShape.border);
     ed::Begin("lmx.renderGraph", ImVec2(0.0f, 0.0f));
 
     const bool pictureChanged = state.appliedSignature != layout.signature;
