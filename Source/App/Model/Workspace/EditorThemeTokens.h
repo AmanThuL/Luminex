@@ -100,7 +100,7 @@ extern const ThemePalette kLightPalette;
 
 /// Maps one upstream UI color slot to a semantic role without importing the UI library.
 struct SlotRole {
-    std::string_view name; ///< Static upstream enumerator suffix, excluding the library prefix.
+    std::string_view name; ///< Static name returned by the upstream GetStyleColorName API.
     ThemeRole role;        ///< Palette entry supplying encoded RGB and straight alpha.
     float alphaScale;      ///< Multiplier in [0, 1] applied to the palette entry's alpha only.
 };

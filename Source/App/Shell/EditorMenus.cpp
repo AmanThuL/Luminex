@@ -109,6 +109,16 @@ void EditorShell::buildMainMenu(const render::Renderer& renderer, const rojoRHI:
             ImGui::EndMenu();
         }
         ImGui::EndDisabled();
+        if (ImGui::BeginMenu("Appearance")) {
+            const auto current = m_workspace.appearance.effective();
+            if (ImGui::MenuItem("Auto (system)", nullptr, current == Appearance::Auto))
+                setAppearance(Appearance::Auto);
+            if (ImGui::MenuItem("Light", nullptr, current == Appearance::Light))
+                setAppearance(Appearance::Light);
+            if (ImGui::MenuItem("Dark", nullptr, current == Appearance::Dark))
+                setAppearance(Appearance::Dark);
+            ImGui::EndMenu();
+        }
         if (ImGui::BeginMenu("UI Scale")) {
             const uint32_t current = m_workspace.uiScalePercent;
             if (ImGui::MenuItem("Zoom Out", "Cmd+-", false, current > kUiScalePresets.front()))

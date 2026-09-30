@@ -14,6 +14,7 @@ namespace lmx::app::editor_style {
 namespace {
 
 bool iconFontAvailable = false;
+ThemePalette palette = kDarkPalette;
 
 //======================================================================================================================
 ImVec4 glyphInkBounds(const ImFontGlyph& glyph, const ImTextureData& texture) {
@@ -51,6 +52,29 @@ ImVec4 glyphInkBounds(const ImFontGlyph& glyph, const ImTextureData& texture) {
 } // namespace
 
 //======================================================================================================================
+void setActivePalette(const ThemePalette& active) {
+    palette = active;
+}
+
+//======================================================================================================================
+const ThemePalette& activePalette() {
+    return palette;
+}
+
+//======================================================================================================================
+ImVec4 color(ThemeRole role) {
+    const auto c = palette[static_cast<std::size_t>(role)];
+    return {c.r, c.g, c.b, c.a};
+}
+
+//======================================================================================================================
+ImU32 colorU32(ThemeRole role, float alphaScale) {
+    auto c = color(role);
+    c.w *= alphaScale;
+    return ImGui::ColorConvertFloat4ToU32(c);
+}
+
+//======================================================================================================================
 void setIconFontAvailable(bool available) {
     iconFontAvailable = available;
 }
@@ -85,7 +109,7 @@ bool iconButton(const char* id, EditorIcon icon, bool enabled, const char* toolt
         const auto minimum = ImGui::GetItemRectMin();
         const auto maximum = ImGui::GetItemRectMax();
         const auto density = ImGui::GetWindowViewport()->FramebufferScale;
-        // Atlas quads can contain asymmetric transparent padding. Centre their actual ink and
+        // Atlas quads can contain asymmetric transparent padding. Center their actual ink and
         // snap to framebuffer pixels; text rendering would truncate to whole logical points.
         const ImVec2 origin{
             std::round((minimum.x + maximum.x - (bounds.x + bounds.z) * scale) * 0.5f * density.x) /

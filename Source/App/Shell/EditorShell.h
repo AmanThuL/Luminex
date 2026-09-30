@@ -62,8 +62,10 @@ struct WorkspaceSettings {
     std::string sectionText;
     /// The live panel visibility this shell draws from and persists.
     WorkspaceVisibility visibility;
-    /// User-selected UI density, persisted independently of dock topology.
+    /// User-selected UI scale, persisted independently of dock topology.
     uint32_t uiScalePercent = kDefaultUiScalePercent;
+    AppearanceState appearance;             ///< Persisted preference and optional session override.
+    Density density = Density::Comfortable; ///< Persisted spacing preference.
 };
 
 /// The editor shell: the Dear ImGui context, the dockspace and its four docked panels, the detached
@@ -111,6 +113,15 @@ public:
     /// Applies queued font/control scaling before backend and ImGui NewFrame calls.
     /// Uses the unscaled base style so repeated zoom/reset operations cannot accumulate drift.
     void prepareUIFrame();
+
+    /// Saves a menu appearance choice, clearing a session override; applies between frames.
+    void setAppearance(Appearance appearance);
+    /// Updates the observed system theme; Auto resolves it on the next frame.
+    void onSystemThemeChanged(SystemTheme theme);
+    /// Seeds a session-only appearance override before the first UI frame.
+    void primeAppearance(std::optional<Appearance> appearance);
+    /// Returns the current UI canvas clear in encoded SDR sRGB, with straight alpha.
+    std::array<float, 4> uiClearColor() const;
 
     /// Builds the whole UI for this frame and applies camera input. Between ImGui::NewFrame() and
     /// ImGui::Render(). Applies a scene request from the preceding presented frame before drawing:
@@ -376,6 +387,12 @@ private:
     WorkspaceSettings m_workspace;
     std::unique_ptr<ImGuiStyle> m_baseUiStyle;
     uint32_t m_appliedUiScalePercent = 0;
+    Density m_appliedDensity = Density::Comfortable;
+    SystemTheme m_systemTheme = SystemTheme::Unknown;
+    std::optional<ThemeKind> m_appliedTheme;
+    ThemeTransition m_themeTransition;
+    ThemePalette m_activePalette = kDarkPalette;
+    bool m_themeTransitionPending = false;
     // Set at create() when the ini named no matching workspace schema, and again when a layout
     // reset is consumed; cleared by the frame that lays out the dockspace. Rebuilding the default
     // layout on a run whose schema did match would throw away the re-docking the ini exists to

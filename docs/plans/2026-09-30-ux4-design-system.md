@@ -117,12 +117,12 @@ ax::NodeEditor::Style&, const ThemePalette&)`, `verifyThemeSlotNames()` (asserts
 `EditorShell::setAppearance(Appearance)`, `onSystemThemeChanged(SystemTheme)`, `uiClearColor()
 const -> std::array<float, 4>`; `editor_style::setActivePalette(const ThemePalette&)`,
 `color(ThemeRole) -> ImVec4`, `colorU32(ThemeRole, float alphaScale = 1.0f) -> ImU32`.
-- [ ] Replace `StyleColorsDark` and its overrides. `prepareUIFrame` keys on scale, density, theme
+- [x] Replace `StyleColorsDark` and its overrides. `prepareUIFrame` keys on scale, density, theme
   and transition: a size change rebuilds `m_baseUiStyle` from `densityMetrics` and rescales as
   today; a color change writes only `m_baseUiStyle->Colors` and `style.Colors`. The graph canvas
   applies node-editor colors as it begins; `kUiClearColor` becomes `uiClearColor()`; View >
   Appearance holds Auto (system), Light and Dark, persisted with the density.
-- [ ] **Verify:** each mode retints the main window and graph canvas; a switch then ⌘+ within 160
+- [x] **Verify:** each mode retints the main window and graph canvas; a switch then ⌘+ within 160
   ms ends on the target palette at the new scale (Review focus 1); head-only `theme-switch.patch`
   (twenty switches) keeps `io.Fonts->TexData->UniqueID`, platform texture count and
   `MTLDevice.currentAllocatedSize`. Commit `editor: apply light, dark and auto themes (UX4)`.

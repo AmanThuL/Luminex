@@ -43,12 +43,6 @@ namespace {
 constexpr int kWindowWidth = 1280;
 constexpr int kWindowHeight = 720;
 
-// UI colors are display-referred sRGB, straight-alpha blended in encoded space on BGRA8Unorm.
-// Encoded 1.0 is SDR white; the UI never boosts it. This clear is written verbatim into dock gaps.
-// Layout uses points and the per-window framebuffer scale controls font rasterization.
-// Detached ImGui platform windows own separate BGRA8Unorm layers and remain SDR.
-constexpr float kUiClearColor[4] = {0.06f, 0.06f, 0.07f, 1.0f};
-
 // Capture paths are relative to the process working directory unless overridden.
 constexpr std::string_view kCapturePath = "luminex-frame.gputrace";
 
@@ -154,6 +148,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         return 1;
     }
 
+    shell->primeAppearance(options.appearance);
     if (auto primed = shell->primeTemporal(options); !primed) {
         LMX_LOG_ERROR("startup lighting failed: {}", primed.error().message);
         return 1;
@@ -346,14 +341,19 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         const lmx::render::GraphTexture drawable =
             graph.importTexture(**target, rojoRHI::Format::BGRA8Unorm, "lmx.app.drawable");
 
+        // UI colors are display-referred sRGB, straight-alpha blended in encoded space on
+        // BGRA8Unorm. Encoded 1.0 is SDR white; the UI never boosts it. This clear is written
+        // verbatim into dock gaps. Layout uses points and the per-window framebuffer scale controls
+        // font rasterization. Detached ImGui platform windows own separate BGRA8Unorm layers and
+        // remain SDR.
+        const auto uiClear = shell->uiClearColor();
         lmx::render::PassDesc ui;
         // Declaring the read is the whole ordering statement: it puts this pass after the display
         // pass and that target's transition to a shader read in front of it.
         ui.textureReads.push_back(displayColor);
         // This attachment layout must match the pipeline configured by imguiInit().
         ui.color = lmx::render::ColorAttachment{
-            .handle = drawable,
-            .clearColor = {kUiClearColor[0], kUiClearColor[1], kUiClearColor[2], kUiClearColor[3]}};
+            .handle = drawable, .clearColor = {uiClear[0], uiClear[1], uiClear[2], uiClear[3]}};
         // ImGui owns encoder state once it starts, so no engine draw follows it in this pass.
         graph.addPass("lmx.pass.ui", std::move(ui), [&commands](const lmx::render::PassResources&) {
             rojoRHI::metal4::imguiRender(commands);

@@ -5,6 +5,8 @@
 
 #include "App/Panels/Graph/RenderGraphPanelInternal.h"
 
+#include "App/Panels/Shared/EditorStyle.h"
+#include "App/Shell/EditorThemeApply.h"
 #include "Core/Diagnostics/Assert.h"
 
 #include <imgui.h>
@@ -726,6 +728,8 @@ void drawCanvas(const GraphNodeModel& model, const GraphLayout& layout,
                "a compiled frame declares more nodes than the canvas id space holds");
 
     ed::SetCurrentEditor(state.editor->context);
+    verifyThemeSlotNames();
+    applyNodeEditorColors(ed::GetStyle(), editor_style::activePalette());
     const float uiScale = ImGui::GetStyle().FontScaleMain;
     const bool uiScaleChanged = state.appliedUiScale > 0.0f && state.appliedUiScale != uiScale;
     const float scaleRatio = uiScaleChanged ? uiScale / state.appliedUiScale : 1.0f;

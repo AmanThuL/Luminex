@@ -70,6 +70,11 @@ class ThemeTokensTests(unittest.TestCase):
             if upstream.exists():
                 text = upstream.read_text().split(prefix + end)[0]
                 expected = re.findall(r"^    " + prefix + r"(\w+),", text, re.M)
+                if prefix == "StyleColor_":
+                    implementation = (upstream.parent / "imgui_node_editor.cpp").read_text()
+                    display_names = dict(re.findall(
+                        r'case StyleColor_(\w+): return "([^"]+)";', implementation))
+                    expected = [display_names[name] for name in expected]
                 self.assertEqual(names, expected)
             for _, role, alpha in slots:
                 self.assertIn(role, generator.sem("dark"))

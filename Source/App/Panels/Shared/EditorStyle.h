@@ -7,12 +7,22 @@
 
 #include "App/Model/Capture/NoticeQueue.h"
 #include "App/Model/Workspace/EditorIcon.h"
+#include "App/Model/Workspace/EditorThemeTokens.h"
 
 #include <imgui.h>
 
 #include <cfloat>
 
 namespace lmx::app::editor_style {
+
+/// Copies the frame's palette; call on the UI thread before building any panels.
+void setActivePalette(const ThemePalette& palette);
+/// Returns the owned frame palette; valid until the next setActivePalette call.
+const ThemePalette& activePalette();
+/// Returns an encoded-sRGB semantic color with straight alpha.
+ImVec4 color(ThemeRole role);
+/// Packs an encoded color, multiplying its alpha by alphaScale in [0, 1].
+ImU32 colorU32(ThemeRole role, float alphaScale = 1.0f);
 
 /// Minimum property-grid width in base UI points before labels stack above values.
 inline constexpr float kPropertyGridMinWidth = 260.0f;

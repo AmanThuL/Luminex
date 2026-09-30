@@ -85,7 +85,8 @@ void workspaceSettingsWriteAll(ImGuiContext*, ImGuiSettingsHandler* handler,
     const WorkspaceSettings& settings = workspaceSettingsOf(handler);
     outBuffer->appendf("[%s][%s]\n", kWorkspaceSettingsType, kWorkspaceSettingsName);
     outBuffer->append(writeWorkspaceSettings(kWorkspaceSchemaVersion, settings.visibility,
-                                             settings.uiScalePercent)
+                                             settings.uiScalePercent, settings.appearance.persisted,
+                                             settings.density)
                           .c_str());
     outBuffer->append("\n");
 }
@@ -206,6 +207,28 @@ void EditorShell::registerWorkspaceSettings() {
 //======================================================================================================================
 void EditorShell::buildDefaultLayout(uint32_t dockspaceId) {
     buildDefaultDocking(dockspaceId);
+}
+
+//======================================================================================================================
+void EditorShell::setAppearance(Appearance appearance) {
+    m_workspace.appearance.choose(appearance);
+    ImGui::MarkIniSettingsDirty();
+}
+
+//======================================================================================================================
+void EditorShell::onSystemThemeChanged(SystemTheme theme) {
+    m_systemTheme = theme;
+}
+
+//======================================================================================================================
+void EditorShell::primeAppearance(std::optional<Appearance> appearance) {
+    m_workspace.appearance.override = appearance;
+}
+
+//======================================================================================================================
+std::array<float, 4> EditorShell::uiClearColor() const {
+    const auto c = m_activePalette[static_cast<std::size_t>(ThemeRole::SurfaceCanvas)];
+    return {c.r, c.g, c.b, c.a};
 }
 
 //======================================================================================================================

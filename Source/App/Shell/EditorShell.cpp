@@ -8,6 +8,7 @@
 #include "App/Model/Rendering/Settings/DebugView.h"
 #include "App/Model/Scene/SceneTree.h"
 #include "App/Shell/EditorFont.h"
+#include "App/Shell/EditorThemeApply.h"
 
 #include "App/Panels/Console/ConsolePanel.h"
 #include "App/Panels/Graph/RenderGraphPanel.h"
@@ -46,7 +47,7 @@ constexpr uint32_t kResizeDebounceFrames = 10;
 // reached through the same text writeWorkspaceSettings emits.
 constexpr std::string_view kNoSchemaReason = "no matching workspace schema in imgui.ini";
 constexpr std::string_view kMigrationReason =
-    "migrating workspace schema 3 to 4; keeping panel visibility, UI scale and detached window "
+    "migrating workspace schema 3 to 5; keeping panel visibility, UI scale and detached window "
     "bounds";
 constexpr std::string_view kResetReason = "layout reset requested";
 
@@ -73,10 +74,6 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
     // command buffer on the shared device queue. main.cpp drives them after each presented frame.
     io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
     editor_style::setIconFontAvailable(configureEditorFont());
-    ImGui::StyleColorsDark();
-    ImGui::GetStyle().FramePadding = ImVec2(8.0f, 5.0f);
-    ImGui::GetStyle().ItemSpacing = ImVec2(8.0f, 8.0f);
-    ImGui::GetStyle().WindowPadding = ImVec2(12.0f, 12.0f);
 
     if (!ImGui_ImplSDL3_InitForMetal(window)) {
         LMX_LOG_ERROR("ImGui_ImplSDL3_InitForMetal failed: {}", SDL_GetError());
@@ -147,6 +144,8 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
     const WorkspaceDecision decision = decideWorkspace(parsed);
     self->m_workspace.visibility = decision.visibility;
     self->m_workspace.uiScalePercent = decision.uiScalePercent;
+    self->m_workspace.appearance.persisted = decision.appearance;
+    self->m_workspace.density = decision.density;
     self->m_buildDefaultLayout = decision.kind == WorkspaceDecisionKind::BuildDefault;
     self->m_performancePanel.resetPlacement = decision.resetPerformancePlacement;
     // Schema 3 is the one known migration: it rebuilds docking but keeps the stored preferences,
@@ -159,7 +158,7 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
     std::string_view startup =
         "workspace schema matches -- restoring the docked layout from imgui.ini";
     if (migrating) {
-        startup = "workspace schema 3 found -- migrating to schema 4 and building the default "
+        startup = "workspace schema 3 found -- migrating to schema 5 and building the default "
                   "layout";
     } else if (self->m_buildDefaultLayout) {
         startup = "no matching workspace schema -- the default layout will be built";
@@ -226,11 +225,32 @@ bool EditorShell::applyPendingViewportResize(rojoRHI::Device& device, render::Re
 
 //======================================================================================================================
 void EditorShell::prepareUIFrame() {
-    const uint32_t percent = m_workspace.uiScalePercent;
-    if (m_appliedUiScalePercent == percent) {
-        return;
+    const double now = static_cast<double>(SDL_GetTicksNS()) / 1.0e9;
+    const auto target = resolveTheme(m_workspace.appearance.effective(), m_systemTheme);
+    const bool themeChanged = !m_appliedTheme || *m_appliedTheme != target;
+    if (themeChanged) {
+        const bool firstFrame = !m_appliedTheme;
+        m_themeTransition.start(m_themeTransition.sample(now), themePalette(target), now,
+                                firstFrame);
+        m_appliedTheme = target;
+        m_themeTransitionPending = true;
     }
     ImGuiStyle& style = ImGui::GetStyle();
+    if (m_themeTransitionPending) {
+        m_activePalette = m_themeTransition.sample(now);
+        applyImGuiColors(*m_baseUiStyle, m_activePalette);
+        applyImGuiColors(style, m_activePalette);
+        editor_style::setActivePalette(m_activePalette);
+        m_themeTransitionPending = m_themeTransition.active(now);
+    }
+
+    const uint32_t percent = m_workspace.uiScalePercent;
+    if (m_appliedUiScalePercent == percent && m_appliedDensity == m_workspace.density)
+        return;
+    const auto metrics = densityMetrics(m_workspace.density);
+    m_baseUiStyle->FramePadding = {metrics.framePaddingX, metrics.framePaddingY};
+    m_baseUiStyle->ItemSpacing = {metrics.itemSpacingX, metrics.itemSpacingY};
+    m_baseUiStyle->WindowPadding = {metrics.windowPadding, metrics.windowPadding};
     const float dpiScale = style.FontScaleDpi;
     style = *m_baseUiStyle;
     const float scale = static_cast<float>(percent) / 100.0f;
@@ -244,6 +264,7 @@ void EditorShell::prepareUIFrame() {
     style.PopupBorderSize = m_baseUiStyle->PopupBorderSize;
     style.MouseCursorScale = m_baseUiStyle->MouseCursorScale * scale;
     m_appliedUiScalePercent = percent;
+    m_appliedDensity = m_workspace.density;
     LMX_LOG_INFO("editor UI scale: {}%", percent);
 }
 
