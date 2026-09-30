@@ -62,6 +62,9 @@ jobs:
           fi
           python3 Tools/check_project_policy.py "${args[@]}"
 
+      - name: Theme token freshness
+        run: python3 Tools/Theme/generate_tokens.py --check
+
       - name: Shader import policy
         run: python3 Tools/check_shader_imports.py
 

@@ -52,7 +52,7 @@ restored evidence. Owner overrides fix encoded `#4CABFD`, body 16 unless Task 12
 and Task 19 gates/push/PR only: no acceptance or merge, plan retained.
 
 ### Task 1: Start execution (main thread)
-- [ ] Create both worktrees (submodule init, `ThirdParty/*`, `Assets/Fetched` symlinked); build the
+- [x] Create both worktrees (submodule init, `ThirdParty/*`, `Assets/Fetched` symlinked); build the
   parent App; record, roadmap row 15 (renamed UX4.1–UX4.5) and `AGENTS.md` (net zero) say UX4 is in
   progress. Commit with this plan: `docs: start UX4 execution (UX4)`.
 
@@ -69,14 +69,14 @@ generated `Source/App/Model/Workspace/EditorThemeTokens.{h,cpp}`; a `--check` st
 std::optional<ThemeRole> underlay; double minimum; }`, 24 per theme. `--check` exits 1 naming stale
 outputs; `--audit` prints both tables. The one math change: the selection pair composites in encoded
 sRGB as ImGui blends, not linear light; Task 18 restates that ratio in the record.
-- [ ] Unnamed slots: `TextDisabled` → `text/disabled`; `ChildBg`, `TableRowBg` → panel ×0;
+- [x] Unnamed slots: `TextDisabled` → `text/disabled`; `ChildBg`, `TableRowBg` → panel ×0;
   scrollbar grab hovered/active → `text/disabled`/`text/secondary`; `SliderGrabActive` →
   operator-active; `HeaderHovered`/`Active` and `TabHovered` → `surface/hover`/`active`/`hover`;
   `SeparatorHovered` → `border/strong`; resize grip hovered/active, `PlotHistogram` and plot hovers
   → operator-hover/operator; `InputTextCursor` → `text/primary`. Node editor: `Bg` canvas, `NodeBg`
   raised, `GroupBg` panel ×0.5, `Grid` and plain borders subtle, hovered operator-hover, selected,
   pin and flow operator, highlight operator-active, selection rects and `PinRect` operator-subtle.
-- [ ] Tests first: each hex of the record's semantic table (parsed from `ux4.md`) is generated
+- [x] Tests first: each hex of the record's semantic table (parsed from `ux4.md`) is generated
   exactly; slot lists are complete and unique; `--check` names a tampered output; output is
   `clang-format` stable. **Verify:** `--audit` 48/48. Commit `tool: generate theme tokens (UX4)`.
 
