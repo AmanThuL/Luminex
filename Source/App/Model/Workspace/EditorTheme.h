@@ -92,7 +92,7 @@ std::string_view densityName(Density density);
 
 /// Unscaled radii and separator dimensions shared by themes and densities.
 struct ShapeMetrics {
-    float control = 3.0f;    ///< Buttons, fields, tabs, grabs and scrollbars, in logical points.
+    float control = 0.0f;    ///< Buttons, fields, tabs, grabs and scrollbars, in logical points.
     float popup = 4.0f;      ///< Menus, tooltips and notices, in logical points.
     float card = 6.0f;       ///< Graph cards and legend chips, in logical points.
     float pill = 10.0f;      ///< Chips no taller than 20 logical points.
