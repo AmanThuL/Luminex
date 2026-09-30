@@ -47,7 +47,7 @@ the row says otherwise.
 | 12 | [R4.1–R4.2](roadmap/codebase-restructuring.md#r4--shader-source-deduplication) shader source deduplication | III | Closed 2026-09-25 as DEFER ([ADR 0027](decisions/0027-scene-pass-deduplication-defer.md)): R4.1 implemented 2026-09-24, exit gate held ([validation](milestones/r/r4.1-validation.md), [follow-up](milestones/r/r4.1-followup.md)); R4.2 not opened; [record](milestones/r/r4.md) | R3 |
 | 13 | [UX2.1–UX2.4](roadmap/editor-experience.md#ux2--editor-surfaces) editor surfaces | IV | Implemented and owner-accepted 2026-09-27; plan closed, integrated by squash merge; [record](milestones/ux/ux2.md), [validation and limits](milestones/ux/ux2-validation.md) | R4 |
 | 14 | [UX3.1–UX3.5](roadmap/editor-experience.md#ux3--scene-documents-and-hierarchy) scene documents and hierarchy | IV | Implemented 2026-09-29; plan closed; owner authorized integration by squash merge; image gates failed as measured (normalized rig), ADR 0028 proposed; [record](milestones/ux/ux3.md), [final validation and retained limits](milestones/ux/ux3-final-validation.md) | UX2 |
-| 15 | [UX4.1–UX4.4](roadmap/editor-experience.md#ux4--design-system-and-themes) design system and themes | IV | Proposed 2026-09-29 at the owner's request; [proposed record](milestones/ux/ux4.md) awaits owner review | UX3 |
+| 15 | [UX4.1–UX4.4](roadmap/editor-experience.md#ux4--design-system-and-themes) design system and themes | IV | Accepted 2026-09-30; [record](milestones/ux/ux4.md); executor plan pending | UX3 |
 | 16 | [N1.1–N1.4](roadmap/neural-rendering.md#n1--in-shader-inference-lab) in-shader inference lab | V | Inactive | UX4; technically gate B |
 | 17 | [M9](roadmap/gpu-driven-hybrid-rendering.md#m9--geometry-lod-and-surface-path-experiments) geometry LOD and surface paths | II | Inactive | M7 and N1 |
 | 18 | [M8.1–M8.5](roadmap/gpu-driven-hybrid-rendering.md#m8--shadows-indirect-lighting-floor-and-environment) shadows, indirect floor and environment | II | Inactive | M9; technically M7 |
@@ -75,9 +75,9 @@ and scene documents between M7 and N1: the RHI moves to its own repository, the 
 shader variants are deduplicated if the experiment supports it, and scenes become saved documents
 before new rendering work starts. On 2026-09-25 the owner inserted editor surfaces as UX2 and
 renumbered scene documents to UX3; records and ADRs dated earlier call scene documents UX2. On
-2026-09-29 the owner asked for a design-system and theme overhaul as UX4 before N1; its record is
-proposed and awaits review. On 2026-09-30 the owner added native macOS chrome to UX4 and proposed
-UX5, an agent session, in three slices.
+2026-09-29 the owner asked for a design-system and theme overhaul as UX4 before N1; the owner accepted its
+record on 2026-09-30 after adding native macOS chrome to it, and proposed UX5, an agent session,
+in three slices.
 Identifiers are names, not ordinals:
 M8 and M9 keep theirs although M9 delivers first, because frozen research and accepted records
 already use them; the Step column carries the order.

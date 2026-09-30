@@ -1,8 +1,8 @@
 # UX4 — Design System and Themes
 
-**Status**: Proposed
+**Status**: Accepted — the owner confirmed the decisions below on 2026-09-30 after reviewing the Figma pages; executor plan pending
 
-First draft for owner revision, written on 2026-09-29 from the merged UX3 editor, its
+Written on 2026-09-29 from the merged UX3 editor, accepted on 2026-09-30, from its
 [Figma baseline](https://www.figma.com/design/QxllnS3RVkIvzDWoaL6Bcq) and two research passes
 (collaborative-tool design languages; Dear ImGui 1.93 and SDL 3.4 theming facts). UX4 replaces the
 inherited `StyleColorsDark` look with one token-driven design system, ships light, dark and
@@ -17,7 +17,7 @@ owns the outcome and gates; this record keeps the design, its evidence and its l
 accepts; agents implement and validate against recorded evidence. The editor is where both look at
 the same frame, so a design system for the next five to ten years has to say on every surface who
 did this, what is proposed, what is running and what the evidence is, while staying cheap to draw in
-immediate-mode ImGui. This reading of the owner's objective is an assumption to confirm.
+immediate-mode ImGui. The owner confirmed this reading of the objective on 2026-09-30.
 
 ## Observed state before UX4
 
@@ -40,9 +40,9 @@ immediate-mode ImGui. This reading of the owner's objective is an assumption to 
 - The Figma baseline holds 55 screens, 348 components and 328 variables in three collections
   (`Luminex · Source values`, `Luminex · UI colors`, `Luminex · Metrics`), each with one mode.
 
-## Decisions proposed to the owner
+## Decisions taken with the owner
 
-| Topic | Proposal |
+| Topic | Decision |
 |---|---|
 | Identifier and placement | UX4, between UX3 and N1; one executor plan, four slices, one squash-merged pull request |
 | Design language | Working name **Facet**, after the provisional FACET mark: one neutral graphite surface family, blue for the operator, violet for agents, three status hues. The name is provisional with the icon |

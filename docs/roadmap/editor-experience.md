@@ -193,8 +193,8 @@ persisting renderer configuration; an `.app` bundle; everything the UX1 deferral
 
 **Placement:** [UX3](#ux3--scene-documents-and-hierarchy) → UX4 → N1. The owner asked for it on
 2026-09-29, before the learned-rendering lab, so N1's surfaces are designed once in the new system.
-The [proposed record](../milestones/ux/ux4.md) is a first draft awaiting the owner's revision; this
-section binds nothing until the owner accepts it.
+The [record](../milestones/ux/ux4.md) was accepted on 2026-09-30 after the owner reviewed the Figma
+pages; its executor plan opens next.
 
 **Outcome:** the editor has one token-driven design system instead of ImGui's default dark style.
 An operator picks Auto, Light or Dark once and the whole editor, including its detached native
