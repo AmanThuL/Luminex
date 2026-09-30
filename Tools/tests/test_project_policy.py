@@ -171,6 +171,167 @@ class ProjectPolicyTests(unittest.TestCase):
             policy.check_process_narration([Path("Source/App/Shell/EditorShell.cpp")], errors)
         self.assertTrue(errors)
 
+    def test_provenance_actor_enum_accepts_only_required_code_token(self) -> None:
+        for text in (
+            "enum class Actor { Operator, System, Agent };",
+            "enum\tclass Actor {\r\n"
+            "    Operator, ///< Human input.\r\n"
+            "    System,   ///< Editor policy.\r\n"
+            "    Agent,    ///< Software-attributed input.\r\n"
+            "};\r\n",
+        ):
+            with self.subTest(text=text):
+                errors: list[str] = []
+                with mock.patch.object(policy, "read_text", return_value=text):
+                    policy.check_process_narration(
+                        [Path("Source/App/Model/Workspace/Provenance.h")], errors
+                    )
+                self.assertEqual(errors, [])
+
+    def test_provenance_actor_enum_rejects_noncode_and_other_declarations(self) -> None:
+        declaration = "enum class Actor { Operator, System, Agent };"
+        for text in (
+            "// " + declaration,
+            "/*\n" + declaration + "\n*/",
+            "/*\n" + declaration,
+            'const char* text = "' + declaration + '";',
+            'const char* text = "' + declaration,
+            'const char* text = "' + declaration + "\\",
+            'const char* text = "escaped \\\"' + declaration + '\\\"";',
+            'const char* text = R"(' + declaration + ')";',
+            'const char* text = u8R"copy(\n' + declaration + '\n)copy";',
+            'const char* text = R"copy("quoted"\n' + declaration,
+            'const char* text = R"copy()copy\\\n" ' + declaration + ')copy";',
+            "constexpr auto count = 1'000;\n"
+            'const char* text = "don\'t ' + declaration + '";',
+            "const auto text = '" + declaration + "';",
+            "const auto text = '" + declaration,
+            "const auto text = '" + declaration + "\\",
+            "// continued comment \\\n" + declaration,
+            "#define DECLARATION " + declaration,
+            "#define DECLARATION \\\n" + declaration,
+            "enum class Other { Operator, System, Agent };",
+            "enum class ActorExtra { Operator, System, Agent };",
+            "enum Actor { Operator, System, Agent };",
+            "enum class Actor { Agent };",
+            "enum class Actor { Operator, System, Agent, Extra };",
+            "enum class Actor { Operator, System, agent };",
+            'enum class Actor { Operator, System, "Agent" };',
+            "Actor::Agent;",
+            'const char* label = "Agent";',
+        ):
+            with self.subTest(text=text):
+                errors: list[str] = []
+                with mock.patch.object(policy, "read_text", return_value=text):
+                    policy.check_process_narration(
+                        [Path("Source/App/Model/Workspace/Provenance.h")], errors
+                    )
+                self.assertTrue(errors)
+
+    def test_provenance_actor_enum_preserves_adjacent_process_rejections(self) -> None:
+        declaration = "enum class Actor { Operator, System, Agent };"
+        for suffix in (
+            " // agent implementation",
+            " // Task 13",
+            " // reviewer finding",
+            " // Close the backlog.",
+            '\nconst char* label = "Agent";',
+            '\nconst char* text = R"(agent implementation)";',
+        ):
+            with self.subTest(suffix=suffix):
+                errors: list[str] = []
+                with mock.patch.object(policy, "read_text", return_value=declaration + suffix):
+                    policy.check_process_narration(
+                        [Path("Source/App/Model/Workspace/Provenance.h")], errors
+                    )
+                self.assertEqual(len(errors), 1)
+                self.assertIn(":2:" if suffix.startswith("\n") else ":1:", errors[0])
+
+    def test_provenance_actor_enum_rejects_logical_noncode(self) -> None:
+        declaration = "enum class Actor { Operator, System, Agent };"
+        for prefix in (
+            "/* prefix */ #define DECLARATION ",
+            "/* prefix\n*/ #define DECLARATION ",
+            "%:define DECLARATION ",
+            "/* prefix */ %:define DECLARATION ",
+            "/\\\n/ ",
+            "/\\\r\n/ ",
+            "/\\ \t\n/ ",
+            "/\\\n* ",
+            "#define DECLARATION /* continued\n*/ ",
+            "%:define DECLARATION \\\n",
+            "#define DECLARATION /\\\n* continued\n*/ ",
+        ):
+            with self.subTest(prefix=prefix):
+                errors: list[str] = []
+                text = prefix + declaration
+                with mock.patch.object(policy, "read_text", return_value=text):
+                    policy.check_process_narration(
+                        [Path("Source/App/Model/Workspace/Provenance.h")], errors
+                    )
+                line = text.count("\n") + 1
+                self.assertEqual(
+                    errors,
+                    [f"Source/App/Model/Workspace/Provenance.h:{line}: "
+                     "implementation-history narration"],
+                )
+
+    def test_provenance_actor_enum_accepts_logical_code_in_header(self) -> None:
+        for newline in ("\n", "\r\n"):
+            with self.subTest(newline=newline):
+                text = newline.join((
+                    "/* Header. */ #pragma once",
+                    '#include "Other.h"',
+                    "#include <string>",
+                    "namespace lmx::app {",
+                    "enum /* attribution */ class Actor { Operator, \\",
+                    "System, /* software source */ Agent, };",
+                    "}",
+                ))
+                errors: list[str] = []
+                with mock.patch.object(policy, "read_text", return_value=text):
+                    policy.check_process_narration(
+                        [Path("Source/App/Model/Workspace/Provenance.h")], errors
+                    )
+                self.assertEqual(errors, [])
+
+    def test_provenance_actor_enum_preserves_original_text_after_splicing(self) -> None:
+        text = (
+            "#pragma once\n"
+            "enum class Actor { Operator, \\\n"
+            "System, /* agent implementation */ Agent }; // Task 13\n"
+            'const char* label = "Agent";\n'
+            "// reviewer finding\n"
+        )
+        masked = policy.mask_provenance_actor_enumerator(text)
+        self.assertEqual(masked, text.replace("Agent };", "      };"))
+        errors: list[str] = []
+        with mock.patch.object(policy, "read_text", return_value=text):
+            policy.check_process_narration(
+                [Path("Source/App/Model/Workspace/Provenance.h")], errors
+            )
+        self.assertEqual(
+            sorted(errors),
+            [f"Source/App/Model/Workspace/Provenance.h:{line}: implementation-history narration"
+             for line in (3, 4, 5)],
+        )
+
+    def test_provenance_actor_enum_allowance_stays_in_exact_header(self) -> None:
+        for path in (
+            "Source/App/Model/Workspace/Other.h",
+            "Source/App/Model/Workspace/Provenance.cpp",
+            "Source/App/Other/Provenance.h",
+            "Tests/App/Model/Workspace/AppProvenanceTests.cpp",
+            "Source/App/Panels/Gallery/StyleGalleryPanel.cpp",
+        ):
+            with self.subTest(path=path):
+                errors: list[str] = []
+                with mock.patch.object(
+                    policy, "read_text", return_value="enum class Actor { Operator, System, Agent };"
+                ):
+                    policy.check_process_narration([Path(path)], errors)
+                self.assertEqual(len(errors), 1)
+
     def test_component_paths_are_not_process_roots(self):
         self.assertFalse(any(root.startswith("RojoRHI") for root in policy.PROCESS_ROOTS))
 

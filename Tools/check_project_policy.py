@@ -256,6 +256,61 @@ def mask_gallery_semantic_copy(text: str) -> str:
     return text
 
 
+def mask_provenance_actor_enumerator(text: str) -> str:
+    """Allow only the software-attributed enumerator in the exact actor declaration."""
+    # C++ splices physical lines before recognizing comments or directives. Keep the
+    # source offsets so the final narration scan still sees every original character.
+    splice = re.compile(r"\\[ \t\v\f]*\r?\n")
+    offsets: list[int] = []
+    start = 0
+    for match in splice.finditer(text):
+        offsets.extend(range(start, match.start()))
+        start = match.end()
+    offsets.extend(range(start, len(text)))
+    logical = "".join(text[index] for index in offsets)
+
+    lexemes = re.compile(
+        r'(?P<comment>//[^\n]*|/\*[\s\S]*?(?:\*/|\Z))'
+        # Consume preprocessing numbers so digit separators cannot open character literals.
+        r"|\b[0-9](?:[eEpP][+-]|[\w.]|'[\w])*"
+        r'|(?P<raw>(?:u8|u|U|L)?R"(?P<delimiter>[^ ()\\\t\r\n]{0,16})'
+        r'\([\s\S]*?(?:\)(?P=delimiter)"|\Z))'
+        r'|(?:u8|u|U|L)?"(?:\\(?:[\s\S]|\Z)|[^"\\])*(?:"|\Z)'
+        r"|(?:u8|u|U|L)?'(?:\\(?:[\s\S]|\Z)|[^'\\])*(?:'|\Z)",
+    )
+    code = list(logical)
+    for match in lexemes.finditer(logical):
+        start, end = match.span()
+        if match.group("raw") is not None:
+            # Raw strings restore splices in their bodies. Fail closed if that could
+            # change the apparent terminator in this bounded lexical recognition.
+            if splice.search(text[offsets[start]:offsets[end - 1] + 1]):
+                return text
+        # A block comment's embedded newlines cannot end a directive. Line comments
+        # leave their terminating newline outside the matched span.
+        replacement = " " if match.group("comment") is not None else "@"
+        code[start:end] = replacement * (end - start)
+
+    # Comments are whitespace before directive recognition, including a prefix before
+    # either spelling of '#'. Directives and literals are declaration barriers.
+    code = re.sub(
+        r"^[ \t\v\f\r]*(?:#|%:)[^\n]*",
+        lambda match: "@" * len(match.group(0)),
+        "".join(code),
+        flags=re.MULTILINE,
+    )
+    declaration = re.compile(
+        r"\benum\s+class\s+Actor\s*\{\s*Operator\s*,\s*System\s*,\s*"
+        r"(?P<actor>Agent)\s*,?\s*\}\s*;"
+    )
+    masked = list(text)
+    for match in declaration.finditer(code):
+        start, end = match.span("actor")
+        for index in offsets[start:end]:
+            masked[index] = " "
+    return "".join(masked)
+
+
 def check_process_narration(files: list[Path], errors: list[str]) -> None:
     for path in files:
         name = path.as_posix()
@@ -266,6 +321,8 @@ def check_process_narration(files: list[Path], errors: list[str]) -> None:
             continue
         if name == "Source/App/Panels/Gallery/StyleGalleryPanel.cpp":
             text = mask_gallery_semantic_copy(text)
+        if name == "Source/App/Model/Workspace/Provenance.h":
+            text = mask_provenance_actor_enumerator(text)
         reported_lines: set[int] = set()
         for pattern in PROCESS_PATTERNS:
             for match in pattern.finditer(text):
