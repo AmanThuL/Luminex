@@ -1,6 +1,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file ScenePanel.cpp
-/// @brief Implements the compact subject Hierarchy and File menu scene-loading workflow.
+/// @brief Implements the compact subject Hierarchy and selection navigation.
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "App/Panels/Scene/ScenePanel.h"
@@ -415,60 +415,6 @@ void handleTreeKeyboard(std::span<const SceneTreeRow> rows, const ScenePanelCont
 }
 
 } // namespace
-
-//======================================================================================================================
-std::optional<scenes::SceneId> drawSceneMenu(const SceneMenuContext& context) {
-    std::optional<scenes::SceneId> chosen;
-    if (!ImGui::BeginMenu("Open Scene")) {
-        return chosen;
-    }
-    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + editor_style::scaled(360.0f));
-    for (const auto& entry : context.library.entries()) {
-        ImGui::PushID(entry.id.key.c_str());
-        ImGui::BeginDisabled(!entry.available);
-        if (ImGui::Selectable(entry.displayName.data(), entry.id == context.activeSceneId,
-                              ImGuiSelectableFlags_NoAutoClosePopups) &&
-            entry.id != context.activeSceneId) {
-            chosen = entry.id;
-        }
-        const std::string help =
-            entry.available
-                ? std::format("Open {}. The current scene stays active until loading succeeds.",
-                              entry.displayName)
-                : entry.hint;
-        editorTooltip(help.c_str());
-        ImGui::EndDisabled();
-        if (!entry.available) {
-            editor_style::message(entry.hint.empty() ? "Required scene assets are unavailable."
-                                                     : entry.hint.c_str(),
-                                  true);
-        }
-        ImGui::PopID();
-    }
-    if (!chosen && context.loading.failedScene()) {
-        const auto failed = *context.loading.failedScene();
-        ImGui::Separator();
-        const std::string failure = std::format("{} could not load: {}\nCurrent scene kept. Fix "
-                                                "the cause and retry, or choose another scene.",
-                                                context.library.entry(failed).displayName,
-                                                context.loading.failureMessage());
-        editor_style::message(failure.c_str(), true);
-        if (ImGui::Button("Retry scene load")) {
-            chosen = failed;
-        }
-        editorTooltip("Retry the failed catalog entry. The current scene and selection are kept if "
-                      "it fails again.");
-    }
-    if (chosen) {
-        ImGui::Separator();
-        const std::string loading =
-            std::format("Loading {}...", context.library.entry(*chosen).displayName);
-        editor_style::message(loading.c_str());
-    }
-    ImGui::PopTextWrapPos();
-    ImGui::EndMenu();
-    return chosen;
-}
 
 //======================================================================================================================
 std::optional<bool> drawScenePanel(bool& open, const ScenePanelContext& context) {

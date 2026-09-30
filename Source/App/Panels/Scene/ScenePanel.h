@@ -1,12 +1,11 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file ScenePanel.h
-/// @brief Declares the subject Hierarchy and the File menu's scene loading entry point.
+/// @brief Declares the subject Hierarchy and its selection navigation.
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
 #include "App/Model/Rendering/Visibility/VisibilityDisplay.h"
 #include "App/Model/Scene/EditorSelection.h"
-#include "App/Model/Scene/SceneLoadState.h"
 #include "App/Model/Scene/SceneTreeState.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/Scene/SceneInstantiate.h"
@@ -38,19 +37,6 @@ struct ScenePanelContext {
     bool dirty = false;                               ///< Canonical document differs from load.
     SceneTreeState& treeState;                        ///< Collapse choices and the cached tree.
 };
-
-/// Borrowed scene-loading state for File > Open Scene. Loading remains a shell frame-boundary
-/// action.
-struct SceneMenuContext {
-    const scenes::SceneLibrary& library; ///< Catalog entries and availability explanations.
-    scenes::SceneId activeSceneId;       ///< The currently rendered scene.
-    const SceneLoadState& loading;       ///< Persistent failure retained for an explicit Retry.
-};
-
-/// Draws File's Open Scene submenu and returns a newly selected or retried catalog entry. Keeps
-/// the submenu open to present Loading before the shell consumes the request on the next frame.
-/// Call inside an open File menu; failures and unavailable-entry reasons remain visible here.
-std::optional<scenes::SceneId> drawSceneMenu(const SceneMenuContext& context);
 
 /// Draws an indented active-scene tree over a flat scene, with a fixed search/count
 /// header. Groups collapse independently; keyboard Up/Down visits only drawn leaves. Filtering

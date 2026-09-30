@@ -383,6 +383,7 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
     // Before the dockspace, so the work area the topology is built into excludes the menu bar.
     finishMeasurementPlayback();
     buildMainMenu(renderer, device);
+    consumeFrameSelection(renderer);
 
     const ImGuiID dockspaceId = ImGui::DockSpaceOverViewport();
     if (m_buildDefaultLayout) {

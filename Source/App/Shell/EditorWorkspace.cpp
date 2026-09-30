@@ -253,13 +253,13 @@ void EditorShell::updateUiScaleShortcuts() {
     }
     if (ImGui::IsKeyPressed(ImGuiKey_Equal, false) ||
         ImGui::IsKeyPressed(ImGuiKey_KeypadAdd, false)) {
-        setUiScale(stepUiScalePercent(m_workspace.uiScalePercent, true));
+        runMenuCommand(MenuCommand::ZoomIn);
     } else if (ImGui::IsKeyPressed(ImGuiKey_Minus, false) ||
                ImGui::IsKeyPressed(ImGuiKey_KeypadSubtract, false)) {
-        setUiScale(stepUiScalePercent(m_workspace.uiScalePercent, false));
+        runMenuCommand(MenuCommand::ZoomOut);
     } else if (ImGui::IsKeyPressed(ImGuiKey_0, false) ||
                ImGui::IsKeyPressed(ImGuiKey_Keypad0, false)) {
-        setUiScale(kDefaultUiScalePercent);
+        runMenuCommand(MenuCommand::ResetUiScale);
     }
 }
 

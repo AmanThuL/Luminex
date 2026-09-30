@@ -26,6 +26,7 @@
 #include "App/Model/Scene/SceneSession.h"
 #include "App/Model/Scene/SceneTreeState.h"
 #include "App/Model/Workspace/ActivityModel.h"
+#include "App/Model/Workspace/MenuModel.h"
 #include "App/Model/Workspace/WorkspaceModel.h"
 #include "App/Panels/Gallery/StyleGalleryPanel.h"
 #include "App/Panels/Graph/RenderGraphPanel.h"
@@ -232,6 +233,12 @@ public:
     /// still drawing into.
     EditorActions& actions() { return m_actions; }
 
+    /// Executes one model-produced command on the UI thread. Callers enforce menu availability
+    /// or shortcut policy; capture shortcuts may request unavailable recovery feedback.
+    /// Frame Selected queues an intent consumed in buildUI with that frame's renderer and
+    /// selection.
+    void runMenuCommand(MenuCommand command, uint32_t argument = 0);
+
     /// Routes menu, OS Quit and main-window close through the same unsaved-changes workflow.
     /// An outstanding native dialog must answer before this can publish a quit action.
     void requestQuit();
@@ -263,6 +270,8 @@ private:
     /// falls back to Native TAA without device support or after the scaler's creation failed.
     render::ReconstructionMode effectiveReconstruction(const render::Renderer& renderer,
                                                        const rojoRHI::Device& device) const;
+    MenuContext menuContext(const render::Renderer& renderer, const rojoRHI::Device& device);
+    void consumeFrameSelection(const render::Renderer& renderer);
     void resetCamera();
     void frameSelected(const render::Renderer& renderer);
     void updateEditorShortcuts(const render::Renderer& renderer);
@@ -332,6 +341,7 @@ private:
     std::vector<engine::DrawItem> m_drawItems;
     std::unique_ptr<render::SelectionOutline> m_selectionOutline;
     bool m_showSelectionOutline = true;
+    bool m_frameSelectionRequested = false;
     bool m_viewportUsable = false;
     float m_viewportBackingScale = 1.0f;
     // Renderer configuration survives scene switches; authored look values belong to the scene.

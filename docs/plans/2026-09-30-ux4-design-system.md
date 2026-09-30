@@ -256,7 +256,7 @@ ProvenanceMark&)` (dot, diamond, ring, dashed underline, gear; tooltip names `so
 bool checked, enabled, separator; std::string disabledReason; std::vector<MenuItem> children; }`;
 `buildMenuModel(const MenuContext&) -> std::vector<MenuItem>`, `MenuContext` holding the state
 `EditorMenus.cpp` reads today; `EditorShell::runMenuCommand(MenuCommand, uint32_t argument)`.
-- [ ] Tests first: each command appears once; shortcuts equal today's (⌘O, ⌘S, ⌘⇧S, ⌘Q, Home, F,
+- [x] Tests first: each command appears once; shortcuts equal today's (⌘O, ⌘S, ⌘⇧S, ⌘Q, Home, F,
   ⌘−, ⌘+, ⌘0, C); every disabled item has a reason; checked state per case (outline, debug view,
   UI scale, appearance, density, panels). ImGui menus render from the model, reasons as tooltips,
   behavior unchanged. Commit `editor: build menus from one model (UX4)`.
