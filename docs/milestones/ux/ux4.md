@@ -1,6 +1,6 @@
 # UX4 — Design System and Themes
 
-**Status**: Accepted — the owner confirmed the decisions below on 2026-09-30 after reviewing the Figma pages; executor plan pending
+**Status**: In progress — accepted by the owner on 2026-09-30; [executor plan](../../plans/2026-09-30-ux4-design-system.md) active
 
 Written on 2026-09-29 from the merged UX3 editor, accepted on 2026-09-30, from its
 [Figma baseline](https://www.figma.com/design/QxllnS3RVkIvzDWoaL6Bcq) and two research passes
