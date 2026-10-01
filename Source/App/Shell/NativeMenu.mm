@@ -27,6 +27,7 @@ struct QueuedCommand {
     bool cameraLook = false;
     bool resolved = true;
     bool allowed = true;
+    std::string reason;
 };
 
 //======================================================================================================================
@@ -113,20 +114,6 @@ bool matches(const Shortcut& shortcut, NSEvent* event) {
 }
 
 //======================================================================================================================
-EditorShortcut policy(MenuCommand command) {
-    switch (command) {
-    case MenuCommand::FrameSelected:
-        return EditorShortcut::FrameSelected;
-    case MenuCommand::ResetCamera:
-        return EditorShortcut::ResetCamera;
-    case MenuCommand::Capture:
-        return EditorShortcut::Capture;
-    default:
-        return EditorShortcut::Document;
-    }
-}
-
-//======================================================================================================================
 const MenuItem* findCommand(const std::vector<MenuItem>& items, MenuCommand command,
                             uint32_t argument) {
     for (const auto& item : items) {
@@ -136,19 +123,6 @@ const MenuItem* findCommand(const std::vector<MenuItem>& items, MenuCommand comm
             return found;
     }
     return nullptr;
-}
-
-//======================================================================================================================
-bool keyboardCommandEnabled(const std::vector<MenuItem>& items, MenuCommand command,
-                            uint32_t argument, bool ancestorsEnabled = true) {
-    for (const auto& item : items) {
-        if (item.command == command && item.argument == argument)
-            return ancestorsEnabled && (item.enabled || command == MenuCommand::Capture);
-        if (keyboardCommandEnabled(item.children, command, argument,
-                                   ancestorsEnabled && item.enabled))
-            return true;
-    }
-    return false;
 }
 
 } // namespace
@@ -170,6 +144,7 @@ bool keyboardCommandEnabled(const std::vector<MenuItem>& items, MenuCommand comm
 }
 - (void)choose:(NSMenuItem*)sender;
 - (void)chooseShortcut:(id)sender;
+- (void)chooseQuit:(id)sender;
 - (void)observeShortcut;
 - (void)edit:(NSMenuItem*)sender;
 - (NSMenuItem*)row:(const MenuItem&)item path:(const std::vector<size_t>&)path;
@@ -300,6 +275,14 @@ bool keyboardCommandEnabled(const std::vector<MenuItem>& items, MenuCommand comm
     [self observeShortcut];
 }
 
+- (void)chooseQuit:(id)sender {
+    (void)sender;
+    if (lastShortcutEvent == shortcutEvent)
+        return;
+    commands.push_back({.command = {MenuCommand::Quit, 0}});
+    lastShortcutEvent = shortcutEvent;
+}
+
 - (void)observeShortcut {
     if (shortcutCommand && lastShortcutEvent != shortcutEvent) {
         commands.push_back(*shortcutCommand);
@@ -329,10 +312,6 @@ bool keyboardCommandEnabled(const std::vector<MenuItem>& items, MenuCommand comm
                                                         : @selector(hide:);
         return YES;
     }
-    ImGuiViewport* viewport = keyViewport();
-    if (!viewport)
-        return NO;
-
     const auto visit = [&](auto&& self, const std::vector<MenuItem>& items) -> const MenuItem* {
         for (const auto& item : items) {
             if (item.command && item.shortcut && matches(*item.shortcut, event))
@@ -343,7 +322,20 @@ bool keyboardCommandEnabled(const std::vector<MenuItem>& items, MenuCommand comm
         return nullptr;
     };
     if (const auto* item = visit(visit, model)) {
-        if (lastShortcutEvent == event)
+        const auto command = *item->command;
+        if (shortcutPolicy(command) == EditorShortcut::Quit) {
+            // Quit answers from any key window, sheet or responder, so it queues a ready command
+            // instead of an intent that must bind to an ImGui key event in the main viewport.
+            if (keyboardDecision(model, command, item->argument, context).outcome !=
+                KeyboardOutcome::Run)
+                return NO;
+            shortcutEvent = event;
+            *target = self;
+            *action = @selector(chooseQuit:);
+            return YES;
+        }
+        ImGuiViewport* viewport = keyViewport();
+        if (!viewport || lastShortcutEvent == event)
             return NO;
         shortcutEvent = event;
         shortcutCommand = QueuedCommand{
@@ -364,12 +356,11 @@ bool keyboardCommandEnabled(const std::vector<MenuItem>& items, MenuCommand comm
         auto focus = context;
         focus.otherSurfaceFocused |= shortcutCommand->otherSurfaceFocused;
         focus.cameraLook |= shortcutCommand->cameraLook;
-        const auto command = *item->command;
         if (command == MenuCommand::ZoomIn || command == MenuCommand::ZoomOut ||
             command == MenuCommand::ResetUiScale)
             focus.otherSurfaceFocused = false;
-        if (!keyboardCommandEnabled(model, command, item->argument) ||
-            !shortcutAllowed(policy(command), focus))
+        const auto outcome = keyboardDecision(model, command, item->argument, focus).outcome;
+        if (outcome != KeyboardOutcome::Run && outcome != KeyboardOutcome::Report)
             return NO;
         *target = self;
         *action = @selector(chooseShortcut:);
@@ -484,13 +475,12 @@ void NativeMenuBar::update(std::vector<MenuItem> items, const ShortcutContext& c
 }
 
 //======================================================================================================================
-std::vector<std::pair<MenuCommand, uint32_t>> NativeMenuBar::takeCommands() {
+std::vector<NativeMenuCommand> NativeMenuBar::takeCommands() {
     return takeCommands(nullptr);
 }
 
 //======================================================================================================================
-std::vector<std::pair<MenuCommand, uint32_t>>
-NativeMenuBar::takeCommands(const ShortcutContext* completedFrame) {
+std::vector<NativeMenuCommand> NativeMenuBar::takeCommands(const ShortcutContext* completedFrame) {
     auto& pending = m_impl->delegate->commands;
     auto& gui = *ImGui::GetCurrentContext();
     // SDL pumps native events before returning its queued events to the caller. Bind only after
@@ -548,17 +538,20 @@ NativeMenuBar::takeCommands(const ShortcutContext* completedFrame) {
             if (command == MenuCommand::ZoomIn || command == MenuCommand::ZoomOut ||
                 command == MenuCommand::ResetUiScale)
                 focus.otherSurfaceFocused = false;
-            intent.allowed =
-                viewport && viewport->ID == intent.viewport && !gui.IO.AppFocusLost &&
-                keyboardCommandEnabled(m_impl->delegate->model, command, intent.command.second) &&
-                shortcutAllowed(policy(command), focus);
+            auto decision =
+                keyboardDecision(m_impl->delegate->model, command, intent.command.second, focus);
+            intent.allowed = viewport && viewport->ID == intent.viewport && !gui.IO.AppFocusLost &&
+                             (decision.outcome == KeyboardOutcome::Run ||
+                              decision.outcome == KeyboardOutcome::Report);
+            intent.reason = std::move(decision.reason);
         }
     }
-    std::vector<std::pair<MenuCommand, uint32_t>> result;
+    std::vector<NativeMenuCommand> result;
     size_t count = 0;
     while (count < pending.size() && pending[count].resolved) {
-        if (pending[count].allowed)
-            result.push_back(pending[count].command);
+        auto& ready = pending[count];
+        if (ready.allowed)
+            result.push_back({ready.command.first, ready.command.second, std::move(ready.reason)});
         ++count;
     }
     pending.erase(pending.begin(), pending.begin() + count);

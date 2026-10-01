@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "App/Model/Capture/EditorShortcuts.h"
 #include "App/Model/Rendering/Settings/DebugView.h"
 #include "App/Model/Workspace/WorkspaceModel.h"
 
@@ -103,5 +104,29 @@ std::optional<DebugView> menuDebugView(uint32_t argument);
 /// Builds an owned menu snapshot without I/O, UI calls or changes to the supplied state.
 /// Every actionable command/argument pair appears once; retry has its own command.
 std::vector<MenuItem> buildMenuModel(const MenuContext& context);
+
+/// What the frame that consumes a keyboard chord does with its matched command.
+enum class KeyboardOutcome {
+    Run,      ///< Execute the command.
+    Report,   ///< Post the decision's reason once instead of executing.
+    Focus,    ///< Text entry, a popup or mouse look owns the key; expected while editing.
+    Policy,   ///< Another surface owns the key, or the command lacks its own prerequisite.
+    Disabled, ///< The row or an ancestor is unavailable and has no reason to post.
+};
+
+/// Outcome of one matched chord; reason is nonempty only for Report.
+struct KeyboardDecision {
+    KeyboardOutcome outcome = KeyboardOutcome::Disabled; ///< What the consuming frame does.
+    std::string reason;                                  ///< The row's disabledReason to post.
+};
+
+/// Focus policy of a command's keyboard route; Quit is exempt from every focus gate.
+EditorShortcut shortcutPolicy(MenuCommand command);
+/// Decides a chord against the current model and keyboard ownership, without side effects.
+/// Focus is checked first, so a chord typed into a field never reports. An unavailable Open, Save
+/// or Save As then reports its row's reason; Capture runs while unavailable so its intent can
+/// explain recovery; every other unavailable or missing command is Disabled.
+KeyboardDecision keyboardDecision(const std::vector<MenuItem>& items, MenuCommand command,
+                                  uint32_t argument, const ShortcutContext& focus);
 
 } // namespace lmx::app

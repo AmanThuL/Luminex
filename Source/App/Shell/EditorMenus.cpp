@@ -287,9 +287,13 @@ void EditorShell::updateNativeMenu(const render::Renderer& renderer,
 void EditorShell::consumeNativeMenuCommands(const render::Renderer& renderer, bool afterPanels) {
 #ifdef __APPLE__
     const auto context = shortcutContext();
-    for (const auto& [command, argument] :
-         m_nativeMenu->takeCommands(afterPanels ? &context : nullptr)) {
-        runMenuCommand(command, argument);
+    for (const auto& request : m_nativeMenu->takeCommands(afterPanels ? &context : nullptr)) {
+        if (!request.unavailableReason.empty()) {
+            m_notices.post({ActionStatus::Unavailable, request.unavailableReason, {}},
+                           ImGui::GetTime());
+            continue;
+        }
+        runMenuCommand(request.command, request.argument);
         consumeFrameSelection(renderer);
     }
 #else

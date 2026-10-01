@@ -13,6 +13,7 @@ enum class EditorShortcut {
     ResetCamera,   ///< Restore the scene camera.
     Capture,       ///< Request a GPU capture; an unavailable request reports its recovery.
     Document,      ///< Request a document action; workflow owns dirty and transport gates.
+    Quit,          ///< Request quit from any focus; its workflow confirms unsaved changes.
 };
 
 /// Per-frame keyboard ownership and action prerequisites.
@@ -28,9 +29,10 @@ struct ShortcutContext {
     bool textFieldFocused = false;
 };
 
-/// Rejects all commands during editing, look, popups or focus on another surface, then checks
-/// command prerequisites. Capture has none: an unavailable or pending request still reaches the
-/// capture intent, which reports the recovery explanation or coalesces.
+/// Rejects all commands but Quit during editing, look, popups or focus on another surface, then
+/// checks command prerequisites. Quit is unconditional. Capture has no prerequisite: an unavailable
+/// or pending request still reaches the capture intent, which reports the recovery explanation or
+/// coalesces.
 bool shortcutAllowed(EditorShortcut shortcut, const ShortcutContext& context);
 
 } // namespace lmx::app

@@ -213,7 +213,58 @@ MenuItem helpMenu(const MenuContext& context) {
     return submenu("Help", {submenu("Controls", std::move(controls))});
 }
 
+//======================================================================================================================
+const MenuItem* findEnabled(const std::vector<MenuItem>& items, MenuCommand command,
+                            uint32_t argument, bool& ancestorsEnabled) {
+    for (const auto& item : items) {
+        if (item.command == command && item.argument == argument)
+            return &item;
+        bool enabled = ancestorsEnabled && item.enabled;
+        if (const auto* found = findEnabled(item.children, command, argument, enabled)) {
+            ancestorsEnabled = enabled;
+            return found;
+        }
+    }
+    return nullptr;
+}
+
 } // namespace
+
+//======================================================================================================================
+EditorShortcut shortcutPolicy(MenuCommand command) {
+    switch (command) {
+    case MenuCommand::FrameSelected:
+        return EditorShortcut::FrameSelected;
+    case MenuCommand::ResetCamera:
+        return EditorShortcut::ResetCamera;
+    case MenuCommand::Capture:
+        return EditorShortcut::Capture;
+    case MenuCommand::Quit:
+        return EditorShortcut::Quit;
+    default:
+        return EditorShortcut::Document;
+    }
+}
+
+//======================================================================================================================
+KeyboardDecision keyboardDecision(const std::vector<MenuItem>& items, MenuCommand command,
+                                  uint32_t argument, const ShortcutContext& focus) {
+    if (!shortcutAllowed(shortcutPolicy(command), focus))
+        return {focus.textInput || focus.cameraLook || focus.popupOpen ? KeyboardOutcome::Focus
+                                                                       : KeyboardOutcome::Policy,
+                {}};
+    bool ancestorsEnabled = true;
+    const auto* item = findEnabled(items, command, argument, ancestorsEnabled);
+    if (!item)
+        return {};
+    if (ancestorsEnabled && (item->enabled || command == MenuCommand::Capture))
+        return {KeyboardOutcome::Run, {}};
+    const bool document = command == MenuCommand::Open || command == MenuCommand::Save ||
+                          command == MenuCommand::SaveAs;
+    if (document && !item->disabledReason.empty())
+        return {KeyboardOutcome::Report, item->disabledReason};
+    return {};
+}
 
 //======================================================================================================================
 std::vector<MenuItem> buildMenuModel(const MenuContext& context) {

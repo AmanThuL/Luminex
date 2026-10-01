@@ -9,9 +9,18 @@
 #include "App/Model/Workspace/MenuModel.h"
 
 #include <memory>
-#include <utility>
+#include <string>
+#include <vector>
 
 namespace lmx::app {
+
+/// One drained native request. A nonempty unavailableReason replaces execution: the shell posts it
+/// as an unavailable notice for a chord whose row is disabled.
+struct NativeMenuCommand {
+    MenuCommand command = MenuCommand::Open; ///< Command identity from the model.
+    uint32_t argument = 0;                   ///< Option identity within the command.
+    std::string unavailableReason;           ///< The row's disabled reason, or empty to run.
+};
 
 /// Owns the macOS application menu on the UI thread, after SDL and ImGui initialization.
 /// Destroy before the ImGui context; native callbacks only queue shell commands or SDL edit keys.
@@ -29,11 +38,11 @@ public:
     /// Appearance comes from the model's checked Appearance option; Auto clears menu appearance.
     void update(std::vector<MenuItem> items, const ShortcutContext& context);
     /// After SDL polling, binds staged shortcuts to ImGui input events and drains mouse actions.
-    std::vector<std::pair<MenuCommand, uint32_t>> takeCommands();
+    std::vector<NativeMenuCommand> takeCommands();
     /// After all panels, resolves consumed keys against current ownership without storing context.
-    /// Unprocessed keys wait through ImGui input trickling; command order is retained.
-    std::vector<std::pair<MenuCommand, uint32_t>>
-    takeCommands(const ShortcutContext* completedFrame);
+    /// Unprocessed keys wait through ImGui input trickling; command order is retained. Quit skips
+    /// this resolution: its chord queues a ready command from any focus.
+    std::vector<NativeMenuCommand> takeCommands(const ShortcutContext* completedFrame);
 
 private:
     NativeMenuBar();

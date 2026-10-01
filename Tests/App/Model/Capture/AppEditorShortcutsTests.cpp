@@ -53,3 +53,12 @@ TEST_CASE("document shortcuts need no selected object", "[app][shortcuts]") {
     REQUIRE(shortcutAllowed(EditorShortcut::Document, {}));
     REQUIRE_FALSE(shortcutAllowed(EditorShortcut::Document, {.popupOpen = true}));
 }
+
+//======================================================================================================================
+TEST_CASE("quit ignores every focus gate", "[app][shortcuts]") {
+    for (unsigned flags = 0; flags < 16; ++flags) {
+        INFO(flags);
+        REQUIRE(shortcutAllowed(EditorShortcut::Quit, {bool(flags & 1), bool(flags & 2),
+                                                       bool(flags & 4), bool(flags & 8)}));
+    }
+}
