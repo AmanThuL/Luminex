@@ -476,7 +476,7 @@ def callable_bodies(code: str) -> list[tuple[int, int, ColorType]]:
 
 
 def check_text(source: str, path: str) -> list[str]:
-    """Check literal colors and require the shared neutral collapsing-header helper."""
+    """Check literal colors and require the shared neutral helper for framed headers."""
     code = code_only(source)
     bodies = callable_bodies(code)
     findings: dict[int, str] = {}
@@ -516,6 +516,12 @@ def check_text(source: str, path: str) -> list[str]:
         for match in re.finditer(r"\bImGui\s*::\s*CollapsingHeader\s*\(", code):
             line = code.count("\n", 0, match.start()) + 1
             errors.append(f"{path}:{line}: use editor_style::collapsingHeader for neutral headers")
+        for match in re.finditer(r"\bImGuiTreeNodeFlags_Framed\b", code):
+            line = code.count("\n", 0, match.start()) + 1
+            errors.append(
+                f"{path}:{line}: ImGuiTreeNodeFlags_Framed fills with the selection color; "
+                "use editor_style::collapsingHeader for neutral headers"
+            )
     return errors + [
         f"{path}:{code.count(chr(10), 0, offset) + 1}: {construct} must use an editor theme role"
         for offset, construct in sorted(findings.items())
