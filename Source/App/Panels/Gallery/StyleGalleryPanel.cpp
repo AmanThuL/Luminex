@@ -106,8 +106,10 @@ void fixture(const char* text, ThemeRole fill, ThemeRole ink, float radius = kSh
     const ImVec2 end{start.x + width, start.y + height};
     auto* draw = ImGui::GetWindowDrawList();
     draw->AddRectFilled(start, end, colorU32(fill), scaled(radius));
-    draw->AddRect(start, end, colorU32(border), scaled(radius), 0,
-                  scaled(provenance == "AgentFocus" ? 2.0f : kShape.border));
+    if (provenance == "AgentFocus")
+        attentionRing(start, end);
+    else
+        draw->AddRect(start, end, colorU32(border), scaled(radius), 0, scaled(kShape.border));
     draw->AddText(ImGui::GetFont(), ImGui::GetFontSize(), {start.x + padding, start.y + paddingY},
                   colorU32(ink), text, nullptr, textWidth);
     if (!provenance.empty()) {
@@ -125,46 +127,6 @@ void fixture(const char* text, ThemeRole fill, ThemeRole ink, float radius = kSh
             true);
         editorTooltip("Dynamic resolution · Gallery fixture");
     }
-}
-
-//======================================================================================================================
-void proposedValue(const char* field, const char* oldText, const char* newText) {
-    const ScopedType type(TypeRole::Body);
-    const auto start = ImGui::GetCursorScreenPos();
-    const float width = ImGui::GetContentRegionAvail().x;
-    const float padding = scaled(8.0f);
-    const auto fieldSize = field ? ImGui::CalcTextSize(field) : ImVec2{};
-    const auto oldSize = ImGui::CalcTextSize(oldText);
-    const auto newSize = ImGui::CalcTextSize(newText);
-    const float valuesWidth = oldSize.x + newSize.x + padding * 4;
-    const bool stacked = width < valuesWidth;
-    // A row inside a labeled property field passes no name; a card row names its own field.
-    const bool fieldInline = !field || width >= fieldSize.x + padding + valuesWidth;
-    const float lines = (stacked ? 2.0f : 1.0f) + (fieldInline ? 0.0f : 1.0f);
-    const float height = ImGui::GetFontSize() * lines + padding * 2;
-    const ImVec2 end{start.x + width, start.y + height};
-    auto* draw = ImGui::GetWindowDrawList();
-    draw->AddRectFilled(start, end, colorU32(ThemeRole::SurfaceSunken), scaled(kShape.control));
-    draw->AddRect(start, end, colorU32(ThemeRole::AccentAgent), scaled(kShape.control), 0,
-                  scaled(kShape.border));
-    draw->PushClipRect(start, end, true);
-    const ImVec2 fieldPosition{start.x + padding, start.y + padding};
-    if (field)
-        draw->AddText(fieldPosition, colorU32(ThemeRole::TextSecondary), field);
-    const ImVec2 oldPosition{field && fieldInline ? fieldPosition.x + fieldSize.x + padding
-                                                  : fieldPosition.x,
-                             fieldInline ? fieldPosition.y : fieldPosition.y + fieldSize.y};
-    draw->AddText(oldPosition, colorU32(ThemeRole::TextDisabled), oldText);
-    draw->AddLine({oldPosition.x, oldPosition.y + oldSize.y * 0.5f},
-                  {oldPosition.x + oldSize.x, oldPosition.y + oldSize.y * 0.5f},
-                  colorU32(ThemeRole::TextDisabled), scaled(kShape.border));
-    const ImVec2 newPosition{stacked ? oldPosition.x : oldPosition.x + oldSize.x + padding,
-                             stacked ? oldPosition.y + oldSize.y : oldPosition.y};
-    draw->AddText(newPosition, colorU32(ThemeRole::AccentAgentText), newText);
-    mark({end.x - padding, end.y - padding - newSize.y * 0.5f}, "Proposed");
-    draw->PopClipRect();
-    ImGui::Dummy({width, height});
-    editorTooltip("Proposed value; the current value is unchanged.");
 }
 
 //======================================================================================================================
@@ -278,45 +240,23 @@ void activitySpecimens() {
 //======================================================================================================================
 void proposalSpecimen() {
     for (bool applied : {false, true}) {
-        ImGui::PushID(applied ? 1 : 0);
         stateLabel(applied ? "Applied" : "Pending");
-        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, scaled(kShape.card));
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, color(ThemeRole::SurfaceRaised));
-        ImGui::PushStyleColor(ImGuiCol_Border,
-                              color(applied ? ThemeRole::BorderSubtle : ThemeRole::AccentAgent));
-        if (ImGui::BeginChild("##proposal", {0, 0},
-                              ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY)) {
-            {
-                const ScopedType strong(TypeRole::BodyStrong);
-                ImGui::TextWrapped("Adjust local-light intensity");
-            }
-            actorMark(Actor::Agent);
-            editorTooltip("Reserved proposal actor · Gallery fixture");
-            ImGui::SameLine();
-            ImGui::TextUnformatted("Agent");
-            ImGui::SameLine();
-            ImGui::TextColored(color(ThemeRole::TextSecondary), "%s",
-                               applied ? "2 changes · applied" : "2 changes · proposed");
-            proposedValue("Intensity", "12.000", "9.500");
-            proposedValue("Range", "6.000", "8.000");
-            ImGui::TextLink("Evidence: comparison report (fixture)");
-            editorTooltip("Fixture-only evidence reference; no external record is opened.");
-            if (applied) {
-                message("Applied · Revert restores the saved values (fixture).");
-                ImGui::Button("Revert");
-            } else {
-                ImGui::Button("Show");
-                nextInRow(ImGui::CalcTextSize("Accept").x + ImGui::GetStyle().FramePadding.x * 2);
-                primaryButton("Accept");
-                nextInRow(ImGui::CalcTextSize("Reject").x + ImGui::GetStyle().FramePadding.x * 2);
-                ImGui::Button("Reject");
-            }
-            message("Gallery fixture; these controls do not change the scene.");
-        }
-        ImGui::EndChild();
-        ImGui::PopStyleColor(2);
-        ImGui::PopStyleVar();
-        ImGui::PopID();
+        SessionProposal specimen;
+        specimen.id = applied ? 2 : 1;
+        specimen.actor = Actor::Agent;
+        specimen.client = "Gallery fixture";
+        specimen.summary = "Adjust local-light intensity";
+        specimen.state = applied ? SessionState::Applied : SessionState::Proposed;
+        specimen.changes = {
+            {asset::DocumentChangeOwner::Light, 0, {}, "Intensity", "12.000", "9.500"},
+            {asset::DocumentChangeOwner::Light, 0, {}, "Range", "6.000", "8.000"}};
+        specimen.evidence = {"comparison report (fixture)"};
+        CardLabels labels;
+        labels.showDetails = true;
+        labels.appliedMessage = "Applied · Revert restores the saved values (fixture).";
+        labels.appliedAction = "Revert";
+        labels.footer = "Gallery fixture; these controls do not change the scene.";
+        proposalCard(specimen, labels);
     }
 }
 
@@ -394,20 +334,19 @@ void drawComponent(GalleryComponent component) {
             stateLabel(state);
             const ScopedType type(TypeRole::Caption);
             const std::string_view kind(state);
-            fixture(kind == "Severity"     ? "WARN 12"
-                    : kind == "Actor"      ? "Agent · working"
-                    : kind == "Provenance" ? "not saved"
-                                           : "↓ 3 new",
-                    kind == "Count" ? ThemeRole::AccentOperatorSubtle : ThemeRole::SurfaceHover,
-                    kind == "Severity"     ? ThemeRole::StatusWarning
-                    : kind == "Actor"      ? ThemeRole::AccentAgentText
-                    : kind == "Provenance" ? ThemeRole::ProvSession
-                                           : ThemeRole::AccentOperatorText,
-                    kShape.pill,
-                    kind == "Count" ? ThemeRole::AccentOperator : ThemeRole::BorderSubtle, 20.0f,
-                    kind == "Actor"        ? "Actor"
-                    : kind == "Provenance" ? "Session"
-                                           : "");
+            if (kind == "Actor")
+                actorChip(Actor::Agent, "Agent · working");
+            else
+                fixture(kind == "Severity"     ? "WARN 12"
+                        : kind == "Provenance" ? "not saved"
+                                               : "↓ 3 new",
+                        kind == "Count" ? ThemeRole::AccentOperatorSubtle : ThemeRole::SurfaceHover,
+                        kind == "Severity"     ? ThemeRole::StatusWarning
+                        : kind == "Provenance" ? ThemeRole::ProvSession
+                                               : ThemeRole::AccentOperatorText,
+                        kShape.pill,
+                        kind == "Count" ? ThemeRole::AccentOperator : ThemeRole::BorderSubtle,
+                        20.0f, kind == "Provenance" ? "Session" : "");
         }
         break;
     case GalleryComponent::FieldText:
@@ -433,7 +372,7 @@ void drawComponent(GalleryComponent component) {
             stateLabel(state);
             const std::string_view kind(state);
             if (kind == "Proposed") {
-                proposedValue(nullptr, "12.000", "9.500");
+                proposedValue({}, "12.000", "9.500");
             } else if (kind == "SystemApplied") {
                 fixture("X 12.000 · set by dynamic resolution", ThemeRole::SurfaceSunken,
                         ThemeRole::TextPrimary, kShape.control, ThemeRole::BorderSubtle, 0, kind);
@@ -571,7 +510,7 @@ void drawComponent(GalleryComponent component) {
                 const std::string_view kind(state);
                 field(kind == "SystemApplied" ? "Render scale" : "Intensity (relative)");
                 if (kind == "Proposed")
-                    proposedValue(nullptr, "12.000", "9.500");
+                    proposedValue({}, "12.000", "9.500");
                 else if (kind == "ReadOnly")
                     message("0.812 · set by dynamic resolution");
                 else if (kind == "SystemApplied")
