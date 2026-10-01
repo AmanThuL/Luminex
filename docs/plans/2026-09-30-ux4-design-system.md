@@ -288,7 +288,7 @@ system menu-bar strip itself follows the system, a recorded limit.
   `editor: complete the style gallery (UX4)`.
 
 ### Task 18: Decision and operator documents (UX4.4)
-- [ ] ADR 0029 (token contract: single generator, roles, slot mappings, appearance, schema 5)
+- [x] Documentation written: ADR 0029 (single color generator, roles, mappings, appearance, schema 5)
   `Proposed`; `docs/architecture/app.md` (split past 300 lines); appearance and density in
   `docs/guides/gpu-debugging.md`; `AGENTS.md` setup, `--appearance`, token check and architecture
   lines; README in shipped-feature terms. Commit `docs: describe the design system (UX4)`.

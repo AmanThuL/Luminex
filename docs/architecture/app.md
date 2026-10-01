@@ -14,7 +14,8 @@ drives the frame loops, and links AppModel. Render depends on neither; the depen
 `core`, `asset`, `engine`, `render` and `scenes`, plus glm
 ([module contract](../conventions/modules.md)). It owns options, capture metadata, selection,
 workspace schema, actions, performance and graph models, timing history, frame-record retention,
-dynamic-resolution policy, temporal and exposure state, bounded Console storage and presentation,
+dynamic-resolution policy, temporal/exposure state, theme/menu models, provenance/activity and bounded
+Console storage and presentation,
 visibility formatting, and the `MeasurementRun` state machine. Core's `RingBuffer` stores its frame,
 timing and Console history. The module checker keeps it free of
 ImGui, SDL, Metal and the graph builder: it must not include `RenderGraph.h` directly or
@@ -43,6 +44,8 @@ AppModel model headers are public. App's root holds its build file.
 
 `AppOptions` parses the command line and its defaults for the editor and headless runners.
 `--scene` accepts a catalog ID or a `.scene.gltf` path; asset URIs remain relative to `Assets/`.
+`--appearance auto|light|dark` is a session override for the windowed editor; screenshot, sequence
+and measurement modes reject it. See [appearance and persistence](app-design-system.md#appearance-and-persistence).
 
 ### Scene
 
@@ -69,7 +72,7 @@ Shadows edit `Scene::look`, with resets to the loaded or saved document; Sky and
 of windowing. Dirty state derives from canonical export when the session edit generation changes;
 a failed export stays dirty and surfaces its error. Save, Save As and Revert require Stopped and
 no active Measure. Open, switch, Quit and close ask Save, Discard or Cancel before discarding; Revert asks Discard or Cancel.
-For Open, Save finishes before the chooser opens, so cancelling the chooser cannot cancel that
+For Open, Save finishes before the chooser opens, so canceling the chooser cannot cancel that
 save. A mutex-protected dialog mailbox keeps the response until the main-thread pump consumes it
 before drawable acquisition; pending Quit is reconsidered after that response.
 
@@ -136,10 +139,13 @@ produce no notice.
 
 ### Workspace
 
-`WorkspaceModel` owns panel visibility and the workspace persistence schema that the shell's ImGui settings handler
-writes into `imgui.ini` (below). `MenuBarFit` keeps one transport row, dropping the time readout, then the zoom
-percentage when space is tight; action buttons remain. `EditorIcon` names Codicons glyphs and their readable fallback
-labels.
+`WorkspaceModel` owns eight panel visibilities, UI scale, appearance and density in schema 5.
+`EditorTheme` owns pure appearance resolution, transitions and shared metric contracts;
+`EditorThemeTokens` holds generated colors and slot mappings. `MenuModel` supplies command state;
+`Provenance` and `ActivityModel` describe existing editor state. `GalleryCatalog` names 21 specimens.
+`MenuBarFit` drops the activity verb, then time, then zoom while retaining actions and the activity
+mark. `EditorIcon` names Codicons glyphs and fallback labels. The
+[design-system companion](app-design-system.md) describes these models and their shell consumers.
 
 ### Rendering
 
@@ -171,22 +177,22 @@ Inspector, with Rendering in the Inspector's tab group; Console shares the botto
 Inspector and Console are selected on default layout construction. Detailed Performance and Render Graph each own a
 detached native window; their `ImGuiWindowClass` rejects unclassed docking and disables auto-merge. Both start closed.
 
-The ImGui settings handler persists schema 4's eight panel visibilities and UI scale alongside ImGui's docking and
-viewport data. Schema 3 migration keeps its six visibilities, valid scale and both detached windows' bounds, shows the
-two new panels and rebuilds the main docks once. Saving schema 4 makes later launches restore that layout. Schema 2
-rebuilds defaults while keeping valid scale; unknown schemas use defaults. Window > Reset Default Layout preserves
-scale, closes the detached windows and resets Performance's next-open bounds. Hierarchy keeps its `Scene` window ID.
-Explicit Performance focus resolves ImGui's SDL3 `PlatformHandle` as an `SDL_WindowID` and restores only a minimized
-window. The shell consumes a layout-reset intent at the next frame's start.
+The ImGui settings handler persists schema 5's eight visibilities, UI scale, appearance and density
+alongside docking and viewport data. Schema 4 restores without rebuilding, using Auto and
+Comfortable; schema 3 preserves six visibilities, scale and detached bounds, enables the new tabs
+and rebuilds main docks once. Schema 2 keeps valid scale and rebuilds defaults; unknown schemas use
+defaults. Reset Default Layout preserves scale, appearance and density, closes detached windows
+and resets Performance's next-open bounds. Hierarchy keeps its `Scene` window ID. Explicit
+Performance focus resolves SDL3 `PlatformHandle` as an `SDL_WindowID` and restores a minimized
+window. The shell consumes layout-reset intent at the next frame's start.
 
-Menu drawing and keyboard shortcuts only raise action intents; the frame loop consumes quit and
-capture at the boundary that already owns each operation, and calls
-`ImGui::UpdatePlatformWindows()`/`RenderPlatformWindowsDefault()` after every presented frame so the
-vendored Metal 4 ImGui backend renders any detached window with its own command buffer and per-slot
-event. That backend's maintained patch quarantines each slot's uploaded vertex and index buffers in a
-per-slot `usedBuffers` set until the slot is revisited; platform events and App's main-frame pacing
-run before reuse or eviction, which keeps a same-frame window upload from overwriting a GPU read
-still in flight.
+[Native menus](app-design-system.md#menus-and-frame-boundaries) share `MenuModel` and
+`runMenuCommand` with the ImGui menu renderer. CPU UI and keyboard ownership finish before drawable
+acquisition. A skipped drawable still calls `UpdatePlatformWindows` and applies appearance, with
+no platform GPU render. Presented frames render platform windows after the main `endFrame`.
+The vendored Metal 4 ImGui backend uses one command buffer and per-slot event per detached window.
+Its maintained patch quarantines each slot's uploaded vertex/index buffers in `usedBuffers` until
+that slot is revisited; platform events and main-frame pacing precede reuse or eviction.
 
 The Render Graph panel coordinates its detached window with separate units for canvas ownership, selection details and
 the dump. Its canvas draws a `GraphLayout` on a vendored `ImGuiNodeEditor` canvas ([ADR
@@ -202,53 +208,16 @@ side.
 
 ## Editor surface conventions
 
-The [UX2 placement map](../milestones/ux/ux2.md#placement-map) fixes each control's destination.
-Shared primitives in `Panels/Shared/EditorStyle` implement these conventions:
+The [surface conventions](app-design-system.md#editor-surface-conventions) describe control
+placement, responsive property grids, diagnostics, shared notices and status by exception.
+`Panels/Shared/EditorStyle` implements these primitives alongside semantic colors, type scopes,
+actor/provenance marks and the activity strip. Native menus own commands; the toolbar owns
+transport, activity and zoom. Scene-only captures omit those cues.
 
-1. **One home per function.** Commands have one menu route, plus a shortcut or frequent context
-   action. Panels do not repeat global commands.
-2. **Header row.** Frequent panel actions use icon buttons with tooltips; rare actions use More.
-   Inspector headers name the subject and kind; Reset, enabled only after a change, names its scope.
-3. **Property grid.** Inspector pages use label | value grids; they reflow to one column below
-   `kPropertyGridMinWidth` (260 base UI points, adjusted by UI scale).
-4. **Controls, readings, diagnostics.** Actionable readings stay visible. Identifiers, capacities,
-   bounds and frame numbers use a collapsed Diagnostics section. Timings belong to Performance;
-   other surfaces link there.
-5. **Status by exception.** Normal states such as Stopped, Ready and zero evictions stay quiet;
-   warnings, failures and pending work remain visible. Explanations use tooltips.
-6. **The viewport is the image.** Only pixel-related overlays belong there, including the Debug
-   View legend chip with its selector and Close action, and pending capture.
-
-`iconButton` uses square Codicons buttons and readable text labels when the font is unavailable. `nextInRow` shares
-width-aware wrapping; `beginHeaderRow` groups panel actions, `overflowMenu` opens their popup, `beginPropertyGrid`
-shares the reflow threshold, and `beginDiagnostics` starts collapsed. `drawNotice` displays the retained result and Copy
-path/Reveal actions in a dismissible, borderless window at the main viewport's bottom-right work area. `ActionFeedback`
-suppresses Ready. File > Open Scene owns catalog availability, loading and retry. Source names are disambiguated within
-each scene; filtering keeps selection. Hierarchy follows the document and imported source-node tree, with Environment and generated children. View > Editor
-Camera selects the camera in Inspector; View also owns Reset Camera (Home), Frame Selected (F), Selection Outline, Debug
-View and UI Scale. Frame Selected is also a Hierarchy context action. `EditorShortcuts` suppresses F, Home and C during text
-entry, popups, RMB look or Render Graph/Performance focus; C without capture explains why. Help > Controls explains movement. `EditorMenus` and `EditorTransport` share the menu row;
-the latter owns Play/Pause, Stop, Step, time and rail follow. The tree root and window title show `*`
-when dirty. Stop restores the preview without adding document edits. View > Set Scene Camera from View
-is the explicit way to save the editor camera.
-`RenderingPanel`, `RenderingTopics` and `RenderingLighting` draw eight collapsing topics, with Reconstruction initially
-open. Topic headers have scoped resets that keep the Debug View; controls precede readings and Diagnostics, and Details opens Performance.
-Inspector pages share subject/kind/reset headers. Enabled controls on groups, objects and lights preserve
-identities and descendant own flags; Measure locks edits. Exposure, Bloom and Shadows live under Environment.
-
-App alone declares `Render/Passes/SelectionOutline/SelectionOutline`, opting into it after scene
-display; see [render-passes.md#selection-outline](render-passes.md#selection-outline) for the pass
-itself.
-
-`ConsoleLogSink` subscribes after logger setup and before option parsing or device initialization, and its RAII
-subscription lasts through application shutdown; its callbacks only append to the thread-safe Console store. Console
-displays UTC timestamps and six severity levels, with minimum-severity chips and case-insensitive search. Scroll-up
-holds the displayed rows while logging continues; returning to the bottom or clicking `↓ N new` resumes. The chip
-remains visible at zero arrivals. More owns Clear and Copy visible: Clear preserves filters/freeze, and Copy exports the
-matching held view. Loss counts print only when nonzero and otherwise remain in search help. Console is read-only.
-Header counts can trail the messages by one frame because scroll state is resolved before refreshing the displayed
-snapshot. See [gpu-debugging.md](../guides/gpu-debugging.md#console-and-editor-selection-diagnostics) for the operator
-workflow.
+App declares the editor-only [selection outline](render-passes.md#selection-outline) after scene
+display, using one encoded `#4CABFD` constant in both themes. Console remains bounded and read-only;
+its held-view and copy/clear behavior is covered by the
+[operator guide](../guides/gpu-debugging.md#console-and-editor-selection-diagnostics).
 
 ## Capture and measurement
 
@@ -258,7 +227,7 @@ unsaved frames at 60 Hz into a new or empty directory, recording actual camera, 
 reconstruction fallback fails the sequence outright. Renderer exposes its display-domain contract to capture metadata
 and to the read-only Rendering > Display diagnostics
 ([render-passes.md#exposure-bloom-and-display](render-passes.md#exposure-bloom-and-display)). Asset's `PngImage` writes
-deterministic colour-tagged PNGs. Manifest v3 retains display/container/UI fields and adds
+deterministic color-tagged PNGs. Manifest v3 retains display/container/UI fields and adds
 `sceneDocument: {path, sha256}`; measurement schema 5 carries the same provenance and a frozen enabled
 population. The hash covers loaded JSON then buffer bytes, excluding unsaved edits; PNG `lmx:frame` stays unchanged. The offline
 [temporal comparison workflow](../guides/temporal-comparison.md) synchronizes Raw/Native/MetalFX reports and an optional
@@ -278,14 +247,18 @@ one warning and keeps the system icon. The supplied FACET B2.2 artwork remains p
 owner approval pending; [validation](../milestones/ux/ux3-editor-validation.md#application-icon)
 records the unverified Dock/switcher appearance. The product remains a bare executable.
 
-`EditorFont` loads Inter Regular with fixed-width digits and an embedded fallback, then merges the Codicons glyph range
-on a 16 px grid. Setup pins Inter 4.1 and Codicons 0.0.46-24; App stages their fonts, licenses and Codicons provenance
-in `Fonts/`. Without Codicons, the build still succeeds, buttons show labels and the editor logs one setup warning.
-`iconButton` centers visible glyph ink. The shell applies persisted UI scale before `ImGui::NewFrame` from an unscaled
-base style. View > UI Scale covers 75–150%; the menu-bar percentage resets to 100%, as does Cmd+0. Cmd+-/Cmd++ exclude
-text editing, active widgets, popups and camera look. Missing scale is 100%. Schema 2/3 migration and Reset Default
-Layout preserve valid scale. Graph cards remeasure once when scale changes, retaining selection, frozen data and the
-canvas's independent navigation. See [gpu-debugging.md#editor-ui-scale](../guides/gpu-debugging.md#editor-ui-scale).
+`EditorFont` loads Geist Sans Regular/Medium and Geist Mono Regular; setup pins Geist 1.7.2
+with SIL Open Font License 1.1 and provenance. Sans/Medium digits use 0.6 em (9.6 at body 16);
+Mono keeps native advances. Codicons stays on a 16-point grid. Missing Medium or Mono falls back
+to Regular with one warning per face; missing Regular uses the embedded fallback. Missing Codicons
+uses labeled buttons and one warning. App stages resources in `Fonts/` beside the executable.
+The [type contract](app-design-system.md#type-shape-and-density) lists roles and limits.
+
+The shell reapplies UI scale from an unscaled base before `NewFrame`; View > UI Scale offers
+75/80/90/100/110/125/150%. The toolbar percentage or Cmd+0 resets to 100%; Cmd+-/Cmd++ exclude
+editing, active widgets, popups and camera look. Missing scale is 100%. Migration and layout reset
+preserve valid scale. Graph cards remeasure on scale changes, retaining selection, frozen data and
+independent navigation. See [editor UI scale](../guides/gpu-debugging.md#editor-ui-scale).
 
 ## Tests
 
@@ -295,4 +268,5 @@ publication and one GPU case. Options tests exercise catalog/path parsing. Perfo
 check retirement joins and frozen measurement populations. Rendering tests cover lighting,
 visibility, reset scopes, diagnostics, dynamic resolution and temporal state. Scene tests cover
 workflow/mailbox ordering, save adoption, tree/search, enabled edits and playback dirtiness.
-Workspace tests cover schema persistence. Shell, Headless and Panels have no direct unit tests.
+Workspace tests cover schema migration, appearance/contrast, type/density, provenance/activity,
+menu state and Gallery inventory. Shell, Headless and Panels have no direct unit tests.

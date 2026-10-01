@@ -20,7 +20,9 @@ Explore detailed scenes, temporal reconstruction and the frame behind each image
 - **An inspectable frame.** Coherent GPU timing snapshots, motion diagnostics and a detached
   render graph window with resource connections, frame freeze and export.
 - **A practical editor.** Searchable scene Hierarchy, visible-object selection outlines, scoped
-  resets, saved scene documents, playback controls and a log Console. Inter typography and one-click UI zoom fit the workspace.
+  resets, saved scene documents, playback controls and a log Console. Geist typography,
+  Light/Dark/Auto appearance, density presets and UI zoom fit the workspace. Native macOS menus
+  serve the editor and detached windows.
 - **Built close to the GPU.** C++23, Slang shaders and a thin RHI, with explicit resource
   dependencies, transient pooling and Metal validation tests.
 
@@ -47,7 +49,7 @@ xmake
 xmake run App
 ```
 
-Setup downloads pinned dependencies, Inter and Codicons fonts, and sample assets. The editor opens maximized
+Setup downloads pinned dependencies, Geist Sans/Mono and Codicons fonts, and sample assets. The editor opens maximized
 on Sponza. Hold the right mouse button in the viewport and use WASD + Q/E to fly.
 
 Use **File → Open Scene** to choose Sponza, MaterialLab, TemporalLab, VisibilityLab, LightLab or
@@ -56,8 +58,9 @@ TemporalLab includes the animated Milk Truck. **File → Open…**, **Save** and
 [scene documents](docs/guides/scene-documents.md), including object enablement, lights and the
 scene look. Select Environment in Hierarchy for exposure, bloom and shadows.
 **Window → Render Graph** opens the detached graph.
-Use **View → UI Scale** or Cmd+- / Cmd++ to adjust UI scale; click the menu-row percentage or press Cmd+0 to reset it.
-Layout and scale are saved automatically.
+Use **View → UI Scale** or Cmd+- / Cmd++ to adjust UI scale; click the toolbar percentage or press Cmd+0 to reset it.
+Use **View → Appearance** for Auto (system), Light or Dark and **View → Density** for Comfortable or Compact.
+Layout, scale, appearance and density are saved automatically. **Window → Style Gallery** opens component and type previews.
 
 ## Repository layout
 
@@ -81,6 +84,7 @@ Layout and scale are saved automatically.
 [Frame walkthrough](docs/architecture/frame-pipeline.md) ·
 [GPU debugging](docs/guides/gpu-debugging.md) ·
 [Scene documents](docs/guides/scene-documents.md) ·
+[Editor workspace](docs/guides/editor-workspace.md) ·
 [Temporal comparisons](docs/guides/temporal-comparison.md) ·
 [Roadmap](docs/roadmap.md)
 

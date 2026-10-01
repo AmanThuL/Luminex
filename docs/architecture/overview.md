@@ -57,7 +57,8 @@ reconstruction, exposure/bloom/display, and the editor-only selection outline.
 
 [App](app.md) is the editor and headless-runner layer above the renderer. It splits into
 `AppModel`, the ImGui/SDL/Metal-free editor logic under `Source/App/Model`, and `App`, the SDL3
-shell, panels, and frame loops under `Source/App` outside `Model`.
+shell, panels, and frame loops under `Source/App` outside `Model`. Its
+[design-system companion](app-design-system.md) covers tokens, typography, appearance and native menus.
 
 [RojoRHI](rojorhi.md) is the repository-root RHI component: a dependency-free API over Metal 4,
 mounted as a git submodule of the public `rojo-rhi` repository. Engine, Scenes, Render and the
