@@ -17,6 +17,7 @@
 namespace lmx::app {
 
 class SceneSession;
+struct SessionProposal;
 
 /// Visible Hierarchy title with the original Scene window ID retained for saved docking. The
 /// pinned ImGui hashes a ### suffix exactly as the suffix alone, including window settings.
@@ -35,6 +36,7 @@ struct ScenePanelContext {
     const engine::LoadedScene* loadedScene = nullptr; ///< Document and source-node bindings.
     const SceneSession* session = nullptr;            ///< Current own/effective enabled state.
     bool dirty = false;                               ///< Canonical document differs from load.
+    const SessionProposal* proposal = nullptr;        ///< Pending external file proposal, if any.
     SceneTreeState& treeState;                        ///< Collapse choices and the cached tree.
 };
 

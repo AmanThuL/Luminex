@@ -140,6 +140,7 @@ MenuContext EditorShell::menuContext(const render::Renderer& renderer,
     MenuContext context{.documentIdle = m_documentWorkflow.step() == WorkflowStep::Idle,
                         .stopped = m_playback.state() == PlaybackState::Stopped,
                         .measuring = m_measurement.active(),
+                        .proposalPending = m_sessionProposals.pendingFile() != nullptr,
                         .canRetryScene = m_sceneLoading.failedScene().has_value(),
                         .canFrame =
                             selectedObjectBounds(m_session.scene(), m_selection).has_value(),

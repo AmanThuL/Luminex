@@ -7,6 +7,7 @@
 
 #include "App/Model/Session/SessionTypes.h"
 #include "App/Model/Workspace/Provenance.h"
+#include "Engine/Asset/Document/SceneDocument.h"
 #include "Engine/Asset/Document/SceneDocumentDiff.h"
 
 #include <cstdint>
@@ -73,6 +74,10 @@ ProposalReviewDetails proposalReviewDetails(const SessionProposal& proposal, boo
 /// Names the owner, stable index, optional name and property of one change row.
 std::string proposalChangeLabel(const asset::DocumentChange& change);
 
+/// Returns whether a loaded Hierarchy node owns a changed node, camera, or shared light definition.
+bool proposalAffectsNode(const SessionProposal& proposal, const asset::SceneDocument& loaded,
+                         uint32_t node);
+
 /// Main-thread proposal history. Borrowed pointers and spans are invalidated by add; all methods
 /// require serialized access. At most 64 proposals are retained; rejected hashes last until the
 /// file context is reset.
@@ -88,6 +93,9 @@ public:
     void resolve(uint64_t id, SessionState state);
     /// Stales a known proposal and suppresses its File hash until the file context is reset.
     void reject(uint64_t id);
+    /// Rejects only the hash the operator reviewed; a newer hash stales the card without
+    /// suppressing either hash and must be discovered by the watcher.
+    bool rejectIfCurrent(uint64_t id, std::string_view observedHash);
     /// Reports whether a File hash was rejected in the current file context.
     bool rejected(std::string_view hash) const;
     /// Stales unresolved proposals from a source; File also resets rejected hashes.

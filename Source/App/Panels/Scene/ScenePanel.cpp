@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "App/Panels/Scene/ScenePanel.h"
+#include "App/Model/Session/SessionProposal.h"
 
 #include "App/Model/Scene/SceneSession.h"
 #include "App/Model/Scene/SceneTree.h"
@@ -315,10 +316,11 @@ void drawTreeRow(const SceneTreeRow& row, const ScenePanelContext& context) {
         context.session->objectChanged(row.index) &&
         std::ranges::any_of(context.activeScene.animation.tracks,
                             [&](const auto& track) { return track.objectIndex == row.index; });
-    const auto mark = root && context.loadedScene
-                          ? documentProvenance(context.dirty, context.loadedScene->path.string())
-                      : context.session
-                          ? inspectorProvenance(*context.session, subject,
+    const auto mark =
+        root && context.proposal ? std::optional{proposedProvenance(context.proposal->client)}
+        : root && context.loadedScene
+            ? documentProvenance(context.dirty, context.loadedScene->path.string())
+        : context.session ? inspectorProvenance(*context.session, subject,
                                                 inspectorSubjectEdited(*context.session, subject),
                                                 {}, true, preview)
                           : std::nullopt;
@@ -351,6 +353,9 @@ void drawTreeRow(const SceneTreeRow& row, const ScenePanelContext& context) {
     if (dimmed && !selected)
         ImGui::PushStyleColor(ImGuiCol_Text, editor_style::color(ThemeRole::TextDisabled));
     const bool opened = ImGui::TreeNodeEx("document-row", flags, "%s", label.c_str());
+    if (context.proposal && context.loadedScene && row.node != engine::kGeneratedNode &&
+        proposalAffectsNode(*context.proposal, context.loadedScene->document, row.node))
+        editor_style::attentionRing(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
     if (mark)
         editor_style::provenanceMark(*mark, true);
     if (dimmed && !selected)

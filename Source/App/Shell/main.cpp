@@ -231,6 +231,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         // Dialog responses and approved Quit must progress even if acquire has no drawable.
         // The UI only presents confirmation; completed work runs at this frame boundary.
         shell->consumeNativeMenuCommands(**renderer);
+        shell->pumpSession(ImGui::GetTime());
         shell->pumpDocuments();
         if (shell->actions().consumeQuit()) {
             running = false;

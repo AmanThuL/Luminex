@@ -1,0 +1,82 @@
+//----------------------------------------------------------------------------------------------------------------------
+/// @file DocumentWatch.cpp
+/// @brief Waits for a stable document pair and one attributed proposal decision.
+//----------------------------------------------------------------------------------------------------------------------
+
+#include "App/Model/Session/DocumentWatch.h"
+
+#include "Engine/Asset/Model/JsonTokens.h"
+
+namespace lmx::app {
+
+//======================================================================================================================
+std::optional<std::string> documentBufferUri(std::string_view gltfJson) {
+    auto parsed = asset::JsonTokens::parse(std::string(gltfJson));
+    if (!parsed)
+        return std::nullopt;
+    const auto buffers = parsed->root().find("buffers");
+    if (!buffers || !buffers->isArray() || buffers->size() == 0)
+        return std::nullopt;
+    const auto uri = buffers->at(0).find("uri");
+    if (!uri || !uri->isString())
+        return std::nullopt;
+    auto value = uri->asString();
+    return value ? std::optional(std::move(*value)) : std::nullopt;
+}
+
+//======================================================================================================================
+void DocumentWatch::reset(const FileStamp& loaded) {
+    m_loaded = loaded;
+    m_observed = {};
+    m_lastPoll = -1.0;
+    m_graceStart = -1.0;
+    m_hash.clear();
+    m_observedOnce = false;
+    m_hashed = false;
+    m_ready = false;
+}
+
+//======================================================================================================================
+bool DocumentWatch::due(double seconds) const {
+    return m_lastPoll < 0.0 || seconds - m_lastPoll >= 0.5;
+}
+
+//======================================================================================================================
+WatchDecision DocumentWatch::poll(const FileStamp& now, double seconds) {
+    if (!due(seconds))
+        return WatchDecision::Wait;
+    m_lastPoll = seconds;
+    if (now.saving || now == m_loaded) {
+        m_observedOnce = false;
+        m_hashed = false;
+        m_ready = false;
+        return WatchDecision::Wait;
+    }
+    if (!m_observedOnce || now != m_observed) {
+        m_observed = now;
+        m_observedOnce = true;
+        m_hashed = false;
+        m_ready = false;
+        m_graceStart = -1.0;
+        return WatchDecision::Wait;
+    }
+    if (!m_hashed)
+        return WatchDecision::Hash;
+    if (m_ready)
+        return WatchDecision::Wait;
+    if (m_graceStart >= 0.0 && seconds - m_graceStart >= 4.0)
+        m_ready = true;
+    return WatchDecision::Sidecar;
+}
+
+//======================================================================================================================
+void DocumentWatch::hashed(std::string_view hash, bool sidecarMatches, double seconds) {
+    if (!m_hashed || hash != m_hash) {
+        m_hash = hash;
+        m_graceStart = seconds;
+    }
+    m_hashed = true;
+    m_ready = sidecarMatches || seconds - m_graceStart >= 4.0;
+}
+
+} // namespace lmx::app

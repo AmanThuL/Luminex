@@ -12,6 +12,18 @@
 using namespace lmx::app;
 
 //======================================================================================================================
+TEST_CASE("pending document provenance keeps unknown changes system attributed",
+          "[app][provenance][session]") {
+    const auto known = proposedProvenance("studio client");
+    CHECK(known.kind == Provenance::Proposed);
+    CHECK(known.actor == Actor::Agent);
+    CHECK(known.source.find("studio client") != std::string::npos);
+    const auto unknown = proposedProvenance("Unknown external change");
+    CHECK(unknown.kind == Provenance::Proposed);
+    CHECK(unknown.actor == Actor::System);
+}
+
+//======================================================================================================================
 TEST_CASE("authored document and subject values need no provenance mark", "[app][provenance]") {
     REQUIRE_FALSE(documentProvenance(false, "Assets/Scenes/sponza.scene.gltf"));
     REQUIRE_FALSE(subjectProvenance(std::nullopt, std::nullopt, false));

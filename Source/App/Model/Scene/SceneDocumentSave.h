@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "App/Model/Scene/EditorSelection.h"
 #include "App/Model/Scene/SceneSession.h"
 #include "Scenes/SceneLibrary.h"
 
@@ -32,8 +33,24 @@ asset::AssetResult<void> saveSessionDocument(scenes::SceneLibrary& library, Scen
 /// Failure retains the active scene/session/id. On success beforeDeactivate stops any playback
 /// against the still-live old scene, then old defaults/bindings are invalidated and the target is
 /// activated. The shell resets selection only after this succeeds.
-asset::AssetResult<void> replaceSessionDocument(scenes::SceneLibrary& library,
-                                                SceneSession& session, scenes::SceneId& activeId,
-                                                const scenes::SceneId& target,
-                                                const std::function<void()>& beforeDeactivate);
+asset::AssetResult<void> replaceSessionDocument(
+    scenes::SceneLibrary& library, SceneSession& session, scenes::SceneId& activeId,
+    const scenes::SceneId& target, const std::function<void()>& beforeDeactivate,
+    const std::function<asset::AssetResult<void>(const engine::LoadedScene&)>& validate = {});
+
+/// Checks whether a proposed document retains the selected semantic subject. A removed or
+/// retyped subject must be reviewed after the operator explicitly changes selection.
+bool canPreserveSessionSelection(const EditorSelection& selection,
+                                 const engine::LoadedScene& loaded,
+                                 const asset::SceneDocument& proposed);
+
+/// Reloads a stopped session document while retaining its camera and selected semantic subject.
+/// A supplied proposal and its expected hash are checked before replacement; failure leaves
+/// session and selection intact. The optional verifier is a deterministic I/O test seam.
+asset::AssetResult<void> replaceSessionDocumentPreservingView(
+    scenes::SceneLibrary& library, SceneSession& session, scenes::SceneId& activeId,
+    EditorSelection& selection, const std::optional<asset::SceneDocument>& proposal = {},
+    std::string_view expectedHash = {},
+    const std::function<asset::AssetResult<std::string>(const std::filesystem::path&)>& verifyHash =
+        {});
 } // namespace lmx::app

@@ -445,6 +445,7 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
                                     .loadedScene = m_session.loadedScene(),
                                     .session = &m_session,
                                     .dirty = m_documentDirty,
+                                    .proposal = m_sessionProposals.pendingFile(),
                                     .treeState = m_sceneTree});
         if (frameSelectionRequested)
             frameSelected(renderer);
@@ -613,7 +614,9 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
                                      ? sidecarPath(m_session.loadedScene()->path).parent_path()
                                      : std::filesystem::path{},
             .pathFeedback = m_sessionPathFeedback};
-        drawSessionPanel(open, context);
+        const auto action = drawSessionPanel(open, context);
+        if (action.action != SessionPanelAction::None)
+            m_sessionPanelAction = action;
         setPanelVisible(EditorPanel::Session, open);
     }
 

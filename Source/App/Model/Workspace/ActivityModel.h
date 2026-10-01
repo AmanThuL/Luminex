@@ -5,6 +5,7 @@
 #pragma once
 
 #include "App/Model/Performance/MeasurementRun.h"
+#include "App/Model/Session/SessionTypes.h"
 #include "App/Model/Workspace/Provenance.h"
 
 #include <cstdint>
@@ -27,15 +28,32 @@ struct ScaleChange {
     double at = 0.0;   ///< Finite monotonic timestamp in seconds, in the same clock as now.
 };
 
+/// Session work visible in the shared activity strip.
+struct SessionActivity {
+    SessionState state = SessionState::Idle; ///< Gallery-compatible lifecycle state.
+    std::string label;                       ///< Caller-owned source or job description.
+    std::optional<float> progress;           ///< Unitless fraction when known.
+    bool stoppable = false;                  ///< True only for a cancellable session job.
+    Actor actor = Actor::Agent;              ///< Attributed client, or System for an unknown file.
+};
+
 /// Caller-owned snapshot; this model neither starts work nor retains references to these inputs.
 struct ActivityInputs {
     std::optional<MeasureProgress> measure; ///< Run phase and its current frame counters.
+    std::optional<SessionActivity> session; ///< Session activity below measurement priority.
     bool capturePending = false;            ///< Existing operator-requested capture is pending.
     std::optional<std::string>
         documentWork;                      ///< Owned current document-work label, absent when idle.
     std::optional<ScaleChange> controller; ///< Latest actual controller change, absent before one.
     /// Finite monotonic timestamp in seconds, in the same clock as controller.at.
     double now = 0.0;
+};
+
+/// Owner of the displayed activity, independent of actor attribution.
+enum class ActivitySource {
+    Other,       ///< Capture, document work, or controller feedback.
+    Measurement, ///< Interactive measurement currently owns the strip.
+    Session,     ///< Session proposal or job currently owns the strip.
 };
 
 /// Owned presentation of existing work; stoppable describes a capability, never executes Stop.
@@ -46,6 +64,7 @@ struct Activity {
         progress;        ///< Unitless [0, 1] phase fraction; absent for indeterminate work.
     bool stoppable;      ///< True only for an active measurement run.
     std::string tooltip; ///< Owned source description independent of input lifetimes.
+    ActivitySource source = ActivitySource::Other; ///< Displayed activity owner for navigation.
 };
 
 /// Selects active Measure, pending capture, document work, then a controller change, in that order.

@@ -76,6 +76,7 @@ struct MenuContext {
     bool documentIdle = true;      ///< No document confirmation, chooser or work is outstanding.
     bool stopped = true;           ///< Playback is Stopped, not Paused.
     bool measuring = false;        ///< Measurement owns scene controls.
+    bool proposalPending = false;  ///< A file proposal blocks Save and Save As.
     std::vector<MenuScene> scenes; ///< Stable catalog display order, used by OpenCatalog arguments.
     std::string sceneFailure;      ///< Complete load failure and recovery text, empty on success.
     std::string retrySceneName;    ///< Failed catalog display name for loading feedback.

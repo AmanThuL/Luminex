@@ -25,6 +25,7 @@
 #include "App/Model/Scene/SceneLoadState.h"
 #include "App/Model/Scene/SceneSession.h"
 #include "App/Model/Scene/SceneTreeState.h"
+#include "App/Model/Session/DocumentWatch.h"
 #include "App/Model/Session/SessionLog.h"
 #include "App/Model/Session/SessionProposal.h"
 #include "App/Model/Workspace/ActivityModel.h"
@@ -33,6 +34,7 @@
 #include "App/Panels/Gallery/StyleGalleryPanel.h"
 #include "App/Panels/Graph/RenderGraphPanel.h"
 #include "App/Panels/Performance/PerformancePanel.h"
+#include "App/Panels/Session/SessionPanel.h"
 #include "App/Shell/NativeMenu.h"
 #include "Engine/View/Camera.h"
 #include "Render/Passes/SelectionOutline/SelectionOutline.h"
@@ -248,6 +250,8 @@ public:
     /// Consumes ready document work and native responses before drawable acquisition, even when
     /// no frame can render. Dirty confirmation remains pending until buildUI can present it.
     void pumpDocuments();
+    /// Polls the open document and processes operator Session review clicks before document work.
+    void pumpSession(double now);
     /// Publishes native menu state before SDL polls AppKit events; a no-op outside macOS.
     void updateNativeMenu(const render::Renderer& renderer, const rojoRHI::Device& device);
     /// Drains native actions in order and consumes framing with the supplied renderer.
@@ -316,6 +320,9 @@ private:
     // Builds a fresh snapshot before discarding the active one; failure retains scene and
     // selection.
     bool selectScene(scenes::SceneId id);
+    bool acceptFileProposal(uint64_t id);
+    FileStamp currentDocumentStamp() const;
+    void recordSessionReview(std::string command, std::string arguments, std::string outcome);
     void updateCameraInput(float deltaSeconds);
     uint64_t metricsContextEpoch();
     void startMeasurement(rojoRHI::Device& device, const render::Renderer& renderer);
@@ -441,6 +448,14 @@ private:
     PerformanceModel m_performanceModel;
     ConsoleModel m_consoleModel;
     ProposalQueue m_sessionProposals;
+    DocumentWatch m_documentWatch;
+    std::filesystem::path m_watchedPath;
+    FileStamp m_loadedStamp;
+    FileStamp m_watchedStamp;
+    std::string m_watchedHash;
+    std::string m_watchReadError;
+    std::optional<uint64_t> m_fileAcceptId;
+    std::optional<SessionPanelResult> m_sessionPanelAction;
     SessionLog m_sessionLog;
     uint64_t m_sessionExpandedProposal = 0;
     std::string m_sessionPathFeedback;

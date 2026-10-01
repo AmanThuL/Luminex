@@ -21,17 +21,35 @@ std::optional<Activity> currentActivity(const ActivityInputs& inputs) {
                 measure.total ? std::optional{static_cast<float>(measure.done) / measure.total}
                               : std::nullopt;
             return Activity{
-                Actor::Operator, verb, progress, true,
-                std::format("Measurement · {} {} / {} frames", verb, measure.done, measure.total)};
+                Actor::Operator,
+                verb,
+                progress,
+                true,
+                std::format("Measurement · {} {} / {} frames", verb, measure.done, measure.total),
+                ActivitySource::Measurement};
         }
         case MeasurementState::Draining:
-            return Activity{Actor::Operator, "Finishing", std::nullopt, true,
-                            "Measurement · waiting for GPU retirement"};
+            return Activity{Actor::Operator,
+                            "Finishing",
+                            std::nullopt,
+                            true,
+                            "Measurement · waiting for GPU retirement",
+                            ActivitySource::Measurement};
         case MeasurementState::Idle:
         case MeasurementState::Complete:
         case MeasurementState::Cancelled:
             break;
         }
+    }
+    if (inputs.session && inputs.session->state != SessionState::Idle) {
+        const auto& session = *inputs.session;
+        return Activity{
+            session.actor,
+            std::format("{} · {}", sessionStateLabel(session.state), session.label),
+            session.progress,
+            session.stoppable,
+            std::format("Session · {} · {}", sessionStateLabel(session.state), session.label),
+            ActivitySource::Session};
     }
     if (inputs.capturePending)
         return Activity{Actor::Operator, "Capturing", std::nullopt, false,

@@ -154,6 +154,46 @@ TEST_CASE("proposal queue preserves bridge proposals and bounds retained history
 }
 
 //======================================================================================================================
+TEST_CASE("reject click cannot consume a newer unreviewed file hash", "[app][session]") {
+    ProposalQueue queue;
+    SessionProposal first;
+    first.source = ProposalSource::File;
+    first.client = "First client";
+    first.hash = "hash-a";
+    first.state = SessionState::Proposed;
+    const auto id = queue.add(std::move(first));
+    CHECK_FALSE(queue.rejectIfCurrent(id, "hash-b"));
+    CHECK(queue.find(id)->state == SessionState::Stale);
+    CHECK_FALSE(queue.rejected("hash-a"));
+    SessionProposal next;
+    next.source = ProposalSource::File;
+    next.client = "Second client";
+    next.hash = "hash-b";
+    next.state = SessionState::Proposed;
+    const auto nextId = queue.add(std::move(next));
+    CHECK(queue.rejectIfCurrent(nextId, "hash-b"));
+    CHECK(queue.rejected("hash-b"));
+}
+
+//======================================================================================================================
+TEST_CASE("light and camera changes ring every referencing document node", "[app][session]") {
+    lmx::asset::SceneDocument document;
+    document.nodes.resize(4);
+    document.nodes[0].light = 0;
+    document.nodes[2].light = 0;
+    document.nodes[1].camera = 0;
+    SessionProposal proposal;
+    proposal.changes = {{lmx::asset::DocumentChangeOwner::Light, 0, "", "intensity", "1", "2"},
+                        {lmx::asset::DocumentChangeOwner::Camera, 0, "", "fov", "1", "2"}};
+    CHECK(proposalAffectsNode(proposal, document, 0));
+    CHECK(proposalAffectsNode(proposal, document, 1));
+    CHECK(proposalAffectsNode(proposal, document, 2));
+    CHECK_FALSE(proposalAffectsNode(proposal, document, 3));
+    proposal.changes = {{lmx::asset::DocumentChangeOwner::Node, 3, "", "enabled", "true", "false"}};
+    CHECK(proposalAffectsNode(proposal, document, 3));
+}
+
+//======================================================================================================================
 TEST_CASE("proposal queue remains bounded when all proposals await review", "[app][session]") {
     ProposalQueue queue;
     uint64_t newest = 0;

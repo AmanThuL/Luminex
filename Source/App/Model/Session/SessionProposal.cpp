@@ -159,6 +159,19 @@ void ProposalQueue::reject(uint64_t id) {
 }
 
 //======================================================================================================================
+bool ProposalQueue::rejectIfCurrent(uint64_t id, std::string_view observedHash) {
+    auto* proposal = find(id);
+    LMX_ASSERT(proposal && proposal->source == ProposalSource::File,
+               "File rejection requires a known file proposal");
+    if (proposal->hash != observedHash) {
+        resolve(id, SessionState::Stale);
+        return false;
+    }
+    reject(id);
+    return true;
+}
+
+//======================================================================================================================
 bool ProposalQueue::rejected(std::string_view hash) const {
     return std::find(m_rejectedHashes.begin(), m_rejectedHashes.end(), hash) !=
            m_rejectedHashes.end();
@@ -219,6 +232,27 @@ std::string proposalChangeLabel(const asset::DocumentChange& change) {
                                      ? std::format("{} {}", owner, change.index)
                                      : std::format("{} {} ({})", owner, change.index, change.name);
     return std::format("{}: {}", identity, change.property.empty() ? "value" : change.property);
+}
+
+//======================================================================================================================
+bool proposalAffectsNode(const SessionProposal& proposal, const asset::SceneDocument& loaded,
+                         uint32_t node) {
+    if (node >= loaded.nodes.size())
+        return false;
+    const auto& subject = loaded.nodes[node];
+    return std::any_of(proposal.changes.begin(), proposal.changes.end(),
+                       [&](const asset::DocumentChange& change) {
+                           switch (change.owner) {
+                           case asset::DocumentChangeOwner::Node:
+                               return change.index == node;
+                           case asset::DocumentChangeOwner::Light:
+                               return subject.light && *subject.light == change.index;
+                           case asset::DocumentChangeOwner::Camera:
+                               return subject.camera && *subject.camera == change.index;
+                           default:
+                               return false;
+                           }
+                       });
 }
 
 } // namespace lmx::app

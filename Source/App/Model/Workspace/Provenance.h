@@ -38,6 +38,9 @@ struct ProvenanceMark {
 /// A clean document returns no mark. Path is borrowed only for this call; no file access occurs.
 std::optional<ProvenanceMark> documentProvenance(bool dirty, std::string_view path);
 
+/// Marks an unapplied file proposal, using System for an unattributed external change.
+ProvenanceMark proposedProvenance(std::string_view client);
+
 /// Classifies a subject without changing it or its saved state; strings are borrowed for the call.
 /// Generated and CLI-masked subjects stay SessionOnly even when edited; both sources are retained
 /// when present. Edits or CLI masks attribute the mark to the operator, otherwise generation is

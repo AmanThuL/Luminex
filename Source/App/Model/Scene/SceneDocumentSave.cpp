@@ -27,6 +27,48 @@ bool samePath(const std::filesystem::path& first, const std::filesystem::path& s
     const auto b = std::filesystem::weakly_canonical(second, error);
     return !error && a == b;
 }
+
+//======================================================================================================================
+std::optional<EditorSelection> selectionInReplacement(const EditorSelection& selected,
+                                                      const engine::LoadedScene& before,
+                                                      const engine::LoadedScene& after) {
+    if (!canPreserveSessionSelection(selected, before, after.document))
+        return std::nullopt;
+    auto result = selected;
+    if (selected.subject == EditorSubject::Object) {
+        if (selected.index >= after.binding.objectNode.size() ||
+            after.binding.objectNode[selected.index] != selected.node ||
+            after.binding.objectImportedNode[selected.index] != selected.importedNode ||
+            selected.index >= after.scene->objects.size() ||
+            before.scene->objects[selected.index].name != after.scene->objects[selected.index].name)
+            return std::nullopt;
+    }
+    if (selected.subject == EditorSubject::Group &&
+        selected.importedNode != engine::kGeneratedNode) {
+        if (selected.importedNode >= after.binding.importedNodes.size())
+            return std::nullopt;
+        const auto& old = before.binding.importedNodes[selected.importedNode];
+        const auto& next = after.binding.importedNodes[selected.importedNode];
+        if (old.assetRoot != next.assetRoot || old.sourceNode != next.sourceNode ||
+            old.name != next.name)
+            return std::nullopt;
+    }
+    if (selected.subject == EditorSubject::LocalLight) {
+        if (selected.node >= after.binding.nodes.size() ||
+            !after.binding.nodes[selected.node].light)
+            return std::nullopt;
+        result.lightId = *after.binding.nodes[selected.node].light;
+    }
+    if (selected.subject == EditorSubject::DirectionalLight) {
+        if (selected.node >= after.binding.nodes.size() ||
+            !after.binding.nodes[selected.node].directional)
+            return std::nullopt;
+        result.index = *after.binding.nodes[selected.node].directional;
+    }
+    if (resolveSelection(result, selected.sceneId, *after.scene).subject != selected.subject)
+        return std::nullopt;
+    return result;
+}
 } // namespace
 
 //======================================================================================================================
@@ -110,22 +152,108 @@ asset::AssetResult<void> saveSessionDocument(scenes::SceneLibrary& library, Scen
 }
 
 //======================================================================================================================
-asset::AssetResult<void> replaceSessionDocument(scenes::SceneLibrary& library,
-                                                SceneSession& session, scenes::SceneId& activeId,
-                                                const scenes::SceneId& target,
-                                                const std::function<void()>& beforeDeactivate) {
+asset::AssetResult<void> replaceSessionDocument(
+    scenes::SceneLibrary& library, SceneSession& session, scenes::SceneId& activeId,
+    const scenes::SceneId& target, const std::function<void()>& beforeDeactivate,
+    const std::function<asset::AssetResult<void>(const engine::LoadedScene&)>& validate) {
     const auto invalidate = [&](const engine::LoadedScene& old) {
         if (session.activeScene() == old.scene.get() && beforeDeactivate)
             beforeDeactivate();
         session.invalidate(*old.scene);
     };
-    auto replacement = library.reload(target, invalidate);
+    auto replacement = library.reload(target, invalidate, validate);
     if (!replacement)
         return std::unexpected(replacement.error());
     if (session.activeScene())
         library.forget(activeId, invalidate);
     session.activate(**replacement, SceneActivationMotion::Reset);
     activeId = target;
+    return {};
+}
+
+//======================================================================================================================
+bool canPreserveSessionSelection(const EditorSelection& selection,
+                                 const engine::LoadedScene& loaded,
+                                 const asset::SceneDocument& proposed) {
+    if (selection.subject == EditorSubject::None || selection.subject == EditorSubject::Camera ||
+        selection.subject == EditorSubject::Environment)
+        return true;
+    const auto node = selection.node;
+    if (node >= loaded.document.nodes.size() || node >= proposed.nodes.size())
+        return false;
+    const auto& before = loaded.document.nodes[node];
+    const auto& after = proposed.nodes[node];
+    if (before.name != after.name || before.asset.has_value() != after.asset.has_value() ||
+        before.generator.has_value() != after.generator.has_value())
+        return false;
+    if (before.asset &&
+        (before.asset->uri != after.asset->uri || before.asset->sha256 != after.asset->sha256))
+        return false;
+    if (before.generator && before.generator->name != after.generator->name)
+        return false;
+    switch (selection.subject) {
+    case EditorSubject::Group:
+        if (selection.importedNode == engine::kGeneratedNode)
+            return true;
+        if (selection.importedNode >= loaded.binding.importedNodes.size())
+            return false;
+        return after.asset.has_value();
+    case EditorSubject::Object:
+        return selection.index < loaded.binding.objectNode.size() &&
+               loaded.binding.objectNode[selection.index] == node &&
+               selection.index < loaded.scene->objects.size() && after.asset.has_value();
+    case EditorSubject::DirectionalLight:
+        return before.light && after.light && *after.light < proposed.lights.size() &&
+               proposed.lights[*after.light].type == asset::DocLightType::Directional;
+    case EditorSubject::LocalLight:
+        return before.light && after.light && *after.light < proposed.lights.size() &&
+               proposed.lights[*after.light].type != asset::DocLightType::Directional;
+    case EditorSubject::None:
+    case EditorSubject::Camera:
+    case EditorSubject::Environment:
+        return true;
+    }
+    return false;
+}
+
+//======================================================================================================================
+asset::AssetResult<void> replaceSessionDocumentPreservingView(
+    scenes::SceneLibrary& library, SceneSession& session, scenes::SceneId& activeId,
+    EditorSelection& selection, const std::optional<asset::SceneDocument>& proposal,
+    std::string_view expectedHash,
+    const std::function<asset::AssetResult<std::string>(const std::filesystem::path&)>&
+        verifyHash) {
+    auto* loaded = session.loadedScene();
+    LMX_ASSERT(loaded, "session reload requires a loaded document");
+    if (proposal && !canPreserveSessionSelection(selection, *loaded, *proposal))
+        return std::unexpected(asset::AssetError{
+            asset::AssetErrorCode::Io, "The selected subject would be removed or changed; "
+                                       "change selection before accepting."});
+    const auto camera = session.camera();
+    std::optional<EditorSelection> replacementSelection;
+    const auto validate = [&](const engine::LoadedScene& replacement) -> asset::AssetResult<void> {
+        if (!expectedHash.empty() && replacement.hash != expectedHash)
+            return std::unexpected(asset::AssetError{
+                asset::AssetErrorCode::Io, "The file changed during reload; review it again."});
+        if (!expectedHash.empty()) {
+            auto current = verifyHash ? verifyHash(replacement.path)
+                                      : asset::sceneDocumentHash(replacement.path);
+            if (!current || *current != expectedHash)
+                return std::unexpected(asset::AssetError{
+                    asset::AssetErrorCode::Io, "The file changed during reload; review it again."});
+        }
+        replacementSelection = selectionInReplacement(selection, *loaded, replacement);
+        if (!replacementSelection)
+            return std::unexpected(asset::AssetError{asset::AssetErrorCode::Io,
+                                                     "The selected subject would change; change "
+                                                     "selection before accepting."});
+        return {};
+    };
+    auto result = replaceSessionDocument(library, session, activeId, activeId, {}, validate);
+    if (!result)
+        return result;
+    session.camera() = camera;
+    selection = *replacementSelection;
     return {};
 }
 } // namespace lmx::app

@@ -404,6 +404,61 @@ TEST_CASE("replacement builds before invalidation and discard cannot return thro
 }
 
 //======================================================================================================================
+TEST_CASE("session reload preserves the operator view only when its subject survives",
+          "[app][document-save][session]") {
+    FakeDevice device;
+    scenes::SceneLibrary library(device);
+    auto id = scenes::sceneIdFromPath(savePath("session-view"));
+    REQUIRE(library.get(id));
+    app::SceneSession session;
+    session.activate(*library.loaded(id), app::SceneActivationMotion::Reset);
+    session.camera().position = {12.0f, 4.0f, -3.0f};
+    session.camera().yaw = 0.4f;
+    const auto camera = session.camera();
+    app::EditorSelection selection{.sceneId = id, .subject = app::EditorSubject::Camera};
+    auto changed = library.loaded(id)->document;
+    CHECK(app::canPreserveSessionSelection(selection, *library.loaded(id), changed));
+    REQUIRE(app::replaceSessionDocumentPreservingView(library, session, id, selection));
+    CHECK(selection.subject == app::EditorSubject::Camera);
+    CHECK(session.camera().position == camera.position);
+    CHECK(session.camera().yaw == camera.yaw);
+
+    const auto active = session.activeScene();
+    const auto unchanged = library.loaded(id)->document;
+    CHECK_FALSE(app::replaceSessionDocumentPreservingView(
+        library, session, id, selection, unchanged, library.loaded(id)->hash,
+        [](const fs::path&) -> asset::AssetResult<std::string> {
+            return std::string("late-disk-hash");
+        }));
+    CHECK(session.activeScene() == active);
+    CHECK(selection.subject == app::EditorSubject::Camera);
+    CHECK(session.camera().position == camera.position);
+    CHECK_FALSE(app::replaceSessionDocumentPreservingView(
+        library, session, id, selection, library.loaded(id)->document, "wrong-hash"));
+    CHECK(session.activeScene() == active);
+    CHECK(selection.subject == app::EditorSubject::Camera);
+    CHECK(session.camera().position == camera.position);
+
+    selection.subject = app::EditorSubject::Group;
+    selection.node = 0;
+    changed.nodes.clear();
+    CHECK_FALSE(app::canPreserveSessionSelection(selection, *library.loaded(id), changed));
+    const auto retained = session.activeScene();
+    CHECK_FALSE(
+        app::replaceSessionDocumentPreservingView(library, session, id, selection, changed));
+    CHECK(session.activeScene() == retained);
+    CHECK(selection.subject == app::EditorSubject::Group);
+    CHECK(session.camera().position == camera.position);
+
+    if (!session.scene().objects.empty()) {
+        selection.subject = app::EditorSubject::Object;
+        selection.index = 0;
+        selection.node = library.loaded(id)->binding.objectNode[0];
+        CHECK_FALSE(app::canPreserveSessionSelection(selection, *library.loaded(id), changed));
+    }
+}
+
+//======================================================================================================================
 TEST_CASE("Save As retires a cached destination without invalidating the live source",
           "[app][document-save]") {
     FakeDevice device;

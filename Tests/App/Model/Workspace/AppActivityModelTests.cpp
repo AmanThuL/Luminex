@@ -155,3 +155,23 @@ TEST_CASE("activity priority can fall through all four existing sources", "[app]
     inputs.now = 12;
     REQUIRE_FALSE(currentActivity(inputs));
 }
+
+//======================================================================================================================
+TEST_CASE("session proposal activity outranks capture and remains nonstoppable",
+          "[app][activity]") {
+    ActivityInputs inputs{.session =
+                              SessionActivity{SessionState::Proposed, "Scene proposal", {}, false},
+                          .capturePending = true};
+    const auto proposal = currentActivity(inputs);
+    REQUIRE(proposal);
+    CHECK(proposal->actor == Actor::Agent);
+    CHECK(proposal->verb.find("proposed") != std::string::npos);
+    CHECK_FALSE(proposal->stoppable);
+    CHECK(proposal->source == ActivitySource::Session);
+    inputs.measure = MeasureProgress{MeasurementState::Warmup, 1, 2};
+    CHECK(currentActivity(inputs)->actor == Actor::Operator);
+    CHECK(currentActivity(inputs)->source == ActivitySource::Measurement);
+    inputs.measure.reset();
+    inputs.session->actor = Actor::System;
+    CHECK(currentActivity(inputs)->actor == Actor::System);
+}

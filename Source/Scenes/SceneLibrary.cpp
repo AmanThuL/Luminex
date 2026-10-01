@@ -131,15 +131,20 @@ asset::AssetResult<engine::Scene*> SceneLibrary::get(const SceneId& id) {
     return (*result)->scene.get();
 }
 //======================================================================================================================
-asset::AssetResult<engine::LoadedScene*>
-SceneLibrary::reload(const SceneId& id,
-                     const std::function<void(const engine::LoadedScene&)>& beforeReplace) {
+asset::AssetResult<engine::LoadedScene*> SceneLibrary::reload(
+    const SceneId& id, const std::function<void(const engine::LoadedScene&)>& beforeReplace,
+    const std::function<asset::AssetResult<void>(const engine::LoadedScene&)>& validate) {
     const auto path = documentPath(id);
     if (!path)
         return std::unexpected(path.error());
     auto replacement = loadSceneDocument(m_device, *path, m_overrides);
     if (!replacement)
         return std::unexpected(replacement.error());
+    if (validate) {
+        auto checked = validate(*replacement);
+        if (!checked)
+            return std::unexpected(checked.error());
+    }
     const auto key = cacheKey(id);
     auto old = m_scenes.find(key);
     if (old != m_scenes.end()) {

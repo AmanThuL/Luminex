@@ -87,6 +87,9 @@ void EditorShell::buildPlaybackTransport() {
                               m_actions.captureResult().status == ActionStatus::Pending,
                           .controller = m_lastControllerScaleChange,
                           .now = ImGui::GetTime()};
+    if (const auto* proposal = m_sessionProposals.pendingFile())
+        inputs.session =
+            SessionActivity{proposal->state, proposal->summary, {}, false, proposal->actor};
     if (m_measurement.active()) {
         const auto next = m_measurement.nextFrame();
         const bool warmup = m_measurement.state() == MeasurementState::Warmup;
@@ -146,6 +149,8 @@ void EditorShell::buildPlaybackTransport() {
     if (activity) {
         ImGui::SameLine(0.0f, spacing);
         activityStop = editor_style::activityStrip(*activity, fit.showActivityVerb);
+        if (activity->source == ActivitySource::Session && ImGui::IsItemClicked())
+            setPanelVisible(EditorPanel::Session, true);
     }
     if (fit.showZoom) {
         ImGui::SameLine();
