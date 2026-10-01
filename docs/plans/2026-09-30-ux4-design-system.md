@@ -297,4 +297,4 @@ system menu-bar strip itself follows the system, a recorded limit.
 - [x] Combined gate run recorded [FAILED / INCOMPLETE](../milestones/ux/ux4-final-validation.md):
   6/6 BMP, 11/15 publication matrix, Compact/resource failures, GPU PASS; full native gate INCOMPLETE.
   This checkbox records execution only. ADR 0029 stays `Proposed`; record/plan stay `In progress`.
-  Published as [draft PR #64](https://github.com/AmanThuL/Luminex/pull/64); [dated native follow-up](../milestones/ux/ux4-native-followup-validation.md) adds scoped evidence; no acceptance, merge or closure.
+  Published as [draft PR #64](https://github.com/AmanThuL/Luminex/pull/64); [dated native follow-up](../milestones/ux/ux4-native-followup-validation.md) adds scoped evidence; no acceptance, merge or closure. 2026-10-01 independent review and fixes: [record](../milestones/ux/ux4-review-validation.md).

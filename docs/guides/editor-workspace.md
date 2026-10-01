@@ -47,9 +47,10 @@ a claim that both densities meet the measured budget.
 
 macOS has Luminex, File, Edit, View, Window, Debug and Help menus. Luminex owns About, Hide and
 Quit; File owns scene/document actions; View owns framing, debug views, UI scale, appearance and
-density; Window opens panels and resets layout; Debug requests capture; Help explains controls.
+density; Window opens panels, resets layout and carries Minimize, Zoom, Enter Full Screen and Close; Debug requests capture; Help explains controls.
 Edit's Cut, Copy, Paste and Select All act on a focused ImGui text field and are disabled with a
-reason otherwise. Menus and keyboard commands share action state and disabled reasons. Other
+reason otherwise. Cmd+Q quits from any focus through the unsaved-changes confirmation, and a Save chord
+refused while playing or measuring reports its reason. Menus and keyboard commands share action state and disabled reasons. Other
 platforms retain the ImGui menus. Native gesture coverage remains
 [unverified where recorded](../milestones/ux/ux4-native-menu-validation.md).
 

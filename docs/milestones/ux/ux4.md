@@ -9,7 +9,7 @@ inherited `StyleColorsDark` look with one token-driven design system, ships ligh
 system-following appearance, makes the macOS menu bar native, and gives the editor a visual
 vocabulary for a workspace where a human operator and software agents act on the same scene and
 evidence. It changes the editor only. [Part IV](../../roadmap/editor-experience.md#ux4--design-system-and-themes)
-owns the outcome and gates; this record keeps the design, its evidence and its limits. [Combined validation](ux4-final-validation.md) remains FAILED / INCOMPLETE, with [current native actions](ux4-final-native-validation.md) UNVERIFIED; the controller owns final review/checks and publication.
+owns the outcome and gates; this record keeps the design, its evidence and its limits. [Combined validation](ux4-final-validation.md) remains FAILED / INCOMPLETE, with [current native actions](ux4-final-native-validation.md) UNVERIFIED; the [independent review and fixes](ux4-review-validation.md) are recorded separately.
 
 **Placement:** [UX3](ux3.md) → **UX4** → N1, so N1's surfaces are designed once in the new system.
 

@@ -92,7 +92,7 @@ The following groups cover all 19 node-editor `StyleColor` slots.
 | `GroupBg` | `surface/panel` | 0.5 |
 
 [EditorThemeApply](../../Source/App/Shell/EditorThemeApply.cpp) statically asserts both counts
-and verifies every upstream `GetStyleColorName` at startup. An upstream slot change requires
+and verifies every upstream `GetStyleColorName`: the ImGui table at shell startup and the node-editor table when the Render Graph canvas first draws. An upstream slot change requires
 an explicit generator mapping. `Header` is the selection background; the shared neutral
 `collapsingHeader` helper overrides its three slots for disclosure topics. Custom panel drawing
 uses `editor_style::color`/`editor_style::colorU32`; the literal-color checker guards shell/panel adoption.

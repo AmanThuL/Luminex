@@ -20,7 +20,7 @@ actors, provenance, selection, graph kinds/links, plots, overlays and Console se
 
 `SlotRole` maps all 63 pinned ImGui slots and all 19 node-editor slots in enum order, multiplying
 only alpha by `alphaScale`. [EditorThemeApply](../../Source/App/Shell/EditorThemeApply.cpp) asserts
-both slot counts at compile time and verifies each upstream slot name at startup. Shell colors
+both slot counts at compile time and verifies each upstream slot name: ImGui at shell startup, the node editor when the Render Graph canvas first draws. Shell colors
 come from these tables; the graph applies the same active palette when beginning its canvas.
 `editor_style::color` and `editor_style::colorU32` supply custom drawing. The base `Header` slot is selection;
 `collapsingHeader` pushes neutral hover/active surfaces so topic headers do not become selections.
@@ -134,7 +134,7 @@ activities. Only measurement exposes Stop. The toolbar drops the activity verb b
 zoom when space is tight, keeping the mark and transport actions.
 
 [StyleGalleryPanel](../../Source/App/Panels/Gallery/StyleGalleryPanel.cpp) is a detached, opaque,
-nonpersistent window, closed at launch. Its Current/Dark/Light preview scopes all 63 ImGui colors
+nonpersistent, titled and closable native window, closed at launch. Its Current/Dark/Light preview scopes all 63 ImGui colors
 and the shared drawing palette to its content, then restores the parent. The
 [21-entry catalog](../../Source/App/Model/Workspace/GalleryCatalog.cpp) covers control states,
 provenance/activity and reserved agent lifecycle, proposal and attention specimens, alongside the type ramp.
@@ -146,7 +146,7 @@ session log or editor command bridge exists.
 [MenuModel](../../Source/App/Model/Workspace/MenuModel.h) supplies command arguments, shortcuts,
 checked/enabled state and disabled reasons from a snapshot. `EditorShell::runMenuCommand` in [EditorMenus](../../Source/App/Shell/EditorMenus.cpp) routes
 both renderers to existing operations. On macOS, `NativeMenuBar` replaces SDL's menu with Luminex,
-File, Edit, View, Window, Debug and Help. It adds About/Hide/Quit and text-edit actions; other
+File, Edit, View, Window, Debug and Help. It adds About/Hide/Quit, text-edit actions and the standard window commands (Minimize, Zoom, Enter Full Screen, Close); other
 platforms keep the ImGui menu renderer. The in-window toolbar holds transport, activity and zoom.
 Submenus rebuild on open and disabled items carry reason tooltips.
 
@@ -190,7 +190,7 @@ each scene; filtering keeps selection. Hierarchy follows the document and import
 Camera selects the camera in Inspector; View also owns Reset Camera (Home), Frame Selected (F), Selection Outline, Debug
 View and UI Scale. Frame Selected is also a Hierarchy context action. `EditorShortcuts` suppresses F, Home and C during text
 entry, popups, RMB look or Render Graph/Performance focus; C without capture explains why. Help > Controls explains movement. `EditorMenus` routes shared menu commands; `EditorTransport` owns the toolbar
-with Play/Pause, Stop, Step, time and rail follow. The tree root and window title show `*`
+with Play/Pause, Stop, Step, time and rail follow. The window title shows `*` and the Hierarchy root shows the operator dot
 when dirty. Stop restores the preview without adding document edits. View > Set Scene Camera from View
 is the explicit way to save the editor camera.
 `RenderingPanel`, `RenderingTopics` and `RenderingLighting` draw eight collapsing topics, with Reconstruction initially

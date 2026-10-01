@@ -6,6 +6,7 @@ The native access limitation recorded in this combined run is historical. The
 [2026-10-01 unlocked-Mac follow-up](ux4-native-followup-validation.md) records new native
 endpoints and gestures, complete Gallery specimen coverage with visible deviations, and
 remaining required context gaps. It changes no automated gate result or acceptance status.
+The later [independent review and fix validation](ux4-review-validation.md) records fixes and a gate re-run on a newer runtime; it replaces none of the results below.
 
 The Task 19 result remains **FAILED / INCOMPLETE**. The latest publication bundle passes
 six static BMPs (6/6) and the Metal-debug GPU group, while its eight-round matrix passes 11/15 and fails the exact gate.

@@ -139,6 +139,8 @@ Neither reading establishes cancellation, which is separately verified by 0052�
 
 ## Remaining required coverage
 
+The [independent review and fix validation](ux4-review-validation.md) investigates gestures 0049, 0062, 0067, 0073, 0078, 0080 and 0091 by code reading; their rows stay UNVERIFIED.
+
 The [original native inventory](ux4-final-native-validation.md) continues to own the full
 G1–G8/A1–A9 checklist and HDM/HDW/HLM/HLW with applicable PDM/PDW/PLM/PLW parent comparisons.
 This follow-up fills only the named actions/contexts above. Parent 0094–0097 observes windowed
