@@ -253,10 +253,13 @@ void activitySpecimens() {
     }
     for (const Activity& specimen :
          {Activity{Actor::Operator, "Measuring", 0.375f, true, "Measurement · Gallery fixture"},
-          Activity{Actor::System, "Loading", std::nullopt, false,
-                   "Scene load · Gallery fixture"}}) {
+          Activity{Actor::System, "Loading", std::nullopt, false, "Scene load · Gallery fixture"},
+          Activity{Actor::System, "Capture pending", std::nullopt, false,
+                   "Waiting for a drawable · Gallery fixture"}}) {
         ImGui::PushID(specimen.verb.c_str());
-        stateLabel(specimen.actor == Actor::Operator ? "Operator" : "System");
+        stateLabel(specimen.verb == "Capture pending"  ? "Capture pending"
+                   : specimen.actor == Actor::Operator ? "Operator"
+                                                       : "System");
         activityStrip(specimen, activityStripWidth(specimen) <= ImGui::GetContentRegionAvail().x);
         ImGui::PopID();
     }
@@ -264,34 +267,46 @@ void activitySpecimens() {
 
 //======================================================================================================================
 void proposalSpecimen() {
-    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, scaled(kShape.card));
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, color(ThemeRole::SurfaceRaised));
-    ImGui::PushStyleColor(ImGuiCol_Border, color(ThemeRole::BorderSubtle));
-    if (ImGui::BeginChild("##proposal", {0, 0},
-                          ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY)) {
-        {
-            const ScopedType strong(TypeRole::BodyStrong);
-            ImGui::TextWrapped("Adjust local-light intensity");
+    for (bool applied : {false, true}) {
+        ImGui::PushID(applied ? 1 : 0);
+        stateLabel(applied ? "Applied" : "Pending");
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, scaled(kShape.card));
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, color(ThemeRole::SurfaceRaised));
+        ImGui::PushStyleColor(ImGuiCol_Border,
+                              color(applied ? ThemeRole::BorderSubtle : ThemeRole::AccentAgent));
+        if (ImGui::BeginChild("##proposal", {0, 0},
+                              ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY)) {
+            {
+                const ScopedType strong(TypeRole::BodyStrong);
+                ImGui::TextWrapped("Adjust local-light intensity");
+            }
+            actorMark(Actor::Agent);
+            editorTooltip("Reserved proposal actor · Gallery fixture");
+            ImGui::SameLine();
+            ImGui::TextUnformatted("Agent");
+            ImGui::SameLine();
+            ImGui::TextColored(color(ThemeRole::TextSecondary), "%s",
+                               applied ? "2 changes · applied" : "2 changes · proposed");
+            proposedValue();
+            ImGui::TextLink("Evidence: comparison report (fixture)");
+            editorTooltip("Fixture-only evidence reference; no external record is opened.");
+            if (applied) {
+                message("Applied · Revert restores the saved values (fixture).");
+                ImGui::Button("Revert");
+            } else {
+                ImGui::Button("Show");
+                nextInRow(ImGui::CalcTextSize("Accept").x + ImGui::GetStyle().FramePadding.x * 2);
+                primaryButton("Accept");
+                nextInRow(ImGui::CalcTextSize("Reject").x + ImGui::GetStyle().FramePadding.x * 2);
+                ImGui::Button("Reject");
+            }
+            message("Gallery fixture; these controls do not change the scene.");
         }
-        actorMark(Actor::Agent);
-        editorTooltip("Reserved proposal actor · Gallery fixture");
-        ImGui::SameLine();
-        ImGui::TextUnformatted("Agent");
-        ImGui::SameLine();
-        ImGui::TextColored(color(ThemeRole::TextSecondary), "2 changes · proposed");
-        proposedValue();
-        ImGui::TextLink("Evidence: comparison report (fixture)");
-        editorTooltip("Fixture-only evidence reference; no external record is opened.");
-        ImGui::Button("Show");
-        nextInRow(ImGui::CalcTextSize("Accept").x + ImGui::GetStyle().FramePadding.x * 2);
-        primaryButton("Accept");
-        nextInRow(ImGui::CalcTextSize("Reject").x + ImGui::GetStyle().FramePadding.x * 2);
-        ImGui::Button("Reject");
-        message("Gallery fixture; these controls do not change the scene.");
+        ImGui::EndChild();
+        ImGui::PopStyleColor(2);
+        ImGui::PopStyleVar();
+        ImGui::PopID();
     }
-    ImGui::EndChild();
-    ImGui::PopStyleColor(2);
-    ImGui::PopStyleVar();
 }
 
 //======================================================================================================================

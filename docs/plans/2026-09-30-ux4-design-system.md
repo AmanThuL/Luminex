@@ -271,7 +271,7 @@ std::vector<std::pair<MenuCommand, uint32_t>>`; it replaces SDL's default menu w
 Hide, Hide Others, Show All, Quit → `MenuCommand` Quit), File, Edit, View, Window, Debug and Help;
 `update` sets `NSApp.mainMenu.appearance` from `forcedWindowAppearance` (nil under Auto), while the
 system menu-bar strip itself follows the system, a recorded limit.
-- [x] Focused corrections GREEN; fresh review/gates pending; native verification UNVERIFIED. Submenus rebuild in `menuNeedsUpdate:`; disabled reasons use `toolTip`. The
+- [x] Fresh implementation review and all 17 global checks PASS; native verification UNVERIFIED. Submenus rebuild in `menuNeedsUpdate:`; disabled reasons use `toolTip`. The
   delegate's `menuHasKeyEquivalent:forEvent:target:action:` resolves target and action itself and
   declines when `shortcutAllowed` refuses, so the key reaches SDL; ImGui stops polling natively
   owned chords (Review focus 3). Edit's Cut, Copy, Paste and Select All post ⌘-chords to a focused
@@ -282,7 +282,7 @@ system menu-bar strip itself follows the system, a recorded limit.
 
 ### Task 17: Gallery completion and captures (UX4.4)
 **Files:** `GalleryCatalog.cpp`, `AppGalleryCatalogTests.cpp`, `StyleGalleryPanel.cpp`.
-- [ ] Test first: the catalog holds exactly the 21 Figma page 04 sets by name. **Verify:** capture
+- [x] Test first GREEN: exactly 21 names; native captures/comparisons UNVERIFIED (locked). **Verify:** capture
   the gallery with `screencapture -o -l <window id>` in both themes at 100% and 150% into
   `../Luminex-evidence/ux4/gallery/`; compare each component with its Figma export. Commit
   `editor: complete the style gallery (UX4)`.
