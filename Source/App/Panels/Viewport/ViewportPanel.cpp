@@ -215,7 +215,12 @@ uint32_t viewportHzbLevels(const render::Renderer& renderer) {
 //======================================================================================================================
 ViewportPanelResult drawViewportPanel(bool& open, const ViewportPanelContext& context) {
     ViewportPanelResult result;
-    if (ImGui::Begin(kViewportPanelWindowName, &open)) {
+    // The image surround and its hairline stay dark in both themes, so a light chrome never
+    // changes how bright the frame looks. Begin draws the background; the tab keeps theme colors.
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, editor_style::color(ThemeRole::SurfaceViewport));
+    const bool visible = ImGui::Begin(kViewportPanelWindowName, &open);
+    ImGui::PopStyleColor();
+    if (visible) {
         const auto available = ImGui::GetContentRegionAvail();
         const float border = ImGui::GetStyle().ImageBorderSize;
         const ImVec2 imageSize(available.x - 2.0f * border, available.y - 2.0f * border);
@@ -224,12 +229,14 @@ ViewportPanelResult drawViewportPanel(bool& open, const ViewportPanelContext& co
         if (result.measured) {
             const bool outlineReady = context.outlineTarget.width() == context.renderer.width() &&
                                       context.outlineTarget.height() == context.renderer.height();
+            ImGui::PushStyleColor(ImGuiCol_Border, editor_style::color(ThemeRole::SurfaceViewport));
             ImGui::Image(rojoRHI::metal4::imguiTextureID(context.showOutline && outlineReady &&
                                                                  context.selection.subject ==
                                                                      EditorSubject::Object
                                                              ? context.outlineTarget
                                                              : context.renderer.colorTarget()),
                          imageSize);
+            ImGui::PopStyleColor();
             const auto outerOrigin = ImGui::GetItemRectMin();
             const ImVec2 origin(outerOrigin.x + border, outerOrigin.y + border);
             result.hovered = ImGui::IsItemHovered() &&
