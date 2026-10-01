@@ -171,6 +171,7 @@
         "Source/App/Shell/EditorShell.h",
         "Source/App/Shell/ConsoleLogSink.h",
         "Source/App/Panels/Console/ConsolePanel.h",
+        "Source/App/Panels/Session/SessionPanel.h",
         "Source/App/Panels/Gallery/StyleGalleryPanel.h",
         "Source/App/Panels/Inspector/InspectorPanel.h",
         "Source/App/Panels/Performance/PerformancePanel.h",

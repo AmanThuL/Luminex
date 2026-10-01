@@ -9,6 +9,7 @@
 #include "Engine/Asset/Model/JsonTokens.h"
 
 #include <algorithm>
+#include <format>
 #include <utility>
 
 namespace lmx::app {
@@ -182,6 +183,42 @@ size_t ProposalQueue::pending() const {
     return static_cast<size_t>(
         std::count_if(m_proposals.begin(), m_proposals.end(),
                       [](const SessionProposal& item) { return isPending(item.state); }));
+}
+
+//======================================================================================================================
+ProposalReviewDetails proposalReviewDetails(const SessionProposal& proposal, bool expanded) {
+    return {.changes = expanded ? std::span<const asset::DocumentChange>(proposal.changes)
+                                : std::span<const asset::DocumentChange>{},
+            .evidence = proposal.evidence};
+}
+
+//======================================================================================================================
+std::string proposalChangeLabel(const asset::DocumentChange& change) {
+    std::string_view owner;
+    switch (change.owner) {
+    case asset::DocumentChangeOwner::Document:
+        owner = "Document";
+        break;
+    case asset::DocumentChangeOwner::Node:
+        owner = "Node";
+        break;
+    case asset::DocumentChangeOwner::Camera:
+        owner = "Camera";
+        break;
+    case asset::DocumentChangeOwner::Light:
+        owner = "Light";
+        break;
+    case asset::DocumentChangeOwner::Look:
+        owner = "Look";
+        break;
+    case asset::DocumentChangeOwner::Animation:
+        owner = "Animation";
+        break;
+    }
+    const std::string identity = change.name.empty()
+                                     ? std::format("{} {}", owner, change.index)
+                                     : std::format("{} {} ({})", owner, change.index, change.name);
+    return std::format("{}: {}", identity, change.property.empty() ? "value" : change.property);
 }
 
 } // namespace lmx::app

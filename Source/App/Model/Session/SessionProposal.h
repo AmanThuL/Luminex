@@ -61,6 +61,18 @@ struct SessionProposal {
     SessionState state = SessionState::Idle;      ///< Current lifecycle state.
 };
 
+/// Detail rows displayed by the panel; evidence stays visible when changes are collapsed.
+struct ProposalReviewDetails {
+    std::span<const asset::DocumentChange> changes; ///< Expanded canonical change rows.
+    std::span<const std::string> evidence;          ///< Evidence rows at every expansion state.
+};
+
+/// Returns change rows only when expanded and evidence rows even for an Error proposal.
+ProposalReviewDetails proposalReviewDetails(const SessionProposal& proposal, bool expanded);
+
+/// Names the owner, stable index, optional name and property of one change row.
+std::string proposalChangeLabel(const asset::DocumentChange& change);
+
 /// Main-thread proposal history. Borrowed pointers and spans are invalidated by add; all methods
 /// require serialized access. At most 64 proposals are retained; rejected hashes last until the
 /// file context is reset.

@@ -17,6 +17,7 @@
 #include "App/Panels/Performance/PerformancePanel.h"
 #include "App/Panels/Rendering/RenderingPanel.h"
 #include "App/Panels/Scene/ScenePanel.h"
+#include "App/Panels/Session/SessionPanel.h"
 #include "App/Panels/Shared/ActionFeedback.h"
 #include "App/Panels/Shared/EditorStyle.h"
 #include "App/Panels/Viewport/ViewportPanel.h"
@@ -48,7 +49,7 @@ constexpr uint32_t kResizeDebounceFrames = 10;
 // reached through the same text writeWorkspaceSettings emits.
 constexpr std::string_view kNoSchemaReason = "no matching workspace schema in imgui.ini";
 constexpr std::string_view kMigrationReason =
-    "migrating workspace schema 3 to 5; keeping panel visibility, UI scale and detached window "
+    "migrating workspace schema 3 to 6; keeping panel visibility, UI scale and detached window "
     "bounds";
 constexpr std::string_view kResetReason = "layout reset requested";
 
@@ -57,7 +58,8 @@ constexpr std::string_view kResetReason = "layout reset requested";
 //======================================================================================================================
 EditorShell::EditorShell(SDL_Window* window, scenes::SceneLibrary& library,
                          std::shared_ptr<ConsoleLog> consoleLog)
-    : m_window(window), m_library(library), m_consoleModel(std::move(consoleLog)) {}
+    : m_window(window), m_library(library), m_consoleModel(consoleLog),
+      m_sessionLog(std::move(consoleLog)) {}
 
 //======================================================================================================================
 std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::Device& device,
@@ -141,6 +143,8 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
     if (io.IniFilename != nullptr) {
         ImGui::LoadIniSettingsFromDisk(io.IniFilename);
     }
+    self->m_sessionDockPlacement.setSavedPlacement(
+        ImGui::FindWindowSettingsByID(ImHashStr(kSessionWindowName)) != nullptr);
 
     const std::optional<ParsedWorkspaceSettings> parsed =
         self->m_workspace.sectionSeen ? std::optional<ParsedWorkspaceSettings>(
@@ -163,7 +167,7 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
     std::string_view startup =
         "workspace schema matches -- restoring the docked layout from imgui.ini";
     if (migrating) {
-        startup = "workspace schema 3 found -- migrating to schema 5 and building the default "
+        startup = "workspace schema 3 found -- migrating to schema 6 and building the default "
                   "layout";
     } else if (self->m_buildDefaultLayout) {
         startup = "no matching workspace schema -- the default layout will be built";
@@ -587,6 +591,30 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
         bool open = true;
         drawConsolePanel(open, m_consoleModel);
         setPanelVisible(EditorPanel::Console, open);
+    }
+
+    if (m_workspace.visibility.isVisible(EditorPanel::Session)) {
+        bool open = true;
+        if (!m_sessionDockPlacement.initialized()) {
+            const auto* savedConsole =
+                ImGui::FindWindowSettingsByID(ImHashStr(kConsolePanelWindowName));
+            const auto* liveConsole = ImGui::FindWindowByName(kConsolePanelWindowName);
+            const auto target = m_sessionDockPlacement.onFirstOpen(
+                liveConsole ? std::optional<uint32_t>(liveConsole->DockId) : std::nullopt,
+                savedConsole ? savedConsole->DockId : 0);
+            if (target)
+                ImGui::SetNextWindowDockID(*target, ImGuiCond_Always);
+        }
+        SessionPanelContext context{
+            .proposals = m_sessionProposals,
+            .log = m_sessionLog,
+            .expandedId = m_sessionExpandedProposal,
+            .evidenceDirectory = m_session.loadedScene()
+                                     ? sidecarPath(m_session.loadedScene()->path).parent_path()
+                                     : std::filesystem::path{},
+            .pathFeedback = m_sessionPathFeedback};
+        drawSessionPanel(open, context);
+        setPanelVisible(EditorPanel::Session, open);
     }
 
     if (m_workspace.visibility.isVisible(EditorPanel::RenderGraph)) {

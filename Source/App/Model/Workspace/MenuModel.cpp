@@ -193,6 +193,7 @@ MenuItem windowMenu(const MenuContext& context) {
          panel("Performance summary", EditorPanel::PerformanceSummary),
          panel("Performance", EditorPanel::Performance),
          panel("Render Graph", EditorPanel::RenderGraph), panel("Console", EditorPanel::Console),
+         panel("Session", EditorPanel::Session),
          item("Style Gallery", MenuCommand::StyleGallery, 0, context.styleGallery), separator(),
          item("Reset Default Layout", MenuCommand::ResetLayout)});
 }

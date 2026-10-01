@@ -12,6 +12,35 @@
 using namespace lmx::app;
 
 //======================================================================================================================
+TEST_CASE("review rows distinguish owners and evidence remains visible on errors",
+          "[app][session]") {
+    SessionProposal proposal;
+    proposal.state = SessionState::Error;
+    proposal.evidence = {"before.png", "after.png"};
+    proposal.changes = {
+        {lmx::asset::DocumentChangeOwner::Light, 2, "Front", "intensity", "10", "12"},
+        {lmx::asset::DocumentChangeOwner::Light, 3, "Back", "intensity", "10", "12"},
+        {lmx::asset::DocumentChangeOwner::Node, 8, {}, "enabled", {}, "true"}};
+    const auto collapsed = proposalReviewDetails(proposal, false);
+    REQUIRE(collapsed.changes.empty());
+    REQUIRE(collapsed.evidence.size() == 2);
+    REQUIRE(collapsed.evidence[0] == "before.png");
+    const auto expanded = proposalReviewDetails(proposal, true);
+    REQUIRE(expanded.changes.size() == 3);
+    REQUIRE(expanded.evidence.size() == 2);
+    const auto front = proposalChangeLabel(expanded.changes[0]);
+    const auto back = proposalChangeLabel(expanded.changes[1]);
+    const auto unnamed = proposalChangeLabel(expanded.changes[2]);
+    REQUIRE(front != back);
+    REQUIRE(front.find("Light 2") != std::string::npos);
+    REQUIRE(front.find("Front") != std::string::npos);
+    REQUIRE(back.find("Light 3") != std::string::npos);
+    REQUIRE(back.find("Back") != std::string::npos);
+    REQUIRE(unnamed.find("Node 8") != std::string::npos);
+    REQUIRE(unnamed.find("enabled") != std::string::npos);
+}
+
+//======================================================================================================================
 TEST_CASE("sidecar accepts schema one and ignores extension keys", "[app][session]") {
     const auto parsed = parseSidecar(
         R"({"schema":1,"actor":"Lighting client","summary":"Move lamp","evidence":["frame.png","notes/report.json"],"documentSha256":"abc123","future":{"nested":true}})");

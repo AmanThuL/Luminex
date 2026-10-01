@@ -37,6 +37,7 @@ enum class EditorPanel {
     Performance,        ///< Rolling frame-interval and GPU-pass observations.
     RenderGraph,        ///< Coherent published compiled-frame record and dump.
     Console,            ///< Bounded project log viewer.
+    Session,            ///< Reviewed proposals and session action history.
 };
 
 /// One app-owned visibility value per panel. Performance and Render Graph start closed; the
@@ -52,6 +53,7 @@ struct WorkspaceVisibility {
     bool performance = false;       ///< `EditorPanel::Performance`; a detached diagnostic window.
     bool console = true;      ///< `EditorPanel::Console`; selected beside the summary by default.
     bool renderGraph = false; ///< `EditorPanel::RenderGraph`.
+    bool session = false;     ///< `EditorPanel::Session`; docked and initially hidden.
 
     /// Reads the stored value for `panel`.
     bool isVisible(EditorPanel panel) const;
@@ -65,13 +67,14 @@ struct WorkspaceVisibility {
 /// workspace contract or the required default topology changes -- never for cosmetic spacing or
 /// labels.
 ///
-/// Version 5 adds appearance and density. Version 4 restores without rebuilding and uses
+/// Version 6 adds a hidden Session panel. Version 5 restores without rebuilding, preserving
+/// appearance, density and every earlier visibility. Version 4 restores and uses
 /// Auto appearance and Comfortable density. Version 4 persists Rendering and the docked Performance
 /// summary. Version 3 rebuilds main docks once while preserving its six visibilities, UI scale and
 /// detached window placement. Version 2 rebuilds default visibility and docks while preserving
 /// scale. Unknown schemas use defaults. Visibility and UI scale keys remain optional within the
 /// current schema.
-inline constexpr uint32_t kWorkspaceSchemaVersion = 5;
+inline constexpr uint32_t kWorkspaceSchemaVersion = 6;
 
 /// Whether a settings-section body named a schema version, and if so, whether it was a parseable
 /// non-negative integer.
@@ -137,8 +140,9 @@ struct WorkspaceDecision {
 /// the ini had no Luminex workspace section at all -- a clean run, or an M5.2-era ini with no such
 /// section, are both legacy (spec section 4).
 ///
-/// The current schema restores docks and all values. Version 4 restores docks, visibility and
-/// scale with default appearance and density. Version 3 rebuilds main docking once while
+/// The current schema and version 5 restore docks and all earlier values, with Session hidden for
+/// version 5. Version 4 restores docks, visibility and scale with default appearance and density.
+/// Version 3 rebuilds main docking once while
 /// preserving old visibilities/scale and enabling both new docked panels. Its detached window
 /// settings remain valid. Version 2 keeps only scale; unknown schemas reset every preference.
 WorkspaceDecision decideWorkspace(const std::optional<ParsedWorkspaceSettings>& parsed);
@@ -147,5 +151,23 @@ WorkspaceDecision decideWorkspace(const std::optional<ParsedWorkspaceSettings>& 
 /// answer Reset Default Layout. This is a pure function of no input, so repeated calls -- and
 /// repeated Reset Default Layout requests -- always produce the same value.
 WorkspaceVisibility resetWorkspaceVisibility();
+
+/// One-shot placement for Session's first opening. A live floating Console (dock zero) is
+/// authoritative over a stale saved dock, and an absent dock leaves Session where ImGui opens it.
+class SessionDockPlacement {
+public:
+    /// Records whether the ini already placed Session, including as a floating window.
+    void setSavedPlacement(bool saved) { m_savedPlacement = saved; }
+    /// Returns Console's current dock if it has a live window, otherwise its saved dock. Once
+    /// called, later Console movements cannot relocate Session, even if no dock was available.
+    std::optional<uint32_t> onFirstOpen(std::optional<uint32_t> liveConsoleDockId,
+                                        uint32_t savedConsoleDockId);
+    /// Reports whether the first opening has made its placement decision.
+    bool initialized() const { return m_initialized; }
+
+private:
+    bool m_savedPlacement = false;
+    bool m_initialized = false;
+};
 
 } // namespace lmx::app

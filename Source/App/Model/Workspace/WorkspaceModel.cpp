@@ -24,6 +24,7 @@ constexpr std::string_view kInspectorKey = "Inspector";
 constexpr std::string_view kPerformanceKey = "Performance";
 constexpr std::string_view kConsoleKey = "Console";
 constexpr std::string_view kRenderGraphKey = "RenderGraph";
+constexpr std::string_view kSessionKey = "Session";
 
 //======================================================================================================================
 // A `Key=Value` line, sans any trailing '\r' a Windows-authored ini might carry. No
@@ -95,6 +96,8 @@ bool WorkspaceVisibility::isVisible(EditorPanel panel) const {
         return console;
     case EditorPanel::RenderGraph:
         return renderGraph;
+    case EditorPanel::Session:
+        return session;
     }
     LMX_ASSERT(false, "WorkspaceVisibility::isVisible: unknown EditorPanel");
     return false;
@@ -126,6 +129,9 @@ void WorkspaceVisibility::setVisible(EditorPanel panel, bool visible) {
         return;
     case EditorPanel::RenderGraph:
         renderGraph = visible;
+        return;
+    case EditorPanel::Session:
+        session = visible;
         return;
     }
     LMX_ASSERT(false, "WorkspaceVisibility::setVisible: unknown EditorPanel");
@@ -183,6 +189,8 @@ ParsedWorkspaceSettings parseWorkspaceSettings(std::string_view sectionText) {
             applyBoolValue(value, parsed.visibility.console);
         } else if (key == kRenderGraphKey) {
             applyBoolValue(value, parsed.visibility.renderGraph);
+        } else if (key == kSessionKey) {
+            applyBoolValue(value, parsed.visibility.session);
         }
         // Unknown keys are ignored, per this function's documented contract.
     }
@@ -214,6 +222,7 @@ std::string writeWorkspaceSettings(uint32_t schemaVersion, const WorkspaceVisibi
     writeBool(kPerformanceSummaryKey, visibility.performanceSummary);
     writeBool(kRenderGraphKey, visibility.renderGraph);
     writeBool(kConsoleKey, visibility.console);
+    writeBool(kSessionKey, visibility.session);
     text += kUiScaleKey;
     text += '=';
     text += std::to_string(normalizedUiScalePercent(uiScalePercent));
@@ -232,15 +241,17 @@ std::string writeWorkspaceSettings(uint32_t schemaVersion, const WorkspaceVisibi
 //======================================================================================================================
 WorkspaceDecision decideWorkspace(const std::optional<ParsedWorkspaceSettings>& parsed) {
     if (parsed.has_value() && parsed->schemaState == WorkspaceSchemaState::Present &&
-        (parsed->schemaVersion == kWorkspaceSchemaVersion || parsed->schemaVersion == 4)) {
+        (parsed->schemaVersion == kWorkspaceSchemaVersion || parsed->schemaVersion == 5 ||
+         parsed->schemaVersion == 4)) {
+        auto visibility = parsed->visibility;
+        if (parsed->schemaVersion < kWorkspaceSchemaVersion)
+            visibility.session = false;
         return WorkspaceDecision{
             .kind = WorkspaceDecisionKind::Restore,
-            .visibility = parsed->visibility,
+            .visibility = visibility,
             .uiScalePercent = normalizedUiScalePercent(parsed->uiScalePercent),
-            .appearance = parsed->schemaVersion == kWorkspaceSchemaVersion ? parsed->appearance
-                                                                           : Appearance::Auto,
-            .density = parsed->schemaVersion == kWorkspaceSchemaVersion ? parsed->density
-                                                                        : Density::Comfortable,
+            .appearance = parsed->schemaVersion >= 5 ? parsed->appearance : Appearance::Auto,
+            .density = parsed->schemaVersion >= 5 ? parsed->density : Density::Comfortable,
             .resetPerformancePlacement = false};
     }
     if (parsed.has_value() && parsed->schemaState == WorkspaceSchemaState::Present &&
@@ -268,6 +279,18 @@ WorkspaceDecision decideWorkspace(const std::optional<ParsedWorkspaceSettings>& 
 //======================================================================================================================
 WorkspaceVisibility resetWorkspaceVisibility() {
     return WorkspaceVisibility{};
+}
+
+//======================================================================================================================
+std::optional<uint32_t> SessionDockPlacement::onFirstOpen(std::optional<uint32_t> liveConsoleDockId,
+                                                          uint32_t savedConsoleDockId) {
+    if (m_initialized)
+        return std::nullopt;
+    m_initialized = true;
+    if (m_savedPlacement)
+        return std::nullopt;
+    const uint32_t dock = liveConsoleDockId.value_or(savedConsoleDockId);
+    return dock != 0 ? std::optional<uint32_t>(dock) : std::nullopt;
 }
 
 } // namespace lmx::app

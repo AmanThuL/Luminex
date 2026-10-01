@@ -25,6 +25,8 @@
 #include "App/Model/Scene/SceneLoadState.h"
 #include "App/Model/Scene/SceneSession.h"
 #include "App/Model/Scene/SceneTreeState.h"
+#include "App/Model/Session/SessionLog.h"
+#include "App/Model/Session/SessionProposal.h"
 #include "App/Model/Workspace/ActivityModel.h"
 #include "App/Model/Workspace/MenuModel.h"
 #include "App/Model/Workspace/WorkspaceModel.h"
@@ -438,6 +440,11 @@ private:
     // panel's timing, resolution, count, and transient-memory state so the panel itself holds none.
     PerformanceModel m_performanceModel;
     ConsoleModel m_consoleModel;
+    ProposalQueue m_sessionProposals;
+    SessionLog m_sessionLog;
+    uint64_t m_sessionExpandedProposal = 0;
+    std::string m_sessionPathFeedback;
+    SessionDockPlacement m_sessionDockPlacement;
 
     // The Render Graph canvas's session state: the node-editor context, the shape it is laid out
     // for, and the selected node. Owned here rather than by the panel because the context has to
