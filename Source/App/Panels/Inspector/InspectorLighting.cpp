@@ -74,8 +74,7 @@ void drawLocalLightSection(const InspectorPanelContext& context, engine::LightId
         glm::vec3 colour(linearToSrgb(light.colour.r), linearToSrgb(light.colour.g),
                          linearToSrgb(light.colour.b));
         markInspectorField(context, light.colour != baseline.colour, "Color (sRGB)");
-        editor_style::field("Color (sRGB)");
-        if (ImGui::ColorEdit3("##colour", &colour.x, ImGuiColorEditFlags_Float)) {
+        if (editor_style::colorRgb("Color (sRGB)", "color", &colour.x)) {
             light.colour = srgbToLinear(colour);
             edited = true;
         }

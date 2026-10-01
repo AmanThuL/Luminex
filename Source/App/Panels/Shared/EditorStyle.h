@@ -199,6 +199,10 @@ inline bool checkbox(const char* label, const char* id, bool* value) {
 bool vector3(const char* label, const char* id, float* values, float speed, float minimum = 0.0f,
              float maximum = 0.0f, const char* format = "%.3f", ImGuiSliderFlags flags = 0,
              bool rgb = false);
+/// Draws an encoded color as labeled R, G and B components in [0, 1] followed by a swatch that
+/// opens the picker. values holds three floats, or four when alpha is set; alpha is edited in
+/// the picker. Returns whether any component changed this frame.
+bool colorRgb(const char* label, const char* id, float* values, bool alpha = false);
 
 } // namespace lmx::app::editor_style
 
