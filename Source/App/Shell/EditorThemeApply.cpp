@@ -32,9 +32,13 @@ void applyNodeEditorColors(ax::NodeEditor::Style& style, const ThemePalette& pal
 }
 
 //======================================================================================================================
-void verifyThemeSlotNames() {
+void verifyImGuiSlotNames() {
     for (int i = 0; i < ImGuiCol_COUNT; ++i)
         LMX_ASSERT(kImGuiSlots[i].name == ImGui::GetStyleColorName(i), "ImGui theme slot mismatch");
+}
+
+//======================================================================================================================
+void verifyNodeEditorSlotNames() {
     for (int i = 0; i < ax::NodeEditor::StyleColor_Count; ++i)
         LMX_ASSERT(kNodeEditorSlots[i].name == ax::NodeEditor::GetStyleColorName(
                                                    static_cast<ax::NodeEditor::StyleColor>(i)),

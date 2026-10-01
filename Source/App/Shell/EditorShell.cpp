@@ -68,6 +68,7 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+    verifyImGuiSlotNames();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     // Platform viewports draw windows the RHI's single swapchain knows nothing about: the vendored
