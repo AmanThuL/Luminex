@@ -22,12 +22,21 @@ namespace {
 
 //======================================================================================================================
 ImVec4 severityColor(log::Level severity) {
-    if (severity >= log::Level::Error)
-        return {1.0f, 0.48f, 0.45f, 1.0f};
-    if (severity == log::Level::Warning)
-        return editor_style::kWarning;
-    return severity < log::Level::Info ? editor_style::kMuted
-                                       : ImGui::GetStyleColorVec4(ImGuiCol_Text);
+    switch (severity) {
+    case log::Level::Trace:
+        return editor_style::color(ThemeRole::ConsoleTrace);
+    case log::Level::Debug:
+        return editor_style::color(ThemeRole::ConsoleDebug);
+    case log::Level::Info:
+        return editor_style::color(ThemeRole::ConsoleInfo);
+    case log::Level::Warning:
+        return editor_style::color(ThemeRole::ConsoleWarn);
+    case log::Level::Error:
+        return editor_style::color(ThemeRole::ConsoleError);
+    case log::Level::Critical:
+        return editor_style::color(ThemeRole::ConsoleCritical);
+    }
+    return editor_style::color(ThemeRole::ConsoleInfo);
 }
 
 //======================================================================================================================
@@ -211,7 +220,11 @@ void drawConsolePanel(bool& open, ConsoleModel& model) {
                         continue;
                     ImGui::TableNextRow();
                     ImGui::TableNextColumn();
-                    ImGui::TextUnformatted(consoleTimestamp(entry.timestampMilliseconds).c_str());
+                    {
+                        const editor_style::ScopedType type(TypeRole::MonoCaption);
+                        ImGui::TextUnformatted(
+                            consoleTimestamp(entry.timestampMilliseconds).c_str());
+                    }
                     ImGui::TableNextColumn();
                     ImGui::PushStyleColor(ImGuiCol_Text, severityColor(entry.severity));
                     ImGui::TextUnformatted(

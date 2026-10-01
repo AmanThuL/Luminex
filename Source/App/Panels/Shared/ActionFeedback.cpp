@@ -5,6 +5,8 @@
 
 #include "App/Panels/Shared/ActionFeedback.h"
 
+#include "App/Panels/Shared/EditorStyle.h"
+
 #include <SDL3/SDL.h>
 #include <imgui.h>
 
@@ -64,15 +66,18 @@ void drawActionFeedback(const char* id, ActionResult& result) {
     ImGui::PushID(id);
     ImGui::TextWrapped("%s: %s", actionStatusName(result.status), result.message.c_str());
     if (!result.path.empty()) {
-        ImGui::TextWrapped("%s", result.path.c_str());
-        if (ImGui::Button("Copy path")) {
+        {
+            const editor_style::ScopedType type(TypeRole::MonoCaption);
+            ImGui::TextWrapped("%s", result.path.c_str());
+        }
+        if (editor_style::primaryButton("Copy path")) {
             result.pathActionError = SDL_SetClipboardText(result.path.c_str())
                                          ? std::string{}
                                          : std::format("Copy path failed: {}", SDL_GetError());
         }
         if (result.status == ActionStatus::Succeeded) {
             ImGui::SameLine();
-            if (ImGui::Button("Reveal in Finder")) {
+            if (editor_style::primaryButton("Reveal in Finder")) {
                 result.pathActionError = revealOutput(result.path);
             }
         }

@@ -52,7 +52,8 @@ LegendChipResult drawLegendChip(const ViewportPanelContext& context, ImVec2 orig
     if (width <= 0 || imageSize.y <= inset * 2)
         return {};
     ImGui::SetCursorScreenPos(ImVec2(origin.x + inset, origin.y + inset));
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.08f, 0.08f, 0.09f, 0.9f));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, editor_style::color(ThemeRole::SurfaceOverlay));
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, editor_style::scaled(kShape.card));
     ImGui::SetNextWindowSizeConstraints(ImVec2(0, 0), ImVec2(width, imageSize.y - inset * 2));
     bool hovered = false;
     if (ImGui::BeginChild("debug-legend", ImVec2(width, 0),
@@ -91,7 +92,10 @@ LegendChipResult drawLegendChip(const ViewportPanelContext& context, ImVec2 orig
                                 DebugView{DebugViewTopic::Occlusion, static_cast<uint8_t>(level)});
             }
             editorTooltip("HZB mip level. Higher levels summarize a larger source region.");
-            ImGui::TextWrapped("Farthest reversed depth; black is uncovered.");
+            {
+                const editor_style::ScopedType type(TypeRole::Caption);
+                ImGui::TextWrapped("Farthest reversed depth; black is uncovered.");
+            }
             if (active->value > top)
                 ImGui::Text("Requested level %u; showing available level %d", active->value, top);
         } else {
@@ -99,20 +103,26 @@ LegendChipResult drawLegendChip(const ViewportPanelContext& context, ImVec2 orig
                 active->topic == DebugViewTopic::Temporal
                     ? diagnosticLegend(static_cast<render::TemporalDebugView>(active->value))
                     : diagnosticLegend(static_cast<engine::LightDebugView>(active->value));
-            ImGui::TextWrapped("%.*s", static_cast<int>(legend.description.size()),
-                               legend.description.data());
+            {
+                const editor_style::ScopedType type(TypeRole::MonoCaption);
+                ImGui::TextWrapped("%.*s", static_cast<int>(legend.description.size()),
+                                   legend.description.data());
+            }
             if (active->topic == DebugViewTopic::Lighting && context.scene.enabledLightCount() == 0)
                 ImGui::TextWrapped("No enabled local lights. Showing Final.");
             if (active->topic == DebugViewTopic::Temporal) {
                 const auto note =
                     diagnosticModeNote(static_cast<render::TemporalDebugView>(active->value),
                                        context.renderer.temporalStatus().reconstruction);
-                if (!note.empty())
+                if (!note.empty()) {
+                    const editor_style::ScopedType type(TypeRole::Caption);
                     ImGui::TextWrapped("%.*s", static_cast<int>(note.size()), note.data());
+                }
             }
         }
     }
     ImGui::EndChild();
+    ImGui::PopStyleVar();
     ImGui::PopStyleColor();
     return {hovered, ImGui::GetItemRectMax().y};
 }
@@ -164,7 +174,7 @@ void drawOcclusionOverlay(const ViewportPanelContext& context, ImVec2 origin, Im
                 continue;
             if (rejected == 128)
                 break;
-            bounds(candidate, IM_COL32(255, 105, 80, 150));
+            bounds(candidate, editor_style::colorU32(ThemeRole::OverlayBoundsCandidate));
             ++rejected;
         }
     }
@@ -175,19 +185,20 @@ void drawOcclusionOverlay(const ViewportPanelContext& context, ImVec2 origin, Im
         if (const auto* candidate =
                 display.find(id, status, context.temporalState.sceneGeneration)) {
             selected = true;
-            bounds(*candidate, IM_COL32(255, 220, 80, 230));
+            bounds(*candidate, editor_style::colorU32(ThemeRole::OverlayBoundsSelected));
             const auto& rectangle = candidate->occlusion.rectangle;
             if (rectangle[2] > rectangle[0] && rectangle[3] > rectangle[1])
                 draw->AddRect(pixel(rectangle[0], rectangle[1]), pixel(rectangle[2], rectangle[3]),
-                              IM_COL32(70, 220, 255, 240), 0, 0, 2.0f);
+                              editor_style::colorU32(ThemeRole::OverlayOutline), 0, 0, 2.0f);
         }
     }
     if (selected || context.settings.showOcclusionBounds) {
         const auto label = std::format(
-            "HZB source frame {}: yellow bounds / cyan test rectangle; rejected {} / 128",
+            "HZB source frame {}: yellow bounds / blue test rectangle; rejected {} / 128",
             status.occlusionSourceFrame, rejected);
         const float labelY = chipBottom ? *chipBottom + 8 : origin.y + 8;
-        draw->AddText(ImVec2(origin.x + 8, labelY), IM_COL32(255, 240, 180, 255), label.c_str());
+        draw->AddText(ImVec2(origin.x + 8, labelY), editor_style::colorU32(ThemeRole::OverlayLabel),
+                      label.c_str());
     }
     draw->PopClipRect();
 }
@@ -204,22 +215,33 @@ uint32_t viewportHzbLevels(const render::Renderer& renderer) {
 //======================================================================================================================
 ViewportPanelResult drawViewportPanel(bool& open, const ViewportPanelContext& context) {
     ViewportPanelResult result;
-    if (ImGui::Begin(kViewportPanelWindowName, &open)) {
+    // The image surround and its hairline stay dark in both themes, so a light chrome never
+    // changes how bright the frame looks. Begin draws the background; the tab keeps theme colors.
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, editor_style::color(ThemeRole::SurfaceViewport));
+    const bool visible = ImGui::Begin(kViewportPanelWindowName, &open);
+    ImGui::PopStyleColor();
+    if (visible) {
         const auto available = ImGui::GetContentRegionAvail();
-        const ImVec2 imageSize(available.x, std::max(available.y, 1.0f));
-        result.measured = available.x > 0.0f && available.y > 0.0f;
+        const float border = ImGui::GetStyle().ImageBorderSize;
+        const ImVec2 imageSize(available.x - 2.0f * border, available.y - 2.0f * border);
+        result.measured = imageSize.x > 0.0f && imageSize.y > 0.0f;
         result.focused = ImGui::IsWindowFocused();
         if (result.measured) {
             const bool outlineReady = context.outlineTarget.width() == context.renderer.width() &&
                                       context.outlineTarget.height() == context.renderer.height();
+            ImGui::PushStyleColor(ImGuiCol_Border, editor_style::color(ThemeRole::SurfaceViewport));
             ImGui::Image(rojoRHI::metal4::imguiTextureID(context.showOutline && outlineReady &&
                                                                  context.selection.subject ==
                                                                      EditorSubject::Object
                                                              ? context.outlineTarget
                                                              : context.renderer.colorTarget()),
                          imageSize);
-            result.hovered = ImGui::IsItemHovered();
-            const auto origin = ImGui::GetItemRectMin();
+            ImGui::PopStyleColor();
+            const auto outerOrigin = ImGui::GetItemRectMin();
+            const ImVec2 origin(outerOrigin.x + border, outerOrigin.y + border);
+            result.hovered = ImGui::IsItemHovered() &&
+                             ImGui::IsMouseHoveringRect(
+                                 origin, ImVec2(origin.x + imageSize.x, origin.y + imageSize.y));
             const auto chip = drawLegendChip(context, origin, imageSize);
             if (chip.hovered)
                 result.hovered = false;

@@ -12,28 +12,13 @@ mapping. Resize may briefly stretch the prior image during debounce. PNG preserv
 
 ## Editor playback
 
-The menu row holds Play/Pause, Stop, Step, time and a rail-follow toggle when the scene has a rail. Scenes load Stopped. First Play captures camera/time, animation-owned object poses/emissive strength
-and tracked light positions; Pause holds time, and Step advances 1/60 s and pauses. Stop or scene switch restores that preview and resets motion, temporal and exposure history. Rendering settings and
-unrelated edits remain outside restoration. Static scenes still allow camera preview. View > Reset Camera (Home) and Frame Selected (F) control framing; the latter is also in Hierarchy's context menu.
-View > Selection Outline toggles the outline, and Help > Controls explains movement. F, Home and C are suppressed during text entry, popups and RMB look. The window title names the scene. Start a
-fixed run in Performance > Measure; transport then shows progress and enables only Stop. Playback, metric freeze and graph freeze are independent. See [Measure](#measure-visibility-and-submission).
+Use the in-window toolbar for Play/Pause, Stop, Step, time and rail following. Playback, graph
+freeze and metric freeze are independent. See [playback and recovery](editor-workspace.md#editor-playback).
 
 ## Restore editor settings
 
-Inspector Reset actions affect the named group. Camera Reset restores the scene's initial pose/lens and stops camera-rail following. Directional Light Reset restores authored direction and scene-linear radiance. Local-light Reset restores authored enablement/colour/intensity/range/cones and the current-time orbit position; Stop restores only its captured position, preserving other light edits. Object Reset restores its authored transform or samples that object's animated transform
-at the current playback time, preserving other object edits. Pause scene to retain a manual edit to an animated transform; playback replaces it on the next track sample.
-
-Rendering groups restore these editor defaults without resetting playback or another group. Environment Reset restores Exposure, Bloom and Shadows from the loaded or saved document:
-
-| Group | Defaults |
-|---|---|
-| Lighting | Clustered local lights; lighting diagnostic off; CPU list check off; LightLab overflow pile cleared; individual light state unchanged |
-| Environment: Exposure | The document's manual/auto EV and metering settings |
-| Environment: Bloom | The document's enabled state, threshold and intensity |
-| Environment: Shadows | The document's shadow filter |
-| Reconstruction | Temporal inputs and jitter enabled; Native TAA; temporal diagnostic off |
-| Resolution | Scale 1; dynamic resolution off; timed-pass budget 16 ms |
-| Display | Encoded sRGB clear RGBA (0.7, 0.7, 0.7, 1); wireframe off; transient pooling on |
+Inspector and Rendering resets affect the named group; Environment resets to the loaded or saved
+scene look. See the [reset scopes and defaults](editor-workspace.md#restore-editor-settings).
 
 ## Dump the compiled frame
 
@@ -48,7 +33,7 @@ reason it was dropped, and the barriers the graph derived. It carries no GPU tim
 driver-reported value, so it answers "was this pass declared, ordered, and kept?" rather than "how long did it take", which is the timing trace's question.
 
 A pass listed under `culled` never ran; its reason explains why. Window > Render Graph opens the detached graph window. It publishes one owned frame with exact matched timings at 4 Hz; first data and
-Resume publish immediately. Later topology and timing changes wait for publication. Freeze keeps that frame through scene switches. Missing matched timing is N/A. Frozen or stale data is labelled;
+Resume publish immediately. Later topology and timing changes wait for publication. Freeze keeps that frame through scene switches. Missing matched timing is N/A. Frozen or stale data is labeled;
 stale means no new retired frame for one second.
 
 The header has Freeze/Resume, Fit Graph, Fit Selection and 1:1. More holds Reset layout, Columns (0 means no wrap) and Dump frame. Double-click a stage to expand it; double-click a scene-import bundle
@@ -59,9 +44,10 @@ the path or write failure, with Copy path/Reveal. This dump contains graph decla
 ## Console and editor selection diagnostics
 
 Window > Console opens the bounded read-only log viewer. It shares the bottom dock with the compact Performance tab; Rendering shares Inspector's dock. Inspector and Console are the default active
-tabs. Detailed Performance and Render Graph are detached, closed by default. Window toggles each surface separately. Schema 4 saves eight visibilities and UI scale alongside docking and window bounds.
-Schema 3 migration keeps its six visibilities, scale and detached bounds, shows the new tabs and rebuilds main docks once. Schema 2 keeps valid scale and rebuilds defaults; unknown schemas use
-defaults. Window > Reset Default Layout preserves scale, closes both detached windows and resets Performance's next-open bounds; ordinary launches retain both windows' geometry.
+tabs. Detailed Performance and Render Graph are detached, closed by default. Window toggles each surface separately. Schema 5 saves eight visibilities, UI scale, appearance and density alongside docking and window bounds.
+Schema 4 restores without rebuilding using Auto/Comfortable; schema 3 keeps six visibilities, scale and detached bounds and rebuilds main docks once with the new tabs. Schema 2 keeps valid scale
+and rebuilds defaults; unknown schemas use defaults. Reset Default Layout preserves scale, appearance and density, closes both detached windows and resets Performance's next-open bounds.
+See [workspace recovery](editor-workspace.md#workspace-recovery) for persistence and Gallery behavior.
 
 Console retains 2,000 messages / 2 MiB, truncating payloads at 16 KiB on a UTF-8 boundary. UTC time and severity accompany each entry. The T/D/I/W/E/C chips count each retained severity and select
 that level and above; search is a case-insensitive substring filter. Scroll up to hold the displayed rows while logging continues. Return to the bottom or click `↓ N new` to resume; the chip stays
@@ -143,7 +129,7 @@ python3 Tools/GpuDebug/gputrace_dump.py \
 The graph contains `lmx.pass.temporal.vendor.pack` (compute) followed by `lmx.pass.temporal.vendor` (external), with no native resolve, upscale or commit. The first-frame
 graph dump can have a different content extent from the later capture if the controller moved it.
 Find `lmx.render.vendorMotion`, `lmx.render.vendorReactive` and `lmx.render.vendorExposure` beside
-scene colour, current depth and the output colour-history slot. The exposure texel is **reciprocal
+scene color, current depth and the output color-history slot. The exposure texel is **reciprocal
 applied exposure**; zero packed motion with reactive 1 represents the invalid-motion sentinel.
 
 The vendor pass's command-buffer groups name the pass and `lmx.temporal.vendor.scaler MetalFX
@@ -152,7 +138,7 @@ the current automated dump does not recover MetalFX's private encoder names. The
 and `.outputCopy`; that copy belongs to the external pass's GPU timing. Graph dumps describe the
 declared external operation, not the vendor's private encoders. Use Xcode to inspect opaque encoder ordering or fence state when the decoded manifest cannot establish them.
 
-The dump tool currently cannot decode the HDR, motion or reactive formats or recover packed transients from placement-heap contents. Its legacy expected scene-colour label and shadow-depth
+The dump tool currently cannot decode the HDR, motion or reactive formats or recover packed transients from placement-heap contents. Its legacy expected scene-color label and shadow-depth
 recompute may also report errors on this renderer. Preserve these findings with the capture; they are distinct from runtime Metal validation and do not establish a reconstruction failure.
 
 Motion, reprojection error and reprojected history are engine diagnostics. The latter adds `lmx.pass.temporal.reprojectedHistory` under vendor mode; rejection, blend weight and per-pixel
@@ -176,7 +162,7 @@ performance claim. A missing optimized-away empty encoder is not a zero-duration
 ## Inspect local lighting
 
 `--local-lights off|direct|clustered` selects one shared point/spot shading loop; Clustered is the default and Direct remains the reference. The [default decision](../milestones/m7/m7.5-validation.md#default-decision) follows passed lossless-list/scoped exact-image gates, independently of cost and remaining obligations. Local lights are unshadowed and affect opaque/masked surfaces. Zero-enabled frames import no light table and declare no light-list/debug pass, even with retained disabled rows. Zero-enabled mode-only edits preserve temporal history; content/live-mode changes still reset it. The [follow-up](../milestones/m7/m7.5-followup.md) separates these causal invariants from pending temporal repeatability diagnosis and preserves the original F5 failure. Rendering > Lighting publishes requested/effective mode and retired counters at 250 ms; capacities, list memory and frame IDs are in Diagnostics. Details opens Performance for
-pass costs. Overflow/check warnings update immediately. LightLab accepts `--lab-lights 1..4096` (default 256) and `--lab-light-pile P` (default 0), with total ≤4096. Its 12-second rail and authored light orbits repeat deterministically with 0.25 m whole-orbit material-field clearance. Sponza authors 16 static point/spot lights and a 120-second two-level corridor/atrium tour. Its `--local-light-rig on|off` defaults on; explicit off disables the group, retaining identities and allocated rows. Both scene restrictions apply in every run mode. Hierarchy > Local lights uses clipped rows and full LightId selection. The Inspector header enables/disables the selected light without deleting its edits or orbit. Disabled lights remain editable and consume identity capacity; Enabled lights reports only contributors. Inspector edits position, sRGB colour, relative intensity, range and spot direction/cones; stale IDs are rejected. Rendering has
+pass costs. Overflow/check warnings update immediately. LightLab accepts `--lab-lights 1..4096` (default 256) and `--lab-light-pile P` (default 0), with total ≤4096. Its 12-second rail and authored light orbits repeat deterministically with 0.25 m whole-orbit material-field clearance. Sponza authors 16 static point/spot lights and a 120-second two-level corridor/atrium tour. Its `--local-light-rig on|off` defaults on; explicit off disables the group, retaining identities and allocated rows. Both scene restrictions apply in every run mode. Hierarchy > Local lights uses clipped rows and full LightId selection. The Inspector header enables/disables the selected light without deleting its edits or orbit. Disabled lights remain editable and consume identity capacity; Enabled lights reports only contributors. Inspector edits position, sRGB color, relative intensity, range and spot direction/cones; stale IDs are rejected. Rendering has
 no rig toggle; Lighting Reset restores mode/diagnostics and clears the bounded pile before table preparation, preserving individual light edits. Pause to retain manual orbit-position edits. Shared punctual specular filtering broadens the normal footprint; authored roughness, directional light and IBL stay unchanged.
 
 ```sh
@@ -287,9 +273,12 @@ the file differs from the bloom-off capture (`cmp` reports a byte offset) and op
 
 ### Editor UI scale
 
-Use View > UI Scale to change fonts and controls together (75–150%). Click the menu-row percentage or press Cmd+0 for 100%; Cmd+- shrinks and Cmd++ / Cmd+= grows. Text editing, active drags, popups
-and RMB look suppress shortcuts. When the row is tight, time moves into Play's tooltip, then the zoom percentage hides; action buttons remain. Detached windows share UI scale; graph zoom is
-independent. `UiScalePercent` persists in `imgui.ini`, defaults to 100% when absent, and survives schema 2/3 migration and Reset Default Layout.
+View > UI Scale adjusts fonts and controls together; toolbar percentage/Cmd+0 resets to 100%.
+See [scale and fonts](editor-workspace.md#editor-ui-scale) for presets, shortcut suppression,
+Geist resources and font recovery.
 
-Inter Regular is 16 logical points at 100%, with fixed-width digits. `xmake setup` fetches pinned Inter 4.1 and its SIL license plus Codicons 0.0.46-24 and its CC BY 4.0 license/provenance. Building
-App stages them in `Fonts/` beside the executable. Without Codicons, buttons use readable labels and the editor logs one warning; rerun setup and rebuild. Missing Inter uses the embedded fallback.
+### Editor appearance and density
+
+View > Appearance selects Auto (system), Light or Dark; View > Density selects Comfortable or
+Compact. Both persist in workspace schema 5. See [appearance and density](editor-workspace.md#appearance-and-density)
+for CLI override scope, native chrome, Reduce Motion and recovery.

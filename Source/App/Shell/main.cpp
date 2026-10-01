@@ -8,6 +8,7 @@
 #include "App/Model/Graph/FrameRecordRing.h"
 #include "App/Model/Options/AppOptions.h"
 #include "App/Model/Scene/SceneDefaults.h"
+#include "App/Shell/AppAppearance.h"
 #include "App/Shell/AppIcon.h"
 #include "App/Shell/ConsoleLogSink.h"
 #include "App/Shell/EditorShell.h"
@@ -42,12 +43,6 @@ namespace {
 // SDL window dimensions are logical points.
 constexpr int kWindowWidth = 1280;
 constexpr int kWindowHeight = 720;
-
-// UI colors are display-referred sRGB, straight-alpha blended in encoded space on BGRA8Unorm.
-// Encoded 1.0 is SDR white; the UI never boosts it. This clear is written verbatim into dock gaps.
-// Layout uses points and the per-window framebuffer scale controls font rasterization.
-// Detached ImGui platform windows own separate BGRA8Unorm layers and remain SDR.
-constexpr float kUiClearColor[4] = {0.06f, 0.06f, 0.07f, 1.0f};
 
 // Capture paths are relative to the process working directory unless overridden.
 constexpr std::string_view kCapturePath = "luminex-frame.gputrace";
@@ -154,6 +149,8 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         return 1;
     }
 
+    shell->primeAppearance(options.appearance);
+    shell->onSystemThemeChanged(lmx::app::systemTheme());
     if (auto primed = shell->primeTemporal(options); !primed) {
         LMX_LOG_ERROR("startup lighting failed: {}", primed.error().message);
         return 1;
@@ -194,11 +191,15 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
     double elapsedSeconds = 0.0;
 
     while (running) {
+        shell->updateNativeMenu(**renderer, **device);
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             // ImGui must observe every event before input ownership is queried.
             ImGui_ImplSDL3_ProcessEvent(&event);
             switch (event.type) {
+            case SDL_EVENT_SYSTEM_THEME_CHANGED:
+                shell->onSystemThemeChanged(lmx::app::systemTheme());
+                break;
             case SDL_EVENT_QUIT:
                 shell->requestQuit();
                 break;
@@ -229,6 +230,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         }
         // Dialog responses and approved Quit must progress even if acquire has no drawable.
         // The UI only presents confirmation; completed work runs at this frame boundary.
+        shell->consumeNativeMenuCommands(**renderer);
         shell->pumpDocuments();
         if (shell->actions().consumeQuit()) {
             running = false;
@@ -269,10 +271,22 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
             return 1;
         }
 
-        // Acquire before ImGui::NewFrame so a dropped drawable cannot leave an open ImGui frame.
+        // Process widget ownership even when drawable acquisition is skipped.
+        shell->prepareUIFrame();
+        ImGui_ImplSDL3_NewFrame();
+        rojoRHI::metal4::imguiNewFrame();
+        ImGui::NewFrame();
+        shell->buildUI(**device, **renderer, deltaSeconds, frameRecords);
+        ImGui::Render();
+
+        // The ImGui frame is closed before acquisition; dropped drawables retain capture intent.
         auto target = (*swapchain)->acquireNextTexture();
         if (!target) {
-            // Drawable starvation is transient; drop the frame without opening encoder state.
+            // Every completed UI frame must finish platform lifecycle, even without GPU work.
+            // Rendering extra windows waits for a successfully acquired and paced device frame.
+            ImGui::UpdatePlatformWindows();
+            lmx::app::applyViewportAppearance(
+                lmx::app::forcedWindowAppearance(shell->effectiveAppearance()));
             ++skippedFrames;
             LMX_LOG_WARN("frame {} skipped: {}", frameIndex, target.error().message);
             if (maxFrames > 0 && frameIndex >= maxFrames) {
@@ -296,15 +310,6 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
                 result.message = "Capturing GPU work; waiting for completion.";
             }
         }
-
-        // The Metal backend prepares its frame before ImGui builds draw data and RHI encoding
-        // begins.
-        shell->prepareUIFrame();
-        rojoRHI::metal4::imguiNewFrame();
-        ImGui_ImplSDL3_NewFrame();
-        ImGui::NewFrame();
-        shell->buildUI(**device, **renderer, deltaSeconds, frameRecords);
-        ImGui::Render();
 
         const lmx::Stopwatch measurementWait;
         rojoRHI::CommandList& commands = (*device)->beginFrame();
@@ -346,14 +351,19 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         const lmx::render::GraphTexture drawable =
             graph.importTexture(**target, rojoRHI::Format::BGRA8Unorm, "lmx.app.drawable");
 
+        // UI colors are display-referred sRGB, straight-alpha blended in encoded space on
+        // BGRA8Unorm. Encoded 1.0 is SDR white; the UI never boosts it. This clear is written
+        // verbatim into dock gaps. Layout uses points and the per-window framebuffer scale controls
+        // font rasterization. Detached ImGui platform windows own separate BGRA8Unorm layers and
+        // remain SDR.
+        const auto uiClear = shell->uiClearColor();
         lmx::render::PassDesc ui;
         // Declaring the read is the whole ordering statement: it puts this pass after the display
         // pass and that target's transition to a shader read in front of it.
         ui.textureReads.push_back(displayColor);
         // This attachment layout must match the pipeline configured by imguiInit().
         ui.color = lmx::render::ColorAttachment{
-            .handle = drawable,
-            .clearColor = {kUiClearColor[0], kUiClearColor[1], kUiClearColor[2], kUiClearColor[3]}};
+            .handle = drawable, .clearColor = {uiClear[0], uiClear[1], uiClear[2], uiClear[3]}};
         // ImGui owns encoder state once it starts, so no engine draw follows it in this pass.
         graph.addPass("lmx.pass.ui", std::move(ui), [&commands](const lmx::render::PassResources&) {
             rojoRHI::metal4::imguiRender(commands);
@@ -396,10 +406,11 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
 
         // Platform viewports follow the present because the ImGui backend renders each extra window
         // on the same device queue with the per-frame-slot allocator this frame just finished
-        // encoding against; running them after endFrame keeps that slot's use strictly ordered. The
-        // skipped-drawable path continues above without opening an ImGui frame, so it never reaches
-        // here with stale platform draw data.
+        // encoding against; running them after endFrame keeps that slot's use strictly ordered.
+        // Skipped drawables complete only platform lifecycle above, without rendering windows.
         ImGui::UpdatePlatformWindows();
+        lmx::app::applyViewportAppearance(
+            lmx::app::forcedWindowAppearance(shell->effectiveAppearance()));
         ImGui::RenderPlatformWindowsDefault();
 
         if (capturingThisFrame) {

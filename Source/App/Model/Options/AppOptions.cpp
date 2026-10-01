@@ -128,6 +128,7 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     bool captureFormatSpecified = false;
     std::string sceneName = scenes::defaultSceneId().key;
     bool maximized = true;
+    std::optional<Appearance> appearance;
     uint32_t frames = 1;
     TemporalMode temporal = TemporalMode::Taa;
     render::TemporalDebugView temporalView = render::TemporalDebugView::Off;
@@ -282,6 +283,10 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
                             sceneIdList("|") + "|path>");
             }
             sceneName = arguments[i];
+        } else if (argument == "--appearance") {
+            if (++i >= arguments.size() || !(appearance = parseAppearance(arguments[i]))) {
+                return fail("--appearance needs auto|light|dark for the windowed editor");
+            }
         } else if (argument == "--windowed") {
             maximized = false;
         } else if (argument == "--frames") {
@@ -356,7 +361,8 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
             return fail(
                 "unknown argument '" + std::string(argument) +
                 "'; usage: App [--screenshot <out.png|out.bmp>] [--scene <" + sceneIdList("|") +
-                "|path>] [--windowed] [--frames <N>] [--temporal <off|raw|taa|metalfx>] "
+                "|path>] [--windowed] [--appearance <auto|light|dark>] [--frames <N>] [--temporal "
+                "<off|raw|taa|metalfx>] "
                 "[--temporal-view <off|motion|reprojection|reprojected|rejection|weight|age>] "
                 "[--render-scale <0.5..1.0>] [--capture-sequence <directory> --warmup <N> "
                 "--capture-format <png|bmp>] [--measure <out.json> --unscored] "
@@ -374,6 +380,11 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
                 "(--screenshot saves the last of N frames; --capture-sequence saves N frames "
                 "after W unsaved warmup frames)");
         }
+    }
+
+    if (appearance &&
+        (!screenshotPath.empty() || !captureSequencePath.empty() || !measurementPath.empty())) {
+        return fail("--appearance is only available in the windowed editor");
     }
 
     if ((lightCheck || lightDebugView != engine::LightDebugView::Off) &&
@@ -507,6 +518,7 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     options.labLightPile = labLightPile;
     options.initialScene = *sceneId;
     options.maximized = maximized;
+    options.appearance = appearance;
     options.frames = frames;
     options.warmup = warmup;
     options.captureFormat = captureFormat;

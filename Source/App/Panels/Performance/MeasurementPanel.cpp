@@ -23,7 +23,7 @@ void drawMeasurementSection(MeasurementPanelContext& context) {
                                         "retirement. Closing this window keeps the run active.";
     // A labelled button: the shared Play glyph's text fallback would read "Play" here.
     ImGui::BeginDisabled(run.active() || !context.startDisabledReason.empty());
-    if (ImGui::Button("Start measurement##StartMeasurement"))
+    if (editor_style::primaryButton("Start measurement##StartMeasurement"))
         context.action = MeasurementAction::Start;
     ImGui::EndDisabled();
     editorTooltip(startHelp.c_str());
@@ -72,8 +72,11 @@ void drawMeasurementSection(MeasurementPanelContext& context) {
         std::array<char, 1024> path{};
         context.exportPath.copy(path.data(), path.size() - 1);
         ImGui::SetNextItemWidth(-1);
-        if (ImGui::InputText("##measurementExport", path.data(), path.size()))
-            context.exportPath = path.data();
+        {
+            const editor_style::ScopedType type(TypeRole::MonoCaption);
+            if (ImGui::InputText("##measurementExport", path.data(), path.size()))
+                context.exportPath = path.data();
+        }
         if (ImGui::Button("Export measurement JSON"))
             context.action = MeasurementAction::Export;
     }

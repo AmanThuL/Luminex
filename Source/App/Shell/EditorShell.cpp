@@ -7,7 +7,9 @@
 
 #include "App/Model/Rendering/Settings/DebugView.h"
 #include "App/Model/Scene/SceneTree.h"
+#include "App/Shell/AppAppearance.h"
 #include "App/Shell/EditorFont.h"
+#include "App/Shell/EditorThemeApply.h"
 
 #include "App/Panels/Console/ConsolePanel.h"
 #include "App/Panels/Graph/RenderGraphPanel.h"
@@ -46,7 +48,7 @@ constexpr uint32_t kResizeDebounceFrames = 10;
 // reached through the same text writeWorkspaceSettings emits.
 constexpr std::string_view kNoSchemaReason = "no matching workspace schema in imgui.ini";
 constexpr std::string_view kMigrationReason =
-    "migrating workspace schema 3 to 4; keeping panel visibility, UI scale and detached window "
+    "migrating workspace schema 3 to 5; keeping panel visibility, UI scale and detached window "
     "bounds";
 constexpr std::string_view kResetReason = "layout reset requested";
 
@@ -66,26 +68,25 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+    verifyImGuiSlotNames();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     // Platform viewports draw windows the RHI's single swapchain knows nothing about: the vendored
     // Metal 4 ImGui backend creates a CAMetalLayer per extra window and renders it with its own
     // command buffer on the shared device queue. main.cpp drives them after each presented frame.
     io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
-    editor_style::setIconFontAvailable(configureEditorFont());
-    ImGui::StyleColorsDark();
-    ImGui::GetStyle().FramePadding = ImVec2(8.0f, 5.0f);
-    ImGui::GetStyle().ItemSpacing = ImVec2(8.0f, 8.0f);
-    ImGui::GetStyle().WindowPadding = ImVec2(12.0f, 12.0f);
+    editor_style::setEditorFonts(configureEditorFonts());
 
     if (!ImGui_ImplSDL3_InitForMetal(window)) {
         LMX_LOG_ERROR("ImGui_ImplSDL3_InitForMetal failed: {}", SDL_GetError());
+        editor_style::setEditorFonts({});
         ImGui::DestroyContext();
         return nullptr;
     }
     // ImGui's pipeline format must match the swapchain drawable.
     if (!rojoRHI::metal4::imguiInit(device, rojoRHI::Format::BGRA8Unorm)) {
         ImGui_ImplSDL3_Shutdown();
+        editor_style::setEditorFonts({});
         ImGui::DestroyContext();
         return nullptr;
     }
@@ -117,6 +118,7 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
         releaseRenderGraphPanelState(self->m_renderGraphPanel);
         ImGui_ImplSDL3_Shutdown();
         rojoRHI::metal4::imguiShutdown();
+        editor_style::setEditorFonts({});
         ImGui::DestroyContext();
         return nullptr;
     }
@@ -147,6 +149,8 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
     const WorkspaceDecision decision = decideWorkspace(parsed);
     self->m_workspace.visibility = decision.visibility;
     self->m_workspace.uiScalePercent = decision.uiScalePercent;
+    self->m_workspace.appearance.persisted = decision.appearance;
+    self->m_workspace.density = decision.density;
     self->m_buildDefaultLayout = decision.kind == WorkspaceDecisionKind::BuildDefault;
     self->m_performancePanel.resetPlacement = decision.resetPerformancePlacement;
     // Schema 3 is the one known migration: it rebuilds docking but keeps the stored preferences,
@@ -159,18 +163,24 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
     std::string_view startup =
         "workspace schema matches -- restoring the docked layout from imgui.ini";
     if (migrating) {
-        startup = "workspace schema 3 found -- migrating to schema 4 and building the default "
+        startup = "workspace schema 3 found -- migrating to schema 5 and building the default "
                   "layout";
     } else if (self->m_buildDefaultLayout) {
         startup = "no matching workspace schema -- the default layout will be built";
     }
     LMX_LOG_INFO("editor shell: {} (scene '{}', {} objects)", startup, self->m_session.scene().name,
                  self->m_session.scene().objects.size());
+#ifdef __APPLE__
+    self->m_nativeMenu = NativeMenuBar::install();
+#endif
     return self;
 }
 
 //======================================================================================================================
 EditorShell::~EditorShell() {
+#ifdef __APPLE__
+    m_nativeMenu.reset();
+#endif
     // Shutting down while relative mouse mode is still on would leave the user's cursor hidden and
     // captured with no window left to release it.
     endMouseLook();
@@ -180,6 +190,7 @@ EditorShell::~EditorShell() {
     // Backends unregister from the ImGui context, so destroy the context last.
     ImGui_ImplSDL3_Shutdown();
     rojoRHI::metal4::imguiShutdown();
+    editor_style::setEditorFonts({});
     ImGui::DestroyContext();
 }
 
@@ -226,11 +237,51 @@ bool EditorShell::applyPendingViewportResize(rojoRHI::Device& device, render::Re
 
 //======================================================================================================================
 void EditorShell::prepareUIFrame() {
-    const uint32_t percent = m_workspace.uiScalePercent;
-    if (m_appliedUiScalePercent == percent) {
-        return;
+    const double now = static_cast<double>(SDL_GetTicksNS()) / 1.0e9;
+    const auto target = resolveTheme(m_workspace.appearance.effective(), m_systemTheme);
+    const bool themeChanged = !m_appliedTheme || *m_appliedTheme != target;
+    const bool motionReduced = reduceMotion();
+    if (themeChanged || (m_themeTransitionPending && motionReduced)) {
+        const bool firstFrame = !m_appliedTheme;
+        m_themeTransition.start(m_themeTransition.sample(now), themePalette(target), now,
+                                firstFrame || motionReduced);
+        m_appliedTheme = target;
+        m_themeTransitionPending = true;
     }
     ImGuiStyle& style = ImGui::GetStyle();
+    if (m_themeTransitionPending) {
+        m_activePalette = m_themeTransition.sample(now);
+        applyImGuiColors(*m_baseUiStyle, m_activePalette);
+        applyImGuiColors(style, m_activePalette);
+        editor_style::setActivePalette(m_activePalette);
+        m_themeTransitionPending = m_themeTransition.active(now);
+    }
+
+    const uint32_t percent = m_workspace.uiScalePercent;
+    if (m_appliedUiScalePercent == percent && m_appliedDensity == m_workspace.density)
+        return;
+    const auto metrics = densityMetrics(m_workspace.density);
+    m_baseUiStyle->FrameRounding = kShape.control;
+    m_baseUiStyle->GrabRounding = kShape.control;
+    m_baseUiStyle->TabRounding = kShape.control;
+    m_baseUiStyle->ScrollbarRounding = kShape.control;
+    m_baseUiStyle->PopupRounding = kShape.popup;
+    m_baseUiStyle->WindowRounding = 0.0f;
+    m_baseUiStyle->ChildRounding = 0.0f;
+    m_baseUiStyle->WindowBorderSize = kShape.border;
+    m_baseUiStyle->ChildBorderSize = kShape.border;
+    m_baseUiStyle->PopupBorderSize = kShape.border;
+    m_baseUiStyle->FrameBorderSize = kShape.border;
+    m_baseUiStyle->ImageBorderSize = kShape.border;
+    m_baseUiStyle->TabBorderSize = kShape.border;
+    m_baseUiStyle->TabBarBorderSize = kShape.border;
+    m_baseUiStyle->DragDropTargetBorderSize = kShape.border;
+    m_baseUiStyle->SeparatorTextBorderSize = kShape.border;
+    m_baseUiStyle->DockingSeparatorSize = kShape.dockGutter;
+    m_baseUiStyle->TreeLinesFlags = ImGuiTreeNodeFlags_DrawLinesToNodes;
+    m_baseUiStyle->FramePadding = {metrics.framePaddingX, metrics.framePaddingY};
+    m_baseUiStyle->ItemSpacing = {metrics.itemSpacingX, metrics.itemSpacingY};
+    m_baseUiStyle->WindowPadding = {metrics.windowPadding, metrics.windowPadding};
     const float dpiScale = style.FontScaleDpi;
     style = *m_baseUiStyle;
     const float scale = static_cast<float>(percent) / 100.0f;
@@ -242,8 +293,15 @@ void EditorShell::prepareUIFrame() {
     style.WindowBorderSize = m_baseUiStyle->WindowBorderSize;
     style.ChildBorderSize = m_baseUiStyle->ChildBorderSize;
     style.PopupBorderSize = m_baseUiStyle->PopupBorderSize;
+    style.FrameBorderSize = m_baseUiStyle->FrameBorderSize;
+    style.ImageBorderSize = m_baseUiStyle->ImageBorderSize;
+    style.TabBorderSize = m_baseUiStyle->TabBorderSize;
+    style.TabBarBorderSize = m_baseUiStyle->TabBarBorderSize;
+    style.DragDropTargetBorderSize = m_baseUiStyle->DragDropTargetBorderSize;
+    style.SeparatorTextBorderSize = m_baseUiStyle->SeparatorTextBorderSize;
     style.MouseCursorScale = m_baseUiStyle->MouseCursorScale * scale;
     m_appliedUiScalePercent = percent;
+    m_appliedDensity = m_workspace.density;
     LMX_LOG_INFO("editor UI scale: {}%", percent);
 }
 
@@ -281,6 +339,8 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
                            newestTimed);
     if (dynamicResolutionActive(m_settings) &&
         m_settings.renderScale != renderScaleBeforeDynamicResolution) {
+        m_lastControllerScaleChange = ScaleChange{renderScaleBeforeDynamicResolution,
+                                                  m_settings.renderScale, ImGui::GetTime()};
         LMX_LOG_INFO("render scale {:.2f} -> {:.2f} after {:.2f} ms",
                      renderScaleBeforeDynamicResolution, m_settings.renderScale,
                      m_dynamicResolutionState.lastObservedMilliseconds);
@@ -330,6 +390,7 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
     // Before the dockspace, so the work area the topology is built into excludes the menu bar.
     finishMeasurementPlayback();
     buildMainMenu(renderer, device);
+    consumeFrameSelection(renderer);
 
     const ImGuiID dockspaceId = ImGui::DockSpaceOverViewport();
     if (m_buildDefaultLayout) {
@@ -351,6 +412,9 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
     buildDocumentWorkflow();
     postCaptureNotice();
     editor_style::drawNotice(m_notices, ImGui::GetTime());
+    drawStyleGalleryPanel(m_styleGallery);
+    updateNativeMenu(renderer, device);
+    consumeNativeMenuCommands(renderer, true);
 }
 
 //======================================================================================================================
@@ -459,6 +523,7 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
                               .viewportWidth = m_viewportWidth,
                               .viewportHeight = m_viewportHeight,
                               .viewportVisible = viewportUsable,
+                              .documentDirty = m_documentDirty,
                               .selectionHiddenByFilter = selectionHidden,
                               .visibilityDisplay = &m_visibilityDisplay,
                               .sceneFilter = &m_sceneFilter,

@@ -314,3 +314,31 @@ TEST_CASE("Instantiation captures generated own flags before an off ancestor mas
     CHECK_FALSE(loaded->scene->objects[1].enabled);
     CHECK(loaded->scene->enabledLightCount() == 1);
 }
+
+//======================================================================================================================
+TEST_CASE("Rig source observation retains equal masks and follows existing flag edits",
+          "[app][scene-enabled][rig-source]") {
+    SceneSession session;
+    CHECK_FALSE(session.localLightRigOverride());
+    auto loaded = test::documentLightFixture();
+    const auto group = *loaded.binding.localLightGroup;
+    session.activate(loaded, SceneActivationMotion::Reset);
+    CHECK_FALSE(session.localLightRigOverride());
+    const bool authored = session.nodeEnabled(group);
+    REQUIRE(session.setLocalLightRig(authored));
+    CHECK(session.localLightRigOverride() == std::optional{authored});
+    CHECK(session.nodeEnabled(group) == authored);
+    REQUIRE(session.setLocalLightRig(!authored));
+    CHECK(session.localLightRigOverride() == std::optional{!authored});
+    CHECK(session.nodeEnabled(group) == authored);
+    REQUIRE(session.setNodeEnabled(group, authored));
+    CHECK_FALSE(session.localLightRigOverride());
+    CHECK(session.nodeEnabled(group) == authored);
+    REQUIRE(session.setLocalLightRig(authored));
+    const auto child = loaded.document.nodes[group].children.front();
+    REQUIRE(session.setNodeEnabled(child, session.nodeEnabled(child)));
+    CHECK(session.localLightRigOverride() == std::optional{authored});
+    session.setMeasurementActive(true);
+    CHECK_FALSE(session.setNodeEnabled(group, authored));
+    CHECK(session.localLightRigOverride() == std::optional{authored});
+}

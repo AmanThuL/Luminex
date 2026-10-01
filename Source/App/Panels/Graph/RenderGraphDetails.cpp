@@ -80,6 +80,7 @@ void drawUseRows(const std::vector<GraphInspectorUseRow>& uses) {
 
 //======================================================================================================================
 void drawTransientTotals(const render::TransientMemory& memory) {
+    const editor_style::ScopedType type(TypeRole::MonoBody);
     ImGui::Text("requested %llu B", static_cast<unsigned long long>(memory.requested));
     ImGui::Text("high-water %llu B", static_cast<unsigned long long>(memory.highWater));
     ImGui::Text("saved %llu B", static_cast<unsigned long long>(memory.aliasSavings));
@@ -133,6 +134,7 @@ void drawPassDetails(const GraphNode& node) {
             : std::format("p{} {} \"{}\"", node.index, passKindLabel(node.passKind), node.label);
     ImGui::TextUnformatted(header.c_str());
     if (node.gpuMilliseconds) {
+        const editor_style::ScopedType type(TypeRole::MonoBody);
         ImGui::Text("GPU %.3f ms", *node.gpuMilliseconds);
     } else {
         ImGui::TextDisabled("GPU N/A (no matched timing)");
@@ -176,6 +178,7 @@ void drawGroupDetails(const GraphNodeModel& model, const GraphLayoutGroup& group
     ImGui::TextUnformatted(group.key.c_str());
     ImGui::Text("%zu passes", group.members.size());
     if (group.gpuMillisecondsSum) {
+        const editor_style::ScopedType type(TypeRole::MonoBody);
         ImGui::Text("GPU %.3f ms over %u measured", *group.gpuMillisecondsSum,
                     group.measuredMembers);
     } else {
@@ -213,6 +216,7 @@ void drawGroupDetails(const GraphNodeModel& model, const GraphLayoutGroup& group
         ImGui::TextUnformatted(node.label.c_str());
         ImGui::TableNextColumn();
         if (node.gpuMilliseconds) {
+            const editor_style::ScopedType type(TypeRole::MonoBody);
             ImGui::Text("%.3f", *node.gpuMilliseconds);
         } else {
             ImGui::TextDisabled("--");

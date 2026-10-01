@@ -85,7 +85,8 @@ void workspaceSettingsWriteAll(ImGuiContext*, ImGuiSettingsHandler* handler,
     const WorkspaceSettings& settings = workspaceSettingsOf(handler);
     outBuffer->appendf("[%s][%s]\n", kWorkspaceSettingsType, kWorkspaceSettingsName);
     outBuffer->append(writeWorkspaceSettings(kWorkspaceSchemaVersion, settings.visibility,
-                                             settings.uiScalePercent)
+                                             settings.uiScalePercent, settings.appearance.persisted,
+                                             settings.density)
                           .c_str());
     outBuffer->append("\n");
 }
@@ -209,6 +210,28 @@ void EditorShell::buildDefaultLayout(uint32_t dockspaceId) {
 }
 
 //======================================================================================================================
+void EditorShell::setAppearance(Appearance appearance) {
+    m_workspace.appearance.choose(appearance);
+    ImGui::MarkIniSettingsDirty();
+}
+
+//======================================================================================================================
+void EditorShell::onSystemThemeChanged(SystemTheme theme) {
+    m_systemTheme = theme;
+}
+
+//======================================================================================================================
+void EditorShell::primeAppearance(std::optional<Appearance> appearance) {
+    m_workspace.appearance.override = appearance;
+}
+
+//======================================================================================================================
+std::array<float, 4> EditorShell::uiClearColor() const {
+    const auto c = m_activePalette[static_cast<std::size_t>(ThemeRole::SurfaceCanvas)];
+    return {c.r, c.g, c.b, c.a};
+}
+
+//======================================================================================================================
 void EditorShell::setUiScale(uint32_t percent) {
     percent = normalizedUiScalePercent(percent);
     if (m_workspace.uiScalePercent != percent) {
@@ -219,6 +242,9 @@ void EditorShell::setUiScale(uint32_t percent) {
 
 //======================================================================================================================
 void EditorShell::updateUiScaleShortcuts() {
+#ifdef __APPLE__
+    return;
+#else
     const ImGuiIO& io = ImGui::GetIO();
     // ImGui's macOS behavior maps physical Command to its logical Ctrl modifier.
     const bool command = io.ConfigMacOSXBehaviors ? io.KeyCtrl : io.KeySuper;
@@ -230,14 +256,15 @@ void EditorShell::updateUiScaleShortcuts() {
     }
     if (ImGui::IsKeyPressed(ImGuiKey_Equal, false) ||
         ImGui::IsKeyPressed(ImGuiKey_KeypadAdd, false)) {
-        setUiScale(stepUiScalePercent(m_workspace.uiScalePercent, true));
+        runMenuCommand(MenuCommand::ZoomIn);
     } else if (ImGui::IsKeyPressed(ImGuiKey_Minus, false) ||
                ImGui::IsKeyPressed(ImGuiKey_KeypadSubtract, false)) {
-        setUiScale(stepUiScalePercent(m_workspace.uiScalePercent, false));
+        runMenuCommand(MenuCommand::ZoomOut);
     } else if (ImGui::IsKeyPressed(ImGuiKey_0, false) ||
                ImGui::IsKeyPressed(ImGuiKey_Keypad0, false)) {
-        setUiScale(kDefaultUiScalePercent);
+        runMenuCommand(MenuCommand::ResetUiScale);
     }
+#endif
 }
 
 //======================================================================================================================

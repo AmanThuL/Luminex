@@ -71,6 +71,9 @@ remove the executor plan from the published baseline.
 
 ## Writing and links
 
+- Use US English spelling in English prose, UI text, and source comments. Preserve exact external
+  names, quoted text, identifiers, paths, and data.
+
 - State the fact first, then rationale and evidence. Use present tense for current behavior and
   dated past tense for a milestone record.
 - Link to symbols, documents, specifications, or stable upstream sources. Do not cite source line

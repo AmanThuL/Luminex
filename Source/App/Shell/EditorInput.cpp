@@ -11,6 +11,7 @@
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <imgui.h>
+#include <imgui_internal.h>
 
 namespace lmx::app {
 
@@ -52,44 +53,65 @@ void EditorShell::frameSelected(const render::Renderer& renderer) {
 }
 
 //======================================================================================================================
-void EditorShell::updateEditorShortcuts(const render::Renderer& renderer) {
-    const auto& io = ImGui::GetIO();
-    if (io.AppFocusLost || io.KeyCtrl || io.KeyAlt)
+void EditorShell::consumeFrameSelection(const render::Renderer& renderer) {
+    if (!m_frameSelectionRequested)
         return;
-    const ShortcutContext context{
-        .textInput = io.WantTextInput || ImGui::IsAnyItemActive(),
-        .cameraLook = m_looking || ImGui::IsMouseDown(ImGuiMouseButton_Right),
-        .popupOpen =
-            ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel),
-        .otherSurfaceFocused = detachedSurfaceFocused(),
-        .hasSelection = selectedObjectBounds(m_session.scene(), m_selection).has_value()};
-    if (io.KeySuper) {
+    m_frameSelectionRequested = false;
+    frameSelected(renderer);
+}
+
+//======================================================================================================================
+ShortcutContext EditorShell::shortcutContext() const {
+    const auto& io = ImGui::GetIO();
+    return {.textInput = io.WantTextInput || ImGui::IsAnyItemActive(),
+            .cameraLook = m_looking || ImGui::IsMouseDown(ImGuiMouseButton_Right),
+            .popupOpen = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId |
+                                                         ImGuiPopupFlags_AnyPopupLevel),
+            .otherSurfaceFocused = detachedSurfaceFocused(),
+            .hasSelection = selectedObjectBounds(m_session.scene(), m_selection).has_value(),
+            .textFieldFocused =
+                ImGui::GetInputTextState(ImGui::GetCurrentContext()->ActiveId) != nullptr};
+}
+
+//======================================================================================================================
+void EditorShell::updateEditorShortcuts(const render::Renderer& renderer) {
+#ifdef __APPLE__
+    (void)renderer;
+    return;
+#else
+    const auto& io = ImGui::GetIO();
+    // ImGui maps physical Command to logical Ctrl under macOS keyboard behavior.
+    const bool command = io.ConfigMacOSXBehaviors ? io.KeyCtrl : io.KeySuper;
+    const bool control = io.ConfigMacOSXBehaviors ? io.KeySuper : io.KeyCtrl;
+    if (io.AppFocusLost || control || io.KeyAlt)
+        return;
+    const auto context = shortcutContext();
+    if (command) {
         if (shortcutAllowed(EditorShortcut::Document, context)) {
             if (ImGui::IsKeyPressed(ImGuiKey_S, false))
-                requestDocumentAction(io.KeyShift ? DocumentAction::SaveAs : DocumentAction::Save);
+                runMenuCommand(io.KeyShift ? MenuCommand::SaveAs : MenuCommand::Save);
             else if (ImGui::IsKeyPressed(ImGuiKey_O, false))
-                requestDocumentAction(DocumentAction::Open);
+                runMenuCommand(MenuCommand::Open);
             else if (ImGui::IsKeyPressed(ImGuiKey_Q, false))
-                requestQuit();
+                runMenuCommand(MenuCommand::Quit);
         }
         return;
     }
     if (m_documentWorkflow.step() != WorkflowStep::Idle)
         return;
     if (!m_measurement.active() && ImGui::IsKeyPressed(ImGuiKey_F, false) &&
-        shortcutAllowed(EditorShortcut::FrameSelected, context))
-        frameSelected(renderer);
+        shortcutAllowed(EditorShortcut::FrameSelected, context)) {
+        runMenuCommand(MenuCommand::FrameSelected);
+        consumeFrameSelection(renderer);
+    }
     if (!m_measurement.active() && ImGui::IsKeyPressed(ImGuiKey_Home, false) &&
         shortcutAllowed(EditorShortcut::ResetCamera, context))
-        resetCamera();
+        runMenuCommand(MenuCommand::ResetCamera);
     if (ImGui::IsKeyPressed(ImGuiKey_C, false) &&
         shortcutAllowed(EditorShortcut::Capture, context)) {
-        // An unavailable request only records its unchanged recovery explanation; forget the last
-        // posted result so the notice returns even after the user dismissed it.
-        if (!m_actions.captureAvailable())
-            m_lastCaptureNotice = {};
-        m_actions.requestCapture();
+        runMenuCommand(MenuCommand::Capture);
     }
+#endif
 }
 
 //======================================================================================================================

@@ -6,7 +6,11 @@
 #pragma once
 
 #include "App/Model/Capture/NoticeQueue.h"
+#include "App/Model/Workspace/ActivityModel.h"
 #include "App/Model/Workspace/EditorIcon.h"
+#include "App/Model/Workspace/EditorTheme.h"
+#include "App/Model/Workspace/EditorThemeTokens.h"
+#include "App/Shell/EditorFont.h"
 
 #include <imgui.h>
 
@@ -14,15 +18,67 @@
 
 namespace lmx::app::editor_style {
 
+/// Borrows atlas faces on the UI thread; call again with {} before destroying the context.
+void setEditorFonts(const EditorFonts& fonts);
+
+/// Applies a semantic face and unscaled size until destruction; never rebuilds the atlas.
+class ScopedType {
+public:
+    /// Pushes the requested role, resolving unavailable faces to ImGui's default font.
+    explicit ScopedType(TypeRole role);
+    /// Restores the previous face and size.
+    ~ScopedType();
+    ScopedType(const ScopedType&) = delete;            ///< Font stack scopes cannot be copied.
+    ScopedType& operator=(const ScopedType&) = delete; ///< Font stack scopes cannot be assigned.
+};
+
+/// Begins an editor-owned tab with Medium when selected, reserving width for either weight.
+/// Pair success with ImGui::EndTabItem.
+/// Dock tabs are drawn by ImGui and retain Regular.
+bool beginTabItem(const char* label, ImGuiTabItemFlags flags = 0);
+
+/// Copies the frame's palette; call on the UI thread before building any panels.
+void setActivePalette(const ThemePalette& palette);
+/// Returns the owned frame palette; valid until the next setActivePalette call.
+const ThemePalette& activePalette();
+/// Returns an encoded-sRGB semantic color with straight alpha.
+ImVec4 color(ThemeRole role);
+/// Packs an encoded color, multiplying its alpha by alphaScale in [0, 1].
+ImU32 colorU32(ThemeRole role, float alphaScale = 1.0f);
+
+/// Actor symbol diameter in base UI points.
+inline constexpr float kActorMarkSize = 8.0f;
+/// Draws a filled operator dot, system ring or software diamond in the actor's semantic role.
+/// size is a positive diameter in base UI points; this UI-thread item borrows no state.
+void actorMark(Actor actor, float size = kActorMarkSize);
+/// Draws the provenance symbol with a source tooltip; authored values emit no item.
+/// Session-only marks underline the preceding item's label and retain its source text unchanged.
+/// overlay places the symbol inside the preceding row without changing its hit target or layout;
+/// the row consumer supplies a combined source/status tooltip in that mode.
+void provenanceMark(const ProvenanceMark& mark, bool overlay = false);
+/// Full or contracted strip width in scaled UI points, including its optional Stop button.
+float activityStripWidth(const Activity& activity, bool showVerb = true);
+/// Draws one nonwrapping activity, with a 2 pt progress bar; true requests the existing Stop path.
+/// showVerb contracts only the verb. The actor and stoppable action always remain visible.
+bool activityStrip(const Activity& activity, bool showVerb = true);
+/// Sets owned provenance for the next field label only; consumed by field or checkbox.
+void setNextFieldProvenance(std::optional<ProvenanceMark> mark);
+/// Draws and clears the pending field mark beside the preceding label, if any.
+void consumeFieldProvenance();
+/// Space reserved beside a field label for its pending mark, including the gap.
+float fieldProvenanceWidth();
+
 /// Minimum property-grid width in base UI points before labels stack above values.
 inline constexpr float kPropertyGridMinWidth = 260.0f;
 
-/// Selects glyphs or readable text labels for all shared icon controls.
-void setIconFontAvailable(bool available);
 /// Width of an icon button at the current font and scale, including its labelled fallback.
 float iconButtonWidth(EditorIcon icon);
 /// Draws a square glyph button, or a label-sized fallback, with delayed help when disabled too.
 bool iconButton(const char* id, EditorIcon icon, bool enabled, const char* tooltip);
+/// Draws an accent-filled primary action in the strong body face; true when activated.
+bool primaryButton(const char* label);
+/// Draws a neutral topic header; does not use the selected-row background.
+bool collapsingHeader(const char* label, ImGuiTreeNodeFlags flags = 0);
 /// Begins a panel's grouped action row; place following controls with nextInRow or SameLine.
 void beginHeaderRow();
 /// Ends the current panel header group.
@@ -49,13 +105,6 @@ inline constexpr float kSpaceMedium = 8.0f;
 inline constexpr float kSpaceLarge = 12.0f;
 /// Control row target in logical points.
 inline constexpr float kControlHeight = 24.0f;
-/// Selection and active-mode text color in the encoded UI domain.
-inline const ImVec4 kAccent{0.40f, 0.72f, 0.95f, 1.0f};
-/// Warning text color; always accompanied by an explanation.
-inline const ImVec4 kWarning{1.0f, 0.76f, 0.38f, 1.0f};
-/// Secondary readable text color.
-inline const ImVec4 kMuted{0.65f, 0.69f, 0.74f, 1.0f};
-
 /// Converts a base UI measurement to the user's global editor scale (not framebuffer pixels).
 inline float scaled(float points) {
     return points * ImGui::GetStyle().FontScaleMain;
@@ -71,6 +120,8 @@ inline bool beginFields(const char* id, float twoColumnWidth = 360.0f) {
     if (wide) {
         ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthStretch, 0.43f);
         ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch, 0.57f);
+    } else {
+        ImGui::TableSetupColumn("Field", ImGuiTableColumnFlags_WidthStretch, 1.0f);
     }
     return true;
 }
@@ -79,7 +130,11 @@ inline bool beginFields(const char* id, float twoColumnWidth = 360.0f) {
 inline void field(const char* label) {
     ImGui::TableNextRow();
     ImGui::TableNextColumn();
-    ImGui::TextWrapped("%s", label);
+    const float labelWidth = ImGui::GetContentRegionAvail().x - fieldProvenanceWidth();
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + (labelWidth > 0 ? labelWidth : 1.0f));
+    ImGui::TextUnformatted(label);
+    ImGui::PopTextWrapPos();
+    consumeFieldProvenance();
     if (ImGui::TableGetColumnCount() == 1) {
         ImGui::TableNextRow();
     }
@@ -100,7 +155,8 @@ inline void readOnly(const char* label, const char* value) {
 
 /// Draws a wrapped explanation with secondary or warning text emphasis.
 inline void message(const char* text, bool warning = false) {
-    ImGui::PushStyleColor(ImGuiCol_Text, warning ? kWarning : kMuted);
+    ImGui::PushStyleColor(ImGuiCol_Text,
+                          color(warning ? ThemeRole::StatusWarning : ThemeRole::TextSecondary));
     ImGui::TextWrapped("%s", text);
     ImGui::PopStyleColor();
 }
@@ -121,7 +177,7 @@ inline bool checkbox(const char* label, const char* id, bool* value) {
     ImGui::TableNextRow();
     ImGui::TableNextColumn();
     const float labelWidth = ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() -
-                             ImGui::GetStyle().ItemInnerSpacing.x;
+                             ImGui::GetStyle().ItemInnerSpacing.x - fieldProvenanceWidth();
     ImGui::PushID(id);
     bool changed = false;
     if (ImGui::CalcTextSize(label).x <= labelWidth) {
@@ -129,36 +185,24 @@ inline bool checkbox(const char* label, const char* id, bool* value) {
     } else {
         changed = ImGui::Checkbox("##value", value);
         ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-        ImGui::TextWrapped("%s", label);
+        const float wrappedWidth = ImGui::GetContentRegionAvail().x - fieldProvenanceWidth();
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + (wrappedWidth > 0 ? wrappedWidth : 1.0f));
+        ImGui::TextUnformatted(label);
+        ImGui::PopTextWrapPos();
     }
+    consumeFieldProvenance();
     ImGui::PopID();
     return changed;
 }
 
 /// Draws explicitly labeled XYZ or RGB components with enough width for each scalar value.
-inline bool vector3(const char* label, const char* id, float* values, float speed,
-                    float minimum = 0.0f, float maximum = 0.0f, const char* format = "%.3f",
-                    ImGuiSliderFlags flags = 0, bool rgb = false) {
-    field(label);
-    const int columns = ImGui::GetContentRegionAvail().x >= scaled(300.0f) ? 3 : 1;
-    bool changed = false;
-    if (ImGui::BeginTable(id, columns, ImGuiTableFlags_SizingStretchSame)) {
-        constexpr const char* kAxes[] = {"X", "Y", "Z"};
-        constexpr const char* kChannels[] = {"R", "G", "B"};
-        for (int axis = 0; axis < 3; ++axis) {
-            ImGui::TableNextColumn();
-            ImGui::PushID(axis);
-            ImGui::TextUnformatted(rgb ? kChannels[axis] : kAxes[axis]);
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(-FLT_MIN);
-            changed |= ImGui::DragFloat("##component", values + axis, speed, minimum, maximum,
-                                        format, flags);
-            ImGui::PopID();
-        }
-        ImGui::EndTable();
-    }
-    return changed;
-}
+bool vector3(const char* label, const char* id, float* values, float speed, float minimum = 0.0f,
+             float maximum = 0.0f, const char* format = "%.3f", ImGuiSliderFlags flags = 0,
+             bool rgb = false);
+/// Draws an encoded color as labeled R, G and B components in [0, 1] followed by a swatch that
+/// opens the picker. values holds three floats, or four when alpha is set; alpha is edited in
+/// the picker. Returns whether any component changed this frame.
+bool colorRgb(const char* label, const char* id, float* values, bool alpha = false);
 
 } // namespace lmx::app::editor_style
 

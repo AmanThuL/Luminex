@@ -65,17 +65,16 @@ normal maps; Luminex's lighting, camera and rendering further change derived ima
 
 Archive record: <https://casual-effects.com/data>.
 
-## Inter
+## Geist
 
-- Source: [Inter 4.1](https://github.com/rsms/inter/tree/e3a3d4c57d5ecc01453a575621882a384c1995a3)
-- Author: Rasmus Andersson and contributors
-- File: unmodified `docs/font-files/InterVariable.ttf`, using default Regular outlines
-- License: SIL Open Font License 1.1, retained verbatim alongside the font
+- Source: [Geist 1.7.2](https://github.com/vercel/geist-font/releases/tag/v1.7.2)
+- Files: unmodified static `Geist-Regular.ttf`, `Geist-Medium.ttf` and `GeistMono-Regular.ttf`
+- License: SIL Open Font License 1.1, retained verbatim in `OFL.txt` alongside the fonts
 
-`xmake setup` verifies the pinned font and license hashes. Building App copies the font,
-`LICENSE.txt` and `SOURCE.txt` to its `Fonts/` directory; keep them together when distributing App.
-The editor sets digit advances at runtime without modifying the font file. Gallery screenshots
-show the typeface in use; the font itself is not relicensed under Apache-2.0.
+`xmake setup` verifies the release archive and each face and license against pinned SHA-256
+hashes. Building App copies the faces, `OFL.txt` and `SOURCE.txt` into its `Fonts` directory.
+Sans digits use a runtime 0.6 em advance; Mono keeps its native advances. Screenshots show the
+fonts in use; the font files retain their own license.
 
 ## Codicons
 

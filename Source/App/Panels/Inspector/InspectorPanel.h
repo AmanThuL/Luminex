@@ -47,16 +47,17 @@ struct InspectorPanelContext {
     /// applyDynamicResolution() is what advances it, once per buildUI.
     const DynamicResolutionState& dynamicResolutionState;
     const rojoRHI::TemporalScalerSupport&
-        temporalSupport;                  ///< Fixed device capability and display name.
-    uint32_t viewportWidth = 0;           ///< Measured image backing width in pixels.
-    uint32_t viewportHeight = 0;          ///< Measured image backing height in pixels.
-    bool viewportVisible = false;         ///< Whether the image was measured this frame.
+        temporalSupport;          ///< Fixed device capability and display name.
+    uint32_t viewportWidth = 0;   ///< Measured image backing width in pixels.
+    uint32_t viewportHeight = 0;  ///< Measured image backing height in pixels.
+    bool viewportVisible = false; ///< Whether the image was measured this frame.
+    bool documentDirty = false;   ///< Canonical active document differs from its loaded/saved pair.
     bool selectionHiddenByFilter = false; ///< Selected subject remains valid but search hides it.
     const VisibilityDisplay* visibilityDisplay = nullptr; ///< Last rendered object identity map.
     std::string* sceneFilter = nullptr; ///< Borrowed Scene search text for the Clear filter action.
     std::function<void()> openPerformance; ///< Opens and focuses detailed performance readings.
-    const LightingDisplay* lightingDisplay =
-        nullptr; ///< Coherent lighting readings and latest warnings.
+    /// Coherent lighting readings and latest warnings.
+    const LightingDisplay* lightingDisplay = nullptr;
 };
 
 /// Draws the Inspector panel over exactly one subject (spec section 7): its kind and display name,

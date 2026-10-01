@@ -25,9 +25,13 @@
 #include "App/Model/Scene/SceneLoadState.h"
 #include "App/Model/Scene/SceneSession.h"
 #include "App/Model/Scene/SceneTreeState.h"
+#include "App/Model/Workspace/ActivityModel.h"
+#include "App/Model/Workspace/MenuModel.h"
 #include "App/Model/Workspace/WorkspaceModel.h"
+#include "App/Panels/Gallery/StyleGalleryPanel.h"
 #include "App/Panels/Graph/RenderGraphPanel.h"
 #include "App/Panels/Performance/PerformancePanel.h"
+#include "App/Shell/NativeMenu.h"
 #include "Engine/View/Camera.h"
 #include "Render/Passes/SelectionOutline/SelectionOutline.h"
 #include "Render/Passes/Temporal/ResolutionController.h"
@@ -62,8 +66,10 @@ struct WorkspaceSettings {
     std::string sectionText;
     /// The live panel visibility this shell draws from and persists.
     WorkspaceVisibility visibility;
-    /// User-selected UI density, persisted independently of dock topology.
+    /// User-selected UI scale, persisted independently of dock topology.
     uint32_t uiScalePercent = kDefaultUiScalePercent;
+    AppearanceState appearance;             ///< Persisted preference and optional session override.
+    Density density = Density::Comfortable; ///< Persisted spacing preference.
 };
 
 /// The editor shell: the Dear ImGui context, the dockspace and its four docked panels, the detached
@@ -111,6 +117,17 @@ public:
     /// Applies queued font/control scaling before backend and ImGui NewFrame calls.
     /// Uses the unscaled base style so repeated zoom/reset operations cannot accumulate drift.
     void prepareUIFrame();
+
+    /// Saves a menu appearance choice, clearing a session override; applies between frames.
+    void setAppearance(Appearance appearance);
+    /// Updates the observed system theme; Auto resolves it on the next frame.
+    void onSystemThemeChanged(SystemTheme theme);
+    /// Seeds a session-only appearance override before the first UI frame.
+    void primeAppearance(std::optional<Appearance> appearance);
+    /// Returns the current preference, including a session override, for native window themes.
+    Appearance effectiveAppearance() const { return m_workspace.appearance.effective(); }
+    /// Returns the current UI canvas clear in encoded SDR sRGB, with straight alpha.
+    std::array<float, 4> uiClearColor() const;
 
     /// Builds the whole UI for this frame and applies camera input. Between ImGui::NewFrame() and
     /// ImGui::Render(). Applies a scene request from the preceding presented frame before drawing:
@@ -217,12 +234,23 @@ public:
     /// still drawing into.
     EditorActions& actions() { return m_actions; }
 
+    /// Executes one model-produced command on the UI thread. Callers enforce menu availability
+    /// or shortcut policy; capture shortcuts may request unavailable recovery feedback.
+    /// Frame Selected queues an intent consumed in buildUI with that frame's renderer and
+    /// selection.
+    void runMenuCommand(MenuCommand command, uint32_t argument = 0);
+
     /// Routes menu, OS Quit and main-window close through the same unsaved-changes workflow.
     /// An outstanding native dialog must answer before this can publish a quit action.
     void requestQuit();
     /// Consumes ready document work and native responses before drawable acquisition, even when
     /// no frame can render. Dirty confirmation remains pending until buildUI can present it.
     void pumpDocuments();
+    /// Publishes native menu state before SDL polls AppKit events; a no-op outside macOS.
+    void updateNativeMenu(const render::Renderer& renderer, const rojoRHI::Device& device);
+    /// Drains native actions in order and consumes framing with the supplied renderer.
+    /// afterPanels resolves keyboard intents using this frame's widget ownership.
+    void consumeNativeMenuCommands(const render::Renderer& renderer, bool afterPanels = false);
 
     /// The active scene's display name, for capture tooling. Empty until a scene is loaded.
     std::string_view activeSceneName() const {
@@ -248,9 +276,12 @@ private:
     /// falls back to Native TAA without device support or after the scaler's creation failed.
     render::ReconstructionMode effectiveReconstruction(const render::Renderer& renderer,
                                                        const rojoRHI::Device& device) const;
+    MenuContext menuContext(const render::Renderer& renderer, const rojoRHI::Device& device);
+    void consumeFrameSelection(const render::Renderer& renderer);
     void resetCamera();
     void frameSelected(const render::Renderer& renderer);
     void updateEditorShortcuts(const render::Renderer& renderer);
+    ShortcutContext shortcutContext() const;
     void postCaptureNotice();
     void buildPlaybackTransport();
     void stopPlayback();
@@ -289,6 +320,9 @@ private:
     void exportMeasurement();
 
     SDL_Window* m_window = nullptr;
+#ifdef __APPLE__
+    std::unique_ptr<NativeMenuBar> m_nativeMenu;
+#endif
     scenes::SceneLibrary& m_library;
     scenes::SceneId m_activeSceneId = scenes::defaultSceneId();
     // Borrows the scene owned by m_library and holds its camera. Active after create succeeds.
@@ -317,6 +351,7 @@ private:
     std::vector<engine::DrawItem> m_drawItems;
     std::unique_ptr<render::SelectionOutline> m_selectionOutline;
     bool m_showSelectionOutline = true;
+    bool m_frameSelectionRequested = false;
     bool m_viewportUsable = false;
     float m_viewportBackingScale = 1.0f;
     // Renderer configuration survives scene switches; authored look values belong to the scene.
@@ -351,6 +386,7 @@ private:
     // from one buildUI() to the next (Source/App/Model/Rendering/Temporal/DynamicResolution.h).
     render::ResolutionController m_resolutionController;
     DynamicResolutionState m_dynamicResolutionState;
+    std::optional<ScaleChange> m_lastControllerScaleChange;
 
     // Viewport panel size in *pixels*. ImGui works in points; the scene target has to be sized in
     // the backing store's units or the image is upscaled on a Retina display, exactly as an
@@ -376,12 +412,19 @@ private:
     WorkspaceSettings m_workspace;
     std::unique_ptr<ImGuiStyle> m_baseUiStyle;
     uint32_t m_appliedUiScalePercent = 0;
+    Density m_appliedDensity = Density::Comfortable;
+    SystemTheme m_systemTheme = SystemTheme::Unknown;
+    std::optional<ThemeKind> m_appliedTheme;
+    ThemeTransition m_themeTransition;
+    ThemePalette m_activePalette = kDarkPalette;
+    bool m_themeTransitionPending = false;
     // Set at create() when the ini named no matching workspace schema, and again when a layout
     // reset is consumed; cleared by the frame that lays out the dockspace. Rebuilding the default
     // layout on a run whose schema did match would throw away the re-docking the ini exists to
     // persist.
     bool m_buildDefaultLayout = false;
     PerformancePanelState m_performancePanel;
+    StyleGalleryPanelState m_styleGallery;
     // Why the pending build was scheduled, for the one line logged when it actually happens.
     std::string_view m_layoutBuildReason;
     // Raised by the main menu and by the keyboard shortcuts, consumed by whoever owns the

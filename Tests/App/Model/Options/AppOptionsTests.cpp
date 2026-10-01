@@ -119,7 +119,7 @@ TEST_CASE("app options reject unknown arguments", "[app][options]") {
             "unknown argument '--unknown'; usage: App [--screenshot <out.png|out.bmp>] [--scene "
             "<sponza|material-lab|temporal-lab|san-miguel|visibility-lab|"
             "light-lab|path>"
-            "] [--windowed] "
+            "] [--windowed] [--appearance <auto|light|dark>] "
             "[--frames <N>] [--temporal <off|raw|taa|metalfx>] "
             "[--temporal-view <off|motion|reprojection|reprojected|rejection|weight|age>] "
             "[--render-scale <0.5..1.0>] [--capture-sequence <directory> --warmup <N> "
@@ -704,4 +704,41 @@ TEST_CASE("--scene accepts a document path and rig override without a catalog gr
     REQUIRE(result);
     REQUIRE(scenes::sceneIdString(result->initialScene) == "/tmp/custom.scene.gltf");
     REQUIRE_FALSE(result->initialScene.isCatalog());
+}
+
+//======================================================================================================================
+TEST_CASE("appearance selects an optional windowed editor preference", "[app][options][ux4]") {
+    REQUIRE_FALSE(parseAppOptions({})->appearance.has_value());
+    for (const auto& [name, appearance] :
+         std::array{std::pair{"auto", Appearance::Auto}, std::pair{"light", Appearance::Light},
+                    std::pair{"dark", Appearance::Dark}}) {
+        const std::array<std::string_view, 2> arguments{"--appearance", name};
+        const auto result = parseAppOptions(arguments);
+        REQUIRE(result);
+        REQUIRE(result->mode == RunMode::Windowed);
+        REQUIRE(result->appearance == appearance);
+    }
+    for (const auto& args :
+         std::vector<std::vector<std::string_view>>{{"--appearance"},
+                                                    {"--appearance", ""},
+                                                    {"--appearance", "Light"},
+                                                    {"--appearance", "invalid"}}) {
+        REQUIRE_FALSE(parseAppOptions(args));
+    }
+    const std::array<std::string_view, 5> repeated{"--appearance", "dark", "--windowed",
+                                                   "--appearance", "light"};
+    REQUIRE(parseAppOptions(repeated)->appearance == Appearance::Light);
+}
+
+//======================================================================================================================
+TEST_CASE("appearance rejects offscreen modes naming the windowed editor", "[app][options][ux4]") {
+    for (const auto mode : {"--screenshot", "--capture-sequence", "--measure"}) {
+        for (const bool appearanceFirst : {false, true}) {
+            const std::array<std::string_view, 4> first{"--appearance", "light", mode, "out.png"};
+            const std::array<std::string_view, 4> last{mode, "out.png", "--appearance", "light"};
+            const auto result = parseAppOptions(appearanceFirst ? first : last);
+            REQUIRE_FALSE(result);
+            REQUIRE(result.error().message.contains("windowed editor"));
+        }
+    }
 }

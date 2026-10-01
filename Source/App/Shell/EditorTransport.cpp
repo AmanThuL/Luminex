@@ -83,6 +83,48 @@ void EditorShell::buildPlaybackTransport() {
                                          .measurementActive = m_measurement.active(),
                                          .hasCameraRail = !scene.animation.cameraTrack.empty(),
                                          .readout = readout};
+    ActivityInputs inputs{.capturePending =
+                              m_actions.captureResult().status == ActionStatus::Pending,
+                          .controller = m_lastControllerScaleChange,
+                          .now = ImGui::GetTime()};
+    if (m_measurement.active()) {
+        const auto next = m_measurement.nextFrame();
+        const bool warmup = m_measurement.state() == MeasurementState::Warmup;
+        inputs.measure = MeasureProgress{
+            m_measurement.state(),
+            warmup ? (next ? next->sequenceFrame : m_measurement.plan().warmupFrames)
+                   : static_cast<uint32_t>(m_measurement.samples().size()),
+            warmup ? m_measurement.plan().warmupFrames : m_measurement.plan().measuredFrames};
+    }
+    switch (m_documentWorkflow.step()) {
+    case WorkflowStep::Idle:
+        break;
+    case WorkflowStep::Confirm:
+        inputs.documentWork = "Awaiting document confirmation";
+        break;
+    case WorkflowStep::ChoosePath:
+        inputs.documentWork = "Choosing scene file";
+        break;
+    case WorkflowStep::Ready:
+        switch (*m_documentWorkflow.action()) {
+        case DocumentAction::Open:
+        case DocumentAction::OpenCatalog:
+            inputs.documentWork = "Loading (queued)";
+            break;
+        case DocumentAction::Save:
+        case DocumentAction::SaveAs:
+            inputs.documentWork = "Saving (queued)";
+            break;
+        case DocumentAction::Revert:
+            inputs.documentWork = "Reverting (queued)";
+            break;
+        case DocumentAction::Quit:
+            inputs.documentWork = "Closing (queued)";
+            break;
+        }
+        break;
+    }
+    const auto activity = currentActivity(inputs);
     const std::string zoomLabel = std::to_string(m_workspace.uiScalePercent) + "%##ResetUiZoom";
     const float zoomWidth = ImGui::CalcTextSize(zoomLabel.c_str(), nullptr, true).x +
                             ImGui::GetStyle().FramePadding.x * 2.0f;
@@ -91,11 +133,20 @@ void EditorShell::buildPlaybackTransport() {
     // The menu bar's cursor already sits one item spacing past the last menu, which fitMenuBar
     // adds itself as the minimum gap.
     const MenuBarWidths widths{ImGui::GetCursorPosX() - spacing,
-                               playbackToolbarButtonsWidth(context), readoutWidth, zoomWidth,
-                               spacing};
+                               playbackToolbarButtonsWidth(context),
+                               readoutWidth,
+                               zoomWidth,
+                               spacing,
+                               activity ? editor_style::activityStripWidth(*activity) : 0,
+                               activity ? editor_style::activityStripWidth(*activity, false) : 0};
     const auto fit = fitMenuBar(available, widths);
     ImGui::SetCursorPosX(fit.transportX);
     const auto action = drawPlaybackToolbar(context, fit.showReadout);
+    bool activityStop = false;
+    if (activity) {
+        ImGui::SameLine(0.0f, spacing);
+        activityStop = editor_style::activityStrip(*activity, fit.showActivityVerb);
+    }
     if (fit.showZoom) {
         ImGui::SameLine();
         ImGui::SetCursorPosX(available - zoomWidth);
@@ -104,6 +155,8 @@ void EditorShell::buildPlaybackTransport() {
         editorTooltip(
             "Current UI scale. Click to reset to 100% (Cmd+0). View > UI Scale has all sizes.");
     }
+    if (activityStop)
+        stopPlayback();
     switch (action) {
     case PlaybackToolbarAction::Play:
         endMouseLook();

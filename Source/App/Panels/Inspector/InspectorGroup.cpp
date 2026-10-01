@@ -19,16 +19,31 @@ void drawGroupSection(const InspectorPanelContext& context) {
         const auto* loaded = context.session.loadedScene();
         const char* name =
             loaded ? loaded->document.name.c_str() : context.session.scene().name.c_str();
-        drawInspectorHeader(name, "Scene", "The scene root has no editable enabled flag.", false);
+        drawInspectorHeader(
+            name, "Scene", "The scene root has no editable enabled flag.", false, nullptr,
+            loaded ? documentProvenance(context.documentDirty, loaded->path.string())
+                   : std::nullopt);
         editor_style::message(
             "Select a document group or source node to inspect its enabled state.");
+        if (loaded && editor_style::beginDiagnostics()) {
+            if (editor_style::beginPropertyGrid("documentIdentity")) {
+                valueRow("Document path", loaded->path.string());
+                valueRow("Loaded pair hash", loaded->hash);
+                editor_style::endFields();
+            }
+            editor_style::endDiagnostics();
+        }
         return;
     }
     bool enabled = state->own;
     const bool reset = drawInspectorHeader(
         state->label.c_str(), state->kind.c_str(),
         "Restore this node's loaded or saved own enabled state; child choices are retained.",
-        state->own != state->baseline, &enabled);
+        state->own != state->baseline, &enabled,
+        inspectorProvenance(context.session, context.selection, state->own != state->baseline, {},
+                            true),
+        inspectorProvenance(context.session, context.selection, state->own != state->baseline,
+                            "Enabled", true));
     if (reset) {
         if (const auto result = resetInspectorEnabled(context.session, context.selection); !result)
             editor_style::message(result.error().message.c_str(), true);
@@ -43,10 +58,15 @@ void drawGroupSection(const InspectorPanelContext& context) {
     }
     const auto current = inspectorEnabledState(context.session, context.selection);
     if (current && editor_style::beginPropertyGrid("groupFields")) {
-        valueRow("Own state", current->own ? "On" : "Off");
-        valueRow("Effective state", current->effective ? "On"
-                                    : current->own     ? "Off by ancestor"
-                                                       : "Off");
+        valueRow("Own state", current->own ? "On" : "Off",
+                 inspectorProvenance(context.session, context.selection,
+                                     current->own != current->baseline, "Own state"));
+        valueRow("Effective state",
+                 current->effective ? "On"
+                 : current->own     ? "Off by ancestor"
+                                    : "Off",
+                 inspectorProvenance(context.session, context.selection,
+                                     current->own != current->baseline, "Effective state", true));
         if (current->primitiveCount > 0)
             valueRow("Source scope",
                      std::to_string(current->primitiveCount) + " material primitives");

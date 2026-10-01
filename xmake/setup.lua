@@ -24,13 +24,19 @@ local imgui_pin    = "83f668625ad45364de71d385aeb6a5dd04bee02e"
 -- below; re-pinning requires re-verifying the patch's version gates.
 local node_editor_pin = "021aa0ea4da13fed864bafb2a92d4c5205076866"
 
--- Inter 4.1 source tree. The default TrueType outlines are Regular; no variable axes are used.
-local inter_commit = "e3a3d4c57d5ecc01453a575621882a384c1995a3"
-local inter_files = {
-    {source = "docs/font-files/InterVariable.ttf", name = "InterVariable.ttf",
-     sha256 = "4989b125924991b90d05b2d16e0e388c48f7d5bb8b30539bbf9c755278d0ccaf"},
-    {source = "LICENSE.txt", name = "LICENSE.txt",
-     sha256 = "262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a"}
+local geist_version = "1.7.2"
+local geist_url = "https://github.com/vercel/geist-font/releases/download/v" .. geist_version ..
+                  "/geist-font-v" .. geist_version .. ".zip"
+local geist_sha256 = "7fc800d2ac6b92844895196e5041aca55d814c15db70c44f79b3b83ab82b04e2"
+local geist_files = {
+    {source = "geist-font/Geist/ttf/Geist-Regular.ttf", name = "Geist-Regular.ttf",
+     sha256 = "5c8968eafb98a4c4f47033daf29e38e284a6f2a82eb017d171ab040fe7c4b615"},
+    {source = "geist-font/Geist/ttf/Geist-Medium.ttf", name = "Geist-Medium.ttf",
+     sha256 = "0090e004725f6f64b841715b4167920580f883fcf9b67fc6d744089103fec101"},
+    {source = "geist-font/GeistMono/ttf/GeistMono-Regular.ttf", name = "GeistMono-Regular.ttf",
+     sha256 = "42d8ad2e610238e64e8abfcde3037c63f7850a73928742b7ab7229d897bcb155"},
+    {source = "geist-font/OFL.txt", name = "OFL.txt",
+     sha256 = "c683bfbcc7e087f5d37a54ef628f10387c451a83ddc459b151403a164ac46c90"}
 }
 
 local codicons_version = "0.0.46-24"
@@ -115,25 +121,46 @@ task("setup")
             assert(untracked == "", format("%s contains untracked files", dir))
         end
 
-        os.mkdir("ThirdParty/Inter")
-        for _, entry in ipairs(inter_files) do
-            local dest = path.join("ThirdParty/Inter", entry.name)
-            local candidate = dest
-            if not os.isfile(dest) then
-                candidate = dest .. ".download"
-                os.execv("curl", {"-fL", "--retry", "2", "--max-time", "300", "-o", candidate,
-                    "https://raw.githubusercontent.com/rsms/inter/" .. inter_commit .. "/" .. entry.source})
-            end
-            local actual = os.iorunv("shasum", {"-a", "256", candidate}):match("^(%x+)")
-            assert(actual == entry.sha256, format("Inter %s checksum mismatch; expected %s",
-                                                 entry.name, entry.sha256))
-            if candidate ~= dest then
-                os.mv(candidate, dest)
+        local geist_dir = "ThirdParty/Geist"
+        os.mkdir(geist_dir)
+        local geist_verified = true
+        for _, entry in ipairs(geist_files) do
+            local dest = path.join(geist_dir, entry.name)
+            if os.isfile(dest) then
+                local actual = os.iorunv("shasum", {"-a", "256", dest}):match("^(%x+)")
+                assert(actual == entry.sha256, format("Geist %s checksum mismatch; expected %s",
+                                                     entry.name, entry.sha256))
+            else
+                geist_verified = false
             end
         end
-        io.writefile("ThirdParty/Inter/SOURCE.txt",
-                     "Inter 4.1 (Regular default outlines)\nhttps://github.com/rsms/inter/tree/" ..
-                     inter_commit .. "\nLicense: SIL Open Font License 1.1; see LICENSE.txt\n")
+        if not geist_verified then
+            local archive = path.join(geist_dir, "geist-font-v" .. geist_version .. ".zip.download")
+            os.execv("curl", {"-fL", "--retry", "2", "--max-time", "300", "-o", archive, geist_url})
+            local actual = os.iorunv("shasum", {"-a", "256", archive}):match("^(%x+)")
+            assert(actual == geist_sha256, format("Geist archive checksum mismatch; expected %s",
+                                                 geist_sha256))
+            local extracted = path.join(geist_dir, "extracted")
+            os.mkdir(extracted)
+            os.execv("unzip", {"-q", "-o", archive, "-d", extracted})
+            for _, entry in ipairs(geist_files) do
+                local source = path.join(extracted, entry.source)
+                local digest = os.iorunv("shasum", {"-a", "256", source}):match("^(%x+)")
+                assert(digest == entry.sha256, format("Geist %s checksum mismatch; expected %s",
+                                                     entry.name, entry.sha256))
+                os.cp(source, path.join(geist_dir, entry.name))
+            end
+            os.rm(extracted)
+            os.rm(archive)
+        end
+        local geist_source = "Geist " .. geist_version .. " (static Sans Regular/Medium and Mono Regular)\n" ..
+                             geist_url .. "\nArchive SHA-256: " .. geist_sha256 ..
+                             "\nLicense: SIL Open Font License 1.1; see OFL.txt\n"
+        if not os.isfile(path.join(geist_dir, "SOURCE.txt")) or
+           io.readfile(path.join(geist_dir, "SOURCE.txt")) ~= geist_source then
+            io.writefile(path.join(geist_dir, "SOURCE.txt"), geist_source)
+        end
+        print("Geist " .. geist_version .. " fonts and license verified")
 
         local codicons_dir = "ThirdParty/Codicons"
         os.mkdir(codicons_dir)

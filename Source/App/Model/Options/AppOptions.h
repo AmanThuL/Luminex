@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "App/Model/Workspace/EditorTheme.h"
 #include "Render/Renderer/SceneView.h"
 #include "Scenes/SceneLibrary.h"
 
@@ -57,6 +58,8 @@ struct AppOptions {
     /// The interactive window opens maximized to the display's usable bounds; `--windowed` keeps
     /// the fixed default size instead. Irrelevant, but accepted, in screenshot mode.
     bool maximized = true;
+    /// Session-only appearance override; accepted only for the windowed editor.
+    std::optional<Appearance> appearance;
     /// Screenshot: total frames before saving the last. Sequence: number of saved frames after
     /// warmup. Both advance animation at 60 Hz and follow the scene camera track, if any.
     /// At least 1; irrelevant, but accepted, in windowed mode.
@@ -65,7 +68,7 @@ struct AppOptions {
     TemporalMode temporal = TemporalMode::Taa;
     /// Initial temporal diagnostic, if any, drawn over the display transform.
     render::TemporalDebugView temporalView = render::TemporalDebugView::Off;
-    /// Initial fraction of the output extent to rasterise at, within [0.5, 1.0]. Set
+    /// Initial fraction of the output extent to rasterize at, within [0.5, 1.0]. Set
     /// by `--render-scale <value>`; conflicts with `--temporal off` like a debug view, since a
     /// scale below 1 has nothing to reconstruct without the temporal path running.
     float renderScale = 1.0f;

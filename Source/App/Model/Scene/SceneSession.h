@@ -197,6 +197,13 @@ public:
     /// Whether any surviving light under the document local-light group is effectively enabled.
     bool localLightRigEnabled() const;
 
+    /// Observes the existing session-only local-light group mask without changing authored flags.
+    /// Absent before activation, before a mask is set, or after an enabled edit clears the mask.
+    /// Equal-to-authored overrides remain present; only the group's own enabled edit clears one.
+    std::optional<bool> localLightRigOverride() const {
+        return m_scene ? m_defaults.at(m_scene).rigOverride : std::nullopt;
+    }
+
     /// Applies a session-only group mask without changing authored child flags or saved values.
     /// A document with no local-light group is a successful no-op.
     rojoRHI::Result<void> setLocalLightRig(bool enabled);
