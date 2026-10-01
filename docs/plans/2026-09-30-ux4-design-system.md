@@ -294,7 +294,7 @@ system menu-bar strip itself follows the system, a recorded limit.
   lines; README in shipped-feature terms. Commit `docs: describe the design system (UX4)`.
 
 ### Task 19: Final gates and pull request (main thread)
-- [ ] Every slice gate together on the head (Tasks 8, 12, 14, 16, 17), unverified gestures recorded;
-  `MTL_DEBUG_LAYER=1 xmake test -P . Tests/gpu`; complete validation with evidence and limits.
-  Keep ADR 0029 `Proposed`, record `In progress` and this plan; update navigation accurately.
-  Push the branch and open the pull request; do not merge or write owner acceptance.
+- [x] Combined gate run recorded [FAILED / INCOMPLETE](../milestones/ux/ux4-final-validation.md):
+  6/6 BMP, 11/15 publication matrix, Compact/resource failures, GPU PASS; native gestures UNVERIFIED.
+  This checkbox records execution only. ADR 0029 stays `Proposed`; record/plan stay `In progress`.
+  Controller review/final 17 checks precede commit and push/PR; no PR URL, acceptance, merge or closure is recorded.
