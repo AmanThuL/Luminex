@@ -19,6 +19,9 @@ using namespace lmx::app;
 
 namespace {
 
+// Marks rows this file builds in NSApp.windowsMenu, where AppKit appends rows of its own.
+constexpr NSInteger kOwnedWindowRow = 0x4C4D5857;
+
 struct QueuedCommand {
     std::pair<MenuCommand, uint32_t> command;
     ImGuiKey key = ImGuiKey_None;
@@ -216,7 +219,16 @@ std::string commandName(const std::vector<MenuItem>& items,
     auto* submenu = (LMXNativeSubmenu*)menu;
     if (submenu->kind == -1)
         return;
-    [menu removeAllItems];
+    // AppKit lists open windows, and on recent systems tiling commands, in the windows menu.
+    // Those rows are not rebuilt here, so only the rows this delegate added are replaced.
+    const bool windows = menu == NSApp.windowsMenu;
+    if (windows) {
+        for (NSInteger i = menu.numberOfItems - 1; i >= 0; --i)
+            if ([menu itemAtIndex:i].tag == kOwnedWindowRow)
+                [menu removeItemAtIndex:i];
+    } else {
+        [menu removeAllItems];
+    }
     if (submenu->kind == 1) {
         [menu addItemWithTitle:@"About Luminex"
                         action:@selector(orderFrontStandardAboutPanel:)
@@ -259,16 +271,55 @@ std::string commandName(const std::vector<MenuItem>& items,
             return;
         items = &(*items)[index].children;
     }
+    NSInteger owned = 0;
+    const auto add = [&](NSMenuItem* row) {
+        if (!windows) {
+            [menu addItem:row];
+            return;
+        }
+        row.tag = kOwnedWindowRow;
+        [menu insertItem:row atIndex:owned++];
+    };
     for (size_t i = 0; i < items->size(); ++i) {
         const auto& item = (*items)[i];
         if (item.command == MenuCommand::Quit)
             continue;
         auto path = submenu->path;
         path.push_back(i);
-        [menu addItem:[self row:item path:path]];
+        add([self row:item path:path]);
     }
-    if (menu.itemArray.lastObject.separatorItem)
-        [menu removeItemAtIndex:menu.numberOfItems - 1];
+    if (!windows) {
+        if (menu.itemArray.lastObject.separatorItem)
+            [menu removeItemAtIndex:menu.numberOfItems - 1];
+        return;
+    }
+    // Standard window commands use a nil target: the responder chain delivers them to the key
+    // window, which is the main window or a detached panel. That window also validates them.
+    NSWindow* key = NSApp.keyWindow;
+    NSArray* titles = @[
+        @"Minimize", @"Zoom",
+        key.styleMask & NSWindowStyleMaskFullScreen ? @"Exit Full Screen" : @"Enter Full Screen",
+        @"Close"
+    ];
+    NSArray* keys = @[ @"m", @"", @"f", @"w" ];
+    const SEL actions[] = {@selector(performMiniaturize:), @selector(performZoom:),
+                           @selector(toggleFullScreen:), @selector(performClose:)};
+    add(NSMenuItem.separatorItem);
+    for (NSUInteger i = 0; i < titles.count; ++i) {
+        NSMenuItem* row = [[NSMenuItem alloc] initWithTitle:titles[i]
+                                                     action:actions[i]
+                                              keyEquivalent:keys[i]];
+        if (actions[i] == @selector(toggleFullScreen:))
+            row.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagControl;
+        id responder = [NSApp targetForAction:actions[i] to:nil from:row];
+        row.enabled =
+            responder && (![responder conformsToProtocol:@protocol(NSMenuItemValidation)] ||
+                          [(id<NSMenuItemValidation>)responder validateMenuItem:row]);
+        row.toolTip = row.enabled ? nil : @"No window that supports this command has focus";
+        add(row);
+    }
+    if (menu.numberOfItems > owned && ![menu itemAtIndex:owned].separatorItem)
+        add(NSMenuItem.separatorItem);
 }
 
 - (void)choose:(NSMenuItem*)sender {
@@ -320,6 +371,24 @@ std::string commandName(const std::vector<MenuItem>& items,
         *target = NSApp;
         *action = modifiers & NSEventModifierFlagOption ? @selector(hideOtherApplications:)
                                                         : @selector(hide:);
+        return YES;
+    }
+    // Window commands are not text-editing chords: they stay live in fields, popups and
+    // detached windows, and reach the key window through the responder chain.
+    NSString* key = event.charactersIgnoringModifiers.lowercaseString;
+    const SEL windowAction =
+        modifiers == NSEventModifierFlagCommand && [key isEqual:@"w"] ? @selector(performClose:)
+        : modifiers == NSEventModifierFlagCommand && [key isEqual:@"m"]
+            ? @selector(performMiniaturize:)
+        : modifiers == (NSEventModifierFlagCommand | NSEventModifierFlagControl) &&
+                [key isEqual:@"f"]
+            ? @selector(toggleFullScreen:)
+            : nil;
+    if (windowAction) {
+        if (lastShortcutEvent == event)
+            return NO;
+        lastShortcutEvent = event;
+        *action = windowAction;
         return YES;
     }
     const auto visit = [&](auto&& self, const std::vector<MenuItem>& items) -> const MenuItem* {
@@ -439,7 +508,7 @@ std::unique_ptr<NativeMenuBar> NativeMenuBar::install() {
         [state.menu addItemWithTitle:names[i] action:nil keyEquivalent:@""].submenu = submenu;
     }
     NSApp.mainMenu = state.menu;
-    NSApp.windowsMenu = nil;
+    NSApp.windowsMenu = [state.menu itemWithTitle:@"Window"].submenu;
     NSApp.helpMenu = state.menu.itemArray.lastObject.submenu;
     return owner;
 }
