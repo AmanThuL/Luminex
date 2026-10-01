@@ -14,7 +14,7 @@ that decomposes the accepted boundary without expanding it.
 | [Rendering Foundations](roadmap/rendering-foundations.md) | M4–M6.5 and interface gate B | Establish image formation, execution, inspection, temporal and display contracts; retain acceptance limits |
 | [GPU-Driven Hybrid Rendering](roadmap/gpu-driven-hybrid-rendering.md) | M7–M11 and independent research | Scale scene data, visibility and lighting, then evaluate geometry, transport, GI and residency |
 | [Codebase Refactoring](roadmap/codebase-module-boundaries.md) | R1 between M6.5 and gate B; [R2–R4](roadmap/codebase-restructuring.md) between M7 and UX2 | Restructure modules and large units between rendering milestones without changing output; move the RHI to its own repository |
-| [Editor Experience](roadmap/editor-experience.md) | UX1 after gate B and before M7.1; UX2–UX4 after R4 and before N1; UX5 proposed around N1 | Make scene inspection, controls and diagnostic data understandable and reliable for a human operator; give each control one home; make scenes saved documents; give the editor one design system with light, dark and system-following themes; let agents' work reach the operator as reviewable proposals |
+| [Editor Experience](roadmap/editor-experience.md) | UX1 after gate B and before M7.1; UX2–UX5 after R4 and before N1 | Make scene inspection, controls and diagnostic data understandable and reliable for a human operator; give each control one home; make scenes saved documents; give the editor one design system with light, dark and system-following themes; let agents' work reach the operator as reviewable proposals |
 | [Neural and Learned Rendering](roadmap/neural-rendering.md) | N1–N4 interleaved after M7 | Evaluate learned techniques as bounded experimental features with oracles, fallbacks and hardware gates |
 
 The dividing point is the change from a trustworthy moving image and execution substrate to
@@ -48,11 +48,12 @@ the row says otherwise.
 | 13 | [UX2.1–UX2.4](roadmap/editor-experience.md#ux2--editor-surfaces) editor surfaces | IV | Implemented and owner-accepted 2026-09-27; plan closed, integrated by squash merge; [record](milestones/ux/ux2.md), [validation and limits](milestones/ux/ux2-validation.md) | R4 |
 | 14 | [UX3.1–UX3.5](roadmap/editor-experience.md#ux3--scene-documents-and-hierarchy) scene documents and hierarchy | IV | Implemented 2026-09-29; plan closed; owner authorized integration by squash merge; image gates failed as measured (normalized rig), ADR 0028 proposed; [record](milestones/ux/ux3.md), [final validation and retained limits](milestones/ux/ux3-final-validation.md) | UX2 |
 | 15 | [UX4.1–UX4.5](roadmap/editor-experience.md#ux4--design-system-and-themes) design system and themes | IV | Implemented and owner-accepted for integration 2026-10-01; plan closed, integrated by squash merge; image matrix and Compact cost gates failed as measured, native gate incomplete, ADR 0029 proposed; [record](milestones/ux/ux4.md), [validation and retained limits](milestones/ux/ux4-review-validation.md#owner-acceptance-and-integration) | UX3 |
-| 16 | [N1.1–N1.4](roadmap/neural-rendering.md#n1--in-shader-inference-lab) in-shader inference lab | V | Inactive | UX4; technically gate B |
-| 17 | [M9](roadmap/gpu-driven-hybrid-rendering.md#m9--geometry-lod-and-surface-path-experiments) geometry LOD and surface paths | II | Inactive | M7 and N1 |
-| 18 | [M8.1–M8.5](roadmap/gpu-driven-hybrid-rendering.md#m8--shadows-indirect-lighting-floor-and-environment) shadows, indirect floor and environment | II | Inactive | M9; technically M7 |
-| 19 | [M10](roadmap/gpu-driven-hybrid-rendering.md#m10--hybrid-scene-query-and-reference-transport) scene query, transport and reflections | II | Inactive | M8; query/reference work needs only M7 |
-| 20 | [M11](roadmap/gpu-driven-hybrid-rendering.md#m11--dynamic-gi-and-content-residency) dynamic GI and residency | II | Inactive | M10 for GI; M7 and M9 for residency |
+| 16 | [UX5.1–UX5.3](roadmap/editor-experience.md#ux5--agent-session) agent session | IV | Proposed 2026-10-01; [record](milestones/ux/ux5.md) | UX4 |
+| 17 | [N1.1–N1.4](roadmap/neural-rendering.md#n1--in-shader-inference-lab) in-shader inference lab | V | Inactive | UX5; technically gate B |
+| 18 | [M9](roadmap/gpu-driven-hybrid-rendering.md#m9--geometry-lod-and-surface-path-experiments) geometry LOD and surface paths | II | Inactive | M7 and N1 |
+| 19 | [M8.1–M8.5](roadmap/gpu-driven-hybrid-rendering.md#m8--shadows-indirect-lighting-floor-and-environment) shadows, indirect floor and environment | II | Inactive | M9; technically M7 |
+| 20 | [M10](roadmap/gpu-driven-hybrid-rendering.md#m10--hybrid-scene-query-and-reference-transport) scene query, transport and reflections | II | Inactive | M8; query/reference work needs only M7 |
+| 21 | [M11](roadmap/gpu-driven-hybrid-rendering.md#m11--dynamic-gi-and-content-residency) dynamic GI and residency | II | Inactive | M10 for GI; M7 and M9 for residency |
 
 Rows that interleave when their own prerequisites exist, without a fixed step:
 
@@ -66,8 +67,6 @@ Rows that interleave when their own prerequisites exist, without a fixed step:
   behind its own gates; a D3D12 backend only under [ADR 0007](decisions/0007-d3d12-backend-target.md).
 - [Offline pipeline editing](roadmap/editor-experience.md#candidate--offline-pipeline-editing) is
   an unscheduled candidate awaiting the owner's discussion; it has no step.
-- [UX5](roadmap/editor-experience.md#ux5--agent-session) agent session is proposed: UX5.1 directly
-  after UX4, UX5.2–UX5.3 after N1; it takes a step once the owner accepts the placement.
 
 The order puts visible cluster geometry and the learned-rendering entry before the shadow and
 composition work while preserving every M-slice gate. On 2026-09-19 the owner placed R2, R3, R4
@@ -77,7 +76,8 @@ before new rendering work starts. On 2026-09-25 the owner inserted editor surfac
 renumbered scene documents to UX3; records and ADRs dated earlier call scene documents UX2. On
 2026-09-29 the owner asked for a design-system and theme overhaul as UX4 before N1; the owner accepted its
 record on 2026-09-30 after adding native macOS chrome to it, and proposed UX5, an agent session,
-in three slices. UX4 was owner-accepted for integration on 2026-10-01; N1 is next in the order.
+in three slices. UX4 was owner-accepted for integration on 2026-10-01; the same day the owner placed
+all three UX5 slices before N1, so UX5 is next in the order.
 Identifiers are names, not ordinals:
 M8 and M9 keep theirs although M9 delivers first, because frozen research and accepted records
 already use them; the Step column carries the order.
