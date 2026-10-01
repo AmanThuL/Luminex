@@ -5,7 +5,7 @@
 Part IV of the [rendering roadmap](../roadmap.md) owns editor usability and the presentation of
 rendering evidence: UX1 before M7.1, then [UX2](#ux2--editor-surfaces),
 [UX3](#ux3--scene-documents-and-hierarchy) and [UX4](#ux4--design-system-and-themes) between R4
-and N1, with [UX5](#ux5--agent-session) proposed around it. The [2026-09-14 audit](../research/2026-09-14-editor-uiux-audit.md) found that
+and N1, ending with [UX5](#ux5--agent-session). The [2026-09-14 audit](../research/2026-09-14-editor-uiux-audit.md) found that
 the shipped controls expose substantial capability, but clipped data, ambiguous states and an
 unstable graph make that capability difficult to inspect. This part owns the accepted boundary; the milestone record distinguishes implementation
 from completed acceptance.
@@ -241,12 +241,11 @@ icon set; everything UX1–UX3 already defer.
 
 ## UX5 — Agent session
 
-**Placement (proposed):** UX5.1 directly after UX4 and before N1, because it is small and gives
-UX4's reserved vocabulary real consumers; UX5.2 and UX5.3 after N1, whose studies would be the
-first work an agent runs from inside the editor. Proposed with the owner on 2026-09-30; no plan
-opens until the owner accepts the placement. Agents keep working as they do today, through
-documents, the CLI and pull requests; UX5 makes that work visible and reviewable in the editor
-without an agent runtime inside it.
+**Placement:** [UX4](#ux4--design-system-and-themes) → UX5 → N1. On 2026-10-01 the owner placed
+all three slices before N1, so N1's studies can be the first work run through the bridge; the
+[record](../milestones/ux/ux5.md) is proposed and no plan opens until the owner accepts it.
+Agents keep working as they do today, through documents, the CLI and pull requests; UX5 makes
+that work visible and reviewable in the editor without an agent runtime inside it.
 
 **Outcome:** an agent's change to a scene reaches the operator as a proposal with an actor, a
 summary and evidence links, reviewed before it applies; a live session issues the same commands
@@ -258,8 +257,8 @@ naming the actor, summary and evidence paths appears as a proposal with Show (th
 fields), Accept (reload) and Reject, through UX4's proposal card, attention ring and Console actor
 row; a local command bridge (UX5.2): a socket carrying the CLI's commands and editor queries with
 actor attribution, tiers (read-only, propose, apply with approval), plan-level approval for
-multi-step jobs and the activity strip; session log and evidence export (UX5.3): the Console's
-actor filter and an exportable session record joining actions to their evidence.
+multi-step jobs, headless capture runs and the activity strip; session log and evidence export
+(UX5.3): the Console's actor filter and an exportable session record joining actions to evidence.
 
 **Exit gate:** a proposal from a modified document lists exactly the fields the writer reports as
 changed, Accept yields the same scene as opening the file and Reject leaves the in-memory scene
@@ -267,7 +266,7 @@ untouched; the bridge refuses any command outside its tier and records every act
 actor; the exported log reproduces the Console view; scene-only screenshots stay byte-identical.
 
 **Defer:** an in-process agent, autonomous apply without approval, Undo/Redo (deferred since UX1),
-multi-user sessions.
+multi-user sessions, a live viewport readback, MCP or network transports.
 
 ## Candidate — offline pipeline editing
 
