@@ -128,29 +128,39 @@ void fixture(const char* text, ThemeRole fill, ThemeRole ink, float radius = kSh
 }
 
 //======================================================================================================================
-void proposedValue() {
+void proposedValue(const char* field, const char* oldText, const char* newText) {
     const ScopedType type(TypeRole::Body);
     const auto start = ImGui::GetCursorScreenPos();
     const float width = ImGui::GetContentRegionAvail().x;
     const float padding = scaled(8.0f);
-    const auto oldSize = ImGui::CalcTextSize("12.000");
-    const auto newSize = ImGui::CalcTextSize("9.500");
-    const bool stacked = width < oldSize.x + newSize.x + padding * 4;
-    const float height = ImGui::GetFontSize() * (stacked ? 2.0f : 1.0f) + padding * 2;
+    const auto fieldSize = field ? ImGui::CalcTextSize(field) : ImVec2{};
+    const auto oldSize = ImGui::CalcTextSize(oldText);
+    const auto newSize = ImGui::CalcTextSize(newText);
+    const float valuesWidth = oldSize.x + newSize.x + padding * 4;
+    const bool stacked = width < valuesWidth;
+    // A row inside a labeled property field passes no name; a card row names its own field.
+    const bool fieldInline = !field || width >= fieldSize.x + padding + valuesWidth;
+    const float lines = (stacked ? 2.0f : 1.0f) + (fieldInline ? 0.0f : 1.0f);
+    const float height = ImGui::GetFontSize() * lines + padding * 2;
     const ImVec2 end{start.x + width, start.y + height};
     auto* draw = ImGui::GetWindowDrawList();
     draw->AddRectFilled(start, end, colorU32(ThemeRole::SurfaceSunken), scaled(kShape.control));
     draw->AddRect(start, end, colorU32(ThemeRole::AccentAgent), scaled(kShape.control), 0,
                   scaled(kShape.border));
     draw->PushClipRect(start, end, true);
-    const ImVec2 oldPosition{start.x + padding, start.y + padding};
-    draw->AddText(oldPosition, colorU32(ThemeRole::TextDisabled), "12.000");
+    const ImVec2 fieldPosition{start.x + padding, start.y + padding};
+    if (field)
+        draw->AddText(fieldPosition, colorU32(ThemeRole::TextSecondary), field);
+    const ImVec2 oldPosition{field && fieldInline ? fieldPosition.x + fieldSize.x + padding
+                                                  : fieldPosition.x,
+                             fieldInline ? fieldPosition.y : fieldPosition.y + fieldSize.y};
+    draw->AddText(oldPosition, colorU32(ThemeRole::TextDisabled), oldText);
     draw->AddLine({oldPosition.x, oldPosition.y + oldSize.y * 0.5f},
                   {oldPosition.x + oldSize.x, oldPosition.y + oldSize.y * 0.5f},
                   colorU32(ThemeRole::TextDisabled), scaled(kShape.border));
     const ImVec2 newPosition{stacked ? oldPosition.x : oldPosition.x + oldSize.x + padding,
                              stacked ? oldPosition.y + oldSize.y : oldPosition.y};
-    draw->AddText(newPosition, colorU32(ThemeRole::AccentAgentText), "9.500");
+    draw->AddText(newPosition, colorU32(ThemeRole::AccentAgentText), newText);
     mark({end.x - padding, end.y - padding - newSize.y * 0.5f}, "Proposed");
     draw->PopClipRect();
     ImGui::Dummy({width, height});
@@ -287,7 +297,8 @@ void proposalSpecimen() {
             ImGui::SameLine();
             ImGui::TextColored(color(ThemeRole::TextSecondary), "%s",
                                applied ? "2 changes · applied" : "2 changes · proposed");
-            proposedValue();
+            proposedValue("Intensity", "12.000", "9.500");
+            proposedValue("Range", "6.000", "8.000");
             ImGui::TextLink("Evidence: comparison report (fixture)");
             editorTooltip("Fixture-only evidence reference; no external record is opened.");
             if (applied) {
@@ -422,7 +433,7 @@ void drawComponent(GalleryComponent component) {
             stateLabel(state);
             const std::string_view kind(state);
             if (kind == "Proposed") {
-                proposedValue();
+                proposedValue(nullptr, "12.000", "9.500");
             } else if (kind == "SystemApplied") {
                 fixture("X 12.000 · set by dynamic resolution", ThemeRole::SurfaceSunken,
                         ThemeRole::TextPrimary, kShape.control, ThemeRole::BorderSubtle, 0, kind);
@@ -514,9 +525,18 @@ void drawComponent(GalleryComponent component) {
         for (const char* state : {"Default", "Hover", "Checked", "Disabled"}) {
             stateLabel(state);
             const std::string_view kind(state);
-            fixture(kind == "Checked" ? "✓ Auto (system)" : "Frame Selected    F",
+            fixture(kind == "Checked" ? "Auto (system)" : "Frame Selected    F",
                     kind == "Hover" ? ThemeRole::SurfaceHover : ThemeRole::SurfacePanel,
                     kind == "Disabled" ? ThemeRole::TextDisabled : ThemeRole::TextPrimary);
+            if (kind == "Checked") {
+                // ImGui::MenuItem's own mark geometry, in its trailing mark column.
+                const float size = ImGui::GetFontSize();
+                ImGui::RenderCheckMark(
+                    ImGui::GetWindowDrawList(),
+                    {ImGui::GetItemRectMax().x - scaled(8.0f) - size * 0.866f,
+                     ImGui::GetItemRectMin().y + ImGui::GetStyle().FramePadding.y + size * 0.067f},
+                    colorU32(ThemeRole::TextPrimary), size * 0.866f);
+            }
             if (kind == "Disabled")
                 editorTooltip("No subject with reliable bounds is selected.");
         }
@@ -551,7 +571,7 @@ void drawComponent(GalleryComponent component) {
                 const std::string_view kind(state);
                 field(kind == "SystemApplied" ? "Render scale" : "Intensity (relative)");
                 if (kind == "Proposed")
-                    proposedValue();
+                    proposedValue(nullptr, "12.000", "9.500");
                 else if (kind == "ReadOnly")
                     message("0.812 · set by dynamic resolution");
                 else if (kind == "SystemApplied")
