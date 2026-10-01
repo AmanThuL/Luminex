@@ -1,6 +1,6 @@
 # UX5 — Agent Session
 
-**Status**: Proposed
+**Status**: Accepted
 
 Written on 2026-10-01 from the merged UX4 editor and a survey of its document, settings, console
 and menu code. UX5 lets work done by an external agent reach the operator inside the editor: a
@@ -75,7 +75,7 @@ approval between an agent and every change.
 | `SessionLog` | `App/Model/Session` | Action records and the exported session record |
 | `SessionMailbox` | `App/Model/Session` | Mutex-guarded inbox and outbox; the only state both threads touch |
 | `RenderSettingCommands` | `App/Model/Rendering/Settings` | `applyRenderSetting` with cascades and reasons; `settingsToArguments` for a headless run |
-| `SessionListener` | `App/Shell` | The socket, its thread, peer check and line limits |
+| `SessionListener` | `App/Model/Session` | The socket, its thread, peer check and line limits |
 | `DocumentWatch`, `ChildRun` | `App/Shell` | Polling the open pair; spawning and reaping a headless run |
 | `EditorSession` | `App/Shell` | Draining the mailbox at the frame's safe point and executing commands |
 | `SessionPanel` | `App/Panels/Session` | Connection, tier ceiling, cards, log and Export |
