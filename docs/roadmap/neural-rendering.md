@@ -15,7 +15,7 @@ not a commitment to every idea.
 The roadmap entry's [execution sequence](../roadmap.md#execution-sequence) owns the cross-part
 order: after [UX1](editor-experience.md) and the five
 [M7](gpu-driven-hybrid-rendering.md#m7--scalable-scene-and-direct-lighting) slices it is
-**M7 → R2 → R3 → R4 → UX2 → UX3 → UX4 → UX5 → N1 → M9 → M8 → M10 → M11**, with N2–N4 entering when their prerequisites below
+**M7 → R2 → R3 → R4 → UX2 → UX3 → UX4 → UX5 → N1 → G1 → G2 → M8 → G3 → M10 → M11**, with N2–N4 entering when their prerequisites below
 exist; the structural and editor steps before N1 add no technical prerequisite to it.
 Only one implementation plan is active at a time, so N-slices interleave with M-slices rather
 than run beside them. Part II's dependency map still governs the M-slices; this order changes
@@ -27,7 +27,7 @@ This part owns learned-technique slices, weight provenance, the training substra
 the hardware gates. Vendor reconstruction stays behind the M6.4 adapter boundary; N3 adds the
 denoiser adapter in the same pattern.
 
-**Hardware floor.** Mesh shaders and hardware ray tracing require Apple M3/A17 Pro or later.
+**Hardware floor.** Part II states the floor for mesh shaders, ray tracing and 64-bit atomics.
 GPU neural acceleration requires the per-core neural accelerators of M5/A19 Pro or later; on
 earlier Apple GPUs the same tensor code runs on ordinary shader ALUs. The recorded development
 machine is an M3 Max, so N1 validates correctness, overhead and fallback there and records
@@ -64,7 +64,7 @@ acceleration as unavailable until an M5-class device exists.
 | Slice | Required foundation | Independent ordering |
 |---|---|---|
 | N1 inference lab | Gate B; no M-slice | First N-slice, after M7, R2–R4 and UX2–UX5 in the accepted order; N1.1 → N1.2 → N1.3 → N1.4 on the recorded machine; acceleration gate needs an M5-class device |
-| N2 learned reconstruction | N1; M6 temporal/capture contracts | Does not wait for M7–M11; training needs a rented or local GPU |
+| N2 learned reconstruction | N1; M6 temporal/capture contracts | Does not wait for M7–M11 or G1–G3; training needs a rented or local GPU |
 | N3 denoiser and reconstruction adapters | N1; M6.4 adapter pattern; M10 noisy signal for the denoiser | The reconstruction adapter part can precede M10 |
 | N4 learned materials, compression and caches | N1; per candidate: MaterialLab, TextureBake, M10 oracle | Candidates are accepted separately; the material residual can precede M7 |
 | Cross-API port | Validated Windows host and the D3D12 backend (ADR 0007) | Never before the backend |

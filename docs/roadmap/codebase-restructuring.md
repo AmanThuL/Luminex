@@ -259,7 +259,7 @@ each page is within budget; policy and the format check green.
 **Outcome:** the scene shader variants share one implementation and differ only where the
 [shader-style convention](../conventions/shader-style.md) says they must, while every compiled pipeline stays
 separate. Entry is satisfied: M7.1 settled the binding model, so the shared code is the code M7 keeps. It runs
-after R3.2 has placed the family in `Shaders/Passes/Scene/` and before M8 and M9 multiply the mirrored edits
+after R3.2 has placed the family in `Shaders/Passes/Scene/` and before M8 and G1 multiply the mirrored edits
 the twin rule demands today.
 
 **Scope:** the `ScenePass` family, four files of 320 to 346 lines that differ by exposure source and alpha
