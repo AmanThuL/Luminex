@@ -17,9 +17,10 @@ namespace lmx::app {
 struct ConsoleFilter {
     log::Level minimumSeverity = log::Level::Trace; ///< Inclusive minimum importance.
     std::string search; ///< Case-insensitive ASCII substring matched against message payloads.
+    std::array<bool, 3> actors{true, true, true}; ///< Visibility in Actor enum order.
 };
 
-/// True when an entry satisfies both severity and case-insensitive message search.
+/// True when an entry satisfies actor, severity and case-insensitive message search.
 bool consoleEntryMatches(const ConsoleEntry& entry, const ConsoleFilter& filter);
 /// Plain text for exactly the matching entries of this snapshot, with UTC timestamps, severity
 /// and explicit truncation markers; preserves multiline payloads and chronological order.

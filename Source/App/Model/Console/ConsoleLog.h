@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "App/Model/Workspace/Provenance.h"
 #include "Core/Containers/RingBuffer.h"
 #include "Core/Diagnostics/LogSink.h"
 
@@ -25,6 +26,7 @@ struct ConsoleEntry {
     log::Level severity = log::Level::Info; ///< Message importance.
     std::string message;    ///< UTF-8 log payload, truncated at a code-point boundary when needed.
     bool truncated = false; ///< Original payload exceeded the per-message limit.
+    Actor actor = Actor::System; ///< Initiator; ordinary engine and editor messages are System.
 };
 
 /// Coherent copy of retained messages and their loss counters at one store revision.
@@ -51,7 +53,8 @@ public:
 
     /// Copies one message, truncates it if needed, then evicts oldest entries until both limits
     /// hold.
-    void append(log::Level severity, int64_t timestampMilliseconds, std::string_view message);
+    void append(log::Level severity, int64_t timestampMilliseconds, std::string_view message,
+                Actor actor = Actor::System);
     /// Returns an owned coherent snapshot; may be called from any thread.
     ConsoleSnapshot snapshot() const;
     /// Avoids copying payloads when the caller already has the current revision.
