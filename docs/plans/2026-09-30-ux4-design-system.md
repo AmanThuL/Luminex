@@ -282,7 +282,7 @@ system menu-bar strip itself follows the system, a recorded limit.
 
 ### Task 17: Gallery completion and captures (UX4.4)
 **Files:** `GalleryCatalog.cpp`, `AppGalleryCatalogTests.cpp`, `StyleGalleryPanel.cpp`.
-- [x] Test first GREEN: exactly 21 names; native captures/comparisons UNVERIFIED (locked). **Verify:** capture
+- [x] Test first GREEN: exactly 21 names; [2026-10-01 native comparisons](../milestones/ux/ux4-native-followup-validation.md) observed with deviations. **Verify:** capture
   the gallery with `screencapture -o -l <window id>` in both themes at 100% and 150% into
   `../Luminex-evidence/ux4/gallery/`; compare each component with its Figma export. Commit
   `editor: complete the style gallery (UX4)`.
@@ -295,6 +295,6 @@ system menu-bar strip itself follows the system, a recorded limit.
 
 ### Task 19: Final gates and pull request (main thread)
 - [x] Combined gate run recorded [FAILED / INCOMPLETE](../milestones/ux/ux4-final-validation.md):
-  6/6 BMP, 11/15 publication matrix, Compact/resource failures, GPU PASS; native gestures UNVERIFIED.
+  6/6 BMP, 11/15 publication matrix, Compact/resource failures, GPU PASS; full native gate INCOMPLETE.
   This checkbox records execution only. ADR 0029 stays `Proposed`; record/plan stay `In progress`.
-  Controller review/final 17 checks precede commit and push/PR; no PR URL, acceptance, merge or closure is recorded.
+  Published as [draft PR #64](https://github.com/AmanThuL/Luminex/pull/64); [dated native follow-up](../milestones/ux/ux4-native-followup-validation.md) adds scoped evidence; no acceptance, merge or closure.

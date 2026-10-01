@@ -2,9 +2,15 @@
 
 **Status**: In progress
 
+The locked-Mac native checkpoint below is historical. The [2026-10-01 unlocked follow-up](ux4-native-followup-validation.md#gallery-comparisons-and-body-size)
+records D100/D150/L100/L150 as OBSERVED_WITH_DEVIATIONS, all 21 families and labeled states,
+with [Dark](ux4-native-followup-gallery-dark.md) and [Light](ux4-native-followup-gallery-light.md)
+per-component deviation/screenshot records. The original U table remains that checkpoint's
+result. The current captures establish no Figma parity, interaction or 1× pass.
+
 The catalog contains exactly the 21 Figma page 04 component sets. Task 17 adds the missing
-Capture pending activity and Applied proposal specimens. Final native captures and all 21 native
-component comparisons remain **UNVERIFIED**: the Mac is locked and manual unlock is pending.
+Capture pending activity and Applied proposal specimens. At this checkpoint final native captures and all 21 native
+component comparisons were **UNVERIFIED**: the Mac was locked and manual unlock was pending.
 CPU checks establish names, renderer identities and submitted state text, not displayed pixels.
 The [UX4 record](ux4.md#ux44--style-gallery-documentation-and-acceptance) owns the outcome;
 the [main validation](ux4-validation.md) retains earlier failures and limits.

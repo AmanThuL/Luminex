@@ -2,7 +2,12 @@
 
 **Status**: In progress
 
-The native checkpoint remains unverified. Task 14 implementation evidence is separate from this checkpoint.
+The access failure below is historical. The [2026-10-01 unlocked follow-up](ux4-native-followup-validation.md)
+records live Measure activity/Stop, settled system-controller marks, clean/dirty light identity
+and reserved Gallery specimens. Missing hover sources, failed numeric editing and required
+contexts remain explicit; the original unverified rows retain their original checkpoint scope.
+
+The historical native checkpoint was unverified. Task 14 implementation evidence is separate from this checkpoint.
 
 Computer Use could not bind the running parent editor because the Mac was locked and automatic unlock failed. The controller requested manual unlock and continued independent source verification. No Task 14 native gesture or screenshot was obtained. No system preference was changed. The owned parent QA process ended through handled SIGTERM with exit 0, and its original workspace bytes were restored. This does not verify native Quit. Evidence lives under `../Luminex-evidence/ux4/task-14/`: `cua/locked-mac-attempt.json`, `parent-native-restoration.json`, `parent-native.log` and `report.md`.
 

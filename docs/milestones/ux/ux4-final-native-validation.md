@@ -2,12 +2,18 @@
 
 **Status**: In progress
 
-All current native actions below are **UNVERIFIED** on the final restored head `874867dd…`
+The locked-Mac inventory below describes the historical final checkpoint. Physical access
+returned for the [2026-10-01 native follow-up](ux4-native-followup-validation.md), which records
+performed gestures, Gallery comparisons and remaining context gaps. This table is retained as
+the required action inventory; its U cells are the historical checkpoint, not a claim that no
+new endpoint has since been observed.
+
+At the historical final checkpoint, all native actions below were **UNVERIFIED** on the final restored head `874867dd…`
 at `e8625de`, compared with frozen parent `28ab04a` / App `50ff3865…`.
 Computer Use reported the locked Mac in the [marks checkpoint](ux4-marks-validation.md).
-The physical-access/manual-unlock request remains unanswered; no successful rebind or human
-unlock was recorded. No Task 14–19 OS preference change occurred. This inventory records
-missing actions, not performed gestures. Screenshot paths are unavailable in every current cell.
+At that checkpoint the physical-access/manual-unlock request was unanswered; no successful
+rebind or human unlock was recorded. No Task 14–19 OS preference change occurred. This inventory records
+missing actions, not performed gestures. Screenshot paths were unavailable in every historical inventory cell.
 Return to [combined gate results](ux4-final-validation.md) or [validation navigation](ux4-validation.md).
 
 ## Completion contexts
@@ -87,9 +93,9 @@ Automated resource/migration results in [final validation](ux4-final-validation.
 | A8 | Toggle Selection Outline; edit/reset document at default widths in both themes | One blue #4CABFD perimeter, dirty title/root cue and authored reset | Not performed; UNVERIFIED | Unavailable |
 | A9 | Restore both OS originals and saved editor/workspace state even after failure | Current restoration observed and original INI bytes proven separately | No OS changes made; current OS restore UNVERIFIED | Unavailable |
 
-Earlier Task 6/8/10/12 actual OS restorations remain revision-specific. Current original settings,
-read and restoration are explicitly UNVERIFIED; no current restore pass follows from untouched
-preferences or byte-exact INI restoration. Current native gesture work requires restored physical access.
+Earlier Task 6/8/10/12 actual OS restorations remain revision-specific. At that checkpoint, original settings,
+read and restoration were explicitly UNVERIFIED; no restore pass followed from untouched
+preferences or byte-exact INI restoration. The dated follow-up records the later return of physical access.
 
 ## Marks, menu and Gallery inventories
 
@@ -115,8 +121,8 @@ The [Gallery checklist](ux4-gallery-validation.md#final-capture-contexts) separa
 | L100 | Capture all 21 sets/states and type ramp, Light at 100%; compare every export | Same complete comparison in Light | All 21 cells UNVERIFIED | Unavailable |
 | L150 | Capture all 21 sets/states and type ramp, Light at 150%; compare every export | Same complete comparison in Light at actual native scale | All 21 cells UNVERIFIED | Unavailable |
 
-All 84 cells and four capture contexts are U. Actual 1× and final 2× typography at 13/16/20
-are U; CPU font-scale probes do not establish native zoom/backing or displayed glyph overlap.
+At that checkpoint all 84 cells and four capture contexts were U. Actual 1× and final 2×
+typography at 13/16/20 were U; CPU font-scale probes do not establish native zoom/backing or displayed glyph overlap.
 Historical 0133/0134 at 2×, 100% and 780-point width support the retained body-16 decision
 only on that revision. No observed final defect justifies body 17. The source/export difference
 table remains an inspection record, not final visible deviations or a Figma pass.

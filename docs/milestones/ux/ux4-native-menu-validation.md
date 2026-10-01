@@ -2,9 +2,14 @@
 
 **Status**: In progress
 
-Task 16 native verification is **UNVERIFIED**. Computer Use reported a locked Mac in the
+The locked-Mac result below is historical. The [2026-10-01 unlocked follow-up](ux4-native-followup-validation.md)
+records newly observed menu openings, physical shortcuts, focused-text editing and document
+routes in their stated contexts. Nested menu leaves and the complete command/context matrix
+remain unverified; the original rows below do not override those dated observations.
+
+Task 16 native verification was **UNVERIFIED** at this checkpoint. Computer Use reported a locked Mac in the
 Task 14 access attempt (`task-14/cua/locked-mac-attempt.json`). The controller requested manual
-unlock; no unlock response or other state change has been received. No additional access retry,
+unlock; no unlock response or other state change was recorded at this checkpoint. No additional access retry,
 editor gesture, OS preference change or screenshot occurred here. Screenshot paths below are
 Unavailable, never inferred from CPU/AppKit probes.
 

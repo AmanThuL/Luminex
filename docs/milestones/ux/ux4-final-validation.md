@@ -2,6 +2,11 @@
 
 **Status**: In progress
 
+The native access limitation recorded in this combined run is historical. The
+[2026-10-01 unlocked-Mac follow-up](ux4-native-followup-validation.md) records new native
+endpoints and gestures, complete Gallery specimen coverage with visible deviations, and
+remaining required context gaps. It changes no automated gate result or acceptance status.
+
 The Task 19 result remains **FAILED / INCOMPLETE**. The latest publication bundle passes
 six static BMPs (6/6) and the Metal-debug GPU group, while its eight-round matrix passes 11/15 and fails the exact gate.
 Both Compact cost cells fail the unchanged 1.15× limit; both resource attempts fail constant
@@ -230,16 +235,19 @@ and RojoRHI pin remain unchanged from parent. The editor-only SelectionOutline s
 encoded constant to `#4CABFD`; UI zoom/selection framing uses existing renderer contracts.
 These source findings do not prove exact output equality, native focus or actual gesture delivery.
 
-[Current native validation](ux4-final-native-validation.md) retains every Task 8/12/14/16/17 and
-UX1 completion context as UNVERIFIED. Current System Settings original/read/restore checks are
-UNVERIFIED while locked; no OS preferences changed in Tasks 14–19. Earlier actual restorations
-remain tied to their observed revisions. No 1× capture, held RMB movement, graph pan, docking,
-native menu editing or missing final gesture is inferred from probes or old screenshots.
+[Historical final native inventory](ux4-final-native-validation.md) retains every required
+Task 8/12/14/16/17 and UX1 action, unverified at its locked-Mac checkpoint. No OS preferences
+changed in Tasks 14–19. The [dated unlocked follow-up](ux4-native-followup-validation.md) now
+records original settings, real native actions/endpoints and remaining context gaps separately.
+Earlier actual restorations remain tied to their observed revisions. No 1× capture, held RMB
+movement, graph pan, docking or missing route is inferred from probes or old screenshots.
 
 ## Controller final-check and publication phase
 
 The controller owns fresh independent review and all 17 final checks, then the serial
 `docs: record design system validation (UX4)` commit, push, PR creation and evidence attachment.
 Their exact frozen results accompany publication separately from this combined-run record.
-This audit does not claim those checks have passed or invent a PR URL. Publication is authorized;
+The original combined-run audit did not establish those checks or a PR URL.
+The work is now published as [draft PR #64](https://github.com/AmanThuL/Luminex/pull/64).
+Publication is authorized;
 owner acceptance and merge are not. ADR 0029 stays Proposed and the milestone/plan stay In progress.
