@@ -93,13 +93,19 @@ EditorFonts configureEditorFonts() {
     }
     const auto iconPath = directory / "codicon.ttf";
     fonts.icons = mergeIcons(*io.Fonts, fonts.sans, iconPath);
-    if (fonts.icons && fonts.sansMedium != fonts.sans)
-        fonts.icons = mergeIcons(*io.Fonts, fonts.sansMedium, iconPath);
-    if (!fonts.icons && !warnedIcons) {
+    // Icon buttons draw in Sans, so its merge alone decides availability.
+    const bool mediumIcons = fonts.icons && (fonts.sansMedium == fonts.sans ||
+                                             mergeIcons(*io.Fonts, fonts.sansMedium, iconPath));
+    if (!mediumIcons && !warnedIcons) {
         warnedIcons = true;
-        LMX_LOG_WARN("Editor icons unavailable at '{}'; using text labels. Run xmake setup "
-                     "and rebuild App to restore Codicons.",
-                     iconPath.string());
+        if (fonts.icons)
+            LMX_LOG_WARN("Editor icons at '{}' did not merge into Geist Medium; icon buttons "
+                         "are unaffected.",
+                         iconPath.string());
+        else
+            LMX_LOG_WARN("Editor icons unavailable at '{}'; using text labels. Run xmake setup "
+                         "and rebuild App to restore Codicons.",
+                         iconPath.string());
     }
     LMX_LOG_INFO("Editor fonts: {}, {}, {}; body {} logical points, Sans digits {} em; Codicons {}",
                  fonts.sans->GetDebugName(), fonts.sansMedium->GetDebugName(),
