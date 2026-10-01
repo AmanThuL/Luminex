@@ -352,3 +352,95 @@ TEST_CASE("default menu snapshot explains unavailable capture", "[app][menu-mode
     CHECK(action(items, MenuCommand::Capture).disabledReason ==
           "Relaunch with MTL_CAPTURE_ENABLED=1 xmake run App to enable GPU capture.");
 }
+
+//======================================================================================================================
+TEST_CASE("save chords report their reason instead of running while playing or measuring",
+          "[app][menu-model][shortcuts]") {
+    for (const auto command : {MenuCommand::Save, MenuCommand::SaveAs}) {
+        INFO(static_cast<int>(command));
+        auto context = ready();
+        const auto stopped = keyboardDecision(buildMenuModel(context), command, 0, {});
+        CHECK(stopped.outcome == KeyboardOutcome::Run);
+        CHECK(stopped.reason.empty());
+        context.stopped = false;
+        const auto playing = keyboardDecision(buildMenuModel(context), command, 0, {});
+        CHECK(playing.outcome == KeyboardOutcome::Report);
+        CHECK(playing.reason == "Stop playback before saving or reverting the scene.");
+        context.measuring = true;
+        const auto measuring = keyboardDecision(buildMenuModel(context), command, 0, {});
+        CHECK(measuring.outcome == KeyboardOutcome::Report);
+        CHECK(measuring.reason == "Stop measurement before saving or reverting the scene.");
+        const auto typing =
+            keyboardDecision(buildMenuModel(context), command, 0, {.textInput = true});
+        CHECK(typing.outcome == KeyboardOutcome::Focus);
+        CHECK(typing.reason.empty());
+    }
+    auto context = ready();
+    context.measuring = true;
+    const auto open = keyboardDecision(buildMenuModel(context), MenuCommand::Open, 0, {});
+    CHECK(open.outcome == KeyboardOutcome::Report);
+    CHECK(open.reason == "Stop measurement before opening a scene.");
+}
+
+//======================================================================================================================
+TEST_CASE("the quit chord runs whatever owns keyboard focus", "[app][menu-model][shortcuts]") {
+    auto context = ready();
+    context.stopped = false;
+    context.measuring = true;
+    context.documentIdle = false;
+    const auto items = buildMenuModel(context);
+    for (unsigned flags = 0; flags < 16; ++flags) {
+        INFO(flags);
+        const ShortcutContext focus{.textInput = bool(flags & 1),
+                                    .cameraLook = bool(flags & 2),
+                                    .popupOpen = bool(flags & 4),
+                                    .otherSurfaceFocused = bool(flags & 8)};
+        CHECK(keyboardDecision(items, MenuCommand::Quit, 0, focus).outcome == KeyboardOutcome::Run);
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("keyboard chords separate focus refusals from unavailable commands",
+          "[app][menu-model][shortcuts]") {
+    auto context = ready();
+    context.uiScalePercent = kUiScalePresets.front();
+    context.captureAvailable = false;
+    context.canFrame = false;
+    const auto items = buildMenuModel(context);
+    const ShortcutContext selected{.hasSelection = true};
+    CHECK(keyboardDecision(items, MenuCommand::ZoomOut, 0, selected).outcome ==
+          KeyboardOutcome::Disabled);
+    CHECK(keyboardDecision(items, MenuCommand::ZoomIn, 0, selected).outcome ==
+          KeyboardOutcome::Run);
+    CHECK(keyboardDecision(items, MenuCommand::FrameSelected, 0, selected).outcome ==
+          KeyboardOutcome::Disabled);
+    CHECK(keyboardDecision(items, MenuCommand::FrameSelected, 0, {}).outcome ==
+          KeyboardOutcome::Policy);
+    CHECK(keyboardDecision(items, MenuCommand::Capture, 0, selected).outcome ==
+          KeyboardOutcome::Run);
+    CHECK(keyboardDecision(items, MenuCommand::ResetCamera, 0, {.otherSurfaceFocused = true})
+              .outcome == KeyboardOutcome::Policy);
+    for (const auto focus :
+         {ShortcutContext{.textInput = true}, ShortcutContext{.cameraLook = true},
+          ShortcutContext{.popupOpen = true}})
+        CHECK(keyboardDecision(items, MenuCommand::Capture, 0, focus).outcome ==
+              KeyboardOutcome::Focus);
+    context = ready();
+    context.documentIdle = false;
+    CHECK(keyboardDecision(buildMenuModel(context), MenuCommand::ResetCamera, 0, {}).outcome ==
+          KeyboardOutcome::Disabled);
+    CHECK(keyboardDecision(buildMenuModel(context), MenuCommand::Capture, 0, {}).outcome ==
+          KeyboardOutcome::Disabled);
+}
+
+//======================================================================================================================
+TEST_CASE("model shortcuts leave the standard window chords to the platform",
+          "[app][menu-model][shortcuts]") {
+    for (const auto* item : flatten(buildMenuModel(ready()))) {
+        if (!item->shortcut)
+            continue;
+        INFO(item->label);
+        CHECK_FALSE((item->shortcut->command && item->shortcut->key == "W"));
+        CHECK_FALSE((item->shortcut->command && item->shortcut->key == "M"));
+    }
+}
