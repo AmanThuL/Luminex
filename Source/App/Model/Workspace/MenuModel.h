@@ -107,11 +107,12 @@ std::vector<MenuItem> buildMenuModel(const MenuContext& context);
 
 /// What the frame that consumes a keyboard chord does with its matched command.
 enum class KeyboardOutcome {
-    Run,      ///< Execute the command.
-    Report,   ///< Post the decision's reason once instead of executing.
-    Focus,    ///< Text entry, a popup or mouse look owns the key; expected while editing.
-    Policy,   ///< Another surface owns the key, or the command lacks its own prerequisite.
-    Disabled, ///< The row or an ancestor is unavailable and has no reason to post.
+    Run,          ///< Execute the command.
+    Report,       ///< Post the decision's reason once instead of executing.
+    Focus,        ///< Text entry, a popup or mouse look owns the key; expected while editing.
+    OtherSurface, ///< A window outside the main viewport owns the key.
+    Unmet,        ///< Focus allows the command, but its own prerequisite is missing.
+    Disabled,     ///< The row or an ancestor is unavailable and has no reason to post.
 };
 
 /// Outcome of one matched chord; reason is nonempty only for Report.

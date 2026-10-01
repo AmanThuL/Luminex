@@ -9,9 +9,8 @@ namespace lmx::app {
 
 //======================================================================================================================
 bool shortcutAllowed(EditorShortcut shortcut, const ShortcutContext& context) {
-    if (shortcut == EditorShortcut::Quit)
-        return true;
-    if (context.textInput || context.cameraLook || context.popupOpen || context.otherSurfaceFocused)
+    if (shortcut != EditorShortcut::Quit && (context.textInput || context.cameraLook ||
+                                             context.popupOpen || context.otherSurfaceFocused))
         return false;
     switch (shortcut) {
     case EditorShortcut::FrameSelected:

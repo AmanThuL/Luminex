@@ -415,11 +415,16 @@ TEST_CASE("keyboard chords separate focus refusals from unavailable commands",
     CHECK(keyboardDecision(items, MenuCommand::FrameSelected, 0, selected).outcome ==
           KeyboardOutcome::Disabled);
     CHECK(keyboardDecision(items, MenuCommand::FrameSelected, 0, {}).outcome ==
-          KeyboardOutcome::Policy);
+          KeyboardOutcome::Unmet);
+    CHECK(keyboardDecision(items, MenuCommand::FrameSelected, 0, {.otherSurfaceFocused = true})
+              .outcome == KeyboardOutcome::OtherSurface);
     CHECK(keyboardDecision(items, MenuCommand::Capture, 0, selected).outcome ==
           KeyboardOutcome::Run);
     CHECK(keyboardDecision(items, MenuCommand::ResetCamera, 0, {.otherSurfaceFocused = true})
-              .outcome == KeyboardOutcome::Policy);
+              .outcome == KeyboardOutcome::OtherSurface);
+    CHECK(keyboardDecision(items, MenuCommand::ResetCamera, 0,
+                           {.textInput = true, .otherSurfaceFocused = true})
+              .outcome == KeyboardOutcome::Focus);
     for (const auto focus :
          {ShortcutContext{.textInput = true}, ShortcutContext{.cameraLook = true},
           ShortcutContext{.popupOpen = true}})

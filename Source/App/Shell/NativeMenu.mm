@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <format>
+#include <utility>
 
 using namespace lmx::app;
 
@@ -632,16 +633,17 @@ std::vector<NativeMenuCommand> NativeMenuBar::takeCommands(const ShortcutContext
                               decision.outcome == KeyboardOutcome::Report);
             intent.reason = std::move(decision.reason);
             if (!intent.allowed) {
-                const char* cause = !sameViewport         ? "viewport changed"
-                                    : gui.IO.AppFocusLost ? "focus lost"
-                                    : decision.outcome == KeyboardOutcome::Disabled ? "disabled"
-                                                                                    : "policy";
-                // F, Home and C are ordinary keys for a field, popup, mouse look or another
-                // window, and a field or popup may take any chord, so those refusals stay quiet.
+                const auto outcome = decision.outcome;
+                const char* cause = !sameViewport                              ? "viewport changed"
+                                    : gui.IO.AppFocusLost                      ? "focus lost"
+                                    : outcome == KeyboardOutcome::Focus        ? "focus"
+                                    : outcome == KeyboardOutcome::OtherSurface ? "other surface"
+                                    : outcome == KeyboardOutcome::Unmet ? "prerequisite unmet"
+                                                                        : "disabled";
+                // A field, popup, mouse look or another window owning the key is ordinary use.
                 const bool expected =
                     sameViewport && !gui.IO.AppFocusLost &&
-                    (decision.outcome == KeyboardOutcome::Focus ||
-                     (decision.outcome == KeyboardOutcome::Policy && intent.modifiers == 0));
+                    (outcome == KeyboardOutcome::Focus || outcome == KeyboardOutcome::OtherSurface);
                 if (expected)
                     LMX_LOG_DEBUG("native shortcut dropped: {} ({})",
                                   commandName(m_impl->delegate->model, intent.command), cause);
