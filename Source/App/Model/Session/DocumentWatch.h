@@ -12,9 +12,6 @@
 
 namespace lmx::app {
 
-/// Reads the first buffer URI from glTF JSON without requiring the companion file to exist.
-std::optional<std::string> documentBufferUri(std::string_view gltfJson);
-
 /// Filesystem observation of a loaded glTF, its buffer, and writer temporary directories.
 struct FileStamp {
     uintmax_t gltfSize = 0;   ///< glTF byte count, zero when absent.

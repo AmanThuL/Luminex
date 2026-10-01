@@ -5,24 +5,7 @@
 
 #include "App/Model/Session/DocumentWatch.h"
 
-#include "Engine/Asset/Model/JsonTokens.h"
-
 namespace lmx::app {
-
-//======================================================================================================================
-std::optional<std::string> documentBufferUri(std::string_view gltfJson) {
-    auto parsed = asset::JsonTokens::parse(std::string(gltfJson));
-    if (!parsed)
-        return std::nullopt;
-    const auto buffers = parsed->root().find("buffers");
-    if (!buffers || !buffers->isArray() || buffers->size() == 0)
-        return std::nullopt;
-    const auto uri = buffers->at(0).find("uri");
-    if (!uri || !uri->isString())
-        return std::nullopt;
-    auto value = uri->asString();
-    return value ? std::optional(std::move(*value)) : std::nullopt;
-}
 
 //======================================================================================================================
 void DocumentWatch::reset(const FileStamp& loaded) {

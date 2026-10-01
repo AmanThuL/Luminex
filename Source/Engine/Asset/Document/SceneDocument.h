@@ -157,6 +157,10 @@ std::vector<std::byte> sceneDocumentBuffer(const SceneDocument& doc);
 /// document does not reference is never overwritten. This is not a crash-atomic transaction.
 /// Invalid models and filesystem errors fail.
 AssetResult<void> saveSceneDocument(const SceneDocument& doc, const std::filesystem::path& path);
+/// Returns the decoded path of a glTF's external animation buffer without reading that file.
+/// An absent buffers property returns no path; malformed JSON, buffer shape or URI fails.
+AssetResult<std::optional<std::filesystem::path>>
+sceneDocumentBufferPath(std::string_view gltfJson, const std::filesystem::path& document);
 /// Hashes the on-disk glTF bytes followed by its referenced external buffer bytes, if present.
 AssetResult<std::string> sceneDocumentHash(const std::filesystem::path& path);
 

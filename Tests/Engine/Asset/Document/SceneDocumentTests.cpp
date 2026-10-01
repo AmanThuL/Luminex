@@ -243,6 +243,35 @@ TEST_CASE("scene document hash covers JSON then referenced buffer bytes",
 }
 
 //======================================================================================================================
+TEST_CASE("candidate buffer path decodes the glTF URI before its file exists",
+          "[asset][scene-document][session]") {
+    const fs::path document = "SceneDocuments/candidate.scene.gltf";
+    for (const auto& [uri, expected] : std::vector<std::pair<std::string, fs::path>>{
+             {"new%20pair.bin", "SceneDocuments/new pair.bin"},
+             {"percent%25.bin", "SceneDocuments/percent%.bin"},
+             {"nested/%E4%B8%AD.bin", fs::path("SceneDocuments/nested/\xE4\xB8\xAD.bin")}}) {
+        INFO(uri);
+        const auto candidate = sceneDocumentBufferPath(
+            R"({"buffers":[{"uri":")" + uri + R"(","byteLength":2}]})", document);
+        REQUIRE(candidate);
+        REQUIRE(*candidate);
+        CHECK(**candidate == expected);
+    }
+    const auto none = sceneDocumentBufferPath(R"({"asset":{"uri":"image.png"}})", document);
+    REQUIRE(none);
+    CHECK_FALSE(*none);
+
+    for (const std::string json :
+         {"[]", R"({"buffers":[42]})", R"({"buffers":42})", R"({"buffers":[{"uri":42}]})",
+          R"({"buffers":[{"uri":"../bad.bin"}]})", "{bad json"}) {
+        INFO(json);
+        CHECK_FALSE(sceneDocumentBufferPath(json, document));
+        writeText(document, json);
+        CHECK_FALSE(sceneDocumentHash(document));
+    }
+}
+
+//======================================================================================================================
 TEST_CASE("every required LMX field rejects missing and mistyped values at its exact pointer",
           "[asset][scene-document]") {
     const auto doc = completeDocument();

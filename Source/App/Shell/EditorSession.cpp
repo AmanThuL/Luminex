@@ -28,8 +28,9 @@ FileStamp documentStamp(const engine::LoadedScene& loaded) {
     std::ifstream gltf(path, std::ios::binary);
     if (gltf) {
         const std::string text(std::istreambuf_iterator<char>{gltf}, {});
-        if (const auto uri = documentBufferUri(text))
-            buffer = path.parent_path() / *uri;
+        if (const auto candidate = asset::sceneDocumentBufferPath(text, path);
+            candidate && *candidate)
+            buffer = **candidate;
     } else if (loaded.document.sourceBufferUri) {
         buffer = path.parent_path() / *loaded.document.sourceBufferUri;
     }

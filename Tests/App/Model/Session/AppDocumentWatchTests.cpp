@@ -1,6 +1,11 @@
 #include "App/Model/Session/DocumentWatch.h"
 
+#include "Engine/Asset/Document/SceneDocument.h"
+
 #include <catch2/catch_test_macros.hpp>
+
+#include <filesystem>
+#include <fstream>
 
 using namespace lmx::app;
 
@@ -54,8 +59,15 @@ TEST_CASE("document watch defers saves, restarts changes, and times out absent s
 //======================================================================================================================
 TEST_CASE("candidate glTF chooses its own buffer while sidecar attribution waits",
           "[unit][session]") {
-    REQUIRE(documentBufferUri(R"({"buffers":[{"uri":"new-pair.bin"}]})") == "new-pair.bin");
-    CHECK_FALSE(documentBufferUri(R"({"buffers":[{"uri":42}]})"));
+    const std::filesystem::path candidate = "SceneDocuments/candidate.scene.gltf";
+    const auto buffer =
+        lmx::asset::sceneDocumentBufferPath(R"({"buffers":[{"uri":"new-pair.bin"}]})", candidate);
+    REQUIRE(buffer);
+    REQUIRE(*buffer);
+    CHECK(**buffer == std::filesystem::path("SceneDocuments/new-pair.bin"));
+    CHECK_FALSE(lmx::asset::sceneDocumentBufferPath(R"({"buffers":[{"uri":42}]})", candidate));
+    CHECK_FALSE(lmx::asset::sceneDocumentBufferPath("[]", candidate));
+    CHECK_FALSE(lmx::asset::sceneDocumentBufferPath(R"({"buffers":[42]})", candidate));
     DocumentWatch watch;
     watch.reset(FileStamp{100, 200, 1, 1, false});
     const FileStamp newGltfMissingBuffer{101, 0, 2, 0, false};
@@ -69,4 +81,53 @@ TEST_CASE("candidate glTF chooses its own buffer while sidecar attribution waits
     CHECK(watch.poll(completeNewPair, 2.5) == WatchDecision::Sidecar);
     watch.hashed("complete-hash", true, 2.5);
     CHECK(watch.ready());
+}
+
+//======================================================================================================================
+TEST_CASE("document watch observes encoded buffer-only and late pair changes", "[unit][session]") {
+    namespace fs = std::filesystem;
+    const fs::path directory = "SessionWatchEncoded";
+    fs::create_directories(directory);
+    const fs::path document = directory / "candidate.scene.gltf";
+    const auto write = [](const fs::path& path, std::string_view bytes) {
+        std::ofstream output(path, std::ios::binary | std::ios::trunc);
+        REQUIRE(output.good());
+        output << bytes;
+        REQUIRE(output.good());
+    };
+    const auto stamp = [&](int64_t gltfTime, int64_t bufferTime) {
+        std::ifstream input(document, std::ios::binary);
+        const std::string json(std::istreambuf_iterator<char>{input}, {});
+        const auto buffer = lmx::asset::sceneDocumentBufferPath(json, document);
+        REQUIRE(buffer);
+        REQUIRE(*buffer);
+        std::error_code error;
+        const uintmax_t size = fs::file_size(**buffer, error);
+        return FileStamp{fs::file_size(document), error ? 0 : size, gltfTime,
+                         error ? 0 : bufferTime, false};
+    };
+
+    write(document, R"({"buffers":[{"uri":"space%20name.bin","byteLength":2}]})");
+    write(directory / "space name.bin", "ab");
+    const auto loaded = stamp(1, 1);
+    write(directory / "space name.bin", "abc");
+    const auto bufferOnly = stamp(1, 2);
+    CHECK(bufferOnly.gltfSize == loaded.gltfSize);
+    CHECK(bufferOnly.bufferSize == 3);
+    DocumentWatch watch;
+    watch.reset(loaded);
+    CHECK(watch.poll(bufferOnly, 0.5) == WatchDecision::Wait);
+    CHECK(watch.poll(bufferOnly, 1.0) == WatchDecision::Hash);
+
+    write(document, R"({"buffers":[{"uri":"renamed%25.bin","byteLength":2}]})");
+    const auto missing = stamp(2, 0);
+    CHECK(missing.bufferSize == 0);
+    watch.hashed("", false, 1.0);
+    CHECK(watch.poll(missing, 1.5) == WatchDecision::Wait);
+    write(directory / "renamed%.bin", "xy");
+    const auto arrived = stamp(2, 3);
+    CHECK(arrived.bufferSize == 2);
+    CHECK(watch.poll(arrived, 2.0) == WatchDecision::Wait);
+    CHECK(watch.poll(arrived, 2.5) == WatchDecision::Hash);
+    fs::remove_all(directory);
 }

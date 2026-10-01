@@ -921,6 +921,40 @@ AssetResult<SceneDocument> readSceneDocument(const std::filesystem::path& path) 
 }
 
 //======================================================================================================================
+AssetResult<std::optional<std::filesystem::path>>
+sceneDocumentBufferPath(std::string_view gltfJson, const std::filesystem::path& document) {
+    const auto parsed = JsonTokens::parse(std::string(gltfJson));
+    if (!parsed)
+        return std::unexpected(parsed.error());
+    const auto root = parsed->root();
+    if (!root.isObject())
+        return std::unexpected(malformed("", "expected a JSON object"));
+    const auto buffers = root.find("buffers");
+    if (!buffers)
+        return std::optional<std::filesystem::path>{};
+    if (!buffers->isArray() || buffers->size() != 1)
+        return std::unexpected(
+            malformed("/buffers", "expected exactly one external animation buffer"));
+    const auto entry = buffers->at(0);
+    if (!entry.isObject())
+        return std::unexpected(malformed("/buffers/0", "expected an object"));
+    const auto uriNode = entry.find("uri");
+    if (!uriNode || !uriNode->isString())
+        return std::unexpected(
+            malformed("/buffers/0/uri", "expected a relative external .bin URI"));
+    const auto uri = uriNode->asString();
+    if (!uri)
+        return std::unexpected(malformed("/buffers/0/uri", uri.error()));
+    const auto decoded = detail::decodeDocumentUri(*uri, uriNode->path());
+    if (!decoded)
+        return std::unexpected(decoded.error());
+    if (std::filesystem::path(*decoded).extension() != ".bin")
+        return std::unexpected(
+            malformed("/buffers/0/uri", "expected a relative external .bin URI"));
+    return std::optional<std::filesystem::path>{document.parent_path() / *decoded};
+}
+
+//======================================================================================================================
 AssetResult<std::string> sceneDocumentHash(const std::filesystem::path& path) {
     const auto bytes = fileBytes(path, "");
     if (!bytes)
