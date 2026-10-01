@@ -707,7 +707,7 @@ void drawCanvas(const GraphNodeModel& model, const GraphLayout& layout,
                "a compiled frame declares more nodes than the canvas id space holds");
 
     ed::SetCurrentEditor(state.editor->context);
-    verifyThemeSlotNames();
+    verifyNodeEditorSlotNames();
     applyNodeEditorColors(ed::GetStyle(), editor_style::activePalette());
     const float uiScale = ImGui::GetStyle().FontScaleMain;
     const bool uiScaleChanged = state.appliedUiScale > 0.0f && state.appliedUiScale != uiScale;
