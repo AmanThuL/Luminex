@@ -734,15 +734,23 @@ void drawStyleGalleryPanel(StyleGalleryPanelState& state) {
     if (!state.open)
         return;
     const auto* main = ImGui::GetMainViewport();
+    // Clearing NoDecoration gives the detached window a native title bar, so it is closable by
+    // its close button and by the Window menu's Close like the other detached panels.
     ImGuiWindowClass windowClass;
     windowClass.ViewportFlagsOverrideSet = ImGuiViewportFlags_NoAutoMerge;
+    windowClass.ViewportFlagsOverrideClear = ImGuiViewportFlags_NoDecoration;
     ImGui::SetNextWindowClass(&windowClass);
     ImGui::SetNextWindowPos({main->WorkPos.x + scaled(40.0f), main->WorkPos.y + scaled(40.0f)},
                             ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize({scaled(780.0f), scaled(720.0f)}, ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowDockID(0, ImGuiCond_Always);
-    if (ImGui::Begin(kStyleGalleryWindowName, &state.open,
-                     ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoDocking)) {
+    // The native title bar replaces ImGui's once the previous frame owned a platform window.
+    const bool visible =
+        ImGui::Begin(kStyleGalleryWindowName, &state.open,
+                     ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoDocking |
+                         (state.ownsPlatformWindow ? ImGuiWindowFlags_NoTitleBar : 0));
+    state.ownsPlatformWindow = ImGui::GetWindowViewport() != main;
+    if (visible) {
         ImGui::SetNextItemWidth(std::min(scaled(220.0f), ImGui::GetContentRegionAvail().x));
         ImGui::Combo("Palette", &state.palette, "Current\0Dark\0Light\0");
         const ThemePalette selected = state.palette == 1   ? kDarkPalette
