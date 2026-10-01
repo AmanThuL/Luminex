@@ -1,6 +1,6 @@
 # UX4 native menu checkpoint
 
-**Status**: In progress
+**Status**: Implemented — owner accepted for integration on 2026-10-01; failed and incomplete gates retained as measured
 
 The locked-Mac result below is historical. The [2026-10-01 unlocked follow-up](ux4-native-followup-validation.md)
 records newly observed menu openings, physical shortcuts, focused-text editing and document

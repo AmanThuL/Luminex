@@ -1,6 +1,6 @@
 # UX4 unlocked-Mac native follow-up validation
 
-**Status**: In progress
+**Status**: Implemented — owner accepted for integration on 2026-10-01; failed and incomplete gates retained as measured
 
 The 2026-10-01 follow-up obtained native editor observations after physical access returned.
 Coverage remains partial. It does not pass the complete native gate, change the failed

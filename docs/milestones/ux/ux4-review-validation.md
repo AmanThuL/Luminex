@@ -1,13 +1,13 @@
 # UX4 independent review and fix validation
 
-**Status**: In progress
+**Status**: Implemented — owner accepted for integration on 2026-10-01; failed and incomplete gates retained as measured
 
 An independent reviewer examined the UX4 branch on 2026-10-01. Fourteen fix commits followed, each
 reviewed, and the recorded gates were re-run on the resulting runtime. This page records the
-findings, the fixes, how each fix was verified and what remains unverified. It accepts nothing:
-[UX4](ux4.md) and its plan stay `In progress`, ADR 0029 stays
-[Proposed](../../decisions/0029-design-system-token-contract.md), and the historical failures
-stay recorded as failures for their runtimes. The earlier 11/15 matrix result and both earlier
+findings, the fixes, how each fix was verified and what remains unverified. It changes no gate
+result: ADR 0029 stays [Proposed](../../decisions/0029-design-system-token-contract.md) and the
+historical failures stay recorded as failures for their runtimes. The owner's
+[acceptance for integration](#owner-acceptance-and-integration) follows below. The earlier 11/15 matrix result and both earlier
 resource failures are not replaced by the results below.
 
 ## Scope and identity
@@ -189,7 +189,24 @@ None of these has been performed. Every row is UNVERIFIED. Ids use the fix repor
 The combined validation stays FAILED / INCOMPLETE: the publication-bundle matrix remains 11/15 and
 the final-runtime matrix is 14/15, both below the 15/15 rule; Compact cost fails on both runtimes;
 the earlier resource failures remain recorded. Every native completion action stays UNVERIFIED
-except the scoped observations above. [UX4](ux4.md) and its plan stay `In progress`, ADR 0029
-stays `Proposed`, and no tolerance changed. See the
+except the scoped observations above. ADR 0029 stays `Proposed` and no tolerance changed. See the
 [combined results](ux4-final-validation.md) and the
 [native follow-up](ux4-native-followup-validation.md).
+
+## Owner acceptance and integration
+
+On 2026-10-01 the repository owner accepted UX4 for integration by squash merge, with its failed
+and incomplete gates retained as measured. The milestone is Implemented and its executor plan is
+closed. No tolerance, threshold or default changed, and ADR 0029 stays Proposed.
+
+- **Image matrix.** The eight-round exact matrix fails: 11/15 on the earlier runtimes and 14/15 on
+  the final runtime. No cause is established and no exception is approved.
+- **Compact cost.** Both Compact draw-index cells fail at 1.1561092764935454× against the 1.15×
+  limit; Comfortable passes.
+- **Resource constants.** The earlier allocation failures stay recorded for their runtimes. The
+  final runtime passed with an unexplained change, measured under a locked screen.
+- **Native gate.** Incomplete. The follow-up's 101 scoped records hold 88 PASS, 12 UNVERIFIED and
+  one OBSERVED. The review's native-menu, shortcut-logging and Gallery fixes are not exercised
+  natively; their human checks are the rows under [Remaining human checks](#remaining-human-checks).
+
+The plan is recoverable from the tag `ux4-integration-chain`.

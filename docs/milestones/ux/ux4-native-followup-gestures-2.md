@@ -1,6 +1,6 @@
 # UX4 native follow-up gestures, part 2
 
-**Status**: In progress
+**Status**: Implemented — owner accepted for integration on 2026-10-01; failed and incomplete gates retained as measured
 
 Dated 2026-10-01. Return to [follow-up scope and limits](ux4-native-followup-validation.md).
 Evidence prefix `E = ../Luminex-evidence/ux4/native-followup-2026-10-01/`. Each screenshot path below is relative to E.

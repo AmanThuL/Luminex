@@ -1,6 +1,6 @@
 # UX4 — Design System and Themes
 
-**Status**: In progress — accepted by the owner on 2026-09-30; [executor plan](../../plans/2026-09-30-ux4-design-system.md) active
+**Status**: Implemented — owner accepted for integration on 2026-10-01; image and Compact cost gates failed as measured, native gate incomplete (see validation)
 
 Written on 2026-09-29 from the merged UX3 editor, accepted on 2026-09-30, from its
 [Figma baseline](https://www.figma.com/design/QxllnS3RVkIvzDWoaL6Bcq) and two research passes
@@ -15,9 +15,17 @@ owns the outcome and gates; this record keeps the design, its evidence and its l
 
 **Why this shape.** Luminex is developed as a partnership: the owner sets direction, reviews and
 accepts; agents implement and validate against recorded evidence. The editor is where both look at
-the same frame, so a design system for the next five to ten years has to say on every surface who
-did this, what is proposed, what is running and what the evidence is, while staying cheap to draw in
-immediate-mode ImGui. The owner confirmed this reading of the objective on 2026-09-30.
+the same frame, so its design system must say on every surface who did this, what is proposed, what
+is running and what the evidence is, while staying cheap to draw in immediate-mode ImGui. The owner
+confirmed this reading on 2026-09-30.
+
+## Owner acceptance and integration
+
+On 2026-10-01 the owner accepted UX4 for integration by squash merge. The executor plan is closed:
+`docs/plans/2026-09-30-ux4-design-system.md` is in the history of the tag `ux4-integration-chain`.
+The exact image matrix fails (11/15 earlier, 14/15 final), both Compact draw-index cells fail at
+1.1561092764935454× against 1.15× and the native gate is incomplete; all are retained as measured,
+with no tolerance or default change and ADR 0029 Proposed ([details](ux4-review-validation.md#owner-acceptance-and-integration)).
 
 ## Observed state before UX4
 
@@ -26,17 +34,15 @@ immediate-mode ImGui. The owner confirmed this reading of the objective on 2026-
   `EditorStyle` (accent, warning, muted). The main clear color is a literal in `main.cpp`.
   About 40 literal colors live in the viewport, graph, scene and performance panels; the Render
   Graph's `imgui-node-editor` has its own 19-entry style that ImGui's colors never reach.
-- Menus are ImGui items in an in-window row that also holds the transport; the native title bar is
-  kept, macOS gets only SDL's default application menu, and the detached Render Graph and
-  Performance windows have no menus at all.
-- Corners are square except tabs (5) and graph cards (6). Buttons, frames and headers are all
-  tints of one blue, so selection, action and decoration share a color.
+- Menus are ImGui items in an in-window row beside the transport; macOS gets only SDL's default
+  application menu, and the detached Render Graph and Performance windows have none.
+- Corners are square except tabs (5) and graph cards (6); buttons, frames and headers are tints of
+  one blue, so selection, action and decoration share a color.
 - There is no light theme, no system-appearance handling and no theme preference in workspace
   schema 4. The pinned ImGui (1.93.0 WIP, 63 `ImGuiCol_` slots, dynamic fonts) and SDL 3.4.12
   (`SDL_GetSystemTheme`, `SDL_EVENT_SYSTEM_THEME_CHANGED`) already provide what themes need.
-- Inter Regular 16 with a forced 9 pt digit advance and Codicons 16 are the only type. The UI
-  renders to a `BGRA8Unorm` drawable and blends in gamma space, so sRGB tokens reach the display
-  unchanged.
+- Inter Regular 16 (forced 9 pt digit advance) and Codicons 16 are the only type. The UI renders to
+  a `BGRA8Unorm` drawable and blends in gamma space, so sRGB tokens reach the display unchanged.
 - The Figma baseline holds 55 screens, 348 components and 328 variables in three collections
   (`Luminex · Source values`, `Luminex · UI colors`, `Luminex · Metrics`), each with one mode.
 
@@ -44,7 +50,7 @@ immediate-mode ImGui. The owner confirmed this reading of the objective on 2026-
 
 | Topic | Decision |
 |---|---|
-| Identifier and placement | UX4, between UX3 and N1; one executor plan, four slices, one squash-merged pull request |
+| Identifier and placement | UX4, between UX3 and N1; one executor plan, one squash-merged pull request |
 | Design language | Working name **Facet**, after the provisional FACET mark: one neutral graphite surface family, blue for the operator, violet for agents, three status hues. The name is provisional with the icon |
 | Appearance | View > Appearance: **Auto (system)**, **Light**, **Dark**; Auto is the default and follows macOS live. Persisted in workspace schema 5 with a `--appearance` CLI override for windowed and gallery runs |
 | Density | View > Density: **Comfortable** (today's metrics) and **Compact**; persisted in schema 5 |
@@ -58,8 +64,7 @@ immediate-mode ImGui. The owner confirmed this reading of the objective on 2026-
 Rejected: user theme editing (deferred since UX1); frosted or translucent chrome (a backend pass per
 platform window); ImGui's `features/shadows` branch (no docking, a merge to maintain); a second
 icon set; per-theme scene clear colors (the image is not UI); a selectable "classic" theme (no
-marks, more to maintain; gallery captures document the old look); a runtime JSON theme (a missing
-file is a new failure mode; generated C++ tables give one source without it).
+marks; gallery captures document the old look); a runtime JSON theme (a new failure mode).
 
 ## Principles
 
@@ -267,34 +272,29 @@ AppModel tests cover the model's enabled and checked state case by case.
 
 No renderer, capture, manifest, measurement or CLI change beyond `--appearance`; no agent runtime,
 session log or command bridge ([UX5](../../roadmap/editor-experience.md#ux5--agent-session)); no
-Windows chrome until a validated host exists; no high-contrast themes; no user theme editing; no
-blur, shadow or glow; no new icon set; no `.app` bundle; nothing UX1–UX3 already defer. N1's
-surfaces adopt the system when they are designed, not before.
+Windows chrome until a validated host exists; no high-contrast themes, user theme editing, blur,
+shadow, glow, new icon set or `.app` bundle; nothing UX1–UX3 already defer. N1's surfaces adopt the
+system when they are designed.
 
 ## Risks and open points
 
 - **Retina cost.** A 4 pt corner costs about twenty times the indices of a square fill and each
   stroke doubles it; if the default layout exceeds the 15% gate, rounding drops to 2 or 0 first.
-- **Derived colors.** ImGui derives several slots (tabs, docking preview) in `StyleColorsDark`;
-  UX4 sets all 63 explicitly so no derivation runs on a theme table.
-- **Fonts.** Body 16 is retained from actual 13/16/20 Gallery captures 0133/0134 at 2×; no specific
-  overlap, clipping or stacking remedy justified body 17. 1× remains unverified; Mono keeps native spacing.
-  [Validation](ux4-deferred-validation.md) retains the capture scope and failed Compact cost gate.
-- **Figma plan limits.** One mode per collection and a spent MCP quota make the themes two
-  collections authored through the local development plugin; a plan upgrade removes both.
-- Settled: the viewport image, its debug views and the selection outline pass are outside the
-  theme; one encoded `#4CABFD` outline constant is used in both themes.
+- **Derived colors.** ImGui derives some slots in `StyleColorsDark`; UX4 sets all 63 explicitly.
+- **Fonts.** Body 16 is retained from Gallery captures 0133/0134 at 2×; nothing justified 17. 1×
+  remains unverified; Mono keeps native spacing ([validation](ux4-deferred-validation.md)).
+- **Figma plan limits.** One mode per collection makes the themes two collections, authored
+  through the local development plugin.
+- Settled: the viewport image, debug views and selection outline pass are outside the theme; one
+  encoded `#4CABFD` outline constant serves both themes.
 
 ## Figma workspace
 
-The design lives beside the baseline in the same file: `03 · UX4 Foundations` (principles, ramps,
-both semantic tables with contrast ratios, editor colors, type, shape, density, actors and
-provenance, appearance, cost rules and the ImGui mapping), `04 · UX4 Components` (21 sets with
-`Theme=Dark|Light` variants and their state axes, plus the Appearance and Density menu) and
-`05 · UX4 Screens` (the default workspace and the collaboration scenario in both themes under the
-macOS menu bar and title bar drawn as system references above the toolbar row, and the Style
-Gallery), all set in Geist Sans and Geist Mono. Variables sit in `UX4 · Primitives`,
+The design lives beside the baseline in the same Figma file: `03 · UX4 Foundations` (principles,
+ramps, semantic tables with contrast ratios, type, shape, density, actors and provenance,
+appearance, cost rules, ImGui mapping), `04 · UX4 Components` (21 sets with `Theme=Dark|Light`
+variants and state axes) and `05 · UX4 Screens` (default workspace, collaboration scenario in both
+themes, Style Gallery), all in Geist Sans and Geist Mono. Variables sit in `UX4 · Primitives`,
 `UX4 · Color (Dark)`, `UX4 · Color (Light)` and `UX4 · Metrics`, one mode each, with six `UX4/*`
-text styles. Baseline pages stay untouched for comparison. The owner's local
-`Luminex-Identity/ux4-design` workspace holds the token generator, the plugin phases, reports and
-PNG exports; nothing durable depends on it once UX4.1 moves the generator into `Tools/`.
+text styles. Baseline pages stay untouched. The owner's local `Luminex-Identity/ux4-design`
+workspace holds reports and PNG exports; the token generator lives in `Tools/`.

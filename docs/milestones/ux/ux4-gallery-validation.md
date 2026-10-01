@@ -1,6 +1,6 @@
 # UX4 gallery validation
 
-**Status**: In progress
+**Status**: Implemented — owner accepted for integration on 2026-10-01; failed and incomplete gates retained as measured
 
 The locked-Mac native checkpoint below is historical. The [2026-10-01 unlocked follow-up](ux4-native-followup-validation.md#gallery-comparisons-and-body-size)
 records D100/D150/L100/L150 as OBSERVED_WITH_DEVIATIONS, all 21 families and labeled states,

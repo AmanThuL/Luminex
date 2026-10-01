@@ -9,8 +9,8 @@ The editor needs matching Light/Dark colors across ImGui, the Render Graph and c
 primitives. Its pure models must stay free of UI and platform types, and theme changes must
 preserve scene/display semantics. The [UX4 record](../milestones/ux/ux4.md) defines the settled
 design; the [editor roadmap](../roadmap/editor-experience.md#ux4--design-system-and-themes) owns
-its delivery gate. This ADR records the token contract for review. It does not record acceptance
-or close the active plan.
+its delivery gate. This ADR records the token contract for review. It does not record its own
+acceptance.
 
 ## Proposed decision
 

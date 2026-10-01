@@ -1,10 +1,10 @@
 # App design system
 
-**Status**: In progress
+**Status**: Implemented
 
 This companion to [App](app.md#editor-shell-and-windows) describes the editor's colors, metrics,
 appearance, menus and attribution. [ADR 0029](../decisions/0029-design-system-token-contract.md)
-remains Proposed; the [milestone](../milestones/ux/ux4.md) and its plan remain In progress.
+remains Proposed; the [milestone](../milestones/ux/ux4.md) is owner-accepted for integration.
 The [validation record](../milestones/ux/ux4-validation.md) retains failed image/cost gates and
 unverified native checks. Source behavior below does not establish those checks as passed.
 

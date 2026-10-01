@@ -194,7 +194,7 @@ persisting renderer configuration; an `.app` bundle; everything the UX1 deferral
 **Placement:** [UX3](#ux3--scene-documents-and-hierarchy) → UX4 → N1. The owner asked for it on
 2026-09-29, before the learned-rendering lab, so N1's surfaces are designed once in the new system.
 The [record](../milestones/ux/ux4.md) was accepted on 2026-09-30 after the owner reviewed the Figma
-pages; its executor plan opens next.
+pages. It is implemented and owner-accepted for integration; see below.
 
 **Outcome:** the editor has one token-driven design system instead of ImGui's default dark style.
 An operator picks Auto, Light or Dark once and the whole editor, including its detached native
@@ -215,6 +215,14 @@ changes, and the reserved agent vocabulary as tokens, Figma components and galle
 for the theme and token contract, and whole-application acceptance (UX4.4); the macOS menu bar as
 native chrome from one platform-neutral menu model, the in-window row reduced to a toolbar for the
 transport, activity and zoom, and the ImGui menus kept for other platforms (UX4.5).
+
+Implemented and owner-accepted for integration on 2026-10-01; the executor plan is closed and the
+change integrates by squash merge. The eight-round exact image matrix fails (11/15 on the earlier
+runtimes, 14/15 on the final one) and both Compact draw-index cells fail at 1.1561092764935454×
+against 1.15×; the full native gate is incomplete. These results are retained as measured with no
+tolerance or default change, and ADR 0029 stays Proposed. The
+[review validation](../milestones/ux/ux4-review-validation.md#owner-acceptance-and-integration)
+lists the retained failures and the unverified native checks, and does not amend the exit gates.
 
 **Exit gate:** contrast tests pass for every required pair in both themes; scene-only screenshots
 for the reference set are byte-identical to the parent; a theme switch rebuilds no font atlas and

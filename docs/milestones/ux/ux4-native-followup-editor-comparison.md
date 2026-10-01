@@ -1,6 +1,6 @@
 # UX4 native follow-up editor and Figma comparison
 
-**Status**: In progress
+**Status**: Implemented — owner accepted for integration on 2026-10-01; failed and incomplete gates retained as measured
 
 2026-10-01 independent inspection of 25 retained native images and four default-workspace Figma
 exports. Return to [follow-up results](ux4-native-followup-validation.md).

@@ -1,6 +1,6 @@
 # UX4 parent gesture validation
 
-**Status**: In progress
+**Status**: Implemented — owner accepted for integration on 2026-10-01; failed and incomplete gates retained as measured
 
 This companion preserves the parent observations for the [UX4 validation](ux4-validation.md).
 It covers the frozen gesture snapshot through `parent-capture-reveal` (image 0078):

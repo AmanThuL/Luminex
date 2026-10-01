@@ -1,6 +1,6 @@
 # UX4 combined final validation
 
-**Status**: In progress
+**Status**: Implemented — owner accepted for integration on 2026-10-01; failed and incomplete gates retained as measured
 
 The native access limitation recorded in this combined run is historical. The
 [2026-10-01 unlocked-Mac follow-up](ux4-native-followup-validation.md) records new native
@@ -13,7 +13,8 @@ six static BMPs (6/6) and the Metal-debug GPU group, while its eight-round matri
 Both Compact cost cells fail the unchanged 1.15× limit; both resource attempts fail constant
 allocated bytes. Every current native completion action remains **UNVERIFIED**.
 Run completion is not gate acceptance. ADR 0029 remains [Proposed](../../decisions/0029-design-system-token-contract.md);
-the [milestone](ux4.md) and [retained plan](../../plans/2026-09-30-ux4-design-system.md) remain In progress.
+the owner accepted the [milestone](ux4.md) for integration on 2026-10-01 with these failures retained
+([record](ux4-review-validation.md#owner-acceptance-and-integration)).
 
 ## Frozen identity and evidence
 
@@ -249,6 +250,6 @@ The controller owns fresh independent review and all 17 final checks, then the s
 `docs: record design system validation (UX4)` commit, push, PR creation and evidence attachment.
 Their exact frozen results accompany publication separately from this combined-run record.
 The original combined-run audit did not establish those checks or a PR URL.
-The work is now published as [draft PR #64](https://github.com/AmanThuL/Luminex/pull/64).
-Publication is authorized;
-owner acceptance and merge are not. ADR 0029 stays Proposed and the milestone/plan stay In progress.
+The work is published as [PR #64](https://github.com/AmanThuL/Luminex/pull/64).
+At that point owner acceptance was not recorded; it follows on 2026-10-01 in the
+[review validation](ux4-review-validation.md#owner-acceptance-and-integration). ADR 0029 stays Proposed.

@@ -1,6 +1,6 @@
 # UX4 deferred native validation
 
-**Status**: In progress
+**Status**: Implemented — owner accepted for integration on 2026-10-01; failed and incomplete gates retained as measured
 
 Task 12 is **FAILED / INCOMPLETE**. The owner authorized remaining implementation while
 retaining missing verification for the final gate. Reviewing record accuracy does not pass it.
@@ -69,4 +69,5 @@ separately from deferred actions blocked by native binding.
 
 Actual Gallery 0133/0134 supports retaining body 16 at 2×, 100% and default 780-point width.
 Compact remains **failed**, 1.169919× against 1.15×. Continuation changes no threshold or result.
-No Task 12 overall pass, owner acceptance or integration is recorded.
+No Task 12 overall pass is recorded; the owner's later acceptance of UX4 for integration is in the
+[review validation](ux4-review-validation.md#owner-acceptance-and-integration).

@@ -1,6 +1,6 @@
 # UX4 marks and activity native validation
 
-**Status**: In progress
+**Status**: Implemented — owner accepted for integration on 2026-10-01; failed and incomplete gates retained as measured
 
 The access failure below is historical. The [2026-10-01 unlocked follow-up](ux4-native-followup-validation.md)
 records live Measure activity/Stop, settled system-controller marks, clean/dirty light identity

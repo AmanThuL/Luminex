@@ -1,6 +1,6 @@
 # UX4 final native validation inventory
 
-**Status**: In progress
+**Status**: Implemented — owner accepted for integration on 2026-10-01; failed and incomplete gates retained as measured
 
 The locked-Mac inventory below describes the historical final checkpoint. Physical access
 returned for the [2026-10-01 native follow-up](ux4-native-followup-validation.md), which records

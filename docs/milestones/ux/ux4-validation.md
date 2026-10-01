@@ -1,6 +1,6 @@
 # UX4 validation
 
-**Status**: In progress
+**Status**: Implemented — owner accepted for integration on 2026-10-01; failed and incomplete gates retained as measured
 
 The Task 19 combined run is **FAILED / INCOMPLETE** on the restored production App
 `874867dd…` at `e8625de`: six BMPs pass 6/6, the eight-round matrix passes 11/15 and fails the gate,
@@ -11,9 +11,10 @@ endpoints and gestures, all Gallery families/states with visible deviations, and
 required contexts. Completed run execution
 is separate from a passing gate or acceptance. [Final results and identity](ux4-final-validation.md)
 lead the evidence; [required native contexts](ux4-final-native-validation.md) list every required
-completion action. ADR 0029 stays Proposed; the milestone and retained plan stay In progress.
-The work is published as [draft PR #64](https://github.com/AmanThuL/Luminex/pull/64).
-Milestone review remains separate from publication; no owner acceptance or merge is recorded.
+completion action. ADR 0029 stays Proposed. The owner accepted UX4 for integration on 2026-10-01
+with these failures retained as measured; see
+[Owner acceptance and integration](ux4-review-validation.md#owner-acceptance-and-integration).
+The work is published as [PR #64](https://github.com/AmanThuL/Luminex/pull/64).
 
 Historical Task 7/12 continuation exceptions waive their stop limits only. Their failures remain.
 Tasks 13–18 implementation/documentation records below are complete within their stated scope.
@@ -156,7 +157,6 @@ No old-revision pass transfers to the final head. The current inventories retain
 [84 Gallery cells in four contexts](ux4-gallery-validation.md#per-component-native-checkpoint),
 and [historical deferred actions](ux4-deferred-validation.md).
 
-Fresh independent review, all 17 checks, the serial documentation commit and push/PR are the
-controller's final-check/publication phase. Their frozen results must accompany publication;
-this record does not predict them. The controller must preserve the validated App identity or
-identify and revalidate a changed binary. No acceptance, plan closure or merge is authorized.
+The later [review validation](ux4-review-validation.md) records the independent review, its fixes
+and a gate re-run on a newer runtime. Acceptance for integration on 2026-10-01 is recorded there;
+it changes no gate result.

@@ -1,6 +1,6 @@
 # UX4 native follow-up Gallery, dark
 
-**Status**: In progress
+**Status**: Implemented — owner accepted for integration on 2026-10-01; failed and incomplete gates retained as measured
 
 2026-10-01 independent pixel review of all 21 component families and every labeled native state
 in D100 and D150. Return to [follow-up scope](ux4-native-followup-validation.md).

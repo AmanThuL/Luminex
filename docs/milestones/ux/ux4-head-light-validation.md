@@ -1,6 +1,6 @@
 # UX4 head Light gesture validation
 
-**Status**: In progress
+**Status**: Implemented — owner accepted for integration on 2026-10-01; failed and incomplete gates retained as measured
 
 This companion retains actual Light observations for [UX4 validation](ux4-validation.md).
 The live snapshot contains 151 rows through 0156. The audited snapshot adds the performed

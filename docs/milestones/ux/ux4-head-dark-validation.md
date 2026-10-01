@@ -1,6 +1,6 @@
 # UX4 head Dark gesture validation
 
-**Status**: In progress
+**Status**: Implemented — owner accepted for integration on 2026-10-01; failed and incomplete gates retained as measured
 
 This companion retains actual head Dark observations for [UX4 validation](ux4-validation.md).
 Its snapshot contains 130 total `gestures.json` rows and ends at

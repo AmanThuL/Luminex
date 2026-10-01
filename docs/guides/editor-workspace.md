@@ -1,6 +1,6 @@
 # Editor workspace
 
-**Status**: In progress
+**Status**: Implemented
 
 Use [GPU Debugging](gpu-debugging.md) for frame capture, dumps and timings. This companion covers
 editor appearance, density, fonts, native menus, playback and workspace recovery. Source behavior
