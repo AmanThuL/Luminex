@@ -269,6 +269,24 @@ KeyboardDecision keyboardDecision(const std::vector<MenuItem>& items, MenuComman
 }
 
 //======================================================================================================================
+KeyboardRecord keyboardRecord(KeyboardOutcome outcome, const ShortcutContext& focus,
+                              bool commandChord) {
+    switch (outcome) {
+    case KeyboardOutcome::Run:
+    case KeyboardOutcome::Report:
+        return KeyboardRecord::None;
+    case KeyboardOutcome::Focus:
+        return focus.textInput && !commandChord ? KeyboardRecord::None : KeyboardRecord::Debug;
+    case KeyboardOutcome::OtherSurface:
+        return KeyboardRecord::Debug;
+    case KeyboardOutcome::Unmet:
+    case KeyboardOutcome::Disabled:
+        return KeyboardRecord::Warn;
+    }
+    return KeyboardRecord::Warn;
+}
+
+//======================================================================================================================
 std::vector<MenuItem> buildMenuModel(const MenuContext& context) {
     const std::string captureReason =
         !context.captureReason.empty() ? context.captureReason

@@ -640,14 +640,16 @@ std::vector<NativeMenuCommand> NativeMenuBar::takeCommands(const ShortcutContext
                                     : outcome == KeyboardOutcome::OtherSurface ? "other surface"
                                     : outcome == KeyboardOutcome::Unmet ? "prerequisite unmet"
                                                                         : "disabled";
-                // A field, popup, mouse look or another window owning the key is ordinary use.
-                const bool expected =
-                    sameViewport && !gui.IO.AppFocusLost &&
-                    (outcome == KeyboardOutcome::Focus || outcome == KeyboardOutcome::OtherSurface);
-                if (expected)
+                // A chord that lost its viewport or application focus always warns; otherwise
+                // the model decides, and plain typing into a field leaves no record.
+                const bool commandChord = (intent.modifiers & ~ImGuiMod_Shift) != 0;
+                const auto record = sameViewport && !gui.IO.AppFocusLost
+                                        ? keyboardRecord(outcome, focus, commandChord)
+                                        : KeyboardRecord::Warn;
+                if (record == KeyboardRecord::Debug)
                     LMX_LOG_DEBUG("native shortcut dropped: {} ({})",
                                   commandName(m_impl->delegate->model, intent.command), cause);
-                else
+                else if (record == KeyboardRecord::Warn)
                     LMX_LOG_WARN("native shortcut dropped: {} ({})",
                                  commandName(m_impl->delegate->model, intent.command), cause);
             }
