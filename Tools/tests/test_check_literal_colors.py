@@ -36,6 +36,30 @@ class LiteralColorTests(unittest.TestCase):
             len(check_text('ImGui::CollapsingHeader("Topic");', "Elsewhere/EditorStyle.cpp")), 1
         )
 
+    def test_framed_tree_nodes_require_the_shared_neutral_helper(self) -> None:
+        for expression in (
+            'ImGui::TreeNodeEx("Topic", ImGuiTreeNodeFlags_Framed);',
+            "const ImGuiTreeNodeFlags flags =\n    ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_Framed;",
+        ):
+            with self.subTest(expression=expression):
+                errors = check_text(expression, "Source/App/Panels/Panel.cpp")
+                self.assertEqual(len(errors), 1)
+                self.assertIn("ImGuiTreeNodeFlags_Framed", errors[0])
+                self.assertIn("editor_style::collapsingHeader", errors[0])
+                self.assertEqual(
+                    check_text(expression, "Source/App/Panels/Shared/EditorStyle.cpp"), []
+                )
+        self.assertIn(
+            "Panel.cpp:2:", check_text("int a;\nauto f = ImGuiTreeNodeFlags_Framed;", "Panel.cpp")[0]
+        )
+        for source in (
+            "// ImGuiTreeNodeFlags_Framed",
+            'const char* text = "ImGuiTreeNodeFlags_Framed";',
+            "ImGuiTreeNodeFlags_FramePadding",
+            "MyImGuiTreeNodeFlags_Framed",
+        ):
+            self.assertEqual(check_text(source, "Panel.cpp"), [])
+
     def test_packed_and_imcolor_calls_are_rejected(self) -> None:
         for expression in (
             "IM_COL32(0, 0, 0, 0)",

@@ -59,6 +59,7 @@ class ThemeTokensTests(unittest.TestCase):
 
     def test_slot_lists_complete_unique_and_in_upstream_order(self):
         generator = self.load_generator()
+        missing = []
         for slots, count, path, prefix, end in (
             (generator.IMGUI_SLOTS, 63, "ThirdParty/imgui/imgui.h", "ImGuiCol_", "COUNT"),
             (generator.NODE_EDITOR_SLOTS, 19, "ThirdParty/imgui-node-editor/imgui_node_editor.h", "StyleColor_", "Count"),
@@ -67,7 +68,9 @@ class ThemeTokensTests(unittest.TestCase):
             self.assertEqual(len(names), count)
             self.assertEqual(len(set(names)), count)
             upstream = ROOT / path
-            if upstream.exists():
+            if not upstream.exists():
+                missing.append(path)
+            else:
                 text = upstream.read_text().split(prefix + end)[0]
                 expected = re.findall(r"^    " + prefix + r"(\w+),", text, re.M)
                 if prefix == "StyleColor_":
@@ -79,6 +82,8 @@ class ThemeTokensTests(unittest.TestCase):
             for _, role, alpha in slots:
                 self.assertIn(role, generator.sem("dark"))
                 self.assertTrue(0 <= alpha <= 1)
+        if missing:
+            self.skipTest(f"upstream order not checked; run xmake setup to fetch {', '.join(missing)}")
 
     def test_check_names_tampered_outputs(self):
         with tempfile.TemporaryDirectory() as directory:
