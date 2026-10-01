@@ -449,3 +449,27 @@ TEST_CASE("model shortcuts leave the standard window chords to the platform",
         CHECK_FALSE((item->shortcut->command && item->shortcut->key == "M"));
     }
 }
+
+//======================================================================================================================
+TEST_CASE("plain typing in a text field leaves no refused-chord record",
+          "[app][menu-model][shortcuts]") {
+    const ShortcutContext typing{.textInput = true};
+    CHECK(keyboardRecord(KeyboardOutcome::Focus, typing, false) == KeyboardRecord::None);
+    CHECK(keyboardRecord(KeyboardOutcome::Focus, {.textInput = true, .popupOpen = true}, false) ==
+          KeyboardRecord::None);
+    CHECK(keyboardRecord(KeyboardOutcome::Focus, {.textInput = true, .otherSurfaceFocused = true},
+                         false) == KeyboardRecord::None);
+    CHECK(keyboardRecord(KeyboardOutcome::Focus, typing, true) == KeyboardRecord::Debug);
+    for (const auto focus :
+         {ShortcutContext{.cameraLook = true}, ShortcutContext{.popupOpen = true}})
+        for (const bool command : {false, true})
+            CHECK(keyboardRecord(KeyboardOutcome::Focus, focus, command) == KeyboardRecord::Debug);
+    for (const bool command : {false, true}) {
+        CHECK(keyboardRecord(KeyboardOutcome::OtherSurface, {.otherSurfaceFocused = true},
+                             command) == KeyboardRecord::Debug);
+        CHECK(keyboardRecord(KeyboardOutcome::Unmet, {}, command) == KeyboardRecord::Warn);
+        CHECK(keyboardRecord(KeyboardOutcome::Disabled, {}, command) == KeyboardRecord::Warn);
+        CHECK(keyboardRecord(KeyboardOutcome::Run, {}, command) == KeyboardRecord::None);
+        CHECK(keyboardRecord(KeyboardOutcome::Report, {}, command) == KeyboardRecord::None);
+    }
+}

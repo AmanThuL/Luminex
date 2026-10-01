@@ -130,4 +130,16 @@ EditorShortcut shortcutPolicy(MenuCommand command);
 KeyboardDecision keyboardDecision(const std::vector<MenuItem>& items, MenuCommand command,
                                   uint32_t argument, const ShortcutContext& focus);
 
+/// Log record a chord's outcome deserves once it reached its viewport with application focus.
+enum class KeyboardRecord {
+    None,  ///< Nothing was dropped: the chord ran, reported, or was plain typing.
+    Debug, ///< Another owner took the key; ordinary use worth a trace.
+    Warn,  ///< The command was unavailable or lacked its prerequisite.
+};
+
+/// Classifies an outcome for logging. An unmodified key refused while text entry owns the keyboard
+/// is typing, not an intent, and leaves no record; commandChord marks a Command-modified chord.
+KeyboardRecord keyboardRecord(KeyboardOutcome outcome, const ShortcutContext& focus,
+                              bool commandChord);
+
 } // namespace lmx::app
