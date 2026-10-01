@@ -5,12 +5,15 @@
 
 #include "App/Shell/NativeMenu.h"
 
+#include "Core/Diagnostics/Log.h"
+
 #import <AppKit/AppKit.h>
 #include <SDL3/SDL.h>
 #include <imgui.h>
 #include <imgui_internal.h>
 
 #include <algorithm>
+#include <format>
 
 using namespace lmx::app;
 
@@ -123,6 +126,13 @@ const MenuItem* findCommand(const std::vector<MenuItem>& items, MenuCommand comm
             return found;
     }
     return nullptr;
+}
+
+//======================================================================================================================
+std::string commandName(const std::vector<MenuItem>& items,
+                        const std::pair<MenuCommand, uint32_t>& command) {
+    const auto* item = findCommand(items, command.first, command.second);
+    return item ? item->label : std::format("command {}", static_cast<int>(command.first));
 }
 
 } // namespace
@@ -489,6 +499,7 @@ std::vector<NativeMenuCommand> NativeMenuBar::takeCommands(const ShortcutContext
         if (intent.resolved || intent.inputEvent != 0)
             continue;
         ImGuiKeyChord modifiers = gui.IO.KeyMods;
+        bool modifierMismatch = false;
         for (const auto& event : gui.InputEventsQueue) {
             if (event.Type == ImGuiInputEventType_Key && (event.Key.Key & ImGuiMod_Mask_)) {
                 if (event.Key.Down)
@@ -496,10 +507,13 @@ std::vector<NativeMenuCommand> NativeMenuBar::takeCommands(const ShortcutContext
                 else
                     modifiers &= ~event.Key.Key;
             }
-            if (modifiers != intent.modifiers || event.EventId < intent.firstEvent ||
-                event.Type != ImGuiInputEventType_Key || !event.Key.Down ||
-                event.Key.Key != intent.key)
+            if (event.EventId < intent.firstEvent || event.Type != ImGuiInputEventType_Key ||
+                !event.Key.Down || event.Key.Key != intent.key)
                 continue;
+            if (modifiers != intent.modifiers) {
+                modifierMismatch = true;
+                continue;
+            }
             const bool assigned = std::ranges::any_of(
                 pending, [&](const auto& other) { return other.inputEvent == event.EventId; });
             if (!assigned) {
@@ -510,6 +524,9 @@ std::vector<NativeMenuCommand> NativeMenuBar::takeCommands(const ShortcutContext
         if (intent.inputEvent == 0) {
             intent.resolved = true;
             intent.allowed = false;
+            LMX_LOG_WARN("native shortcut dropped: {} ({})",
+                         commandName(m_impl->delegate->model, intent.command),
+                         modifierMismatch ? "modifier mismatch" : "no matching key event");
         }
     }
     if (completedFrame) {
@@ -540,10 +557,29 @@ std::vector<NativeMenuCommand> NativeMenuBar::takeCommands(const ShortcutContext
                 focus.otherSurfaceFocused = false;
             auto decision =
                 keyboardDecision(m_impl->delegate->model, command, intent.command.second, focus);
-            intent.allowed = viewport && viewport->ID == intent.viewport && !gui.IO.AppFocusLost &&
+            const bool sameViewport = viewport && viewport->ID == intent.viewport;
+            intent.allowed = sameViewport && !gui.IO.AppFocusLost &&
                              (decision.outcome == KeyboardOutcome::Run ||
                               decision.outcome == KeyboardOutcome::Report);
             intent.reason = std::move(decision.reason);
+            if (!intent.allowed) {
+                const char* cause = !sameViewport         ? "viewport changed"
+                                    : gui.IO.AppFocusLost ? "focus lost"
+                                    : decision.outcome == KeyboardOutcome::Disabled ? "disabled"
+                                                                                    : "policy";
+                // F, Home and C are ordinary keys for a field, popup, mouse look or another
+                // window, and a field or popup may take any chord, so those refusals stay quiet.
+                const bool expected =
+                    sameViewport && !gui.IO.AppFocusLost &&
+                    (decision.outcome == KeyboardOutcome::Focus ||
+                     (decision.outcome == KeyboardOutcome::Policy && intent.modifiers == 0));
+                if (expected)
+                    LMX_LOG_DEBUG("native shortcut dropped: {} ({})",
+                                  commandName(m_impl->delegate->model, intent.command), cause);
+                else
+                    LMX_LOG_WARN("native shortcut dropped: {} ({})",
+                                 commandName(m_impl->delegate->model, intent.command), cause);
+            }
         }
     }
     std::vector<NativeMenuCommand> result;
