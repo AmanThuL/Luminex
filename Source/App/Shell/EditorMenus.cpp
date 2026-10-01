@@ -64,8 +64,8 @@ void menuTooltip(const MenuItem& item) {
 }
 
 //======================================================================================================================
-void drawMenuItems(EditorShell& shell, const std::vector<MenuItem>& items,
-                   const MenuContext& context, bool catalog = false) {
+[[maybe_unused]] void drawMenuItems(EditorShell& shell, const std::vector<MenuItem>& items,
+                                    const MenuContext& context, bool catalog = false) {
     std::optional<std::string> loading;
     for (size_t index = 0; index < items.size(); ++index) {
         const auto& item = items[index];
@@ -263,11 +263,39 @@ void EditorShell::buildMainMenu(const render::Renderer& renderer, const rojoRHI:
     if (!ImGui::BeginMainMenuBar())
         return;
     const auto context = menuContext(renderer, device);
+#ifndef __APPLE__
     drawMenuItems(*this, buildMenuModel(context), context);
+#endif
     ImGui::BeginDisabled(!context.documentIdle);
     buildPlaybackTransport();
     ImGui::EndDisabled();
     ImGui::EndMainMenuBar();
+}
+
+//======================================================================================================================
+void EditorShell::updateNativeMenu(const render::Renderer& renderer,
+                                   const rojoRHI::Device& device) {
+#ifdef __APPLE__
+    m_nativeMenu->update(buildMenuModel(menuContext(renderer, device)), shortcutContext());
+#else
+    (void)renderer;
+    (void)device;
+#endif
+}
+
+//======================================================================================================================
+void EditorShell::consumeNativeMenuCommands(const render::Renderer& renderer, bool afterPanels) {
+#ifdef __APPLE__
+    const auto context = shortcutContext();
+    for (const auto& [command, argument] :
+         m_nativeMenu->takeCommands(afterPanels ? &context : nullptr)) {
+        runMenuCommand(command, argument);
+        consumeFrameSelection(renderer);
+    }
+#else
+    (void)renderer;
+    (void)afterPanels;
+#endif
 }
 
 //======================================================================================================================

@@ -169,11 +169,17 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
     }
     LMX_LOG_INFO("editor shell: {} (scene '{}', {} objects)", startup, self->m_session.scene().name,
                  self->m_session.scene().objects.size());
+#ifdef __APPLE__
+    self->m_nativeMenu = NativeMenuBar::install();
+#endif
     return self;
 }
 
 //======================================================================================================================
 EditorShell::~EditorShell() {
+#ifdef __APPLE__
+    m_nativeMenu.reset();
+#endif
     // Shutting down while relative mouse mode is still on would leave the user's cursor hidden and
     // captured with no window left to release it.
     endMouseLook();
@@ -406,6 +412,8 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
     postCaptureNotice();
     editor_style::drawNotice(m_notices, ImGui::GetTime());
     drawStyleGalleryPanel(m_styleGallery);
+    updateNativeMenu(renderer, device);
+    consumeNativeMenuCommands(renderer, true);
 }
 
 //======================================================================================================================

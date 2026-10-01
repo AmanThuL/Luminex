@@ -191,6 +191,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
     double elapsedSeconds = 0.0;
 
     while (running) {
+        shell->updateNativeMenu(**renderer, **device);
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             // ImGui must observe every event before input ownership is queried.
@@ -229,6 +230,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         }
         // Dialog responses and approved Quit must progress even if acquire has no drawable.
         // The UI only presents confirmation; completed work runs at this frame boundary.
+        shell->consumeNativeMenuCommands(**renderer);
         shell->pumpDocuments();
         if (shell->actions().consumeQuit()) {
             running = false;
@@ -269,10 +271,22 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
             return 1;
         }
 
-        // Acquire before ImGui::NewFrame so a dropped drawable cannot leave an open ImGui frame.
+        // Process widget ownership even when drawable acquisition is skipped.
+        shell->prepareUIFrame();
+        ImGui_ImplSDL3_NewFrame();
+        rojoRHI::metal4::imguiNewFrame();
+        ImGui::NewFrame();
+        shell->buildUI(**device, **renderer, deltaSeconds, frameRecords);
+        ImGui::Render();
+
+        // The ImGui frame is closed before acquisition; dropped drawables retain capture intent.
         auto target = (*swapchain)->acquireNextTexture();
         if (!target) {
-            // Drawable starvation is transient; drop the frame without opening encoder state.
+            // Every completed UI frame must finish platform lifecycle, even without GPU work.
+            // Rendering extra windows waits for a successfully acquired and paced device frame.
+            ImGui::UpdatePlatformWindows();
+            lmx::app::applyViewportAppearance(
+                lmx::app::forcedWindowAppearance(shell->effectiveAppearance()));
             ++skippedFrames;
             LMX_LOG_WARN("frame {} skipped: {}", frameIndex, target.error().message);
             if (maxFrames > 0 && frameIndex >= maxFrames) {
@@ -296,15 +310,6 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
                 result.message = "Capturing GPU work; waiting for completion.";
             }
         }
-
-        // The Metal backend prepares its frame before ImGui builds draw data and RHI encoding
-        // begins.
-        shell->prepareUIFrame();
-        rojoRHI::metal4::imguiNewFrame();
-        ImGui_ImplSDL3_NewFrame();
-        ImGui::NewFrame();
-        shell->buildUI(**device, **renderer, deltaSeconds, frameRecords);
-        ImGui::Render();
 
         const lmx::Stopwatch measurementWait;
         rojoRHI::CommandList& commands = (*device)->beginFrame();
@@ -401,9 +406,8 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
 
         // Platform viewports follow the present because the ImGui backend renders each extra window
         // on the same device queue with the per-frame-slot allocator this frame just finished
-        // encoding against; running them after endFrame keeps that slot's use strictly ordered. The
-        // skipped-drawable path continues above without opening an ImGui frame, so it never reaches
-        // here with stale platform draw data.
+        // encoding against; running them after endFrame keeps that slot's use strictly ordered.
+        // Skipped drawables complete only platform lifecycle above, without rendering windows.
         ImGui::UpdatePlatformWindows();
         lmx::app::applyViewportAppearance(
             lmx::app::forcedWindowAppearance(shell->effectiveAppearance()));

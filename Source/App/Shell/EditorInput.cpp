@@ -11,6 +11,7 @@
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <imgui.h>
+#include <imgui_internal.h>
 
 namespace lmx::app {
 
@@ -60,20 +61,31 @@ void EditorShell::consumeFrameSelection(const render::Renderer& renderer) {
 }
 
 //======================================================================================================================
+ShortcutContext EditorShell::shortcutContext() const {
+    const auto& io = ImGui::GetIO();
+    return {.textInput = io.WantTextInput || ImGui::IsAnyItemActive(),
+            .cameraLook = m_looking || ImGui::IsMouseDown(ImGuiMouseButton_Right),
+            .popupOpen = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId |
+                                                         ImGuiPopupFlags_AnyPopupLevel),
+            .otherSurfaceFocused = detachedSurfaceFocused(),
+            .hasSelection = selectedObjectBounds(m_session.scene(), m_selection).has_value(),
+            .textFieldFocused =
+                ImGui::GetInputTextState(ImGui::GetCurrentContext()->ActiveId) != nullptr};
+}
+
+//======================================================================================================================
 void EditorShell::updateEditorShortcuts(const render::Renderer& renderer) {
+#ifdef __APPLE__
+    (void)renderer;
+    return;
+#else
     const auto& io = ImGui::GetIO();
     // ImGui maps physical Command to logical Ctrl under macOS keyboard behavior.
     const bool command = io.ConfigMacOSXBehaviors ? io.KeyCtrl : io.KeySuper;
     const bool control = io.ConfigMacOSXBehaviors ? io.KeySuper : io.KeyCtrl;
     if (io.AppFocusLost || control || io.KeyAlt)
         return;
-    const ShortcutContext context{
-        .textInput = io.WantTextInput || ImGui::IsAnyItemActive(),
-        .cameraLook = m_looking || ImGui::IsMouseDown(ImGuiMouseButton_Right),
-        .popupOpen =
-            ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel),
-        .otherSurfaceFocused = detachedSurfaceFocused(),
-        .hasSelection = selectedObjectBounds(m_session.scene(), m_selection).has_value()};
+    const auto context = shortcutContext();
     if (command) {
         if (shortcutAllowed(EditorShortcut::Document, context)) {
             if (ImGui::IsKeyPressed(ImGuiKey_S, false))
@@ -99,6 +111,7 @@ void EditorShell::updateEditorShortcuts(const render::Renderer& renderer) {
         shortcutAllowed(EditorShortcut::Capture, context)) {
         runMenuCommand(MenuCommand::Capture);
     }
+#endif
 }
 
 //======================================================================================================================

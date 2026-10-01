@@ -271,7 +271,7 @@ std::vector<std::pair<MenuCommand, uint32_t>>`; it replaces SDL's default menu w
 Hide, Hide Others, Show All, Quit → `MenuCommand` Quit), File, Edit, View, Window, Debug and Help;
 `update` sets `NSApp.mainMenu.appearance` from `forcedWindowAppearance` (nil under Auto), while the
 system menu-bar strip itself follows the system, a recorded limit.
-- [ ] Submenus rebuild in `menuNeedsUpdate:`; disabled items carry the reason as `toolTip`. The
+- [x] Focused corrections GREEN; fresh review/gates pending; native verification UNVERIFIED. Submenus rebuild in `menuNeedsUpdate:`; disabled reasons use `toolTip`. The
   delegate's `menuHasKeyEquivalent:forEvent:target:action:` resolves target and action itself and
   declines when `shortcutAllowed` refuses, so the key reaches SDL; ImGui stops polling natively
   owned chords (Review focus 3). Edit's Cut, Copy, Paste and Select All post ⌘-chords to a focused

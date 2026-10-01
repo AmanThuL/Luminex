@@ -31,6 +31,7 @@
 #include "App/Panels/Gallery/StyleGalleryPanel.h"
 #include "App/Panels/Graph/RenderGraphPanel.h"
 #include "App/Panels/Performance/PerformancePanel.h"
+#include "App/Shell/NativeMenu.h"
 #include "Engine/View/Camera.h"
 #include "Render/Passes/SelectionOutline/SelectionOutline.h"
 #include "Render/Passes/Temporal/ResolutionController.h"
@@ -245,6 +246,11 @@ public:
     /// Consumes ready document work and native responses before drawable acquisition, even when
     /// no frame can render. Dirty confirmation remains pending until buildUI can present it.
     void pumpDocuments();
+    /// Publishes native menu state before SDL polls AppKit events; a no-op outside macOS.
+    void updateNativeMenu(const render::Renderer& renderer, const rojoRHI::Device& device);
+    /// Drains native actions in order and consumes framing with the supplied renderer.
+    /// afterPanels resolves keyboard intents using this frame's widget ownership.
+    void consumeNativeMenuCommands(const render::Renderer& renderer, bool afterPanels = false);
 
     /// The active scene's display name, for capture tooling. Empty until a scene is loaded.
     std::string_view activeSceneName() const {
@@ -275,6 +281,7 @@ private:
     void resetCamera();
     void frameSelected(const render::Renderer& renderer);
     void updateEditorShortcuts(const render::Renderer& renderer);
+    ShortcutContext shortcutContext() const;
     void postCaptureNotice();
     void buildPlaybackTransport();
     void stopPlayback();
@@ -313,6 +320,9 @@ private:
     void exportMeasurement();
 
     SDL_Window* m_window = nullptr;
+#ifdef __APPLE__
+    std::unique_ptr<NativeMenuBar> m_nativeMenu;
+#endif
     scenes::SceneLibrary& m_library;
     scenes::SceneId m_activeSceneId = scenes::defaultSceneId();
     // Borrows the scene owned by m_library and holds its camera. Active after create succeeds.

@@ -242,6 +242,9 @@ void EditorShell::setUiScale(uint32_t percent) {
 
 //======================================================================================================================
 void EditorShell::updateUiScaleShortcuts() {
+#ifdef __APPLE__
+    return;
+#else
     const ImGuiIO& io = ImGui::GetIO();
     // ImGui's macOS behavior maps physical Command to its logical Ctrl modifier.
     const bool command = io.ConfigMacOSXBehaviors ? io.KeyCtrl : io.KeySuper;
@@ -261,6 +264,7 @@ void EditorShell::updateUiScaleShortcuts() {
                ImGui::IsKeyPressed(ImGuiKey_Keypad0, false)) {
         runMenuCommand(MenuCommand::ResetUiScale);
     }
+#endif
 }
 
 //======================================================================================================================

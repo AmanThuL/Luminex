@@ -1,0 +1,568 @@
+//----------------------------------------------------------------------------------------------------------------------
+/// @file NativeMenu.mm
+/// @brief Renders model menus in AppKit and preserves SDL keyboard ownership.
+//----------------------------------------------------------------------------------------------------------------------
+
+#include "App/Shell/NativeMenu.h"
+
+#import <AppKit/AppKit.h>
+#include <SDL3/SDL.h>
+#include <imgui.h>
+#include <imgui_internal.h>
+
+#include <algorithm>
+
+using namespace lmx::app;
+
+namespace {
+
+struct QueuedCommand {
+    std::pair<MenuCommand, uint32_t> command;
+    ImGuiKey key = ImGuiKey_None;
+    ImGuiKeyChord modifiers = 0;
+    ImGuiID viewport = 0;
+    unsigned int firstEvent = 0;
+    unsigned int inputEvent = 0;
+    bool otherSurfaceFocused = false;
+    bool cameraLook = false;
+    bool resolved = true;
+    bool allowed = true;
+};
+
+//======================================================================================================================
+ImGuiKey shortcutKey(MenuCommand command, NSEvent* event) {
+    switch (command) {
+    case MenuCommand::FrameSelected:
+        return ImGuiKey_F;
+    case MenuCommand::ResetCamera:
+        return ImGuiKey_Home;
+    case MenuCommand::Capture:
+        return ImGuiKey_C;
+    case MenuCommand::Open:
+        return ImGuiKey_O;
+    case MenuCommand::Save:
+    case MenuCommand::SaveAs:
+        return ImGuiKey_S;
+    case MenuCommand::Quit:
+        return ImGuiKey_Q;
+    case MenuCommand::ZoomIn:
+        return event.keyCode == 69 ? ImGuiKey_KeypadAdd : ImGuiKey_Equal;
+    case MenuCommand::ZoomOut:
+        return event.keyCode == 78 ? ImGuiKey_KeypadSubtract : ImGuiKey_Minus;
+    case MenuCommand::ResetUiScale:
+        return event.keyCode == 82 ? ImGuiKey_Keypad0 : ImGuiKey_0;
+    default:
+        return ImGuiKey_None;
+    }
+}
+
+//======================================================================================================================
+NSString* nativeString(const std::string& value) {
+    return [NSString stringWithUTF8String:value.c_str()];
+}
+
+//======================================================================================================================
+ImGuiViewport* keyViewport() {
+    NSWindow* window = NSApp.keyWindow;
+    if (!window || window.attachedSheet || !ImGui::GetCurrentContext())
+        return nullptr;
+    // SDL's Cocoa_StartTextInput installs its translator under the content view. Other Cocoa
+    // responders (including NSTextView and chooser field editors) keep their native editing.
+    NSResponder* responder = window.firstResponder;
+    const bool sdlText = [responder isKindOfClass:NSClassFromString(@"SDL3TranslatorResponder")] &&
+                         [(NSView*)responder isDescendantOf:window.contentView];
+    if (responder != window && responder != window.contentView && !sdlText)
+        return nullptr;
+    for (auto* viewport : ImGui::GetPlatformIO().Viewports)
+        if (viewport->PlatformHandleRaw == (__bridge void*)window)
+            return viewport;
+    return nullptr;
+}
+
+//======================================================================================================================
+bool focusedTextField(const ShortcutContext& context) {
+    auto* viewport = keyViewport();
+    if (!viewport || !context.textFieldFocused)
+        return false;
+    auto& gui = *ImGui::GetCurrentContext();
+    return ImGui::GetInputTextState(gui.ActiveId) && gui.ActiveIdWindow &&
+           gui.ActiveIdWindow->Viewport == viewport;
+}
+
+//======================================================================================================================
+bool matches(const Shortcut& shortcut, NSEvent* event) {
+    const auto modifiers = event.modifierFlags;
+    if (modifiers & (NSEventModifierFlagControl | NSEventModifierFlagOption))
+        return false;
+    if (bool(modifiers & NSEventModifierFlagCommand) != shortcut.command)
+        return false;
+    NSString* key = event.charactersIgnoringModifiers.lowercaseString;
+    // Preserve the physical Equal/Minus/0 and keypad aliases of the SDL polling route.
+    if (shortcut.key == "+")
+        return
+            [key isEqual:@"+"] || [key isEqual:@"="] || event.keyCode == 24 || event.keyCode == 69;
+    if (shortcut.key == "-")
+        return [key isEqual:@"-"] || event.keyCode == 27 || event.keyCode == 78;
+    if (shortcut.key == "0")
+        return [key isEqual:@"0"] || event.keyCode == 29 || event.keyCode == 82;
+    // Shift selects Save As; the other existing bindings accept Shift too.
+    if (shortcut.key == "S" && bool(modifiers & NSEventModifierFlagShift) != shortcut.shift)
+        return false;
+    return [key
+        isEqual:shortcut.key == "Home" ? @"\uF729" : nativeString(shortcut.key).lowercaseString];
+}
+
+//======================================================================================================================
+EditorShortcut policy(MenuCommand command) {
+    switch (command) {
+    case MenuCommand::FrameSelected:
+        return EditorShortcut::FrameSelected;
+    case MenuCommand::ResetCamera:
+        return EditorShortcut::ResetCamera;
+    case MenuCommand::Capture:
+        return EditorShortcut::Capture;
+    default:
+        return EditorShortcut::Document;
+    }
+}
+
+//======================================================================================================================
+const MenuItem* findCommand(const std::vector<MenuItem>& items, MenuCommand command,
+                            uint32_t argument) {
+    for (const auto& item : items) {
+        if (item.command == command && item.argument == argument)
+            return &item;
+        if (const auto* found = findCommand(item.children, command, argument))
+            return found;
+    }
+    return nullptr;
+}
+
+//======================================================================================================================
+bool keyboardCommandEnabled(const std::vector<MenuItem>& items, MenuCommand command,
+                            uint32_t argument, bool ancestorsEnabled = true) {
+    for (const auto& item : items) {
+        if (item.command == command && item.argument == argument)
+            return ancestorsEnabled && (item.enabled || command == MenuCommand::Capture);
+        if (keyboardCommandEnabled(item.children, command, argument,
+                                   ancestorsEnabled && item.enabled))
+            return true;
+    }
+    return false;
+}
+
+} // namespace
+
+@interface LMXNativeSubmenu : NSMenu {
+@public
+    std::vector<size_t> path;
+    int kind; // Model, application, Edit.
+}
+@end
+@interface LMXNativeMenuDelegate : NSObject <NSMenuDelegate> {
+@public
+    std::vector<MenuItem> model;
+    ShortcutContext context;
+    std::vector<QueuedCommand> commands;
+    std::optional<QueuedCommand> shortcutCommand;
+    NSEvent* shortcutEvent;
+    NSEvent* lastShortcutEvent;
+}
+- (void)choose:(NSMenuItem*)sender;
+- (void)chooseShortcut:(id)sender;
+- (void)observeShortcut;
+- (void)edit:(NSMenuItem*)sender;
+- (NSMenuItem*)row:(const MenuItem&)item path:(const std::vector<size_t>&)path;
+@end
+
+@implementation LMXNativeSubmenu
+- (BOOL)performKeyEquivalent:(NSEvent*)event {
+    // NSMenu can fall back to item key equivalents after a delegate refusal. Keep displayed
+    // shortcuts while making the delegate's focus decision authoritative for the entire tree.
+    id target = nil;
+    SEL action = nil;
+    if (![self.delegate menuHasKeyEquivalent:self forEvent:event target:&target action:&action]) {
+        // Refusal describes the published policy. Observe the raw intent separately so a pending
+        // click or model change can resolve it against the frame that actually consumes the key.
+        [(LMXNativeMenuDelegate*)self.delegate observeShortcut];
+        return NO;
+    }
+    const BOOL sent = [NSApp sendAction:action to:target from:self];
+    // A shortcut action stages an intent. SDL must still deliver the original key so ImGui
+    // resolves its owner after pending clicks, navigation and popups have been processed.
+    return action == @selector(chooseShortcut:) ? NO : sent;
+}
+@end
+
+@implementation LMXNativeMenuDelegate
+
+- (NSMenuItem*)row:(const MenuItem&)item path:(const std::vector<size_t>&)path {
+    if (item.separator)
+        return NSMenuItem.separatorItem;
+    NSMenuItem* row = [[NSMenuItem alloc] initWithTitle:nativeString(item.label)
+                                                 action:item.command ? @selector(choose:) : nil
+                                          keyEquivalent:@""];
+    row.target = self;
+    row.enabled = item.enabled && (item.command || !item.children.empty());
+    row.state = item.checked ? NSControlStateValueOn : NSControlStateValueOff;
+    row.toolTip = item.enabled ? nil : nativeString(item.disabledReason);
+    if (item.command)
+        row.representedObject = @[ @(static_cast<int>(*item.command)), @(item.argument) ];
+    if (item.shortcut) {
+        const auto& shortcut = *item.shortcut;
+        row.keyEquivalent =
+            shortcut.key == "Home" ? @"\uF729" : nativeString(shortcut.key).lowercaseString;
+        row.keyEquivalentModifierMask = (shortcut.command ? NSEventModifierFlagCommand : 0) |
+                                        (shortcut.shift ? NSEventModifierFlagShift : 0);
+    }
+    if (!item.children.empty()) {
+        LMXNativeSubmenu* submenu = [[LMXNativeSubmenu alloc] initWithTitle:row.title];
+        submenu->path = path;
+        submenu.delegate = self;
+        submenu.autoenablesItems = NO;
+        row.submenu = submenu;
+    }
+    return row;
+}
+
+- (void)menuNeedsUpdate:(NSMenu*)menu {
+    if (![menu isKindOfClass:LMXNativeSubmenu.class])
+        return;
+    auto* submenu = (LMXNativeSubmenu*)menu;
+    if (submenu->kind == -1)
+        return;
+    [menu removeAllItems];
+    if (submenu->kind == 1) {
+        [menu addItemWithTitle:@"About Luminex"
+                        action:@selector(orderFrontStandardAboutPanel:)
+                 keyEquivalent:@""]
+            .target = NSApp;
+        [menu addItem:NSMenuItem.separatorItem];
+        [menu addItemWithTitle:@"Hide Luminex" action:@selector(hide:) keyEquivalent:@"h"].target =
+            NSApp;
+        NSMenuItem* others = [menu addItemWithTitle:@"Hide Others"
+                                             action:@selector(hideOtherApplications:)
+                                      keyEquivalent:@"h"];
+        others.target = NSApp;
+        others.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagOption;
+        [menu addItemWithTitle:@"Show All"
+                        action:@selector(unhideAllApplications:)
+                 keyEquivalent:@""]
+            .target = NSApp;
+        [menu addItem:NSMenuItem.separatorItem];
+        if (const auto* quit = findCommand(model, MenuCommand::Quit, 0))
+            [menu addItem:[self row:*quit path:{}]];
+        return;
+    }
+    if (submenu->kind == 2) {
+        NSArray* titles = @[ @"Cut", @"Copy", @"Paste", @"Select All" ];
+        NSArray* keys = @[ @"x", @"c", @"v", @"a" ];
+        for (NSUInteger i = 0; i < titles.count; ++i) {
+            NSMenuItem* item = [menu addItemWithTitle:titles[i]
+                                               action:@selector(edit:)
+                                        keyEquivalent:keys[i]];
+            item.target = self;
+            item.tag = i;
+            item.enabled = focusedTextField(context);
+            item.toolTip = item.enabled ? nil : @"No text field has focus";
+        }
+        return;
+    }
+    const auto* items = &model;
+    for (const auto index : submenu->path) {
+        if (index >= items->size())
+            return;
+        items = &(*items)[index].children;
+    }
+    for (size_t i = 0; i < items->size(); ++i) {
+        const auto& item = (*items)[i];
+        if (item.command == MenuCommand::Quit)
+            continue;
+        auto path = submenu->path;
+        path.push_back(i);
+        [menu addItem:[self row:item path:path]];
+    }
+    if (menu.itemArray.lastObject.separatorItem)
+        [menu removeItemAtIndex:menu.numberOfItems - 1];
+}
+
+- (void)choose:(NSMenuItem*)sender {
+    NSArray* identity = sender.representedObject;
+    const auto command = static_cast<MenuCommand>([identity[0] intValue]);
+    const uint32_t argument = [identity[1] unsignedIntValue];
+    const auto* item = findCommand(model, command, argument);
+    if (item && item->enabled)
+        commands.push_back({.command = {command, argument}});
+}
+
+- (void)chooseShortcut:(id)sender {
+    (void)sender;
+    [self observeShortcut];
+}
+
+- (void)observeShortcut {
+    if (shortcutCommand && lastShortcutEvent != shortcutEvent) {
+        commands.push_back(*shortcutCommand);
+        lastShortcutEvent = shortcutEvent;
+    }
+    shortcutCommand.reset();
+}
+
+- (BOOL)menuHasKeyEquivalent:(NSMenu*)menu
+                    forEvent:(NSEvent*)event
+                      target:(id*)target
+                      action:(SEL*)action {
+    (void)menu;
+    *target = nil;
+    *action = nil;
+    shortcutCommand.reset();
+    if (event.type != NSEventTypeKeyDown || event.isARepeat)
+        return NO;
+    const auto modifiers =
+        event.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagControl |
+                               NSEventModifierFlagOption | NSEventModifierFlagShift);
+    if ([event.charactersIgnoringModifiers.lowercaseString isEqual:@"h"] &&
+        (modifiers == NSEventModifierFlagCommand ||
+         modifiers == (NSEventModifierFlagCommand | NSEventModifierFlagOption))) {
+        *target = NSApp;
+        *action = modifiers & NSEventModifierFlagOption ? @selector(hideOtherApplications:)
+                                                        : @selector(hide:);
+        return YES;
+    }
+    ImGuiViewport* viewport = keyViewport();
+    if (!viewport)
+        return NO;
+
+    const auto visit = [&](auto&& self, const std::vector<MenuItem>& items) -> const MenuItem* {
+        for (const auto& item : items) {
+            if (item.command && item.shortcut && matches(*item.shortcut, event))
+                return &item;
+            if (const auto* match = self(self, item.children))
+                return match;
+        }
+        return nullptr;
+    };
+    if (const auto* item = visit(visit, model)) {
+        if (lastShortcutEvent == event)
+            return NO;
+        shortcutEvent = event;
+        shortcutCommand = QueuedCommand{
+            .command = {*item->command, item->argument},
+            .key = shortcutKey(*item->command, event),
+            .modifiers =
+                ((event.modifierFlags & NSEventModifierFlagCommand)
+                     ? (ImGui::GetIO().ConfigMacOSXBehaviors ? ImGuiMod_Ctrl : ImGuiMod_Super)
+                     : 0) |
+                ((event.modifierFlags & NSEventModifierFlagShift) ? ImGuiMod_Shift : 0),
+            .viewport = viewport->ID,
+            .firstEvent = ImGui::GetCurrentContext()->InputEventsNextEventId,
+            .otherSurfaceFocused = (viewport->Flags & ImGuiViewportFlags_NoAutoMerge) != 0,
+            .cameraLook = (NSEvent.pressedMouseButtons & 2) != 0,
+            .resolved = false};
+        // Availability and focus here describe the published menu, never execution eligibility.
+        // The consuming frame rechecks both, including disabled ancestors and capture recovery.
+        auto focus = context;
+        focus.otherSurfaceFocused |= shortcutCommand->otherSurfaceFocused;
+        focus.cameraLook |= shortcutCommand->cameraLook;
+        const auto command = *item->command;
+        if (command == MenuCommand::ZoomIn || command == MenuCommand::ZoomOut ||
+            command == MenuCommand::ResetUiScale)
+            focus.otherSurfaceFocused = false;
+        if (!keyboardCommandEnabled(model, command, item->argument) ||
+            !shortcutAllowed(policy(command), focus))
+            return NO;
+        *target = self;
+        *action = @selector(chooseShortcut:);
+        return YES;
+    }
+    return NO;
+}
+
+- (void)edit:(NSMenuItem*)sender {
+    if (!focusedTextField(context))
+        return;
+    constexpr SDL_Scancode codes[] = {SDL_SCANCODE_X, SDL_SCANCODE_C, SDL_SCANCODE_V,
+                                      SDL_SCANCODE_A};
+    constexpr SDL_Keycode keys[] = {SDLK_X, SDLK_C, SDLK_V, SDLK_A};
+    auto* viewport = keyViewport();
+    SDL_Event event{};
+    event.key.windowID =
+        static_cast<SDL_WindowID>(reinterpret_cast<uintptr_t>(viewport->PlatformHandle));
+    event.key.scancode = codes[sender.tag];
+    event.key.key = keys[sender.tag];
+    event.key.mod = SDL_KMOD_GUI;
+    event.type = SDL_EVENT_KEY_DOWN;
+    event.key.down = true;
+    if (!SDL_PushEvent(&event)) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Could not post text edit: %s", SDL_GetError());
+        return;
+    }
+    event.type = SDL_EVENT_KEY_UP;
+    event.key.down = false;
+    event.key.mod = SDL_GetModState();
+    if (!SDL_PushEvent(&event))
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Could not finish text edit: %s",
+                     SDL_GetError());
+}
+@end
+
+namespace lmx::app {
+
+struct NativeMenuBar::Impl {
+    LMXNativeMenuDelegate* delegate = [[LMXNativeMenuDelegate alloc] init];
+    NSMenu* previous = NSApp.mainMenu;
+    NSMenu* previousHelp = NSApp.helpMenu;
+    NSMenu* previousWindows = NSApp.windowsMenu;
+    LMXNativeSubmenu* menu = [[LMXNativeSubmenu alloc] initWithTitle:@"Luminex"];
+};
+
+//======================================================================================================================
+NativeMenuBar::NativeMenuBar() : m_impl(std::make_unique<Impl>()) {}
+
+//======================================================================================================================
+std::unique_ptr<NativeMenuBar> NativeMenuBar::install() {
+    auto owner = std::unique_ptr<NativeMenuBar>(new NativeMenuBar);
+    auto& state = *owner->m_impl;
+    state.menu->kind = -1;
+    state.menu.delegate = state.delegate;
+    state.menu.autoenablesItems = NO;
+    NSArray* names = @[ @"Luminex", @"File", @"Edit", @"View", @"Window", @"Debug", @"Help" ];
+    size_t modelIndex = 0;
+    for (NSUInteger i = 0; i < names.count; ++i) {
+        auto* submenu = [[LMXNativeSubmenu alloc] initWithTitle:names[i]];
+        submenu->kind = i == 0 ? 1 : i == 2 ? 2 : 0;
+        if (submenu->kind == 0)
+            submenu->path = {modelIndex++};
+        submenu.delegate = state.delegate;
+        submenu.autoenablesItems = NO;
+        [state.menu addItemWithTitle:names[i] action:nil keyEquivalent:@""].submenu = submenu;
+    }
+    NSApp.mainMenu = state.menu;
+    NSApp.windowsMenu = nil;
+    NSApp.helpMenu = state.menu.itemArray.lastObject.submenu;
+    return owner;
+}
+
+//======================================================================================================================
+NativeMenuBar::~NativeMenuBar() {
+    if (NSApp.mainMenu == m_impl->menu) {
+        NSApp.helpMenu = m_impl->previousHelp;
+        NSApp.windowsMenu = m_impl->previousWindows;
+        NSApp.mainMenu = m_impl->previous;
+    }
+}
+
+//======================================================================================================================
+void NativeMenuBar::update(std::vector<MenuItem> items, const ShortcutContext& context) {
+    @autoreleasepool {
+        auto* delegate = m_impl->delegate;
+        delegate->model = std::move(items);
+        delegate->context = context;
+        for (NSMenuItem* row in m_impl->menu.itemArray) {
+            auto* submenu = (LMXNativeSubmenu*)row.submenu;
+            if (submenu->kind != 0 || submenu->path.front() >= delegate->model.size())
+                continue;
+            const auto& item = delegate->model[submenu->path.front()];
+            row.enabled = item.enabled;
+            row.toolTip = item.enabled ? nil : nativeString(item.disabledReason);
+        }
+        Appearance preference = Appearance::Auto;
+        for (const auto mode : {Appearance::Auto, Appearance::Light, Appearance::Dark})
+            if (const auto* item = findCommand(delegate->model, MenuCommand::Appearance,
+                                               static_cast<uint32_t>(mode));
+                item && item->checked)
+                preference = mode;
+        const auto forced = forcedWindowAppearance(preference);
+        NSAppearance* appearance =
+            forced ? [NSAppearance appearanceNamed:*forced == ThemeKind::Light
+                                                       ? NSAppearanceNameAqua
+                                                       : NSAppearanceNameDarkAqua]
+                   : nil;
+        if (m_impl->menu.appearance != appearance)
+            m_impl->menu.appearance = appearance;
+    }
+}
+
+//======================================================================================================================
+std::vector<std::pair<MenuCommand, uint32_t>> NativeMenuBar::takeCommands() {
+    return takeCommands(nullptr);
+}
+
+//======================================================================================================================
+std::vector<std::pair<MenuCommand, uint32_t>>
+NativeMenuBar::takeCommands(const ShortcutContext* completedFrame) {
+    auto& pending = m_impl->delegate->commands;
+    auto& gui = *ImGui::GetCurrentContext();
+    // SDL pumps native events before returning its queued events to the caller. Bind only after
+    // that batch reaches the ImGui backend, using owned event IDs rather than key-state polling.
+    for (auto& intent : pending) {
+        if (intent.resolved || intent.inputEvent != 0)
+            continue;
+        ImGuiKeyChord modifiers = gui.IO.KeyMods;
+        for (const auto& event : gui.InputEventsQueue) {
+            if (event.Type == ImGuiInputEventType_Key && (event.Key.Key & ImGuiMod_Mask_)) {
+                if (event.Key.Down)
+                    modifiers |= event.Key.Key;
+                else
+                    modifiers &= ~event.Key.Key;
+            }
+            if (modifiers != intent.modifiers || event.EventId < intent.firstEvent ||
+                event.Type != ImGuiInputEventType_Key || !event.Key.Down ||
+                event.Key.Key != intent.key)
+                continue;
+            const bool assigned = std::ranges::any_of(
+                pending, [&](const auto& other) { return other.inputEvent == event.EventId; });
+            if (!assigned) {
+                intent.inputEvent = event.EventId;
+                break;
+            }
+        }
+        if (intent.inputEvent == 0) {
+            intent.resolved = true;
+            intent.allowed = false;
+        }
+    }
+    if (completedFrame) {
+        for (auto& intent : pending) {
+            if (intent.resolved)
+                continue;
+            const bool consumed = std::ranges::any_of(gui.InputEventsTrail, [&](const auto& event) {
+                return event.EventId == intent.inputEvent;
+            });
+            if (!consumed)
+                continue;
+            intent.resolved = true;
+            auto focus = *completedFrame;
+            // Tab and SetKeyboardFocusHere submit navigation whose activation applies next frame.
+            // That navigation already owns this batch even before InputText acquires ActiveId.
+            focus.textInput |=
+                (gui.NavMoveSubmitted &&
+                 (gui.NavMoveFlags & (ImGuiNavMoveFlags_IsTabbing | ImGuiNavMoveFlags_FocusApi))) ||
+                gui.NavNextActivateId != 0;
+            auto* viewport = keyViewport();
+            focus.otherSurfaceFocused |=
+                intent.otherSurfaceFocused ||
+                (viewport && (viewport->Flags & ImGuiViewportFlags_NoAutoMerge));
+            focus.cameraLook |= intent.cameraLook;
+            const auto command = intent.command.first;
+            if (command == MenuCommand::ZoomIn || command == MenuCommand::ZoomOut ||
+                command == MenuCommand::ResetUiScale)
+                focus.otherSurfaceFocused = false;
+            intent.allowed =
+                viewport && viewport->ID == intent.viewport && !gui.IO.AppFocusLost &&
+                keyboardCommandEnabled(m_impl->delegate->model, command, intent.command.second) &&
+                shortcutAllowed(policy(command), focus);
+        }
+    }
+    std::vector<std::pair<MenuCommand, uint32_t>> result;
+    size_t count = 0;
+    while (count < pending.size() && pending[count].resolved) {
+        if (pending[count].allowed)
+            result.push_back(pending[count].command);
+        ++count;
+    }
+    pending.erase(pending.begin(), pending.begin() + count);
+    return result;
+}
+
+} // namespace lmx::app
