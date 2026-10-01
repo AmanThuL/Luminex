@@ -77,6 +77,9 @@ public:
     std::expected<bool, std::string> asBool() const;
     /// Returns the JSON pointer owned by this node; the root pointer is the empty string.
     const std::string& path() const;
+    /// Returns the exact JSON value bytes, including container delimiters or string quotes, from
+    /// the owned source. The view remains valid while this node or a copy retains token storage.
+    std::string_view sourceJson() const;
 
 private:
     JsonNode(std::shared_ptr<const JsonTokens::Storage> storage, size_t index, std::string path);

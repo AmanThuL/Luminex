@@ -386,6 +386,13 @@ std::string_view JsonNode::tokenText() const {
 }
 
 //======================================================================================================================
+std::string_view JsonNode::sourceJson() const {
+    const auto& token = m_storage->tokens[m_index];
+    const size_t start = tokenStart(token);
+    return std::string_view(m_storage->text).substr(start, tokenEnd(token) - start);
+}
+
+//======================================================================================================================
 bool JsonNode::isObject() const {
     return m_storage->tokens[m_index].type == JSMN_OBJECT;
 }
