@@ -364,8 +364,7 @@ void drawRenderingTopic(const InspectorPanelContext& context, RenderingCategory 
     }
     if (category == RenderingCategory::Display) {
         if (editor_style::beginPropertyGrid("displayEditFields")) {
-            field("Clear color (sRGB)");
-            ImGui::ColorEdit4("##clearColor", renderer.clearColor);
+            editor_style::colorRgb("Clear color (sRGB)", "clearColor", renderer.clearColor, true);
             checkbox("Wireframe", "##wireframe", &settings.wireframe);
             editorTooltip("Draw scene mesh triangle edges with the wireframe raster pipeline. "
                           "This changes the rendered scene image.");

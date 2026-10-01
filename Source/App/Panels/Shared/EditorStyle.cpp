@@ -461,6 +461,20 @@ bool vector3(const char* label, const char* id, float* values, float speed, floa
 }
 
 //======================================================================================================================
+bool colorRgb(const char* label, const char* id, float* values, bool alpha) {
+    // ImGui's own color inputs drop their R:/G:/B: prefixes whenever component markers are
+    // drawn, so the components use the labeled vector row and the picker keeps only its swatch.
+    bool changed = vector3(label, id, values, 1.0f / 255.0f, 0.0f, 1.0f, "%.3f", 0, true);
+    ImGui::PushID(id);
+    const ImGuiColorEditFlags flags =
+        ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel | ImGuiColorEditFlags_Float;
+    changed |= alpha ? ImGui::ColorEdit4("##swatch", values, flags | ImGuiColorEditFlags_AlphaBar)
+                     : ImGui::ColorEdit3("##swatch", values, flags);
+    ImGui::PopID();
+    return changed;
+}
+
+//======================================================================================================================
 void nextInRow(float width) {
     const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
     if (right - ImGui::GetItemRectMax().x >= width + ImGui::GetStyle().ItemSpacing.x) {
