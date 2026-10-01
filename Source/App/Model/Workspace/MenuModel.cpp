@@ -249,10 +249,12 @@ EditorShortcut shortcutPolicy(MenuCommand command) {
 //======================================================================================================================
 KeyboardDecision keyboardDecision(const std::vector<MenuItem>& items, MenuCommand command,
                                   uint32_t argument, const ShortcutContext& focus) {
-    if (!shortcutAllowed(shortcutPolicy(command), focus))
-        return {focus.textInput || focus.cameraLook || focus.popupOpen ? KeyboardOutcome::Focus
-                                                                       : KeyboardOutcome::Policy,
+    if (!shortcutAllowed(shortcutPolicy(command), focus)) {
+        if (focus.textInput || focus.cameraLook || focus.popupOpen)
+            return {KeyboardOutcome::Focus, {}};
+        return {focus.otherSurfaceFocused ? KeyboardOutcome::OtherSurface : KeyboardOutcome::Unmet,
                 {}};
+    }
     bool ancestorsEnabled = true;
     const auto* item = findEnabled(items, command, argument, ancestorsEnabled);
     if (!item)
