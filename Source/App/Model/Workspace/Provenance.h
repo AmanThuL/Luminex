@@ -46,6 +46,12 @@ std::optional<ProvenanceMark> subjectProvenance(std::optional<std::string_view> 
                                                 std::optional<std::string_view> cliFlag,
                                                 bool edited);
 
+/// Returns a row tooltip's provenance lines without a leading newline: the mark's source, preceded
+/// on its own line by the generator sentence only when that source does not already begin with
+/// it. Empty when neither applies. Strings are borrowed for the call.
+std::string rowProvenanceTooltip(std::optional<std::string_view> generatedBy,
+                                 const std::optional<ProvenanceMark>& mark);
+
 /// Returns SystemApplied naming dynamic resolution's scale and GPU budget only while active.
 /// Scale is the finite unitless render/output ratio in [0.5, 1]; budgetMs is finite and positive
 /// in milliseconds. This describes caller-supplied state without driving or clamping the policy.
