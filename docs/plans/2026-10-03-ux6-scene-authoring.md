@@ -1,6 +1,6 @@
 # UX6 — Scene authoring implementation
 
-**Status**: Proposed
+**Status**: In progress
 > Execute task by task (subagent-driven-development or executing-plans); steps are checkboxes. Each task writes its tests first, sees them fail, implements, passes the per-commit gates and commits.
 
 **Goal:** deliver the [UX6 record](../milestones/ux/ux6.md) and its [roadmap gate](../roadmap/editor-experience.md#ux6--scene-authoring) as one pull request: lab objects saved in the scene documents, file-authored mobility for objects and lights, and a viewport transform gizmo.
@@ -30,8 +30,8 @@
 Waves: W1 Tasks 1–12 (UX6.1), W2 13–16 (UX6.2), W3 17–22 (UX6.3). Tasks 2 and 11 may run beside their neighbors; Task 17 may start any time after Task 1; all others are serial. Design-sensitive tasks: 3, 4, 6, 8, 14, 18, 20. Stop after three failed attempts on one issue and report. Checkpoints at Tasks 12, 16 and 22 run the real App; record every gesture not exercised as unverified.
 
 ### Task 1: Start execution (main thread)
-- [ ] The parent already holds the one-row vector fields (`editor_style::vector3`, `drawObjectSection`) that Tasks 15 and 20 build on. Create both worktrees, build and freeze the parent, record its App and shader hashes.
-- [ ] Set the record `Accepted`, this plan `In progress`, roadmap row 17 and `AGENTS.md` to "in progress". Reword completion-gate task 6 in `docs/roadmap/editor-experience.md` from "identify MaterialLab axes" to "identify a selected object's axes with the gizmo" (owner-approved 2026-10-03). Commit `docs: start UX6 execution (UX6)`.
+- [x] The parent already holds the one-row vector fields (`editor_style::vector3`, `drawObjectSection`) that Tasks 15 and 20 build on. Create both worktrees, build and freeze the parent, record its App and shader hashes.
+- [x] Set the record `Accepted`, this plan `In progress`, roadmap row 17 and `AGENTS.md` to "in progress". Reword completion-gate task 6 in `docs/roadmap/editor-experience.md` from "identify MaterialLab axes" to "identify a selected object's axes with the gizmo" (owner-approved 2026-10-03). Commit `docs: start UX6 execution (UX6)`.
 
 ### Task 2: Parity tool reads two buffers
 **Files:** `Tools/Screenshots/parity.py`; create `Tools/tests/test_parity.py` (beside the existing `test_parity_rounds.py`); `Tools/Screenshots/reference.json` (hashes only at Task 12).

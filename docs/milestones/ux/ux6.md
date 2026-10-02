@@ -1,6 +1,6 @@
 # UX6 — Scene Authoring
 
-**Status**: Proposed
+**Status**: Accepted
 
 Drafted on 2026-10-02 from the owner's review of the editor after [UX5](ux5.md), and revised on
 2026-10-03 with the owner's answers to the seven decisions the draft left open. Three requests
@@ -9,7 +9,7 @@ geometry beside the helmet should become a real transform gizmo; and each object
 it may be moved, so an operator cannot rearrange a scene by accident. UX6 saves lab objects in the
 scene document, gives every object and light an authored mobility, and adds a viewport transform
 gizmo. [Part IV](../../roadmap/editor-experience.md#ux6--scene-authoring) owns the outcome and gates
-once the owner accepts this record; until then the record holds the proposed contract.
+with execution authorized by the owner on 2026-10-03; implementation is in progress.
 
 **Placement:** [UX5](ux5.md) → **UX6** → N1, by the owner's decision on 2026-10-03.
 
@@ -41,7 +41,7 @@ once the owner accepts this record; until then the record holds the proposed con
 
 ## Decisions
 
-The owner answered these on 2026-10-03. They bind the plan once this record is accepted.
+The owner answered these on 2026-10-03. They bind the accepted implementation plan.
 
 | Topic | Decision |
 |---|---|

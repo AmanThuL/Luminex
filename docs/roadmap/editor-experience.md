@@ -5,7 +5,7 @@
 Part IV of the [rendering roadmap](../roadmap.md) owns editor usability and the presentation of
 rendering evidence: UX1 before M7.1, then [UX2](#ux2--editor-surfaces),
 [UX3](#ux3--scene-documents-and-hierarchy) and [UX4](#ux4--design-system-and-themes) between R4
-and N1, ending with [UX5](#ux5--agent-session); [UX6](#ux6--scene-authoring) is proposed and placed before N1. The [2026-09-14 audit](../research/2026-09-14-editor-uiux-audit.md) found that
+and N1, ending with [UX5](#ux5--agent-session); [UX6](#ux6--scene-authoring) is in progress and placed before N1. The [2026-09-14 audit](../research/2026-09-14-editor-uiux-audit.md) found that
 the shipped controls expose substantial capability, but clipped data, ambiguous states and an
 unstable graph make that capability difficult to inspect. This part owns the accepted boundary; the milestone record distinguishes implementation
 from completed acceptance.
@@ -78,7 +78,7 @@ All required areas above must pass the following observable tasks on the actual 
 - Under default Native TAA, retain graph selection, group state and pan/zoom for at least ten
   seconds across history-slot alternation. Freeze a frame, inspect its resources and matched
   timings, dump that same record, then resume live. Genuine topology changes remain visible.
-- Read every supported debug view using its legend, return to Final, identify MaterialLab axes,
+- Read every supported debug view using its legend, return to Final, identify a selected object's axes with the gizmo,
   operate TemporalLab playback/step/reset and recover changed camera/light/rendering settings.
 - Complete dump and capture workflows with visible output paths or actionable failure reasons.
   Verify capture-disabled startup and capture-enabled success, as well as recoverable failures.
@@ -255,7 +255,7 @@ Implemented; on 2026-10-02 the owner authorized integration by squash merge afte
 
 ## UX6 — Scene authoring
 
-**Placement:** [UX5](#ux5--agent-session) → UX6 → N1. The owner asked for the proposal on 2026-10-02 and placed it before N1 on 2026-10-03, answering the record's open decisions the same day. The [record](../milestones/ux/ux6.md) is still `Proposed`; the outcome and gates below bind once the owner accepts it, and no plan opens before then.
+**Placement:** [UX5](#ux5--agent-session) → UX6 → N1. The owner asked for the proposal on 2026-10-02 and placed it before N1 on 2026-10-03, answering the record's open decisions the same day. The owner accepted the [record](../milestones/ux/ux6.md) and authorized execution on 2026-10-03; the [plan](../plans/2026-10-03-ux6-scene-authoring.md) is in progress and the outcome and gates below bind.
 
 **Outcome:** lab objects are saved in the scene document; each object and light says whether it may move; an operator moves a movable subject with a viewport gizmo and cannot move a static one.
 
