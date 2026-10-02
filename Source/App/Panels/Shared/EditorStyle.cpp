@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstring>
 #include <numbers>
 #include <string>
 
@@ -116,6 +117,138 @@ float tabLabelWidth(const char* label, ImGuiTabItemFlags flags) {
             ImGui::TabItemCalcSize(label, (flags & ImGuiTabItemFlags_UnsavedDocument) != 0).x);
     }
     return width;
+}
+
+//======================================================================================================================
+// Shared body of vector3 and colorRgb, drawn inside the caller's id scope. A swatch opens the
+// color picker; it joins the end of the one-row layout and follows the stacked ones.
+bool vectorRow(const char* label, float* values, float speed, float minimum, float maximum,
+               const char* format, ImGuiSliderFlags flags, bool rgb, const char* tooltip,
+               bool swatch, bool alpha) {
+    flags |= ImGuiSliderFlags_ColorMarkers;
+    constexpr const char* kAxes[] = {"X", "Y", "Z"};
+    constexpr const char* kChannels[] = {"R", "G", "B"};
+    const char* const* names = rgb ? kChannels : kAxes;
+    const auto& style = ImGui::GetStyle();
+
+    // One component is its letter and a frame holding a signed two-digit value. Every vector
+    // uses the same sample so adjacent rows align; a larger value is cut by its own frame.
+    // An encoded color never exceeds one, which leaves its row room for the swatch.
+    char sample[32];
+    ImFormatString(sample, sizeof(sample), format, swatch ? 1.0f : -99.999f);
+    float letterWidth = 0.0f;
+    for (int axis = 0; axis < 3; ++axis)
+        letterWidth = std::max(letterWidth, ImGui::CalcTextSize(names[axis]).x);
+    const float gap = style.ItemInnerSpacing.x;
+    const float componentWidth =
+        letterWidth + gap + ImGui::CalcTextSize(sample).x + style.FramePadding.x;
+    const float swatchWidth = swatch ? gap + ImGui::GetFrameHeight() : 0.0f;
+    const float rowWidth = 3.0f * componentWidth + 2.0f * gap + swatchWidth;
+    const auto picker = [&] {
+        const ImGuiColorEditFlags pickerFlags =
+            ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel | ImGuiColorEditFlags_Float;
+        return alpha ? ImGui::ColorEdit4("##swatch", values,
+                                         pickerFlags | ImGuiColorEditFlags_AlphaBar)
+                     : ImGui::ColorEdit3("##swatch", values, pickerFlags);
+    };
+
+    const auto component = [&](int axis, float width) {
+        ImGui::PushID(axis);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(names[axis]);
+        ImGui::SameLine(0.0f, gap);
+        ImGui::SetNextItemWidth(width);
+        // The N-component API supplies markers automatically; separate responsive scalar
+        // fields need the pinned ImGui RGB component colors before submitting the field.
+        const ImVec4 marker{(axis == 0 ? 240.0f : 20.0f) / 255.0f,
+                            (axis == 1 ? 240.0f : 20.0f) / 255.0f,
+                            (axis == 2 ? 240.0f : 20.0f) / 255.0f, 1.0f};
+        ImGui::SetNextItemColorMarker(ImGui::ColorConvertFloat4ToU32(marker));
+        const bool edited =
+            ImGui::DragFloat("##component", values + axis, speed, minimum, maximum, format, flags);
+        if (tooltip)
+            editorTooltip(tooltip);
+        ImGui::PopID();
+        return edited;
+    };
+
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    const ImGuiTable* table = ImGui::GetCurrentTable();
+    const bool twoColumns = table->ColumnsCount > 1;
+    const ImVec2 rowStart = ImGui::GetCursorScreenPos();
+    const float rowRight = table->Columns[table->ColumnsCount - 1].WorkMaxX;
+    // In a two-column grid the fields start at the value column when they fit there, and
+    // otherwise borrow the label column's unused width down to the label's widest word.
+    const float fieldsLeft =
+        twoColumns ? std::min(table->Columns[1].WorkMinX, rowRight - rowWidth) : rowStart.x;
+    float labelWidth = ImGui::GetContentRegionAvail().x - fieldProvenanceWidth();
+    bool sameRow = false;
+    if (twoColumns) {
+        const float room = fieldsLeft - style.ItemSpacing.x - rowStart.x - fieldProvenanceWidth();
+        // The floor holds a plain transform label, so sibling rows choose one layout.
+        float widestWord = scaled(64.0f);
+        for (const char* word = label; *word != 0;) {
+            const char* end = std::strchr(word, ' ');
+            end = end ? end : word + std::strlen(word);
+            widestWord = std::max(widestWord, ImGui::CalcTextSize(word, end).x);
+            word = *end ? end + 1 : end;
+        }
+        sameRow = room >= widestWord;
+        if (sameRow)
+            labelWidth = room;
+    }
+    if (sameRow)
+        ImGui::AlignTextToFramePadding();
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + (labelWidth > 0 ? labelWidth : 1.0f));
+    ImGui::TextUnformatted(label);
+    ImGui::PopTextWrapPos();
+    if (tooltip)
+        editorTooltip(tooltip);
+    consumeFieldProvenance();
+
+    bool changed = false;
+    if (sameRow) {
+        // The row spans both grid columns, so it draws on the table's unclipped background
+        // channel the way a spanning Selectable does.
+        ImGui::TablePushBackgroundChannel();
+        const float fieldWidth =
+            std::floor((rowRight - fieldsLeft - swatchWidth - 2.0f * gap) / 3.0f) - letterWidth -
+            gap;
+        for (int axis = 0; axis < 3; ++axis) {
+            if (axis == 0)
+                ImGui::SetCursorScreenPos({fieldsLeft, rowStart.y});
+            else
+                ImGui::SameLine(0.0f, gap);
+            changed |= component(axis, fieldWidth);
+        }
+        if (swatch) {
+            ImGui::SameLine(0.0f, gap);
+            changed |= picker();
+        }
+        ImGui::TablePopBackgroundChannel();
+        // Leave the cursor below the fields in the value column, where the stacked layouts
+        // leave it.
+        ImGui::TableNextColumn();
+        ImGui::Dummy({0.0f, ImGui::GetFrameHeight()});
+        return changed;
+    }
+    if (!twoColumns)
+        ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    const int columns = ImGui::GetContentRegionAvail().x >= rowWidth ? 3 : 1;
+    ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, {gap * 0.5f, style.CellPadding.y});
+    if (ImGui::BeginTable("##components", columns, ImGuiTableFlags_SizingStretchSame)) {
+        for (int axis = 0; axis < 3; ++axis) {
+            ImGui::TableNextColumn();
+            changed |= component(axis, -FLT_MIN);
+        }
+        ImGui::EndTable();
+    }
+    ImGui::PopStyleVar();
+    if (swatch)
+        changed |= picker();
+    return changed;
 }
 
 } // namespace
@@ -574,45 +707,23 @@ void endDiagnostics() {
 
 //======================================================================================================================
 bool vector3(const char* label, const char* id, float* values, float speed, float minimum,
-             float maximum, const char* format, ImGuiSliderFlags flags, bool rgb) {
-    flags |= ImGuiSliderFlags_ColorMarkers;
-    field(label);
-    const int columns = ImGui::GetContentRegionAvail().x >= scaled(300.0f) ? 3 : 1;
-    bool changed = false;
-    if (ImGui::BeginTable(id, columns, ImGuiTableFlags_SizingStretchSame)) {
-        constexpr const char* kAxes[] = {"X", "Y", "Z"};
-        constexpr const char* kChannels[] = {"R", "G", "B"};
-        for (int axis = 0; axis < 3; ++axis) {
-            ImGui::TableNextColumn();
-            ImGui::PushID(axis);
-            ImGui::TextUnformatted(rgb ? kChannels[axis] : kAxes[axis]);
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(-FLT_MIN);
-            // The N-component API supplies markers automatically; separate responsive scalar
-            // rows need the pinned ImGui RGB component colors before submitting the field.
-            const ImVec4 marker{(axis == 0 ? 240.0f : 20.0f) / 255.0f,
-                                (axis == 1 ? 240.0f : 20.0f) / 255.0f,
-                                (axis == 2 ? 240.0f : 20.0f) / 255.0f, 1.0f};
-            ImGui::SetNextItemColorMarker(ImGui::ColorConvertFloat4ToU32(marker));
-            changed |= ImGui::DragFloat("##component", values + axis, speed, minimum, maximum,
-                                        format, flags);
-            ImGui::PopID();
-        }
-        ImGui::EndTable();
-    }
+             float maximum, const char* format, ImGuiSliderFlags flags, bool rgb,
+             const char* tooltip) {
+    // Sibling rows repeat the same component names, so each row scopes them under its id.
+    ImGui::PushID(id);
+    const bool changed = vectorRow(label, values, speed, minimum, maximum, format, flags, rgb,
+                                   tooltip, false, false);
+    ImGui::PopID();
     return changed;
 }
 
 //======================================================================================================================
-bool colorRgb(const char* label, const char* id, float* values, bool alpha) {
+bool colorRgb(const char* label, const char* id, float* values, bool alpha, const char* tooltip) {
     // ImGui's own color inputs drop their R:/G:/B: prefixes whenever component markers are
     // drawn, so the components use the labeled vector row and the picker keeps only its swatch.
-    bool changed = vector3(label, id, values, 1.0f / 255.0f, 0.0f, 1.0f, "%.3f", 0, true);
     ImGui::PushID(id);
-    const ImGuiColorEditFlags flags =
-        ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel | ImGuiColorEditFlags_Float;
-    changed |= alpha ? ImGui::ColorEdit4("##swatch", values, flags | ImGuiColorEditFlags_AlphaBar)
-                     : ImGui::ColorEdit3("##swatch", values, flags);
+    const bool changed =
+        vectorRow(label, values, 1.0f / 255.0f, 0.0f, 1.0f, "%.3f", 0, true, tooltip, true, alpha);
     ImGui::PopID();
     return changed;
 }

@@ -470,6 +470,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
 //======================================================================================================================
 int runWindowed(const lmx::app::AppOptions& options,
                 const std::shared_ptr<lmx::app::ConsoleLog>& consoleLog) {
+    lmx::app::applyApplicationName();
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         LMX_LOG_ERROR("SDL_Init failed: {}", SDL_GetError());
         return 1;

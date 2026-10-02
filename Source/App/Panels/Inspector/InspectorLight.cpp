@@ -67,8 +67,8 @@ void drawDirectionalLightSection(const InspectorPanelContext& context, size_t in
                            "Radiance (scene-linear RGB)");
         editor_style::vector3("Radiance (scene-linear RGB)", "radiance", &light.strength.x, 0.01f,
                               0.0f, std::numeric_limits<float>::max(), "%.3f",
-                              ImGuiSliderFlags_AlwaysClamp, true);
-        editorTooltip("Scene-linear radiance; values above 1 are valid HDR intensities.");
+                              ImGuiSliderFlags_AlwaysClamp, true,
+                              "Scene-linear radiance; values above 1 are valid HDR intensities.");
         valueRow("Role", std::string(directionalLightRoleLabel(index)));
         editor_style::endFields();
     }
