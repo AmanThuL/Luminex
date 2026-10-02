@@ -63,10 +63,11 @@ windows. Auto clears the forced appearance. `NSApp.appearance` stays untouched s
 the system. [NativeMenu](../../Source/App/Shell/NativeMenu.mm) applies the same forced value to
 `NSApp.mainMenu`; the OS controls the menu-bar strip itself.
 
-[WorkspaceModel](../../Source/App/Model/Workspace/WorkspaceModel.h) stores schema 5 in the
-build-local `imgui.ini`: eight panel visibilities, UI scale, `Appearance` and `Density`, alongside
+[WorkspaceModel](../../Source/App/Model/Workspace/WorkspaceModel.h) stores schema 6 in the
+build-local `imgui.ini`: nine panel visibilities, UI scale, `Appearance` and `Density`, alongside
 ImGui's docking and viewport bounds. Lowercase storage names are `auto|light|dark` and
-`comfortable|compact`; missing or unknown values keep Auto and Comfortable. Schema 4 restores
+`comfortable|compact`; missing or unknown values keep Auto and Comfortable. Schema 5 restores
+unchanged with Session hidden. Schema 4 restores
 layout, visibilities and scale without rebuilding and uses those new defaults. Schema 3 keeps its
 six visibilities, valid scale and detached bounds, enables Rendering/Performance summary and
 rebuilds main docks once. Schema 2 keeps valid scale and rebuilds defaults; unknown schemas reset
@@ -128,18 +129,19 @@ and edit attribution. Active dynamic resolution shows a system-applied gear nami
 The existing title `*`, generated "not saved" text and diagnostic status remain visible.
 
 [ActivityModel](../../Source/App/Model/Workspace/ActivityModel.cpp) chooses measurement before
-pending capture, document work, then a controller change less than two seconds old. Measurement
-and requested capture are operator activities; document work and controller changes are system
-activities. Only measurement exposes Stop. The toolbar drops the activity verb before time and
+session work, pending capture, document work, then a controller change less than two seconds old.
+Session activities carry Agent; review decisions carry Operator. Session jobs and measurement expose Stop.
+Document work and controller changes are System activities. The toolbar drops the activity verb before time and
 zoom when space is tight, keeping the mark and transport actions.
 
 [StyleGalleryPanel](../../Source/App/Panels/Gallery/StyleGalleryPanel.cpp) is a detached, opaque,
 nonpersistent, titled and closable native window, closed at launch. Its Current/Dark/Light preview scopes all 63 ImGui colors
 and the shared drawing palette to its content, then restores the parent. The
 [21-entry catalog](../../Source/App/Model/Workspace/GalleryCatalog.cpp) covers control states,
-provenance/activity and reserved agent lifecycle, proposal and attention specimens, alongside the type ramp.
-Agent marks and proposal controls have Gallery consumers only; no runtime agent, proposal ingestion,
-session log or editor command bridge exists.
+provenance/activity and session lifecycle, proposal and attention specimens, alongside the type ramp.
+[Session](app-session.md) consumes the same proposal card, proposed-value row, attention ring and actor chip.
+Hierarchy shows pending marks/rings; accepted bridge edits and settings carry applied attribution.
+Console stores actors and offers actor filtering; Session Export uses its held view. No client runtime runs inside App.
 
 ## Menus and frame boundaries
 

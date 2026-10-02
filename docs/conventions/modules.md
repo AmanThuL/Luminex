@@ -91,16 +91,16 @@ case lives in exactly one of them, and `RojoRHITests` links the `RojoRHI` target
 project library.
 
 ### Directory ownership
-
 Asset, Engine and AppModel own their directories and static targets.
 `Source/App/Model` owns the shared editor models and scene session in `Options/`, `Scene/`,
-`Graph/`, `Performance/`, `Console/`, `Capture/`, `Workspace/` and
+`Graph/`, `Performance/`, `Console/`, `Capture/`, `Workspace/`, `Session/` and
 `Rendering/{Settings,Temporal,Lighting,Visibility}/`.
 The remaining App sources live in `Shell/` (including `main.cpp` and EditorShell partials),
 `Headless/` (Screenshot, Measurement and OcclusionValidation) and `Panels/` (Scene, Inspector,
-Viewport, Graph, Performance, Console and Shared). The root holds its build file only.
+Viewport, Graph, Performance, Console, Gallery, Session and Shared). The root holds its build file only.
 Workspace persistence/docking and camera input are EditorShell partials; Inspector's subject
-units share private `Panels/Inspector/InspectorInternal.h`. These folders add no contract units.
+units share private `Panels/Inspector/InspectorInternal.h`. [Session](../architecture/app-session.md)
+keeps listener/mailbox models in AppModel, polling/ChildRun in shell and review in panels; these add no contract units.
 App and Tests link AppModel. Tests compiles only its own C++ sources, alongside test shaders.
 Render owns shared FrameDeclaration graph execution; App retains its returned record. AppModel
 must not include RenderGraph.h directly or transitively; graph observers use CompiledFrameRecord.h.

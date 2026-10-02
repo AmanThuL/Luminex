@@ -33,10 +33,14 @@ and GPU waits. The frame loop advances and commits animation through the shared 
 frame declaration.
 
 `Source/App/Model` owns `Options/`, `Scene/`, `Graph/`, `Performance/`, `Console/`, `Capture/`,
-`Workspace/` and `Rendering/{Settings,Temporal,Lighting,Visibility}/`. App sources use `Shell/`,
+`Workspace/`, `Session/` and `Rendering/{Settings,Temporal,Lighting,Visibility}/`. App sources use `Shell/`,
 `Headless/` and feature folders under `Panels/`, with shared controls in `Panels/Shared/`. These
 folders add no contract units. Shell/panel headers, including `InspectorInternal.h`, stay private;
 AppModel model headers are public. App's root holds its build file.
+
+Session models own proposals, protocol/queries, tiers/plans, listener/mailbox, attribution and Export.
+The shell polls files and dispatches at the frame safe point; the listener owns no editor state.
+[App Session](app-session.md) describes these units and [Agent Session](../guides/agent-session.md) gives client examples.
 
 ## AppModel feature folders
 
@@ -123,11 +127,12 @@ Min, Max and Samples sorting. Measure retains the plan, results and export. `Mea
 ### Console
 
 `ConsoleLog` serializes ingestion, snapshotting and clearing, capping storage at 2,000 messages and 2 MiB of payload
-with a 16 KiB per-message limit, and tags entries with `log::Level`. `ConsoleModel` owns the filtered display and
+with a 16 KiB per-message limit, and tags entries with `log::Level` and System/Operator/Agent actor. `ConsoleModel` owns the filtered display and
 freezes its snapshot when the user scrolls away from the end. `setScrolledToEnd`, `resumeAtEnd` and `newSinceFreeze`
 govern resumption and arrival counts. The snapshot's sequence cursor makes Clear-while-frozen count arrivals from the
 atomic Clear boundary, including messages later evicted. `consoleSeverityCounts` counts each displayed severity before
-filtering; the chips retain inclusive minimum-severity filtering.
+filtering; the chips retain inclusive minimum-severity filtering. Search and actor chips select rows.
+Session Export uses this held snapshot and search/severity with Operator and Agent selected, preserving multiline entries.
 
 ### Capture
 
@@ -139,7 +144,7 @@ produce no notice.
 
 ### Workspace
 
-`WorkspaceModel` owns eight panel visibilities, UI scale, appearance and density in schema 5.
+`WorkspaceModel` owns nine panel visibilities, UI scale, appearance and density in schema 6.
 `EditorTheme` owns pure appearance resolution, transitions and shared metric contracts;
 `EditorThemeTokens` holds generated colors and slot mappings. `MenuModel` supplies command state;
 `Provenance` and `ActivityModel` describe existing editor state. `GalleryCatalog` names 21 specimens.
@@ -173,12 +178,12 @@ object identity and frame-scoped classifications for Inspector diagnostics and H
 
 `EditorShell` coordinates the panels and the one process-global ImGui context; `EditorWorkspace` owns settings
 callbacks, default docking and UI-scale controls; `EditorInput` owns camera input. Hierarchy and Viewport dock beside
-Inspector, with Rendering in the Inspector's tab group; Console shares the bottom dock with the compact Performance tab.
+Inspector, with Rendering in the Inspector's tab group; Console shares the bottom dock with Performance summary and Session.
 Inspector and Console are selected on default layout construction. Detailed Performance and Render Graph each own a
 detached native window; their `ImGuiWindowClass` rejects unclassed docking and disables auto-merge. Both start closed.
 
-The ImGui settings handler persists schema 5's eight visibilities, UI scale, appearance and density
-alongside docking and viewport data. Schema 4 restores without rebuilding, using Auto and
+The ImGui settings handler persists schema 6's nine visibilities, UI scale, appearance and density
+alongside docking and viewport data. Schema 5 restores unchanged with Session hidden; schema 4 restores without rebuilding, using Auto and
 Comfortable; schema 3 preserves six visibilities, scale and detached bounds, enables the new tabs
 and rebuilds main docks once. Schema 2 keeps valid scale and rebuilds defaults; unknown schemas use
 defaults. Reset Default Layout preserves scale, appearance and density, closes detached windows

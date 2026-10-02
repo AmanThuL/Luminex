@@ -31,8 +31,9 @@ Evidence is retained in `../Luminex-evidence/ux5/`; the executor plan stays in p
 | 17 | `3ded3aa` | Final code gates PASS, 10/10; focused 56 assertions | Seven findings and root companion collision corrected; final hashes match |
 | 18 | `1b99fd3` | Final code gates PASS, 11/11; final App child/direct PNG exact | Status P2 corrected; eight reviewed hashes match |
 | 19 | `319c309` | Final code gates PASS, 11/11; seven required native gestures PASS | Five findings corrected; final review PASS and three Tools hashes match |
-| 20 | This task commit | Final code gates PASS, 10/10; focused 510 assertions | Two evidence findings corrected; final 12 hashes match |
-| 21–22 | Not started | Not run | Not run |
+| 20 | `2a4ac8b` | Final code gates PASS, 10/10; focused 510 assertions | Two evidence findings corrected; final 12 hashes match |
+| 21 | This task commit | Final code gates PASS, 10/10; 22 CLI examples parse | Two documentation findings corrected; fresh stronger review PASS, 12 hashes match |
+| 22 | Not started | Not run | Not run |
 
 The gate JSON files retain every command, exit and log. Test-first red results and failed
 correction attempts are retained in each task's evidence ledger; a deliberate red test is
@@ -129,8 +130,8 @@ Task 9 also corrects Task 8 encoded-buffer observation and malformed-JSON shape 
 using a public Engine helper backed by its private URI decoder. This is an integration fix;
 no rendering pass, shader, RojoRHI, capture format, manifest or dependency change is authorized.
 
-Tasks 1–20 are implemented with passing final code gates and stronger reviews. Required native
-checkpoints 9 and 19 pass. Tasks 21–22, final GPU/image/evidence gates, whole-branch review,
+Tasks 1–21 are implemented with passing final code gates and stronger reviews. Required native
+checkpoints 9 and 19 pass. Task 22, final GPU/image/evidence gates, whole-branch review,
 tag, push and pull request remain incomplete. The record remains Accepted; no owner acceptance
 is implied. Both worktrees and all evidence are retained.
 
@@ -280,3 +281,9 @@ error. Production-linked ENOENT/ENOEXEC probes verify logs left before failed ch
 hashed and attached. One consumed terminal result fixes duplicate cancellation records observed
 in Task 19. These supporting APIs extend the task's file list to approvals and output validation.
 Native Export/Console/evidence gestures remain for Task 22; no GPU payload production is claimed.
+
+Task 21 documentation passes the external link/anchor/budget/CLI checker and ten code gates.
+Fresh Astra review corrected authored-camera IDs and rejected-hash lifetime, then verified
+all twelve corrected document hashes. Built-in role dispatch reached its thread limit; fresh
+ephemeral CLI roles preserved model separation. The installed CLI rejected Astra as too old;
+the already bundled CLI completed both stronger reviews. No environment upgrade was performed.

@@ -114,3 +114,15 @@ loaded JSON bytes followed by its animation buffer. The hash describes the loade
 unsaved live changes are not part of it. PNG frame metadata stays unchanged. Image comparison
 checks each reference document hash before rendering. The [validation record](../milestones/ux/ux3-validation.md)
 retains failed exact-image gates, the provisional lab re-baseline and GUI verification limits.
+
+## Session review
+
+External changes to the open pair become file proposals after stable polling and a sidecar/hash
+check. Pending file proposals block Save/Save As with “Review the pending proposal first”. Show
+lists rows; Accept uses Revert and its Stopped/no-measurement and dirty Discard/Cancel guards.
+Reject remembers the current hash; a later Save can overwrite the external file. Newer changes or
+replacement stale old proposals. Matching sidecars provide attribution and relative evidence.
+Bridge proposals accept only persistable Inspector fields and edit the saved scene camera without
+moving the editor camera. Session scene.open shares replacement guards, preserves semantic
+selection/current stopped view and refuses dirty, measuring or unstable-selection contexts.
+See [Agent Session](agent-session.md) for sidecar syntax, subjects and operator approval.
