@@ -18,11 +18,15 @@ inline constexpr const char* kSessionWindowName = "Session"; ///< Dockable Sessi
 
 /// Main-thread data needed to draw proposals and the action history.
 struct SessionPanelContext {
-    ProposalQueue& proposals;                ///< Retained proposals, read only during drawing.
-    const SessionLog& log;                   ///< Retained action history.
-    uint64_t& expandedId;                    ///< One expanded proposal, retained by the shell.
-    std::filesystem::path evidenceDirectory; ///< Base for relative sidecar evidence paths.
-    std::string& pathFeedback;               ///< Last Copy or Reveal result.
+    ProposalQueue& proposals;                 ///< Retained proposals, read only during drawing.
+    const SessionLog& log;                    ///< Retained action history.
+    uint64_t& expandedId;                     ///< One expanded proposal, retained by the shell.
+    std::filesystem::path evidenceDirectory;  ///< Base for relative sidecar evidence paths.
+    std::string& pathFeedback;                ///< Last Copy or Reveal result.
+    bool listening = false;                   ///< Listener is open for this run.
+    std::filesystem::path socketPath;         ///< Run-local socket path, if listening.
+    std::string_view client;                  ///< Authenticated client name, if connected.
+    SessionTier tier = SessionTier::ReadOnly; ///< Current operator-granted ceiling.
 };
 
 /// Operator action selected in this frame; future bridge controls use the reserved values.

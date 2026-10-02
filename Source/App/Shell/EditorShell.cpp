@@ -614,6 +614,11 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
                                      ? sidecarPath(m_session.loadedScene()->path).parent_path()
                                      : std::filesystem::path{},
             .pathFeedback = m_sessionPathFeedback};
+        context.listening = m_sessionListener != nullptr;
+        context.socketPath =
+            m_sessionListener ? m_sessionListener->path() : std::filesystem::path{};
+        context.client = m_sessionHello ? std::string_view(m_sessionClient) : std::string_view{};
+        context.tier = m_sessionTier;
         const auto action = drawSessionPanel(open, context);
         if (action.action != SessionPanelAction::None)
             m_sessionPanelAction = action;

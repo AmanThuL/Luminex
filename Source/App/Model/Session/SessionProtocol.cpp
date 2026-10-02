@@ -120,7 +120,7 @@ std::string_view errorCode(SessionError code) {
 } // namespace
 
 //======================================================================================================================
-std::expected<SessionRequest, std::string> decodeRequest(std::string line) {
+std::expected<SessionRequest, std::string> decodeRequestEnvelope(std::string line) {
     if (line.ends_with('\n')) {
         line.pop_back();
         if (line.ends_with('\r'))
@@ -162,8 +162,6 @@ std::expected<SessionRequest, std::string> decodeRequest(std::string line) {
     const auto command = commandNode->asString();
     if (!command)
         return std::unexpected("Invalid command: expected string");
-    if (!findCommand(*command))
-        return std::unexpected("Unknown command " + *command);
 
     if (const auto args = root.find("args")) {
         if (!args->isObject())
@@ -173,6 +171,14 @@ std::expected<SessionRequest, std::string> decodeRequest(std::string line) {
     const auto empty = asset::JsonTokens::parse("{}");
     LMX_ASSERT(empty, "Static empty JSON object failed to parse");
     return SessionRequest{*id, *command, empty->root()};
+}
+
+//======================================================================================================================
+std::expected<SessionRequest, std::string> decodeRequest(std::string line) {
+    auto request = decodeRequestEnvelope(std::move(line));
+    if (request && !findCommand(request->command))
+        return std::unexpected("Unknown command " + request->command);
+    return request;
 }
 
 //======================================================================================================================

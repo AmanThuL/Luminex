@@ -54,6 +54,8 @@ public:
     void clear();
     /// The owned displayed snapshot, stable until the next refresh, Clear or Resume.
     const ConsoleSnapshot& snapshot() const { return m_snapshot; }
+    /// Reads the current retained store without changing the operator's displayed freeze or filter.
+    ConsoleSnapshot retainedSnapshot() const { return m_log->snapshot(); }
 
     ConsoleFilter filter; ///< Current display filters, owned by the UI thread.
     /// Last clipboard action result, independent of log ingestion and display freeze.

@@ -70,6 +70,27 @@ SessionPanelResult drawSessionPanel(bool& open, SessionPanelContext& context) {
         return result;
     }
 
+    if (editor_style::primaryButton(context.listening ? "Stop listening" : "Listen"))
+        result.action = SessionPanelAction::ToggleListen;
+    if (context.listening) {
+        const auto path = context.socketPath.string();
+        ImGui::SameLine();
+        if (editor_style::primaryButton("Copy socket path"))
+            context.pathFeedback = SDL_SetClipboardText(path.c_str())
+                                       ? "Copied socket path."
+                                       : std::format("Copy path failed: {}", SDL_GetError());
+        ImGui::TextWrapped("Socket: %s", path.c_str());
+    }
+    ImGui::Text("Client: %s",
+                context.client.empty() ? "None" : std::string(context.client).c_str());
+    constexpr const char* tierNames[] = {"Read-only", "Propose", "Apply with approval"};
+    int tier = static_cast<int>(context.tier);
+    ImGui::BeginDisabled(context.client.empty());
+    if (ImGui::Combo("Ceiling", &tier, tierNames, 3))
+        result = {SessionPanelAction::SetTier, 0, static_cast<SessionTier>(tier)};
+    ImGui::EndDisabled();
+    ImGui::Separator();
+
     ImGui::TextUnformatted("Proposals");
     if (context.proposals.pending() == 0)
         ImGui::TextUnformatted("No proposals");

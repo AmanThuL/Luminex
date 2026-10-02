@@ -43,6 +43,9 @@ enum class SessionError {
 /// endings, oversized lines, invalid UTF-8, unknown commands and ambiguous root keys fail with
 /// a named reason. The returned request owns all argument storage.
 std::expected<SessionRequest, std::string> decodeRequest(std::string line);
+/// Parses a framed request without requiring the command to be in the current inventory. The
+/// dispatcher can answer a well-formed unknown command with `invalid` and its exact request id.
+std::expected<SessionRequest, std::string> decodeRequestEnvelope(std::string line);
 /// Encodes one successful response with an exact unsigned id and a valid JSON result value.
 /// The returned wire message ends with exactly one LF.
 std::string encodeResult(uint64_t id, std::string_view resultJson);

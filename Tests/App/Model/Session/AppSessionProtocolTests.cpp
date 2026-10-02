@@ -48,6 +48,17 @@ TEST_CASE("session request owns arguments and preserves unsigned identities",
 }
 
 //======================================================================================================================
+TEST_CASE("session envelope keeps unknown command identity for invalid response",
+          "[app][session-protocol]") {
+    const auto request =
+        decodeRequestEnvelope(R"({"id":18446744073709551615,"command":"query.future"})");
+    REQUIRE(request);
+    CHECK(request->id == std::numeric_limits<uint64_t>::max());
+    CHECK(request->command == "query.future");
+    CHECK_FALSE(decodeRequest(R"({"id":18446744073709551615,"command":"query.future"})"));
+}
+
+//======================================================================================================================
 TEST_CASE("session request rejects malformed or ambiguous input with named errors",
           "[app][session-protocol]") {
     const std::vector<std::pair<std::string, std::string_view>> invalid = {

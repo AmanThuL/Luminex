@@ -26,7 +26,9 @@
 #include "App/Model/Scene/SceneSession.h"
 #include "App/Model/Scene/SceneTreeState.h"
 #include "App/Model/Session/DocumentWatch.h"
+#include "App/Model/Session/SessionListener.h"
 #include "App/Model/Session/SessionLog.h"
+#include "App/Model/Session/SessionMailbox.h"
 #include "App/Model/Session/SessionProposal.h"
 #include "App/Model/Workspace/ActivityModel.h"
 #include "App/Model/Workspace/MenuModel.h"
@@ -252,6 +254,8 @@ public:
     void pumpDocuments();
     /// Polls the open document and processes operator Session review clicks before document work.
     void pumpSession(double now);
+    /// Opens the run-local socket after startup or an operator Listen action.
+    bool startSessionListener();
     /// Publishes native menu state before SDL polls AppKit events; a no-op outside macOS.
     void updateNativeMenu(const render::Renderer& renderer, const rojoRHI::Device& device);
     /// Drains native actions in order and consumes framing with the supplied renderer.
@@ -323,6 +327,7 @@ private:
     bool acceptFileProposal(uint64_t id);
     FileStamp currentDocumentStamp() const;
     void recordSessionReview(std::string command, std::string arguments, std::string outcome);
+    void drainSessionBridge();
     void updateCameraInput(float deltaSeconds);
     uint64_t metricsContextEpoch();
     void startMeasurement(rojoRHI::Device& device, const render::Renderer& renderer);
@@ -457,6 +462,12 @@ private:
     std::optional<uint64_t> m_fileAcceptId;
     std::optional<SessionPanelResult> m_sessionPanelAction;
     SessionLog m_sessionLog;
+    std::shared_ptr<SessionMailbox> m_sessionMailbox;
+    std::unique_ptr<SessionListener> m_sessionListener;
+    uint64_t m_sessionConnection = 0;
+    bool m_sessionHello = false;
+    SessionTier m_sessionTier = SessionTier::ReadOnly;
+    std::string m_sessionClient;
     uint64_t m_sessionExpandedProposal = 0;
     std::string m_sessionPathFeedback;
     SessionDockPlacement m_sessionDockPlacement;

@@ -156,6 +156,8 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         return 1;
     }
     shell->actions().configureCapture(rojoRHI::metal4::captureAvailable());
+    if (options.session && !shell->startSessionListener())
+        return 1;
 
     const float dynamicResolutionBudget = dynamicResolutionBudgetFromEnv();
     if (dynamicResolutionBudget > 0.0f) {

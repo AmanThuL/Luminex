@@ -25,8 +25,9 @@ Evidence is retained in `../Luminex-evidence/ux5/`; the executor plan stays in p
 | 11 | `4c42900` | Final code gates PASS, 10/10; named effective settings round-trip | No actionable findings; dormant values remain editor-only |
 | 12 | `0a7f2c0` | Final code gates PASS, 10/10; focused 311 assertions | Bounded-envelope P2 corrected; no final findings |
 | 13 | `003e342` | Final code gates PASS, 10/10; focused 69 assertions | Retried stronger review completed; no actionable findings |
-| 14 | Pending commit | Final code gates PASS, 10/10; focused 713 assertions | No final source findings; reviewed hashes retained |
-| 15–22 | Not started | Not run | Not run |
+| 14 | `9c2a4c6` | Final code gates PASS, 10/10; focused 713 assertions | No final source findings; reviewed hashes retained |
+| 15 | Pending commit | Final code gates PASS, 10/10; focused 373 assertions | Both P2 findings corrected; no final source findings |
+| 16–22 | Not started | Not run | Not run |
 
 The gate JSON files retain every command, exit and log. Test-first red results and failed
 correction attempts are retained in each task's evidence ledger; a deliberate red test is
@@ -44,6 +45,7 @@ CPU IBL generation; full Release gates passed. That Debug run remains incomplete
 | 6 | Probe include/link/viewport failures and an App null-pointer compile failure; final layout run interrupted with exit 130 | Corrected probe and all code gates pass; native failure remains below |
 | 7 | Initial project policy exited 1; two docking implementations failed review/tests | Third docking implementation passed review and gates |
 | 8 | Buffer URI expected/optional mismatch; unqualified test namespace each failed to compile | Each corrected on attempt 2; final gates pass |
+| 15 | Fixture accessor/compiler errors; tier log omitted client/resulting ceiling; hidden Console query stayed stale | Red-to-green corrections; final gates PASS, 10/10 |
 | 14 | SIGPIPE; comment/layout failures; bounded queues, close retention, closure saturation, weak EOF assertion and drain race | All corrected; final gates PASS, 10/10 |
 | 13 | Initial stronger-review attempt failed at model capacity before reviewing | Retried on the same stronger model; completed with no actionable findings |
 | 12 | Comment gate reported 24 undocumented enum values; review found quadratic root-key validation | Corrected; final gates PASS, 10/10; no timing measurement claimed |
@@ -121,7 +123,7 @@ no rendering pass, shader, RojoRHI, capture format, manifest or dependency chang
 Task 9 resumed code gates pass (11/11), including the Inspector hash pin. Its required
 real-App checkpoint passes as described above. Task 9 is committed;
 Task 10 code gates and final source review now pass under the recorded exception.
-Tasks 15–22, GPU validation, whole-branch review, final image matrix, evidence audit, integration
+Tasks 16–22, GPU validation, whole-branch review, final image matrix, evidence audit, integration
 tag, push and pull request remain incomplete. The milestone record remains Accepted.
 
 All Task 19 gestures remain unverified: ceiling change, settings approval, three-step plan,
@@ -184,3 +186,11 @@ defers under the mutex; this preserves disconnect cancellation across listener s
 failed-push/drain race. Process-lifetime connection IDs prevent stale results reaching a new peer.
 Focused EOF assertions distinguish actual socket closure from read timeout. Default socket path
 length errors are returned by `SessionListener::start`; the path helper itself returns a path.
+
+Task 15 adds an envelope decoder preserving unknown command names for an `invalid` response,
+while the earlier strict known-command decoder remains available. Status/readings encoders and
+a pure tier-action builder support tests. Its real-App read-only check covered ten queries,
+hello-first, unknown-command and tier errors, reconnect at ReadOnly and socket removal; it did
+not query Graph or demonstrate a raised ceiling resetting on reconnect. Those native checks
+remain unverified until an operator raises the ceiling. Large query replies return an explicit
+`unavailable` error; retained Console rows are read without altering the frozen Console view.

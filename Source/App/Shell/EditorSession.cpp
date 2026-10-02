@@ -6,13 +6,20 @@
 #include "App/Shell/EditorShell.h"
 
 #include "App/Model/Scene/SceneDocumentSave.h"
+#include "App/Model/Session/SessionCommands.h"
+#include "App/Model/Session/SessionProtocol.h"
+#include "App/Model/Session/SessionQueries.h"
+#include "Core/Diagnostics/Log.h"
+#include "Core/IO/JsonWriter.h"
 #include "Engine/Asset/Document/SceneDocument.h"
 #include "Engine/Asset/Document/SceneDocumentDiff.h"
+#include "Render/Graph/GraphDump.h"
 
 #include <imgui.h>
 
 #include <chrono>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <iterator>
 #include <string>
@@ -77,6 +84,26 @@ int64_t utcMilliseconds() {
         .count();
 }
 
+//======================================================================================================================
+std::string jsonString(std::string_view value) {
+    JsonWriter writer;
+    writer.string(value);
+    return writer.take();
+}
+
+//======================================================================================================================
+std::string_view playbackName(PlaybackState state) {
+    switch (state) {
+    case PlaybackState::Stopped:
+        return "stopped";
+    case PlaybackState::Playing:
+        return "playing";
+    case PlaybackState::Paused:
+        return "paused";
+    }
+    return "stopped";
+}
+
 } // namespace
 
 //======================================================================================================================
@@ -136,7 +163,248 @@ bool EditorShell::acceptFileProposal(uint64_t id) {
 }
 
 //======================================================================================================================
+bool EditorShell::startSessionListener() {
+    if (m_sessionListener)
+        return true;
+    auto mailbox = std::make_shared<SessionMailbox>();
+    auto listener = SessionListener::start(defaultSessionSocket(), mailbox);
+    if (!listener) {
+        LMX_LOG_ERROR("Session Listen failed: {}", listener.error());
+        m_sessionPathFeedback = listener.error();
+        return false;
+    }
+    m_sessionMailbox = std::move(mailbox);
+    m_sessionListener = std::move(*listener);
+    LMX_LOG_INFO("Session listening at {}", m_sessionListener->path().string());
+    return true;
+}
+
+//======================================================================================================================
+void EditorShell::drainSessionBridge() {
+    if (!m_sessionMailbox)
+        return;
+    for (const auto& inbound : m_sessionMailbox->takeInbound()) {
+        if (inbound.opened) {
+            m_sessionConnection = inbound.connection;
+            m_sessionHello = false;
+            m_sessionTier = SessionTier::ReadOnly;
+            m_sessionClient.clear();
+            continue;
+        }
+        if (inbound.closed) {
+            if (inbound.connection == m_sessionConnection) {
+                m_sessionConnection = 0;
+                m_sessionHello = false;
+                m_sessionTier = SessionTier::ReadOnly;
+                m_sessionClient.clear();
+            }
+            continue;
+        }
+        if (inbound.connection != m_sessionConnection)
+            continue;
+        const auto request = decodeRequestEnvelope(inbound.text);
+        if (!request) {
+            m_sessionMailbox->pushOutbound(inbound.connection,
+                                           encodeError(0, SessionError::Protocol, request.error()));
+            m_sessionLog.record(SessionAction{.timestampMilliseconds = utcMilliseconds(),
+                                              .actor = Actor::Agent,
+                                              .client = m_sessionClient,
+                                              .command = "session.protocol",
+                                              .outcome = "protocol"});
+            continue;
+        }
+        const auto answerError = [&](SessionError code, std::string_view message) {
+            m_sessionMailbox->pushOutbound(inbound.connection,
+                                           encodeError(request->id, code, message));
+        };
+        if (!m_sessionHello) {
+            if (request->command != "hello") {
+                answerError(SessionError::Protocol, "hello must be the first request");
+                m_sessionLog.record(SessionAction{.timestampMilliseconds = utcMilliseconds(),
+                                                  .actor = Actor::Agent,
+                                                  .command = request->command,
+                                                  .outcome = "protocol"});
+                continue;
+            }
+            const auto name = request->args.find("name");
+            const auto protocol = request->args.find("protocol");
+            const auto parsedName =
+                name ? name->asString()
+                     : std::expected<std::string, std::string>{std::unexpected("Missing name")};
+            const auto parsedProtocol =
+                protocol
+                    ? protocol->asUInt()
+                    : std::expected<uint64_t, std::string>{std::unexpected("Missing protocol")};
+            if (!parsedName || parsedName->empty() || parsedName->size() > 128 || !parsedProtocol ||
+                *parsedProtocol != kSessionProtocol) {
+                answerError(SessionError::Protocol, "hello requires a name and protocol 1");
+                m_sessionLog.record(SessionAction{.timestampMilliseconds = utcMilliseconds(),
+                                                  .actor = Actor::Agent,
+                                                  .command = "hello",
+                                                  .outcome = "protocol"});
+                continue;
+            }
+            m_sessionClient = *parsedName;
+            m_sessionHello = true;
+            m_sessionMailbox->pushOutbound(inbound.connection,
+                                           encodeResult(request->id, "{\"protocol\":1}"));
+            m_sessionLog.record(SessionAction{.timestampMilliseconds = utcMilliseconds(),
+                                              .actor = Actor::Agent,
+                                              .client = m_sessionClient,
+                                              .command = "hello",
+                                              .outcome = "connected"});
+            continue;
+        }
+        const auto* spec = findCommand(request->command);
+        if (!spec || spec->command == SessionCommand::Hello) {
+            answerError(SessionError::Invalid, "Unknown command " + request->command);
+            m_sessionLog.record(SessionAction{.timestampMilliseconds = utcMilliseconds(),
+                                              .actor = Actor::Agent,
+                                              .client = m_sessionClient,
+                                              .command = request->command,
+                                              .arguments = std::string(request->args.sourceJson()),
+                                              .tier = m_sessionTier,
+                                              .outcome = "invalid"});
+            continue;
+        }
+        if (const auto refusal = tierRefusal(*spec, m_sessionTier)) {
+            answerError(SessionError::Tier, *refusal);
+            m_sessionLog.record(SessionAction{.timestampMilliseconds = utcMilliseconds(),
+                                              .actor = Actor::Agent,
+                                              .client = m_sessionClient,
+                                              .command = request->command,
+                                              .arguments = std::string(request->args.sourceJson()),
+                                              .tier = m_sessionTier,
+                                              .outcome = "tier"});
+            continue;
+        }
+        std::string result;
+        std::string outcome = "answered";
+        const auto* loaded = m_session.loadedScene();
+        const auto completeTree =
+            loaded ? std::optional<SceneTreeView>(
+                         buildSceneTreeView(*loaded, m_session.documentState(), "", {}, &m_session))
+                   : std::nullopt;
+        switch (spec->command) {
+        case SessionCommand::QueryStatus: {
+            result = statusJson({.documentPath = loaded ? loaded->path.string() : "",
+                                 .documentHash = loaded ? loaded->hash : "",
+                                 .dirty = m_documentDirty,
+                                 .playback = std::string(playbackName(m_playback.state())),
+                                 .measuring = m_measurement.active(),
+                                 .tier = m_sessionTier,
+                                 .pendingProposals = m_sessionProposals.pending()});
+            break;
+        }
+        case SessionCommand::QueryHierarchy:
+            if (completeTree)
+                result = hierarchyJson(*completeTree);
+            break;
+        case SessionCommand::QuerySelection:
+            if (completeTree)
+                result = selectionJson(m_selection, *completeTree);
+            break;
+        case SessionCommand::QueryCamera:
+            if (m_session.activeScene())
+                result = cameraJson(m_session.camera());
+            break;
+        case SessionCommand::QuerySettings:
+            result = settingsJson(m_settings);
+            break;
+        case SessionCommand::QueryReadings:
+            result = readingsJson(m_visibilityDisplay.readingsStatus(),
+                                  m_lightingDisplay.readingsStatus());
+            break;
+        case SessionCommand::QueryPerformance:
+            result = performanceJson(m_performanceModel.snapshot());
+            break;
+        case SessionCommand::QueryGraph:
+            if (const auto* frame = m_renderGraphPanel.snapshot.displayed())
+                result = jsonString(render::dumpCompiledFrame(frame->record));
+            break;
+        case SessionCommand::QueryConsole: {
+            const auto after = request->args.find("afterSequence");
+            const auto sequence = after ? after->asUInt() : std::expected<uint64_t, std::string>{0};
+            if (!sequence) {
+                answerError(SessionError::Invalid, "afterSequence must be uint64");
+                outcome = "invalid";
+                m_sessionLog.record(
+                    SessionAction{.timestampMilliseconds = utcMilliseconds(),
+                                  .actor = Actor::Agent,
+                                  .client = m_sessionClient,
+                                  .command = request->command,
+                                  .arguments = std::string(request->args.sourceJson()),
+                                  .tier = m_sessionTier,
+                                  .outcome = outcome});
+                continue;
+            }
+            result = consoleJson(m_consoleModel.retainedSnapshot(), *sequence);
+            break;
+        }
+        case SessionCommand::QueryProposals:
+            result = proposalsJson(m_sessionProposals);
+            break;
+        case SessionCommand::QueryLog:
+            result = logJson(m_sessionLog);
+            break;
+        default:
+            answerError(SessionError::Unavailable, "Command is not available yet");
+            m_sessionLog.record(SessionAction{.timestampMilliseconds = utcMilliseconds(),
+                                              .actor = Actor::Agent,
+                                              .client = m_sessionClient,
+                                              .command = request->command,
+                                              .arguments = std::string(request->args.sourceJson()),
+                                              .tier = m_sessionTier,
+                                              .outcome = "unavailable"});
+            continue;
+        }
+        if (result.empty()) {
+            answerError(SessionError::Unavailable, "No scene or published frame is available");
+            outcome = "unavailable";
+        } else if (result.size() + 96 > kMaxLineBytes) {
+            answerError(SessionError::Unavailable, "Query response exceeds 1 MiB");
+            outcome = "unavailable";
+        } else {
+            m_sessionMailbox->pushOutbound(inbound.connection, encodeResult(request->id, result));
+        }
+        m_sessionLog.record(SessionAction{.timestampMilliseconds = utcMilliseconds(),
+                                          .actor = Actor::Agent,
+                                          .client = m_sessionClient,
+                                          .command = request->command,
+                                          .arguments = std::string(request->args.sourceJson()),
+                                          .tier = m_sessionTier,
+                                          .outcome = outcome});
+    }
+    if (m_sessionListener)
+        m_sessionListener->wake();
+}
+
+//======================================================================================================================
 void EditorShell::pumpSession(double now) {
+    if (m_sessionPanelAction) {
+        const auto action = *m_sessionPanelAction;
+        if (action.action == SessionPanelAction::ToggleListen) {
+            m_sessionPanelAction.reset();
+            if (m_sessionListener) {
+                m_sessionListener.reset();
+                m_sessionMailbox.reset();
+                m_sessionConnection = 0;
+                m_sessionHello = false;
+                m_sessionTier = SessionTier::ReadOnly;
+                m_sessionClient.clear();
+            } else {
+                startSessionListener();
+            }
+        } else if (action.action == SessionPanelAction::SetTier) {
+            m_sessionPanelAction.reset();
+            if (m_sessionConnection && m_sessionHello) {
+                m_sessionTier = action.tier;
+                m_sessionLog.record(
+                    sessionTierAction(m_sessionClient, m_sessionTier, utcMilliseconds()));
+            }
+        }
+    }
+    drainSessionBridge();
     const auto* loaded = m_session.loadedScene();
     if (!loaded)
         return;

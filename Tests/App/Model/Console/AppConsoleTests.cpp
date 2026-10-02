@@ -11,6 +11,21 @@
 using namespace lmx::app;
 
 //======================================================================================================================
+TEST_CASE("retained session console query sees arrivals without changing frozen display",
+          "[app][console]") {
+    auto store = std::make_shared<ConsoleLog>();
+    ConsoleModel model(store);
+    model.setFrozen(true);
+    store->append(lmx::log::Level::Info, 123, "session arrival", Actor::Agent);
+    REQUIRE(model.snapshot().entries.empty());
+    const auto retained = model.retainedSnapshot();
+    REQUIRE(retained.entries.size() == 1);
+    CHECK(retained.entries.front().message == "session arrival");
+    CHECK(model.snapshot().entries.empty());
+    CHECK(model.frozen());
+}
+
+//======================================================================================================================
 TEST_CASE("console count and byte caps evict oldest messages with explicit counters",
           "[app][console]") {
     ConsoleLog log;
