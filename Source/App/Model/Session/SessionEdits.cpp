@@ -473,6 +473,11 @@ std::expected<PreparedBatch, std::string> prepare(const SceneSession& session,
         const auto valid = asset::validateSceneDocumentModel(candidate);
         if (!valid)
             return std::unexpected(valid.error().message);
+        // The reader refuses these ranges, so an accepted violation would make every later Save
+        // fail in the writer's staging re-read.
+        if (const auto range = asset::sceneLookRangeError(batch.look))
+            return std::unexpected("Invalid look value environment" + range->path + ": " +
+                                   range->message);
     }
     std::unordered_set<std::string> seen;
     for (const auto& edit : edits) {
@@ -532,6 +537,19 @@ previewEdits(const SceneSession& session, const SceneTreeView& tree,
     if (!prepared)
         return std::unexpected(prepared.error());
     return std::move(prepared->changes);
+}
+
+//======================================================================================================================
+std::expected<void, std::string>
+reviewedEditsCurrent(const SceneSession& session, const SceneTreeView& tree,
+                     std::span<const ProposalEdit> edits,
+                     std::span<const asset::DocumentChange> reviewed) {
+    const auto prepared = prepare(session, tree, edits);
+    if (!prepared)
+        return std::unexpected("stale: " + prepared.error());
+    if (!std::ranges::equal(prepared->changes, reviewed))
+        return std::unexpected("stale: the scene changed after the proposal was reviewed");
+    return {};
 }
 
 //======================================================================================================================

@@ -171,6 +171,58 @@ TEST_CASE("scene look preserves every existing exposure bloom and environment de
 }
 
 //======================================================================================================================
+TEST_CASE("look ranges name the first violated bound below the look object",
+          "[asset][scene-document]") {
+    CHECK_FALSE(sceneLookRangeError(SceneLook{}));
+    const auto path = [](auto&& change) {
+        SceneLook look;
+        change(look);
+        const auto error = sceneLookRangeError(look);
+        return error ? error->path : std::string{};
+    };
+    CHECK(path([](SceneLook& l) { l.exposure.lowPercentile = -0.5f; }) ==
+          "/exposure/lowPercentile");
+    CHECK(path([](SceneLook& l) { l.exposure.lowPercentile = 95.0f; }) ==
+          "/exposure/lowPercentile");
+    CHECK(path([](SceneLook& l) { l.exposure.highPercentile = 100.5f; }) ==
+          "/exposure/highPercentile");
+    CHECK(path([](SceneLook& l) { l.exposure.targetGrey = 0.0f; }) == "/exposure/targetGrey");
+    CHECK(path([](SceneLook& l) { l.exposure.evMin = 8.5f; }) == "/exposure/evMin");
+    CHECK(path([](SceneLook& l) { l.exposure.adaptUpStopsPerSecond = -0.5f; }) ==
+          "/exposure/adaptUpStopsPerSecond");
+    CHECK(path([](SceneLook& l) { l.exposure.adaptDownStopsPerSecond = -0.5f; }) ==
+          "/exposure/adaptDownStopsPerSecond");
+    CHECK(path([](SceneLook& l) { l.bloom.threshold = -0.5f; }) == "/bloom/threshold");
+    CHECK(path([](SceneLook& l) { l.bloom.intensity = -0.5f; }) == "/bloom/intensity");
+    CHECK(path([](SceneLook& l) {
+              l.exposure.lowPercentile = 0.0f;
+              l.exposure.highPercentile = 100.0f;
+              l.exposure.evMin = l.exposure.evMax;
+              l.exposure.adaptUpStopsPerSecond = 0.0f;
+              l.exposure.adaptDownStopsPerSecond = 0.0f;
+              l.bloom.threshold = 0.0f;
+              l.bloom.intensity = 0.0f;
+          }).empty());
+}
+
+//======================================================================================================================
+TEST_CASE("the reader reports a look range violation at its document pointer",
+          "[asset][scene-document]") {
+    SceneDocument doc;
+    doc.nodes = {{.name = "Camera", .camera = 0}};
+    doc.rootNodes = {0};
+    doc.cameras = {{.name = "Perspective"}};
+    doc.look.bloom.intensity = -1.0f;
+    const auto path = outputPath("look-range.scene.gltf");
+    writeText(path, sceneDocumentJson(doc, "look-range.scene.bin"));
+    const auto read = readSceneDocument(path);
+    REQUIRE_FALSE(read);
+    CHECK(read.error().message.contains("'/extensions/LMX_scene/look/bloom/intensity'"));
+    CHECK(read.error().message.contains("must be nonnegative"));
+    fs::remove(path);
+}
+
+//======================================================================================================================
 TEST_CASE("animation times and external buffer lengths have named failures",
           "[asset][scene-document]") {
     auto doc = animatedDocument();

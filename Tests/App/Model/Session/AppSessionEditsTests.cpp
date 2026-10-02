@@ -410,3 +410,101 @@ TEST_CASE("bridge rejects combined constraint failures and wrong value shapes at
     CHECK_FALSE(app::previewEdits(session, generated, enabled));
     CHECK(session.importedNodeEnabled(0));
 }
+
+//======================================================================================================================
+TEST_CASE("bridge look edits outside the reader's ranges change nothing", "[app][session-edits]") {
+    const std::vector<app::ProposalEdit> cases = {
+        {"environment", "exposure", R"({"lowPercentile":-1})"},
+        {"environment", "exposure", R"({"lowPercentile":95})"},
+        {"environment", "exposure", R"({"highPercentile":101})"},
+        {"environment", "exposure", R"({"targetGrey":0})"},
+        {"environment", "exposure", R"({"targetGrey":-1})"},
+        {"environment", "exposure", R"({"evMin":9})"},
+        {"environment", "exposure", R"({"evMax":-9})"},
+        {"environment", "exposure", R"({"adaptUpStopsPerSecond":-1})"},
+        {"environment", "exposure", R"({"adaptDownStopsPerSecond":-1})"},
+        {"environment", "bloom", R"({"threshold":-1})"},
+        {"environment", "bloom", R"({"intensity":-1})"},
+    };
+    for (const auto& edit : cases) {
+        DYNAMIC_SECTION(edit.field << " " << edit.value) {
+            engine::LightId id;
+            auto loaded = editableFixture(id);
+            app::SceneSession session;
+            session.activate(loaded, app::SceneActivationMotion::Reset);
+            const auto tree = editableTree(id);
+            const auto look = session.look();
+            const auto generation = session.editGeneration();
+            // A valid edit earlier in the batch must not survive the refused one.
+            const std::vector<app::ProposalEdit> batch{{"environment", "shadowFilter", R"("pcss")"},
+                                                       edit};
+            const auto preview = app::previewEdits(session, tree, batch);
+            REQUIRE_FALSE(preview);
+            CHECK(preview.error().starts_with("Invalid look value environment/"));
+            CHECK_FALSE(app::applyEdits(session, tree, batch));
+            CHECK(session.look() == look);
+            CHECK(session.editGeneration() == generation);
+        }
+    }
+    engine::LightId id;
+    auto loaded = editableFixture(id);
+    app::SceneSession session;
+    session.activate(loaded, app::SceneActivationMotion::Reset);
+    const std::vector<app::ProposalEdit> boundary{
+        {"environment", "exposure",
+         R"({"lowPercentile":0,"highPercentile":100,"evMin":2,"evMax":2,
+             "adaptUpStopsPerSecond":0,"adaptDownStopsPerSecond":0})"},
+        {"environment", "bloom", R"({"threshold":0,"intensity":0})"}};
+    CHECK(app::applyEdits(session, editableTree(id), boundary));
+}
+
+//======================================================================================================================
+TEST_CASE("a reviewed bridge proposal goes stale when the operator edits what it shows",
+          "[app][session-edits]") {
+    engine::LightId id;
+    auto loaded = editableFixture(id);
+    app::SceneSession session;
+    session.activate(loaded, app::SceneActivationMotion::Reset);
+    const auto tree = editableTree(id);
+    const std::vector<app::ProposalEdit> edits{{"environment", "exposure", R"({"ev":1})"},
+                                               {"node:2", "intensity", "2"}};
+    const auto reviewed = app::previewEdits(session, tree, edits);
+    REQUIRE(reviewed);
+    REQUIRE(reviewed->size() == 2);
+    CHECK(app::reviewedEditsCurrent(session, tree, edits, *reviewed));
+
+    SECTION("an edit to another subject leaves the rows current") {
+        auto look = session.look();
+        look.shadowFilter = asset::ShadowFilter::PCSS;
+        session.editLook(look);
+        // A saved file hash takes no part: Save and Save As replace it without staling a card.
+        session.loadedScene()->hash = "hash after Save";
+        CHECK(app::reviewedEditsCurrent(session, tree, edits, *reviewed));
+    }
+    SECTION("an edit to another exposure field changes the merged row") {
+        auto look = session.look();
+        look.exposure.compensationEv = 0.5f;
+        session.editLook(look);
+        const auto current = app::reviewedEditsCurrent(session, tree, edits, *reviewed);
+        REQUIRE_FALSE(current);
+        CHECK(current.error() == "stale: the scene changed after the proposal was reviewed");
+    }
+    SECTION("an edit to the proposed field changes its before value") {
+        auto light = *session.scene().light(id);
+        light.intensity = 5.0f;
+        REQUIRE(session.editLocalLight(id, light));
+        CHECK_FALSE(app::reviewedEditsCurrent(session, tree, edits, *reviewed));
+    }
+    SECTION("an edit that reaches the proposed value drops its row") {
+        auto light = *session.scene().light(id);
+        light.intensity = 2.0f;
+        REQUIRE(session.editLocalLight(id, light));
+        CHECK_FALSE(app::reviewedEditsCurrent(session, tree, edits, *reviewed));
+    }
+    SECTION("a named subject that no longer exists reports the preview's reason") {
+        REQUIRE(session.scene().removeLight(id));
+        const auto current = app::reviewedEditsCurrent(session, tree, edits, *reviewed);
+        REQUIRE_FALSE(current);
+        CHECK(current.error().starts_with("stale: "));
+    }
+}

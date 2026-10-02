@@ -336,7 +336,7 @@ private:
     bool selectScene(scenes::SceneId id);
     bool selectSessionScene(scenes::SceneId id);
     bool acceptFileProposal(uint64_t id);
-    FileStamp currentDocumentStamp() const;
+    FileStamp currentDocumentStamp();
     void recordSessionReview(std::string command, std::string arguments, std::string outcome,
                              std::string client = {});
     void drainSessionBridge();
@@ -481,6 +481,7 @@ private:
     SessionAttribution m_sessionAttribution;
     SessionAttribution m_settingAttribution;
     DocumentWatch m_documentWatch;
+    DocumentProbe m_documentProbe;
     std::filesystem::path m_watchedPath;
     FileStamp m_loadedStamp;
     FileStamp m_watchedStamp;

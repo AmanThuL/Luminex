@@ -42,6 +42,12 @@ asset::AssetResult<void> saveSessionDocument(scenes::SceneLibrary& library, Scen
                                              const std::filesystem::path& path, bool saveAs,
                                              const SceneDocumentSaveIO& io = {},
                                              SceneDocumentWrite* completedWrite = nullptr);
+/// Adopts an on-disk pair whose canonical document equals the loaded one, such as a formatting-only
+/// external rewrite: publishes its hash and buffer provenance and leaves the live scene, edits
+/// and dirty state untouched. Returns false and changes nothing when the documents differ. The
+/// caller supplies the hash of the bytes onDisk was read from.
+bool adoptEquivalentDocument(engine::LoadedScene& loaded, const asset::SceneDocument& onDisk,
+                             std::string hash);
 /// Constructs a fresh target before discarding any current edits, even for cached paths or Revert.
 /// Failure retains the active scene/session/id. On success beforeDeactivate stops any playback
 /// against the still-live old scene, then old defaults/bindings are invalidated and the target is

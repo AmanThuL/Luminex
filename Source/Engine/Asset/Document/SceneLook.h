@@ -75,4 +75,16 @@ struct SceneLook {
     bool operator==(const SceneLook&) const = default;
 };
 
+/// One authored look value outside the range every readable document satisfies.
+struct SceneLookRangeError {
+    std::string path;    ///< JSON pointer below the look object, such as /exposure/targetGrey.
+    std::string message; ///< Requirement the value violates.
+};
+
+/// Checks the exposure and bloom ranges shared by the document reader and live edits:
+/// 0 <= lowPercentile < highPercentile <= 100, targetGrey > 0, evMin <= evMax, nonnegative
+/// adaptation speeds and nonnegative bloom threshold and intensity. Returns the first violation in
+/// document order, or nothing. Finiteness is the caller's separate check.
+std::optional<SceneLookRangeError> sceneLookRangeError(const SceneLook& look);
+
 } // namespace lmx::asset

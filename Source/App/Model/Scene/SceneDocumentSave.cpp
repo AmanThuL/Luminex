@@ -168,6 +168,16 @@ asset::AssetResult<void> saveSessionDocument(scenes::SceneLibrary& library, Scen
 }
 
 //======================================================================================================================
+bool adoptEquivalentDocument(engine::LoadedScene& loaded, const asset::SceneDocument& onDisk,
+                             std::string hash) {
+    if (scenes::documentDirty(loaded.document, onDisk))
+        return false;
+    loaded.document.sourceBufferUri = onDisk.sourceBufferUri;
+    loaded.hash = std::move(hash);
+    return true;
+}
+
+//======================================================================================================================
 asset::AssetResult<void> replaceSessionDocument(
     scenes::SceneLibrary& library, SceneSession& session, scenes::SceneId& activeId,
     const scenes::SceneId& target, const std::function<void()>& beforeDeactivate,

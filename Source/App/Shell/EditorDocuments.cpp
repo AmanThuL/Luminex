@@ -111,6 +111,18 @@ bool EditorShell::saveDocument(const std::filesystem::path& path, bool saveAs) {
         m_notices.post({ActionStatus::Unavailable, *reason, {}}, ImGui::GetTime());
         return false;
     }
+    // A proposal card appears only after the stable poll and the sidecar grace; until then Save
+    // must not replace an external edit the operator has not seen. Save As writes elsewhere.
+    if (!saveAs) {
+        const auto diskHash = asset::sceneDocumentHash(m_session.loadedScene()->path);
+        const std::string_view disk = diskHash ? std::string_view(*diskHash) : std::string_view{};
+        if (const auto reason = saveOverwriteReason(
+                m_session.loadedScene()->hash, disk, m_sessionProposals.rejected(disk),
+                currentDocumentStamp().samePair(m_loadedStamp))) {
+            m_notices.post({ActionStatus::Unavailable, *reason, {}}, ImGui::GetTime());
+            return false;
+        }
+    }
     const auto previousSceneId = m_activeSceneId;
     SceneDocumentWrite completedWrite;
     const auto result = saveSessionDocument(m_library, m_session, m_activeSceneId, path, saveAs, {},

@@ -6,6 +6,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <string_view>
 
 using namespace lmx::app;
 
@@ -154,4 +155,173 @@ TEST_CASE("save hash observations cannot adopt a different stamp or an active wr
     CHECK(watch.poll(written, 1.5) == WatchDecision::Sidecar);
     CHECK(watch.poll(written, 5.0) == WatchDecision::Sidecar);
     CHECK(watch.ready());
+}
+
+//======================================================================================================================
+TEST_CASE("a leftover staging directory defers the watch for ten polls and warns once",
+          "[unit][session]") {
+    DocumentWatch watch;
+    const FileStamp loaded{100, 200, 1, 1, false};
+    const FileStamp leftover{101, 201, 2, 2, true};
+    watch.reset(loaded);
+    double seconds = 0.0;
+    for (int poll = 0; poll < DocumentWatch::kStagingPatiencePolls; ++poll) {
+        CHECK(watch.poll(leftover, seconds += 0.5) == WatchDecision::Wait);
+        CHECK_FALSE(watch.takeStagingWarning());
+    }
+    // Five seconds after the first sighting the changed pair is watched like any other.
+    CHECK(watch.poll(leftover, seconds += 0.5) == WatchDecision::Wait);
+    CHECK(watch.takeStagingWarning());
+    CHECK_FALSE(watch.takeStagingWarning());
+    CHECK(watch.poll(leftover, seconds += 0.5) == WatchDecision::Hash);
+    CHECK_FALSE(watch.takeStagingWarning());
+    watch.hashed("external", true, seconds);
+    CHECK(watch.ready());
+
+    // Adopting a pair keeps the count: the same leftover delays nothing a second time.
+    watch.reset(leftover);
+    const FileStamp next{102, 202, 3, 3, true};
+    CHECK(watch.poll(leftover, seconds += 0.5) == WatchDecision::Wait);
+    CHECK(watch.poll(next, seconds += 0.5) == WatchDecision::Wait);
+    CHECK(watch.poll(next, seconds += 0.5) == WatchDecision::Hash);
+    CHECK_FALSE(watch.takeStagingWarning());
+
+    // Once the directory is gone a new one is waited for, and warned about, again.
+    FileStamp cleared = next;
+    cleared.saving = false;
+    watch.reset(cleared);
+    CHECK(watch.poll(cleared, seconds += 0.5) == WatchDecision::Wait);
+    const FileStamp again{103, 203, 4, 4, true};
+    for (int poll = 0; poll < DocumentWatch::kStagingPatiencePolls; ++poll)
+        CHECK(watch.poll(again, seconds += 0.5) == WatchDecision::Wait);
+    CHECK(watch.poll(again, seconds += 0.5) == WatchDecision::Wait);
+    CHECK(watch.takeStagingWarning());
+}
+
+//======================================================================================================================
+TEST_CASE("a staging directory that clears in time never warns", "[unit][session]") {
+    DocumentWatch watch;
+    const FileStamp loaded{100, 200, 1, 1, false};
+    const FileStamp saving{101, 201, 2, 2, true};
+    const FileStamp saved{101, 201, 2, 2, false};
+    watch.reset(loaded);
+    for (int poll = 1; poll < DocumentWatch::kStagingPatiencePolls; ++poll)
+        CHECK(watch.poll(saving, 0.5 * poll) == WatchDecision::Wait);
+    CHECK(watch.poll(saved, 5.0) == WatchDecision::Wait);
+    CHECK(watch.poll(saved, 5.5) == WatchDecision::Hash);
+    CHECK_FALSE(watch.takeStagingWarning());
+}
+
+//======================================================================================================================
+TEST_CASE("a replaced file with the same size and time is a changed pair", "[unit][session]") {
+    namespace fs = std::filesystem;
+    const fs::path directory = "SessionWatchReplace";
+    fs::remove_all(directory);
+    fs::create_directories(directory);
+    const fs::path document = directory / "replace.scene.gltf";
+    const auto write = [](const fs::path& path, std::string_view bytes) {
+        std::ofstream output(path, std::ios::binary | std::ios::trunc);
+        REQUIRE(output.good());
+        output << bytes;
+        REQUIRE(output.good());
+    };
+    write(document, R"({"asset":{"version":"2.0"},"scene":0})");
+    DocumentProbe probe;
+    const auto loaded = probe.observe(document);
+    CHECK(loaded.gltfSize == fs::file_size(document));
+    CHECK(loaded.gltfInode != 0);
+    CHECK(loaded.bufferInode == 0);
+    CHECK_FALSE(loaded.saving);
+    CHECK(probe.observe(document) == loaded);
+
+    const fs::path replacement = directory / "replacement.tmp";
+    write(replacement, R"({"asset":{"version":"2.0"},"scene":1})");
+    fs::last_write_time(replacement, fs::last_write_time(document));
+    fs::rename(replacement, document);
+    const auto replaced = probe.observe(document);
+    CHECK(replaced.gltfSize == loaded.gltfSize);
+    CHECK(replaced.gltfTime == loaded.gltfTime);
+    CHECK(replaced.gltfInode != loaded.gltfInode);
+    CHECK_FALSE(replaced.samePair(loaded));
+    DocumentWatch watch;
+    watch.reset(loaded);
+    CHECK(watch.poll(replaced, 0.5) == WatchDecision::Wait);
+    CHECK(watch.poll(replaced, 1.0) == WatchDecision::Hash);
+
+    FileStamp staging = loaded;
+    staging.saving = true;
+    CHECK(staging != loaded);
+    CHECK(staging.samePair(loaded));
+    fs::remove_all(directory);
+}
+
+//======================================================================================================================
+TEST_CASE("the probe rereads the glTF and its directory only when their stamps change",
+          "[unit][session]") {
+    namespace fs = std::filesystem;
+    const fs::path directory = "SessionWatchProbe";
+    fs::remove_all(directory);
+    fs::create_directories(directory);
+    const fs::path document = directory / "probe.scene.gltf";
+    const auto write = [](const fs::path& path, std::string_view bytes) {
+        std::ofstream output(path, std::ios::binary | std::ios::trunc);
+        REQUIRE(output.good());
+        output << bytes;
+        REQUIRE(output.good());
+    };
+    write(directory / "a.bin", "ab");
+    write(directory / "b.bin", "abcd");
+    write(document, R"({"buffers":[{"uri":"a.bin","byteLength":2}]})");
+    DocumentProbe probe;
+    const auto first = probe.observe(document);
+    CHECK(first.bufferSize == 2);
+
+    // The companion is stamped on every observation; only its path is remembered.
+    write(directory / "a.bin", "abc");
+    CHECK(probe.observe(document).bufferSize == 3);
+
+    // An in-place rewrite that keeps the glTF's size, time and identity is not re-read, so the
+    // remembered companion stands until the glTF's stamp moves.
+    const auto time = fs::last_write_time(document);
+    write(document, R"({"buffers":[{"uri":"b.bin","byteLength":2}]})");
+    fs::last_write_time(document, time);
+    const auto remembered = probe.observe(document);
+    CHECK(remembered.gltfTime == first.gltfTime);
+    CHECK(remembered.bufferSize == 3);
+    fs::last_write_time(document, time + std::chrono::seconds(1));
+    CHECK(probe.observe(document).bufferSize == 4);
+    CHECK(DocumentProbe{}.observe(document).bufferSize == 4);
+
+    // Creating and removing a staging directory moves the directory's own stamp.
+    CHECK_FALSE(probe.observe(document).saving);
+    fs::create_directory(directory / ".lmx-save-1234.tmp");
+    CHECK(probe.observe(document).saving);
+    fs::remove(directory / ".lmx-save-1234.tmp");
+    CHECK_FALSE(probe.observe(document).saving);
+
+    // A glTF that cannot be opened falls back to the loaded document's buffer URI.
+    fs::remove(document);
+    const auto missing = probe.observe(document, std::string("b.bin"));
+    CHECK(missing.gltfSize == 0);
+    CHECK(missing.gltfInode == 0);
+    CHECK(missing.bufferSize == 4);
+    fs::remove_all(directory);
+}
+
+//======================================================================================================================
+TEST_CASE("Save replaces only a pair the editor loaded or the operator rejected",
+          "[unit][session][save-watch]") {
+    const std::string_view reason = "The scene file changed on disk; review its proposal first";
+    // The loaded document is still on disk.
+    CHECK_FALSE(saveOverwriteReason("loaded", "loaded", false, true));
+    CHECK_FALSE(saveOverwriteReason("loaded", "loaded", false, false));
+    // An external edit the watch has not turned into a card yet, or whose card is pending.
+    CHECK(saveOverwriteReason("loaded", "external", false, false) == reason);
+    CHECK(saveOverwriteReason("loaded", "external", false, true) == reason);
+    // The operator rejected exactly these bytes; a later Save overwrites them.
+    CHECK_FALSE(saveOverwriteReason("loaded", "external", true, false));
+    // An unreadable or missing pair is replaceable only at the stamp already loaded or rejected.
+    CHECK_FALSE(saveOverwriteReason("loaded", "", false, true));
+    CHECK(saveOverwriteReason("loaded", "", false, false) == reason);
+    CHECK(saveOverwriteReason("loaded", "", true, false) == reason);
 }

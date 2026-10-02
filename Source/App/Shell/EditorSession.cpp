@@ -43,43 +43,6 @@ namespace lmx::app {
 namespace {
 
 //======================================================================================================================
-FileStamp documentStamp(const engine::LoadedScene& loaded) {
-    const auto& path = loaded.path;
-    auto buffer = path;
-    buffer.replace_extension(".bin");
-    std::ifstream gltf(path, std::ios::binary);
-    if (gltf) {
-        const std::string text(std::istreambuf_iterator<char>{gltf}, {});
-        if (const auto candidate = asset::sceneDocumentBufferPath(text, path);
-            candidate && *candidate)
-            buffer = **candidate;
-    } else if (loaded.document.sourceBufferUri) {
-        buffer = path.parent_path() / *loaded.document.sourceBufferUri;
-    }
-    const auto size = [](const std::filesystem::path& file) {
-        std::error_code error;
-        const auto result = std::filesystem::file_size(file, error);
-        return error ? uintmax_t{0} : result;
-    };
-    const auto time = [](const std::filesystem::path& file) {
-        std::error_code error;
-        const auto value = std::filesystem::last_write_time(file, error);
-        return error ? int64_t{0} : static_cast<int64_t>(value.time_since_epoch().count());
-    };
-    bool saving = false;
-    std::error_code error;
-    for (std::filesystem::directory_iterator it(path.parent_path(), error), end;
-         !error && it != end; it.increment(error)) {
-        const auto name = it->path().filename().string();
-        if (it->is_directory(error) && name.starts_with(".lmx-save-") && name.ends_with(".tmp")) {
-            saving = true;
-            break;
-        }
-    }
-    return FileStamp{size(path), size(buffer), time(path), time(buffer), saving};
-}
-
-//======================================================================================================================
 std::optional<Sidecar> matchingSidecar(const std::filesystem::path& document,
                                        std::string_view hash) {
     std::ifstream file(sidecarPath(document), std::ios::binary);
@@ -122,8 +85,9 @@ std::string_view playbackName(PlaybackState state) {
 } // namespace
 
 //======================================================================================================================
-FileStamp EditorShell::currentDocumentStamp() const {
-    return documentStamp(*m_session.loadedScene());
+FileStamp EditorShell::currentDocumentStamp() {
+    const auto& loaded = *m_session.loadedScene();
+    return m_documentProbe.observe(loaded.path, loaded.document.sourceBufferUri);
 }
 
 //======================================================================================================================
@@ -151,7 +115,7 @@ bool EditorShell::acceptFileProposal(uint64_t id) {
             return false;
         }
         const auto* loaded = m_session.loadedScene();
-        if (!loaded || proposal->hash != loaded->hash) {
+        if (!loaded) {
             m_sessionProposals.resolve(id, SessionState::Stale);
             recordSessionReview("proposal.accept", std::to_string(id), "stale document",
                                 proposal->client);
@@ -159,6 +123,17 @@ bool EditorShell::acceptFileProposal(uint64_t id) {
         }
         const auto tree =
             buildSceneTreeView(*loaded, m_session.documentState(), "", {}, &m_session);
+        // Scene replacement stales Bridge cards where it happens; here the rows are re-derived so
+        // Accept never applies something other than what the card shows. The file hash takes no
+        // part: Save and Save As keep the scene and its subjects.
+        if (const auto current =
+                reviewedEditsCurrent(m_session, tree, proposal->edits, proposal->changes);
+            !current) {
+            m_sessionProposals.resolve(id, SessionState::Stale);
+            recordSessionReview("proposal.accept", std::to_string(id), current.error(),
+                                proposal->client);
+            return false;
+        }
         const auto changed = changedEditKeys(m_session, tree, proposal->edits);
         if (!changed) {
             m_sessionProposals.resolve(id, SessionState::Stale);
@@ -678,7 +653,7 @@ void EditorShell::pumpSession(double now) {
         }
     }
     runSessionApprovals();
-    const auto* loaded = m_session.loadedScene();
+    auto* loaded = m_session.loadedScene();
     if (!loaded)
         return;
     if (m_watchedPath != loaded->path) {
@@ -727,19 +702,22 @@ void EditorShell::pumpSession(double now) {
         }
     }
 
-    if (!m_documentWatch.due(now))
+    // A measurement's frames carry no file I/O; Save and Accept are unavailable until it ends,
+    // and the first poll afterwards sees whatever changed meanwhile.
+    if (m_measurement.active() || !m_documentWatch.due(now))
         return;
     const auto stamp = currentDocumentStamp();
     if (stamp != m_watchedStamp) {
-        const bool pairChanged = stamp.gltfSize != m_watchedStamp.gltfSize ||
-                                 stamp.bufferSize != m_watchedStamp.bufferSize ||
-                                 stamp.gltfTime != m_watchedStamp.gltfTime ||
-                                 stamp.bufferTime != m_watchedStamp.bufferTime;
-        if (const auto* pending = m_sessionProposals.pendingFile(); pending && pairChanged)
+        if (const auto* pending = m_sessionProposals.pendingFile();
+            pending && !stamp.samePair(m_watchedStamp))
             m_sessionProposals.resolve(pending->id, SessionState::Stale);
         m_watchedStamp = stamp;
     }
     const auto decision = m_documentWatch.poll(stamp, now);
+    if (m_documentWatch.takeStagingWarning())
+        LMX_LOG_WARN("A leftover .lmx-save-*.tmp directory beside {} did not clear in 5 s; "
+                     "watching the scene file anyway",
+                     loaded->path.string());
     if (decision == WatchDecision::Wait)
         return;
     if (decision == WatchDecision::Hash) {
@@ -750,6 +728,20 @@ void EditorShell::pumpSession(double now) {
             m_loadedStamp = stamp;
             m_documentWatch.reset(stamp);
             return;
+        }
+        // A rewrite that changes no canonical value has nothing to review: no card, no Save
+        // block. The hash is taken again so the adopted hash names the bytes that were read.
+        if (hash) {
+            const auto document = asset::readSceneDocument(loaded->path);
+            const auto afterRead = asset::sceneDocumentHash(loaded->path);
+            if (document && afterRead && *afterRead == *hash &&
+                adoptEquivalentDocument(*loaded, *document, *hash)) {
+                LMX_LOG_INFO("{} changed on disk without changing the scene; adopted its new hash",
+                             loaded->path.string());
+                m_loadedStamp = stamp;
+                m_documentWatch.reset(stamp);
+                return;
+            }
         }
     }
     const auto sidecar = matchingSidecar(loaded->path, m_watchedHash);

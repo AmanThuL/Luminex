@@ -1072,3 +1072,26 @@ TEST_CASE("save refuses a pair replaced between canonical read and hash",
     REQUIRE(disk);
     CHECK(disk->look.bloom.intensity == external.look.bloom.intensity);
 }
+
+//======================================================================================================================
+TEST_CASE("a formatting-only disk change adopts its hash and a real change does not",
+          "[app][document-save]") {
+    engine::LoadedScene loaded{.scene = std::make_unique<engine::Scene>()};
+    loaded.document = saveFixture();
+    loaded.document.sourceBufferUri = "old.bin";
+    loaded.hash = "loaded";
+    auto onDisk = saveFixture();
+    onDisk.sourceBufferUri = "renamed.bin";
+    onDisk.warnings = {"read diagnostics take no part"};
+    auto changed = onDisk;
+    changed.nodes[0].translation = {0, 2, 4};
+
+    CHECK_FALSE(app::adoptEquivalentDocument(loaded, changed, "changed"));
+    CHECK(loaded.hash == "loaded");
+    CHECK(loaded.document.sourceBufferUri == "old.bin");
+
+    CHECK(app::adoptEquivalentDocument(loaded, onDisk, "reformatted"));
+    CHECK(loaded.hash == "reformatted");
+    CHECK(loaded.document.sourceBufferUri == "renamed.bin");
+    CHECK(asset::diffSceneDocuments(loaded.document, saveFixture()).empty());
+}

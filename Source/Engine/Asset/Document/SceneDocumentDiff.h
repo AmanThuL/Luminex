@@ -31,6 +31,8 @@ struct DocumentChange {
     std::string property;      ///< First canonical key below the owner; channel samples use a path.
     std::string before;        ///< Exact JSON value text before the change, or empty if absent.
     std::string after;         ///< Exact JSON value text after the change, or empty if absent.
+    /// Compares the owner, property and both value texts exactly.
+    bool operator==(const DocumentChange&) const = default;
 };
 
 /// Compares the canonical glTF JSON and external animation samples for two valid CPU documents.

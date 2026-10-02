@@ -29,6 +29,16 @@ std::expected<std::vector<asset::DocumentChange>, std::string>
 previewEdits(const SceneSession& session, const SceneTreeView& tree,
              std::span<const ProposalEdit> edits);
 
+/// Re-runs the preview against the live scene and reports why the reviewed rows no longer describe
+/// what applying the edits would change: a named subject is gone or no longer editable, or a later
+/// edit altered a before or after value (exposure and bloom edits merge onto the current look).
+/// Success means Accept applies exactly the rows the operator was shown. The document's file hash
+/// takes no part, so Save and Save As leave a reviewed proposal current.
+std::expected<void, std::string>
+reviewedEditsCurrent(const SceneSession& session, const SceneTreeView& tree,
+                     std::span<const ProposalEdit> edits,
+                     std::span<const asset::DocumentChange> reviewed);
+
 /// Returns only fields whose final value differs from the current persistent value. Duplicate
 /// edits to one field yield one key; no-op requests yield none.
 std::expected<std::vector<std::string>, std::string>
