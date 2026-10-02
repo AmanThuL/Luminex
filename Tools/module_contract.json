@@ -169,6 +169,7 @@
       ],
       "privateHeaders": [
         "Source/App/Shell/EditorShell.h",
+        "Source/App/Shell/ChildRun.h",
         "Source/App/Shell/ConsoleLogSink.h",
         "Source/App/Panels/Console/ConsolePanel.h",
         "Source/App/Panels/Session/SessionPanel.h",

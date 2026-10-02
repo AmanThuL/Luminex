@@ -46,6 +46,10 @@ std::string temporalName(const EditorRenderSettings& settings) {
 //======================================================================================================================
 bool EditorShell::startMeasurement(rojoRHI::Device& device, const render::Renderer& renderer,
                                    bool sessionOwned) {
+    if (m_sessionChild) {
+        m_measurementFeedback = "Stop the headless capture before starting a measurement.";
+        return false;
+    }
     if (m_measurement.active()) {
         m_measurementFeedback = "A measurement is already running.";
         return false;

@@ -480,6 +480,7 @@ void EditorShell::drainSessionBridge() {
                             .job = m_sessionMeasurementApproval || m_pendingSessionMeasurementStart
                                        ? "measurement"
                                    : m_sessionCaptureApproval ? "gpu capture"
+                                   : m_sessionChildApproval   ? "headless capture"
                                                               : "idle"});
             break;
         }
@@ -881,6 +882,14 @@ void EditorShell::stopSessionWork() {
         m_measurement.cancel("Cancelled by operator");
         m_sessionJobCancelled = true;
     }
+    if (m_sessionChild) {
+        m_sessionChild->kill();
+        m_sessionChild.reset();
+        m_sessionChildApproval.reset();
+        m_sessionChildOutput.clear();
+        m_sessionChildLog.clear();
+        m_sessionJobCancelled = true;
+    }
     if (m_sessionCaptureApproval) {
         m_actions.consumeCapture();
         auto& result = m_actions.captureResult();
@@ -1004,6 +1013,9 @@ EditorShell::executeSessionStep(const ApprovalStep& step, uint64_t approval) {
         return false;
     }
     case SessionCommand::MeasureRun: {
+        if (m_sessionChild)
+            return refusal(SessionError::Unavailable,
+                           "Stop the headless capture before starting a measurement");
         if (m_measurement.active() || m_sessionMeasurementApproval || m_sessionCaptureApproval)
             return refusal(SessionError::Busy, "A session job is already running");
         const auto name = args.find("name")->asString();
@@ -1019,7 +1031,7 @@ EditorShell::executeSessionStep(const ApprovalStep& step, uint64_t approval) {
     }
     case SessionCommand::CaptureGpu: {
         if (m_measurement.active() || m_sessionMeasurementApproval || m_sessionCaptureApproval ||
-            m_actions.capturePending())
+            m_sessionChild || m_actions.capturePending())
             return refusal(SessionError::Busy, "A capture or measurement is already running");
         if (!m_actions.captureAvailable())
             return refusal(SessionError::Unavailable, m_actions.captureResult().message);
@@ -1052,9 +1064,57 @@ EditorShell::executeSessionStep(const ApprovalStep& step, uint64_t approval) {
         return false;
     }
     case SessionCommand::CaptureScreenshot:
-    case SessionCommand::CaptureSequence:
-        return refusal(SessionError::Unavailable,
-                       "Headless capture execution is unavailable in this build");
+    case SessionCommand::CaptureSequence: {
+        if (m_measurement.active() || m_sessionMeasurementApproval ||
+            m_pendingSessionMeasurementStart || m_sessionCaptureApproval || m_sessionChild ||
+            m_actions.capturePending() || m_actions.captureResult().status == ActionStatus::Pending)
+            return refusal(SessionError::Busy, "A capture or measurement is already running");
+        refreshDocumentDirty(true);
+        if (m_documentDirty)
+            return refusal(SessionError::Unavailable, "Save the document before headless capture");
+        if (m_sessionProposals.pendingFile())
+            return refusal(SessionError::Unavailable, "Review the pending file proposal first");
+        const auto* loaded = m_session.loadedScene();
+        if (!loaded)
+            return refusal(SessionError::Unavailable, "No loaded document is available");
+        const auto hash = asset::sceneDocumentHash(loaded->path);
+        if (!hash || *hash != loaded->hash)
+            return refusal(SessionError::Unavailable,
+                           "The document on disk differs from the loaded scene");
+        const auto name = args.find("name")->asString();
+        if (!name || !evidenceName(*name))
+            return refusal(SessionError::Invalid, "Capture needs a safe output name");
+        const bool sequence = step.command == SessionCommand::CaptureSequence;
+        const auto output = sessionOutputPath(sequence ? *name : *name + ".png");
+        if (!output)
+            return refusal(SessionError::Unavailable, output.error());
+        const auto log = sessionOutputPath(*name + ".log");
+        if (!log)
+            return refusal(SessionError::Unavailable, log.error());
+        AppOptions startup;
+        startup.generatorOverrides = m_sessionGeneratorOverrides;
+        std::vector<std::string> argv{"--scene", loaded->path.string()};
+        auto settings = settingsToArguments(m_settings, startup, m_session.localLightRigEnabled());
+        argv.insert(argv.end(), std::make_move_iterator(settings.begin()),
+                    std::make_move_iterator(settings.end()));
+        argv.push_back(sequence ? "--capture-sequence" : "--screenshot");
+        argv.push_back(output->string());
+        argv.push_back("--frames");
+        argv.push_back(std::to_string(*args.find("frames")->asUInt()));
+        if (sequence) {
+            argv.push_back("--warmup");
+            argv.push_back(std::to_string(*args.find("warmup")->asUInt()));
+        }
+        auto child = ChildRun::spawn(std::move(argv));
+        if (!child)
+            return refusal(SessionError::Failed, child.error() + "; log: " + log->string());
+        m_sessionChild.emplace(std::move(*child));
+        m_sessionChildApproval = approval;
+        m_sessionChildOutput = *output;
+        m_sessionChildLog = *log;
+        m_sessionChildSequence = sequence;
+        return true;
+    }
     default:
         return refusal(SessionError::Invalid, "Command is not an Apply step");
     }
@@ -1062,6 +1122,26 @@ EditorShell::executeSessionStep(const ApprovalStep& step, uint64_t approval) {
 
 //======================================================================================================================
 void EditorShell::runSessionApprovals() {
+    if (m_sessionChild && m_sessionChildApproval) {
+        if (const auto result = m_sessionChild->poll()) {
+            std::error_code error;
+            const auto status = std::filesystem::symlink_status(m_sessionChildOutput, error);
+            const bool outputReady =
+                !error && !std::filesystem::is_symlink(status) &&
+                (m_sessionChildSequence ? std::filesystem::is_directory(status)
+                                        : std::filesystem::is_regular_file(status));
+            const auto approval = *m_sessionChildApproval;
+            if (*result == 0 && outputReady)
+                m_sessionApprovalOutputs[approval].push_back(m_sessionChildOutput.string());
+            finishSessionStep(approval, *result == 0 && outputReady, SessionError::Failed,
+                              std::format("Headless capture exited {} (log: {})", *result,
+                                          m_sessionChildLog.string()));
+            m_sessionChild.reset();
+            m_sessionChildApproval.reset();
+            m_sessionChildOutput.clear();
+            m_sessionChildLog.clear();
+        }
+    }
     if (m_sessionMeasurementApproval && !m_pendingSessionMeasurementStart &&
         !m_measurement.active()) {
         const bool completed = m_measurement.state() == MeasurementState::Complete;

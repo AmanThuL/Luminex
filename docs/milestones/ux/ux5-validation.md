@@ -28,8 +28,9 @@ Evidence is retained in `../Luminex-evidence/ux5/`; the executor plan stays in p
 | 14 | `9c2a4c6` | Final code gates PASS, 10/10; focused 713 assertions | No final source findings; reviewed hashes retained |
 | 15 | `3bed162` | Final code gates PASS, 10/10; focused 373 assertions | Both P2 findings corrected; no final source findings |
 | 16 | `b99446b` | Final code gates PASS, 10/10; final guards pass | Three P2 findings corrected; final 25 reviewed hashes match |
-| 17 | Pending commit | Final code gates PASS, 10/10; focused 56 assertions | Seven findings and root companion collision corrected; final hashes match |
-| 18–22 | Not started | Not run | Not run |
+| 17 | `3ded3aa` | Final code gates PASS, 10/10; focused 56 assertions | Seven findings and root companion collision corrected; final hashes match |
+| 18 | This task commit | Final code gates PASS, 11/11; final App child/direct PNG exact | Status P2 corrected; eight reviewed hashes match |
+| 19–22 | Not started | Not run | Not run |
 
 The gate JSON files retain every command, exit and log. Test-first red results and failed
 correction attempts are retained in each task's evidence ledger; a deliberate red test is
@@ -47,6 +48,7 @@ CPU IBL generation; full Release gates passed. That Debug run remains incomplete
 | 6 | Probe include/link/viewport failures and an App null-pointer compile failure; final layout run interrupted with exit 130 | Corrected probe and all code gates pass; native failure remains below |
 | 7 | Initial project policy exited 1; two docking implementations failed review/tests | Third docking implementation passed review and gates |
 | 8 | Buffer URI expected/optional mismatch; unqualified test namespace each failed to compile | Each corrected on attempt 2; final gates pass |
+| 18 | Initial checked-in shell probe violated module ownership; layout read a removed probe file | Wiring removed without policy changes; external production API probes and final gates PASS, 11/11 |
 | 17 | Initial App include/string conversion error; three layout gate failures; public-API comments gate failure | Corrected; final code gates PASS, 10/10 |
 | 16 | Span fixture compile error; 19 initially-dirty fixture assertions; exact input cone-angle assertion | Fixture baseline corrected; exact stored-value readback used without tolerance; final gates PASS, 10/10 |
 | 15 | Fixture accessor/compiler errors; tier log omitted client/resulting ceiling; hidden Console query stayed stale | Red-to-green corrections; final gates PASS, 10/10 |
@@ -222,3 +224,15 @@ output names, Stop between plan steps, delayed directory-symlink handling, docum
 and capture-result ownership. A root audit also found GPU schema/temp collisions; the added
 regression checks all three existing capture outputs without changing RojoRHI or its format.
 These are source/test corrections; adversarial native gestures remain unverified.
+
+Task 18 adds private ChildRun ownership and job guards in Measurement/Transport. Module policy
+refused linking a private shell source into Tests; standalone probes compile the unchanged
+production source instead, preserving the one-source/one-target rule. Fresh stronger review
+corrected query.status for headless jobs. Stop/Listen-off/shutdown kill and reap by source and
+process probes; live operator gestures remain for Task 19. Final App SHA-256 is
+`afccbc79e94a165cba6dc99866ddd303f6828e459643a8ec9e6e8761a3a65c4a`.
+The production ChildRun API locates a test-only stub which execs that App, with the same CWD,
+arguments and output path as the direct run. Both complete PNGs have SHA-256
+`c841052ba9c058444bfc5f8185ec75cde0d7532b1e09559e5970c308ab799bd1`.
+The output checks reject existing/symlink leaves; unchanged headless pathname writers do not
+provide isolation from concurrent path replacement by another process with the same privileges.

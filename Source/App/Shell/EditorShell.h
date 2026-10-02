@@ -39,6 +39,7 @@
 #include "App/Panels/Graph/RenderGraphPanel.h"
 #include "App/Panels/Performance/PerformancePanel.h"
 #include "App/Panels/Session/SessionPanel.h"
+#include "App/Shell/ChildRun.h"
 #include "App/Shell/NativeMenu.h"
 #include "Engine/View/Camera.h"
 #include "Render/Passes/SelectionOutline/SelectionOutline.h"
@@ -492,8 +493,14 @@ private:
     std::filesystem::path m_sessionOutputName;
     std::optional<uint64_t> m_sessionMeasurementApproval;
     std::optional<uint64_t> m_sessionCaptureApproval;
+    std::optional<uint64_t> m_sessionChildApproval;
+    std::optional<ChildRun> m_sessionChild;
+    std::filesystem::path m_sessionChildLog;
+    std::filesystem::path m_sessionChildOutput;
+    bool m_sessionChildSequence = false;
     std::optional<uint64_t> m_pendingSessionMeasurementStart;
     std::filesystem::path m_sessionJobOutput;
+    scenes::GeneratorOverrides m_sessionGeneratorOverrides;
     bool m_sessionJobCancelled = false;
     uint32_t m_sessionHzbLevels = 0;
     render::ReconstructionMode m_sessionEffectiveReconstruction =

@@ -669,6 +669,7 @@ rojoRHI::Result<void> EditorShell::primeTemporal(const AppOptions& options) {
     m_labLightPile = options.labLightPile;
     m_labInstances = options.labInstances;
     m_labOccluders = options.labOccluders;
+    m_sessionGeneratorOverrides = options.generatorOverrides;
     m_settings.visibilityEnabled = options.visibilityEnabled;
     m_settings.submission = options.submission;
     m_settings.classifyMode = options.classifyMode;

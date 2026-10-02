@@ -95,6 +95,8 @@ void EditorShell::buildPlaybackTransport() {
             approval->state, approval->summary, {}, approval->state == SessionState::Working};
     if (m_sessionCaptureApproval)
         inputs.session = SessionActivity{SessionState::Working, "GPU capture", {}, true};
+    if (m_sessionChildApproval)
+        inputs.session = SessionActivity{SessionState::Working, "Headless capture", {}, true};
     if (m_pendingSessionMeasurementStart)
         inputs.session = SessionActivity{SessionState::Working, "Measurement", {}, true};
     if (m_measurement.active() && !m_sessionMeasurementApproval) {
@@ -193,7 +195,7 @@ void EditorShell::buildPlaybackTransport() {
         m_playback.pause();
         break;
     case PlaybackToolbarAction::Stop:
-        if (m_sessionMeasurementApproval || m_sessionCaptureApproval ||
+        if (m_sessionMeasurementApproval || m_sessionCaptureApproval || m_sessionChildApproval ||
             m_pendingSessionMeasurementStart ||
             (m_sessionApprovals.active() &&
              m_sessionApprovals.active()->state == SessionState::Working))
