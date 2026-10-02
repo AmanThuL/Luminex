@@ -15,7 +15,7 @@ not a commitment to every idea.
 The roadmap entry's [execution sequence](../roadmap.md#execution-sequence) owns the cross-part
 order: after [UX1](editor-experience.md) and the five
 [M7](gpu-driven-hybrid-rendering.md#m7--scalable-scene-and-direct-lighting) slices it is
-**M7 → R2 → R3 → R4 → UX2 → UX3 → UX4 → UX5 → N1 → G1 → G2 → M8 → G3 → M10 → M11**, with N2–N4 entering when their prerequisites below
+**M7 → R2 → R3 → R4 → UX2 → UX3 → UX4 → UX5 → UX6 → N1 → G1 → G2 → M8 → G3 → M10 → M11**, with N2–N4 entering when their prerequisites below
 exist; the structural and editor steps before N1 add no technical prerequisite to it.
 Only one implementation plan is active at a time, so N-slices interleave with M-slices rather
 than run beside them. Part II's dependency map still governs the M-slices; this order changes

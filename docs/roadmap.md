@@ -50,13 +50,14 @@ the row says otherwise.
 | 14 | [UX3.1–UX3.5](roadmap/editor-experience.md#ux3--scene-documents-and-hierarchy) scene documents and hierarchy | IV | Implemented 2026-09-29; plan closed; owner authorized integration by squash merge; image gates failed as measured (normalized rig), ADR 0028 proposed; [record](milestones/ux/ux3.md), [final validation and retained limits](milestones/ux/ux3-final-validation.md) | UX2 |
 | 15 | [UX4.1–UX4.5](roadmap/editor-experience.md#ux4--design-system-and-themes) design system and themes | IV | Implemented and owner-accepted for integration 2026-10-01; plan closed, integrated by squash merge; image matrix and Compact cost gates failed as measured, native gate incomplete, ADR 0029 proposed; [record](milestones/ux/ux4.md), [validation and retained limits](milestones/ux/ux4-review-validation.md#owner-acceptance-and-integration) | UX3 |
 | 16 | [UX5.1–UX5.3](roadmap/editor-experience.md#ux5--agent-session) agent session | IV | Implemented; owner authorized integration 2026-10-02; plan closed, integrated by squash merge; Gallery exact comparison (Light and Dark 0/16), four of five original CLI rejection pairs, the initial standing matrix (14/15) and native GPU capture certification (0/4) failed as measured, the original five-case Off gate is incomplete, ADR 0030 proposed; [record](milestones/ux/ux5.md), [validation](milestones/ux/ux5-validation.md), [review, authorization and retained limits](milestones/ux/ux5-review-validation.md#owner-authorization-and-integration) | UX4 |
-| 17 | [N1.1–N1.4](roadmap/neural-rendering.md#n1--in-shader-inference-lab) in-shader inference lab | V | Inactive | UX5; technically gate B |
-| 18 | [G1.1–G1.4](roadmap/cluster-geometry.md#g1--cluster-geometry) cluster geometry | VI | Inactive | M7 and N1 |
-| 19 | [G2.1–G2.2](roadmap/cluster-geometry.md#g2--scalable-visibility) scalable visibility | VI | Inactive | G1 |
-| 20 | [M8.1–M8.5](roadmap/gpu-driven-hybrid-rendering.md#m8--shadows-indirect-lighting-floor-and-environment) shadows, indirect floor and environment | II | Inactive | G2; technically G1.3 for M8.1–M8.2 and M7 for M8.3–M8.4 |
-| 21 | [G3.1–G3.3](roadmap/cluster-geometry.md#g3--surface-path-for-pixel-scale-triangles) surface path for pixel-scale triangles | VI | Inactive | M8; technically G1 |
-| 22 | [M10](roadmap/gpu-driven-hybrid-rendering.md#m10--hybrid-scene-query-and-reference-transport) scene query, transport and reflections | II | Inactive | G3; query/reference work needs only M7 |
-| 23 | [M11](roadmap/gpu-driven-hybrid-rendering.md#m11--dynamic-gi-and-content-residency) dynamic GI and residency | II | Inactive | M10 for GI; M7 for residency, G1 for geometry pages |
+| 17 | [UX6.1–UX6.3](roadmap/editor-experience.md#ux6--scene-authoring) scene authoring | IV | Proposed; owner placed it before N1 on 2026-10-03; [proposed record](milestones/ux/ux6.md) awaits acceptance, no plan | UX5 |
+| 18 | [N1.1–N1.4](roadmap/neural-rendering.md#n1--in-shader-inference-lab) in-shader inference lab | V | Inactive | UX6; technically gate B |
+| 19 | [G1.1–G1.4](roadmap/cluster-geometry.md#g1--cluster-geometry) cluster geometry | VI | Inactive | M7 and N1 |
+| 20 | [G2.1–G2.2](roadmap/cluster-geometry.md#g2--scalable-visibility) scalable visibility | VI | Inactive | G1 |
+| 21 | [M8.1–M8.5](roadmap/gpu-driven-hybrid-rendering.md#m8--shadows-indirect-lighting-floor-and-environment) shadows, indirect floor and environment | II | Inactive | G2; technically G1.3 for M8.1–M8.2 and M7 for M8.3–M8.4 |
+| 22 | [G3.1–G3.3](roadmap/cluster-geometry.md#g3--surface-path-for-pixel-scale-triangles) surface path for pixel-scale triangles | VI | Inactive | M8; technically G1 |
+| 23 | [M10](roadmap/gpu-driven-hybrid-rendering.md#m10--hybrid-scene-query-and-reference-transport) scene query, transport and reflections | II | Inactive | G3; query/reference work needs only M7 |
+| 24 | [M11](roadmap/gpu-driven-hybrid-rendering.md#m11--dynamic-gi-and-content-residency) dynamic GI and residency | II | Inactive | M10 for GI; M7 for residency, G1 for geometry pages |
 
 Rows that interleave when their own prerequisites exist, without a fixed step:
 
@@ -80,8 +81,8 @@ renumbered scene documents to UX3; records and ADRs dated earlier call scene doc
 2026-09-29 the owner asked for a design-system and theme overhaul as UX4 before N1; the owner accepted its
 record on 2026-09-30 after adding native macOS chrome to it, and proposed UX5, an agent session,
 in three slices. UX4 was owner-accepted for integration on 2026-10-01; the same day the owner placed
-all three UX5 slices before N1. The owner authorized UX5's integration on 2026-10-02; N1 is next in the order.
-The same day the owner asked for a [UX6](roadmap/editor-experience.md#ux6--scene-authoring) scene-authoring proposal; it has no step until the owner accepts its record and placement.
+all three UX5 slices before N1. The owner authorized UX5's integration on 2026-10-02.
+The same day the owner asked for a [UX6](roadmap/editor-experience.md#ux6--scene-authoring) scene-authoring proposal, and on 2026-10-03 placed it before N1; its record is still `Proposed`, and no plan opens until the owner accepts it.
 On 2026-10-01 the owner retired M9 after the
 [geometry direction review](research/2026-10-01-geometry-direction-review.md): its scope became
 G1–G3 in Part VI, with G1 and G2 before M8 and G3 after it. M8, M10 and M11 keep their identifiers,
