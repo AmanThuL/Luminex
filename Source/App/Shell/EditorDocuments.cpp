@@ -175,6 +175,7 @@ bool EditorShell::selectScene(scenes::SceneId id) {
     activateExposureLook(m_exposureContext, m_exposureResetPending, id, m_session.look());
     m_sessionProposals.markStale(ProposalSource::File);
     m_sessionProposals.markStale(ProposalSource::Bridge);
+    cancelAwaitingSessionApprovals("cancelled: scene replaced");
     m_sessionAttribution.clear();
     m_watchedPath = m_session.loadedScene()->path;
     m_watchedStamp = currentDocumentStamp();
@@ -207,6 +208,7 @@ bool EditorShell::selectSessionScene(scenes::SceneId id) {
     activateExposureLook(m_exposureContext, m_exposureResetPending, id, m_session.look());
     m_sessionProposals.markStale(ProposalSource::File);
     m_sessionProposals.markStale(ProposalSource::Bridge);
+    cancelAwaitingSessionApprovals("cancelled: scene replaced");
     m_sessionAttribution.clear();
     m_watchedPath = m_session.loadedScene()->path;
     m_watchedStamp = currentDocumentStamp();

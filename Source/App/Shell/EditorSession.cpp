@@ -294,6 +294,15 @@ void EditorShell::drainSessionBridge() {
                                                   .outcome = "protocol"});
                 continue;
             }
+            if (const auto valid = validateSessionArguments(SessionCommand::Hello, request->args);
+                !valid) {
+                answerError(SessionError::Invalid, valid.error());
+                m_sessionLog.record(SessionAction{.timestampMilliseconds = utcMilliseconds(),
+                                                  .actor = Actor::Agent,
+                                                  .command = "hello",
+                                                  .outcome = "invalid"});
+                continue;
+            }
             const auto name = request->args.find("name");
             const auto protocol = request->args.find("protocol");
             const auto parsedName =
@@ -365,6 +374,14 @@ void EditorShell::drainSessionBridge() {
                                                        parsed->summary, std::move(parsed->steps));
             if (!submitted) {
                 answerError(SessionError::Busy, submitted.error());
+                m_sessionLog.record(
+                    SessionAction{.timestampMilliseconds = utcMilliseconds(),
+                                  .actor = Actor::Agent,
+                                  .client = m_sessionClient,
+                                  .command = request->command,
+                                  .arguments = std::string(request->args.sourceJson()),
+                                  .tier = m_sessionTier,
+                                  .outcome = "busy"});
                 continue;
             }
             m_sessionApprovalConnections[*submitted] = inbound.connection;
@@ -377,6 +394,17 @@ void EditorShell::drainSessionBridge() {
                                               .outcome = "awaiting approval"});
             continue;
         }
+        if (const auto valid = validateSessionArguments(spec->command, request->args); !valid) {
+            answerError(SessionError::Invalid, valid.error());
+            m_sessionLog.record(SessionAction{.timestampMilliseconds = utcMilliseconds(),
+                                              .actor = Actor::Agent,
+                                              .client = m_sessionClient,
+                                              .command = request->command,
+                                              .arguments = std::string(request->args.sourceJson()),
+                                              .tier = m_sessionTier,
+                                              .outcome = "invalid"});
+            continue;
+        }
         std::string result;
         std::string outcome = "answered";
         bool responseSent = false;
@@ -387,6 +415,12 @@ void EditorShell::drainSessionBridge() {
                    : std::nullopt;
         switch (spec->command) {
         case SessionCommand::ProposeEdits: {
+            if (m_sessionProposals.bridgeFull()) {
+                answerError(SessionError::Busy, "64 proposals already await review; retry later");
+                outcome = "busy";
+                responseSent = true;
+                break;
+            }
             const auto summaryNode = request->args.find("summary");
             const auto summary =
                 summaryNode
@@ -433,6 +467,7 @@ void EditorShell::drainSessionBridge() {
             proposal.source = ProposalSource::Bridge;
             proposal.actor = Actor::Agent;
             proposal.client = m_sessionClient;
+            proposal.connection = inbound.connection;
             proposal.summary = *summary;
             proposal.hash = loaded->hash;
             proposal.evidence = std::move(evidence);
@@ -451,7 +486,8 @@ void EditorShell::drainSessionBridge() {
                        : std::expected<uint64_t, std::string>{std::unexpected("Missing proposal")};
             const auto* proposal = id ? m_sessionProposals.find(*id) : nullptr;
             if (!proposal || proposal->source != ProposalSource::Bridge ||
-                proposal->state != SessionState::Proposed || proposal->client != m_sessionClient) {
+                proposal->state != SessionState::Proposed ||
+                proposal->connection != inbound.connection) {
                 answerError(SessionError::Invalid, "No matching bridge proposal to withdraw");
                 outcome = "invalid";
                 responseSent = true;
@@ -581,9 +617,17 @@ void EditorShell::pumpSession(double now) {
         } else if (action.action == SessionPanelAction::SetTier) {
             m_sessionPanelAction.reset();
             if (m_sessionConnection && m_sessionHello) {
+                const bool lowered = action.tier < m_sessionTier;
                 m_sessionTier = action.tier;
                 m_sessionLog.record(
                     sessionTierAction(m_sessionClient, m_sessionTier, utcMilliseconds()));
+                // A lowered ceiling withdraws what the higher one let the client queue; a plan
+                // the operator already approved keeps running.
+                if (lowered) {
+                    cancelAwaitingSessionApprovals("cancelled: ceiling lowered");
+                    if (m_sessionTier < SessionTier::Propose)
+                        m_sessionProposals.markStale(ProposalSource::Bridge);
+                }
             }
         }
     }
@@ -958,6 +1002,16 @@ void EditorShell::stopSessionWork() {
     m_pendingSessionMeasurementStart.reset();
     m_sessionJobOutput.clear();
     m_sessionJobCancelled = false;
+}
+
+//======================================================================================================================
+void EditorShell::cancelAwaitingSessionApprovals(std::string_view reason) {
+    for (const auto& approval : m_sessionApprovals.pending()) {
+        if (approval.state == SessionState::Awaiting)
+            recordSessionReview("approval.cancel", std::to_string(approval.request),
+                                std::string(reason), approval.client);
+    }
+    m_sessionApprovals.cancelPending();
 }
 
 //======================================================================================================================

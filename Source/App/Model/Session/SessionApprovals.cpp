@@ -8,6 +8,7 @@
 #include "Core/Diagnostics/Assert.h"
 
 #include <algorithm>
+#include <iterator>
 #include <utility>
 
 namespace lmx::app {
@@ -44,6 +45,9 @@ std::expected<uint64_t, std::string> SessionApprovals::submit(uint64_t request, 
                     [](const ApprovalStep& step) { return !isExecutable(step.command); }))
         return std::unexpected(
             "Approval steps must be known Apply commands other than plan.submit");
+    if (static_cast<size_t>(std::count_if(m_approvals.begin(), m_approvals.end(), isUnresolved)) >=
+        kMaxUnresolvedApprovals)
+        return std::unexpected("Eight approvals already await review or run; retry later");
     LMX_ASSERT(m_nextId != 0, "Approval identity exhausted");
     const uint64_t id = m_nextId++;
     m_approvals.push_back({id, request, std::move(client), std::move(summary), std::move(steps)});
@@ -125,13 +129,11 @@ void SessionApprovals::cancelAll() {
 
 //======================================================================================================================
 std::vector<PendingApproval> SessionApprovals::takeTerminalResults() {
-    std::vector<PendingApproval> results;
-    for (auto& approval : m_approvals) {
-        if (isUnresolved(approval) || approval.terminalReported)
-            continue;
-        approval.terminalReported = true;
-        results.push_back(approval);
-    }
+    const auto terminal =
+        std::stable_partition(m_approvals.begin(), m_approvals.end(), isUnresolved);
+    std::vector<PendingApproval> results(std::make_move_iterator(terminal),
+                                         std::make_move_iterator(m_approvals.end()));
+    m_approvals.erase(terminal, m_approvals.end());
     return results;
 }
 
@@ -149,6 +151,15 @@ std::span<const PendingApproval> SessionApprovals::pending() const {
 //======================================================================================================================
 PendingApproval* SessionApprovals::activeMutable() {
     return const_cast<PendingApproval*>(std::as_const(*this).active());
+}
+
+//======================================================================================================================
+bool ApprovalClickGuard::accepts(uint64_t awaitingId, double now) {
+    if (awaitingId != m_shownId) {
+        m_shownId = awaitingId;
+        m_shownAt = now;
+    }
+    return awaitingId != 0 && now - m_shownAt >= kApprovalReviewDelaySeconds;
 }
 
 } // namespace lmx::app

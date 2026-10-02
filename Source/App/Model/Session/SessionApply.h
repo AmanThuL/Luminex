@@ -25,7 +25,8 @@ struct ParsedApplyRequest {
     std::vector<ApprovalStep> steps; ///< Validated immutable steps in execution order.
 };
 
-/// Validates the shape of one Apply command or plan, including evidence names and integer bounds.
+/// Validates the shape of one Apply command or plan, including exact member names, evidence names
+/// and integer bounds.
 /// Runtime preconditions are checked again immediately before each approved step executes.
 std::expected<ParsedApplyRequest, std::string> parseApplyRequest(SessionCommand command,
                                                                  const asset::JsonNode& args);
@@ -38,6 +39,12 @@ std::string sessionDirectoryName(int64_t utcSeconds, uint32_t processId);
 
 /// Gives each GPU-capture step in an approved plan a distinct confined output name.
 std::string captureGpuOutputName(uint64_t approval, size_t zeroBasedStep);
+
+/// Names the run-local output an approved step writes, as the approval card shows it: the name
+/// argument, with the `.png` suffix a screenshot receives, or the generated GPU-capture name.
+/// Returns empty for a step that writes no named output or whose arguments carry no name.
+std::string sessionStepOutputName(const ApprovalStep& step, uint64_t approval,
+                                  size_t zeroBasedStep);
 
 /// Checks the trace bundle and both sidecar paths that the capture backend may write.
 /// An existing file, directory or dangling symlink at any path is a collision.

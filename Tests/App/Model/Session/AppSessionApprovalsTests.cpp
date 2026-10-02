@@ -188,3 +188,61 @@ TEST_CASE("terminal approval results are consumed exactly once", "[app][session-
     CHECK(results[0].terminalError == SessionError::Cancelled);
     CHECK(approvals.takeTerminalResults().empty());
 }
+
+//======================================================================================================================
+TEST_CASE("unresolved approvals are capped and reported results leave the queue",
+          "[app][session-approvals]") {
+    SessionApprovals approvals;
+    std::vector<uint64_t> ids;
+    for (uint64_t request = 0; request < kMaxUnresolvedApprovals; ++request) {
+        const auto id =
+            approvals.submit(request, "client", "queued", {{SessionCommand::GraphDump, "{}"}});
+        REQUIRE(id);
+        ids.push_back(*id);
+    }
+    CHECK_FALSE(approvals.submit(99, "client", "ninth", {{SessionCommand::GraphDump, "{}"}}));
+    CHECK(approvals.pending().size() == kMaxUnresolvedApprovals);
+
+    approvals.approve(ids[0]);
+    CHECK_FALSE(approvals.submit(99, "client", "working", {{SessionCommand::GraphDump, "{}"}}));
+    REQUIRE(approvals.next());
+    approvals.finishStep(true);
+    const auto admitted =
+        approvals.submit(100, "client", "admitted", {{SessionCommand::GraphDump, "{}"}});
+    REQUIRE(admitted);
+    CHECK(approvals.pending().size() == kMaxUnresolvedApprovals + 1);
+
+    approvals.deny(ids[1]);
+    const auto results = approvals.takeTerminalResults();
+    REQUIRE(results.size() == 2);
+    CHECK(results[0].id == ids[0]);
+    CHECK(results[0].state == SessionState::Applied);
+    CHECK(results[1].id == ids[1]);
+    CHECK(results[1].terminalError == SessionError::Denied);
+    REQUIRE(approvals.pending().size() == kMaxUnresolvedApprovals - 1);
+    CHECK(approvals.pending().front().id == ids[2]);
+    CHECK(approvals.pending().back().id == *admitted);
+    CHECK(approvals.active()->id == ids[2]);
+    CHECK(approvals.takeTerminalResults().empty());
+}
+
+//======================================================================================================================
+TEST_CASE("a newly shown approval card ignores clicks for half a second",
+          "[app][session-approvals]") {
+    ApprovalClickGuard guard;
+    CHECK_FALSE(guard.accepts(0, 10.0));
+    CHECK_FALSE(guard.accepts(7, 10.0));
+    CHECK_FALSE(guard.accepts(7, 10.49));
+    CHECK(guard.accepts(7, 10.5));
+    CHECK(guard.accepts(7, 30.0));
+    // The next queued request takes the same position in the frame after a decision.
+    CHECK_FALSE(guard.accepts(8, 30.01));
+    CHECK_FALSE(guard.accepts(8, 30.5));
+    CHECK(guard.accepts(8, 30.51));
+    // An approved plan hides the card while it runs; the request behind it starts a new delay.
+    CHECK_FALSE(guard.accepts(0, 31.0));
+    CHECK_FALSE(guard.accepts(9, 40.0));
+    CHECK(guard.accepts(9, 40.5));
+    CHECK_FALSE(guard.accepts(0, 60.0));
+    CHECK_FALSE(guard.accepts(9, 60.0));
+}

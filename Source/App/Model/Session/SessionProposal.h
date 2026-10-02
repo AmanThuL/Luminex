@@ -53,6 +53,7 @@ struct SessionProposal {
     ProposalSource source = ProposalSource::File; ///< File or bridge origin.
     Actor actor = Actor::System;                  ///< Attributed source actor.
     std::string client;                           ///< Client name or external-change fallback.
+    uint64_t connection = 0;                      ///< Submitting connection; zero for File.
     std::string summary;                          ///< Short review description.
     std::string error;                            ///< Reader failure shown in Error state.
     std::string hash;                             ///< File pair hash for rejection suppression.
@@ -71,6 +72,10 @@ struct ProposalReviewDetails {
 /// Returns change rows only when expanded and evidence rows even for an Error proposal.
 ProposalReviewDetails proposalReviewDetails(const SessionProposal& proposal, bool expanded);
 
+/// Formats the card's status line: the change count and state, or the state alone when the card
+/// carries no change rows (an approval, or a file the reader rejected).
+std::string proposalStatusLine(const SessionProposal& proposal);
+
 /// Names the owner, stable index, optional name and property of one change row.
 std::string proposalChangeLabel(const asset::DocumentChange& change);
 
@@ -79,12 +84,20 @@ bool proposalAffectsNode(const SessionProposal& proposal, const asset::SceneDocu
                          uint32_t node);
 
 /// Main-thread proposal history. Borrowed pointers and spans are invalidated by add; all methods
-/// require serialized access. At most 64 proposals are retained; rejected hashes last until the
-/// file context is reset.
+/// require serialized access. Resolved history is evicted oldest first beyond 64 retained
+/// proposals; a proposal still awaiting review is never evicted, so the queue holds at most 64
+/// pending Bridge proposals and one pending File proposal. Rejected hashes last until the file
+/// context is reset.
 class ProposalQueue {
 public:
+    /// Most Bridge proposals that may await review at once.
+    static constexpr size_t kMaxPendingBridge = 64;
+
     /// Assigns an identity and retains a proposal; a new File proposal stales the previous one.
+    /// Adding a pending Bridge proposal while bridgeFull() violates the caller contract.
     uint64_t add(SessionProposal proposal);
+    /// Reports whether kMaxPendingBridge Bridge proposals await review; the caller refuses more.
+    bool bridgeFull() const;
     /// Finds a retained proposal by identity, or returns null after eviction.
     SessionProposal* find(uint64_t id);
     /// Returns the newest File proposal in Proposed or Error state, or null.

@@ -34,17 +34,22 @@ struct PendingApproval {
     std::vector<ApprovalStep> steps;             ///< Copied steps; never extended after submission.
     size_t cursor = 0;                           ///< Next step to dispatch, or step that failed.
     SessionState state = SessionState::Awaiting; ///< Awaiting, Working, Applied or Error.
-    bool terminalReported = false; ///< Whether the shell has consumed the terminal result.
-    std::optional<SessionError> terminalError; ///< Distinguishes Denied, Failed and Cancelled.
+    std::optional<SessionError> terminalError;   ///< Distinguishes Denied, Failed and Cancelled.
 };
 
+/// Most requests that may be Awaiting or Working at once; a further submit is refused.
+inline constexpr size_t kMaxUnresolvedApprovals = 8;
+/// Seconds an approval card must have been shown before Approve or Deny acts on it.
+inline constexpr double kApprovalReviewDelaySeconds = 0.5;
+
 /// Main-thread approval queue. Requests are reviewed and run in submission order. Borrowed
-/// pointers and spans are invalidated by submit or destruction; completed entries remain visible
-/// in pending() so the shell can send their terminal results.
+/// pointers and spans are invalidated by submit, takeTerminalResults or destruction; completed
+/// entries remain visible in pending() only until the shell takes their terminal results.
 class SessionApprovals {
 public:
     /// Copies one to 32 Apply steps into a new request; rejects unknown, non-Apply and nested plan
-    /// commands without changing the queue. A single Apply command is a one-step plan.
+    /// commands without changing the queue. A single Apply command is a one-step plan. Refuses
+    /// while kMaxUnresolvedApprovals requests are Awaiting or Working.
     std::expected<uint64_t, std::string> submit(uint64_t request, std::string client,
                                                 std::string summary,
                                                 std::vector<ApprovalStep> steps);
@@ -67,13 +72,14 @@ public:
     void cancelPending();
     /// Cancels awaiting and approved work when Listen is turned off or the shell shuts down.
     void cancelAll();
-    /// Returns owned copies of newly terminal results once; subsequent calls omit them. The shell
-    /// uses this single dispatch point for logging and responding, including cancelled connections.
+    /// Removes every terminal request from the queue and returns it once, in submission order.
+    /// The shell uses this single dispatch point for logging and responding, including cancelled
+    /// connections.
     std::vector<PendingApproval> takeTerminalResults();
     /// Returns the oldest Awaiting or Working request, or null when all requests are terminal.
     const PendingApproval* active() const;
-    /// Returns all retained requests in submission order, including terminal results. The span is
-    /// invalidated by submit or destruction.
+    /// Returns all retained requests in submission order, including terminal results not yet
+    /// taken. The span is invalidated by submit, takeTerminalResults or destruction.
     std::span<const PendingApproval> pending() const;
 
 private:
@@ -82,6 +88,19 @@ private:
     std::vector<PendingApproval> m_approvals;
     uint64_t m_nextId = 1;
     bool m_stepInFlight = false;
+};
+
+/// Holds Approve and Deny for kApprovalReviewDelaySeconds after a different request takes the
+/// approval card's place, so a repeated click cannot resolve a request the operator has not seen.
+class ApprovalClickGuard {
+public:
+    /// Records the request awaiting review this frame (zero for none) and returns whether its
+    /// buttons may act. The delay restarts whenever the shown request changes.
+    bool accepts(uint64_t awaitingId, double now);
+
+private:
+    uint64_t m_shownId = 0;
+    double m_shownAt = 0.0;
 };
 
 } // namespace lmx::app

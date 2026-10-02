@@ -154,6 +154,8 @@ std::expected<ParsedApplyRequest, std::string> parseApplyRequest(SessionCommand 
     ParsedApplyRequest parsed;
     if (!args.isObject())
         return std::unexpected("Apply arguments must be an object");
+    if (const auto valid = validateSessionArguments(command, args); !valid)
+        return std::unexpected(valid.error());
     if (command != SessionCommand::PlanSubmit) {
         if (const auto valid = validateStep(command, args); !valid)
             return std::unexpected(valid.error());
@@ -197,6 +199,26 @@ std::string sessionDirectoryName(int64_t utcSeconds, uint32_t processId) {
 //======================================================================================================================
 std::string captureGpuOutputName(uint64_t approval, size_t zeroBasedStep) {
     return std::format("capture-{}-{}.gputrace", approval, zeroBasedStep + 1);
+}
+
+//======================================================================================================================
+std::string sessionStepOutputName(const ApprovalStep& step, uint64_t approval,
+                                  size_t zeroBasedStep) {
+    if (step.command == SessionCommand::CaptureGpu)
+        return captureGpuOutputName(approval, zeroBasedStep);
+    if (step.command != SessionCommand::MeasureRun && step.command != SessionCommand::GraphDump &&
+        step.command != SessionCommand::CaptureScreenshot &&
+        step.command != SessionCommand::CaptureSequence)
+        return {};
+    const auto parsed = asset::JsonTokens::parse(step.arguments);
+    if (!parsed || !parsed->root().isObject())
+        return {};
+    const auto node = parsed->root().find("name");
+    const auto name =
+        node ? node->asString() : std::expected<std::string, std::string>{std::unexpected("")};
+    if (!name)
+        return {};
+    return step.command == SessionCommand::CaptureScreenshot ? *name + ".png" : *name;
 }
 
 //======================================================================================================================

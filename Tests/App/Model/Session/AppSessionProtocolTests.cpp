@@ -180,3 +180,66 @@ TEST_CASE("session error encoding replaces externally invalid UTF-8 safely",
     REQUIRE(continued);
     CHECK(continued->root().find("error")->find("message")->asString() == "busy");
 }
+
+//======================================================================================================================
+TEST_CASE("session arguments reject unknown, repeated and unbounded members",
+          "[app][session-protocol]") {
+    const auto node = [](std::string text) {
+        return lmx::asset::JsonTokens::parse(std::move(text))->root();
+    };
+    CHECK(validateSessionArguments(SessionCommand::Hello, node(R"({"name":"c","protocol":1})")));
+    CHECK_FALSE(validateSessionArguments(SessionCommand::Hello,
+                                         node(R"({"name":"c","protocol":1,"tier":"apply"})")));
+    CHECK_FALSE(validateSessionArguments(SessionCommand::Hello,
+                                         node(R"({"name":"c","name":"d","protocol":1})")));
+    CHECK(validateSessionArguments(SessionCommand::QueryStatus, node("{}")));
+    CHECK_FALSE(validateSessionArguments(SessionCommand::QueryStatus, node(R"({"note":1})")));
+    CHECK_FALSE(validateSessionArguments(SessionCommand::QueryStatus, node("[]")));
+    CHECK(validateSessionArguments(SessionCommand::QueryConsole, node("{}")));
+    CHECK(validateSessionArguments(SessionCommand::QueryConsole, node(R"({"afterSequence":4})")));
+    CHECK_FALSE(validateSessionArguments(SessionCommand::QueryConsole,
+                                         node(R"({"afterSequence":4,"limit":1})")));
+    CHECK_FALSE(validateSessionArguments(SessionCommand::QueryConsole,
+                                         node(R"({"afterSequence":4,"afterSequence":9})")));
+    CHECK(validateSessionArguments(SessionCommand::ProposeWithdraw, node(R"({"proposal":4})")));
+    CHECK_FALSE(validateSessionArguments(SessionCommand::ProposeWithdraw,
+                                         node(R"({"proposal":4,"client":"other"})")));
+
+    CHECK(validateSessionArguments(
+        SessionCommand::ProposeEdits,
+        node(
+            R"({"summary":"s","evidence":["a"],"edits":[{"subject":"look","field":"bloom","value":{"enabled":true}}]})")));
+    CHECK_FALSE(validateSessionArguments(SessionCommand::ProposeEdits,
+                                         node(R"({"summary":"s","edits":[],"accept":true})")));
+    const auto nested = validateSessionArguments(
+        SessionCommand::ProposeEdits,
+        node(
+            R"({"summary":"s","edits":[{"subject":"look","field":"bloom","value":{"enabled":true,"enabled":false}}]})"));
+    REQUIRE_FALSE(nested);
+    CHECK(nested.error() == "Duplicate argument enabled");
+    CHECK_FALSE(validateSessionArguments(
+        SessionCommand::ProposeEdits,
+        node(R"({"summary":"s","edits":[{"subject":"a","subject":"b","field":"f","value":1}]})")));
+
+    // settings.set is named by its setting, so only repetition is refused here.
+    CHECK(validateSessionArguments(SessionCommand::SettingsSet, node(R"({"temporal":"off"})")));
+    CHECK_FALSE(validateSessionArguments(SessionCommand::SettingsSet,
+                                         node(R"({"temporal":"off","temporal":"taa"})")));
+
+    const auto longName = validateSessionArguments(SessionCommand::QueryStatus,
+                                                   node("{\"" + std::string(200, 'k') + "\":1}"));
+    REQUIRE_FALSE(longName);
+    CHECK(longName.error() == "Unknown argument (long name) for query.status");
+
+    std::string wide = "{";
+    for (size_t index = 0; index <= kMaxArgumentMembers; ++index)
+        wide += std::string(index ? "," : "") + "\"k" + std::to_string(index) + "\":1";
+    CHECK_FALSE(validateSessionArguments(SessionCommand::SettingsSet, node(wide + "}")));
+
+    const auto deep = [&](size_t arrays) {
+        return node(R"({"summary":"s","edits":)" + std::string(arrays, '[') +
+                    std::string(arrays, ']') + "}");
+    };
+    CHECK(validateSessionArguments(SessionCommand::ProposeEdits, deep(kMaxArgumentDepth - 1)));
+    CHECK_FALSE(validateSessionArguments(SessionCommand::ProposeEdits, deep(kMaxArgumentDepth)));
+}

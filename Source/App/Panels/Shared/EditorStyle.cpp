@@ -288,8 +288,8 @@ CardAction proposalCard(const SessionProposal& proposal, const CardLabels& label
         ImGui::SameLine();
         ImGui::TextUnformatted(proposal.actor == Actor::Agent ? "Agent" : "System");
         ImGui::SameLine();
-        ImGui::TextColored(color(ThemeRole::TextSecondary), "%zu changes · %s",
-                           proposal.changes.size(), sessionStateLabel(proposal.state).data());
+        ImGui::TextColored(color(ThemeRole::TextSecondary), "%s",
+                           proposalStatusLine(proposal).c_str());
         if (proposal.state == SessionState::Error && !proposal.error.empty()) {
             ImGui::PushStyleColor(ImGuiCol_Text, color(ThemeRole::StatusError));
             ImGui::TextWrapped("%s", proposal.error.c_str());

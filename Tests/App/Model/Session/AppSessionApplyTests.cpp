@@ -139,3 +139,84 @@ TEST_CASE("session record name is reserved before approval", "[app][session-appl
         args(
             R"({"summary":"collision","steps":[{"command":"graph.dump","args":{"name":"session.json"}}]})")));
 }
+
+//======================================================================================================================
+TEST_CASE("apply commands accept only their own argument names", "[app][session-apply]") {
+    CHECK(parseApplyRequest(SessionCommand::SceneOpen, args(R"({"scene":"sponza"})")));
+    CHECK_FALSE(
+        parseApplyRequest(SessionCommand::SceneOpen, args(R"({"scene":"sponza","force":true})")));
+    CHECK_FALSE(parseApplyRequest(SessionCommand::SceneOpen,
+                                  args(R"({"scene":"sponza","scene":"light-lab"})")));
+    CHECK(parseApplyRequest(SessionCommand::MeasureRun,
+                            args(R"({"name":"m.json","warmup":0,"frames":4})")));
+    CHECK_FALSE(parseApplyRequest(SessionCommand::MeasureRun,
+                                  args(R"({"name":"m.json","warmup":0,"frames":4,"scene":"x"})")));
+    CHECK_FALSE(parseApplyRequest(SessionCommand::MeasureRun,
+                                  args(R"({"name":"m.json","warmup":0,"frames":4,"frames":9})")));
+    CHECK_FALSE(
+        parseApplyRequest(SessionCommand::GraphDump, args(R"({"name":"frame.txt","frames":1})")));
+    CHECK_FALSE(parseApplyRequest(SessionCommand::CaptureScreenshot,
+                                  args(R"({"name":"still","frames":1,"warmup":0})")));
+    CHECK_FALSE(parseApplyRequest(SessionCommand::CaptureScreenshot,
+                                  args(R"({"name":"still","name":"other","frames":1})")));
+    CHECK(parseApplyRequest(SessionCommand::CaptureSequence,
+                            args(R"({"name":"run","frames":2,"warmup":1})")));
+    CHECK_FALSE(parseApplyRequest(SessionCommand::CaptureSequence,
+                                  args(R"({"name":"run","frames":2,"warmup":1,"scale":"0.5"})")));
+    CHECK_FALSE(parseApplyRequest(SessionCommand::DebugViewSet,
+                                  args(R"({"topic":"temporal","topic":"lighting"})")));
+
+    const auto unknown = parseApplyRequest(SessionCommand::SceneOpen, args(R"({"path":"x"})"));
+    REQUIRE_FALSE(unknown);
+    CHECK(unknown.error() == "Unknown argument path for scene.open");
+}
+
+//======================================================================================================================
+TEST_CASE("plans accept only known names at every level", "[app][session-apply]") {
+    CHECK_FALSE(parseApplyRequest(
+        SessionCommand::PlanSubmit,
+        args(
+            R"({"summary":"x","note":"y","steps":[{"command":"graph.dump","args":{"name":"a"}}]})")));
+    CHECK_FALSE(parseApplyRequest(
+        SessionCommand::PlanSubmit,
+        args(
+            R"({"summary":"x","summary":"y","steps":[{"command":"graph.dump","args":{"name":"a"}}]})")));
+    CHECK_FALSE(parseApplyRequest(
+        SessionCommand::PlanSubmit,
+        args(
+            R"({"summary":"x","steps":[{"command":"graph.dump","args":{"name":"a"},"tier":"apply"}]})")));
+    CHECK_FALSE(parseApplyRequest(
+        SessionCommand::PlanSubmit,
+        args(
+            R"({"summary":"x","steps":[{"command":"graph.dump","command":"capture.gpu","args":{"name":"a"}}]})")));
+    CHECK_FALSE(parseApplyRequest(
+        SessionCommand::PlanSubmit,
+        args(
+            R"({"summary":"x","steps":[{"command":"graph.dump","args":{"name":"a","frames":1}}]})")));
+    const auto duplicate = parseApplyRequest(
+        SessionCommand::PlanSubmit,
+        args(
+            R"({"summary":"x","steps":[{"command":"scene.open","args":{"scene":"a","scene":"b"}}]})"));
+    REQUIRE_FALSE(duplicate);
+    CHECK(duplicate.error() == "Duplicate argument scene");
+}
+
+//======================================================================================================================
+TEST_CASE("approval cards name the output each step writes", "[app][session-apply]") {
+    CHECK(
+        sessionStepOutputName({SessionCommand::CaptureScreenshot, R"({"name":"still","frames":1})"},
+                              4, 0) == "still.png");
+    CHECK(sessionStepOutputName(
+              {SessionCommand::CaptureSequence, R"({"name":"run","frames":2,"warmup":0})"}, 4, 0) ==
+          "run");
+    CHECK(sessionStepOutputName({SessionCommand::GraphDump, R"({"name":"frame.txt"})"}, 4, 0) ==
+          "frame.txt");
+    CHECK(sessionStepOutputName(
+              {SessionCommand::MeasureRun, R"({"name":"m.json","warmup":0,"frames":1})"}, 4, 0) ==
+          "m.json");
+    CHECK(sessionStepOutputName({SessionCommand::CaptureGpu, "{}"}, 4, 2) ==
+          "capture-4-3.gputrace");
+    CHECK(sessionStepOutputName({SessionCommand::SettingsSet, R"({"temporal":"off"})"}, 4, 0)
+              .empty());
+    CHECK(sessionStepOutputName({SessionCommand::GraphDump, "not json"}, 4, 0).empty());
+}

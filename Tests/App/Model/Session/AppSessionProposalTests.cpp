@@ -199,20 +199,35 @@ TEST_CASE("light and camera changes ring every referencing document node", "[app
 }
 
 //======================================================================================================================
-TEST_CASE("proposal queue remains bounded when all proposals await review", "[app][session]") {
+TEST_CASE("pending bridge proposals fill the queue instead of evicting each other",
+          "[app][session]") {
     ProposalQueue queue;
     uint64_t newest = 0;
-    for (size_t i = 0; i < 65; ++i) {
+    for (size_t i = 0; i < ProposalQueue::kMaxPendingBridge; ++i) {
+        CHECK_FALSE(queue.bridgeFull());
         SessionProposal bridge{};
         bridge.source = ProposalSource::Bridge;
         bridge.state = SessionState::Proposed;
         newest = queue.add(std::move(bridge));
     }
+    CHECK(queue.bridgeFull());
     CHECK(queue.all().size() == 64);
     CHECK(queue.pending() == 64);
-    CHECK(queue.find(1) == nullptr);
+    REQUIRE(queue.find(1));
+    CHECK(queue.find(1)->state == SessionState::Proposed);
     REQUIRE(queue.find(newest));
-    CHECK(queue.find(newest)->id == newest);
+
+    queue.resolve(1, SessionState::Stale);
+    CHECK_FALSE(queue.bridgeFull());
+    SessionProposal bridge{};
+    bridge.source = ProposalSource::Bridge;
+    bridge.state = SessionState::Proposed;
+    const auto replacement = queue.add(std::move(bridge));
+    CHECK(queue.bridgeFull());
+    CHECK(queue.all().size() == 64);
+    CHECK(queue.find(1) == nullptr);
+    CHECK(queue.find(2) != nullptr);
+    CHECK(queue.find(replacement) != nullptr);
 }
 
 //======================================================================================================================
@@ -231,12 +246,33 @@ TEST_CASE("queue pressure preserves an active file proposal", "[app][session]") 
         if (i == 0)
             firstBridgeId = id;
     }
-    CHECK(queue.all().size() == 64);
-    CHECK(queue.pending() == 64);
+    CHECK(queue.all().size() == 65);
+    CHECK(queue.pending() == 65);
     REQUIRE(queue.pendingFile());
     CHECK(queue.pendingFile()->id == fileId);
     CHECK(queue.find(fileId) != nullptr);
-    CHECK(queue.find(firstBridgeId) == nullptr);
+    CHECK(queue.find(firstBridgeId) != nullptr);
+
+    SessionProposal next{};
+    next.source = ProposalSource::File;
+    next.hash = "next";
+    next.state = SessionState::Proposed;
+    const auto nextId = queue.add(std::move(next));
+    CHECK(queue.all().size() == 65);
+    CHECK(queue.find(fileId) == nullptr);
+    CHECK(queue.pendingFile()->id == nextId);
+    CHECK(queue.find(firstBridgeId) != nullptr);
+}
+
+//======================================================================================================================
+TEST_CASE("a card without change rows shows its state alone", "[app][session]") {
+    SessionProposal card;
+    card.state = SessionState::Awaiting;
+    CHECK(proposalStatusLine(card) == "awaiting");
+    card.state = SessionState::Proposed;
+    card.changes = {{lmx::asset::DocumentChangeOwner::Node, 3, "", "enabled", "true", "false"},
+                    {lmx::asset::DocumentChangeOwner::Look, 0, "", "bloom", "1", "2"}};
+    CHECK(proposalStatusLine(card) == "2 changes · proposed");
 }
 
 //======================================================================================================================

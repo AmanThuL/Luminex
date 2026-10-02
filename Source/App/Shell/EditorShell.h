@@ -351,6 +351,7 @@ private:
     std::expected<std::vector<SessionEvidence>, std::string>
     sessionOutputEvidence(uint64_t approval, bool required);
     void stopSessionWork();
+    void cancelAwaitingSessionApprovals(std::string_view reason);
     void updateCameraInput(float deltaSeconds);
     uint64_t metricsContextEpoch();
     bool startMeasurement(rojoRHI::Device& device, const render::Renderer& renderer,
@@ -489,6 +490,7 @@ private:
     std::optional<SessionPanelResult> m_sessionPanelAction;
     SessionLog m_sessionLog;
     SessionApprovals m_sessionApprovals;
+    ApprovalClickGuard m_sessionApprovalGuard;
     std::unordered_map<uint64_t, uint64_t> m_sessionApprovalConnections;
     std::unordered_map<uint64_t, std::pair<SessionError, std::string>> m_sessionApprovalFailures;
     std::unordered_map<uint64_t, std::vector<std::string>> m_sessionApprovalOutputs;

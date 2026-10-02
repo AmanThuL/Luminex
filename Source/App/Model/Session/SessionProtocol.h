@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "App/Model/Session/SessionCommands.h"
 #include "Engine/Asset/Model/JsonTokens.h"
 
 #include <cstddef>
@@ -19,6 +20,10 @@ namespace lmx::app {
 inline constexpr uint32_t kSessionProtocol = 1;
 /// Maximum request bytes before an optional line ending.
 inline constexpr size_t kMaxLineBytes = 1 << 20;
+/// Maximum members of any one object inside request arguments.
+inline constexpr size_t kMaxArgumentMembers = 64;
+/// Maximum container nesting inside request arguments, counting the argument object itself.
+inline constexpr size_t kMaxArgumentDepth = 32;
 
 /// Parsed request; args retains its own immutable JSON storage across copies and moves.
 struct SessionRequest {
@@ -50,6 +55,14 @@ std::expected<SessionRequest, std::string> decodeRequest(std::string line);
 /// Parses a framed request without requiring the command to be in the current inventory. The
 /// dispatcher can answer a well-formed unknown command with `invalid` and its exact request id.
 std::expected<SessionRequest, std::string> decodeRequestEnvelope(std::string line);
+/// Checks a command's argument object before any member is read. Every command except
+/// settings.set accepts only its own member names, and plan.submit applies the same rule to each
+/// step and to that step's args. A member name repeated in any object at any depth fails, as do
+/// objects over kMaxArgumentMembers and nesting over kMaxArgumentDepth, so the text shown to the
+/// operator can never differ from the values a first-match lookup reads. Value types and ranges
+/// stay with each command's own parser.
+std::expected<void, std::string> validateSessionArguments(SessionCommand command,
+                                                          const asset::JsonNode& args);
 /// Encodes one successful response with an exact unsigned id and a valid JSON result value.
 /// The returned wire message ends with exactly one LF. Invalid external UTF-8 or JSON returns
 /// an explicit failed response with the same id instead of terminating the process.

@@ -106,22 +106,31 @@ uint64_t ProposalQueue::add(SessionProposal proposal) {
             if (existing.source == ProposalSource::File && isPending(existing.state))
                 existing.state = SessionState::Stale;
     }
+    LMX_ASSERT(proposal.source != ProposalSource::Bridge || !isPending(proposal.state) ||
+                   !bridgeFull(),
+               "Pending bridge proposals are at capacity");
     LMX_ASSERT(m_nextId != 0, "Proposal identity exhausted");
     proposal.id = m_nextId++;
     const uint64_t id = proposal.id;
     m_proposals.push_back(std::move(proposal));
-    if (m_proposals.size() > kMaxProposals) {
-        auto evictable =
+    // Only resolved history is evicted; a proposal awaiting review stays until it is resolved.
+    while (m_proposals.size() > kMaxProposals) {
+        const auto evictable =
             std::find_if(m_proposals.begin(), m_proposals.end(),
                          [](const SessionProposal& item) { return !isPending(item.state); });
         if (evictable == m_proposals.end())
-            evictable = std::find_if(
-                m_proposals.begin(), m_proposals.end(),
-                [](const SessionProposal& item) { return item.source == ProposalSource::Bridge; });
-        LMX_ASSERT(evictable != m_proposals.end(), "No evictable proposal history");
+            break;
         m_proposals.erase(evictable);
     }
     return id;
+}
+
+//======================================================================================================================
+bool ProposalQueue::bridgeFull() const {
+    return static_cast<size_t>(std::count_if(
+               m_proposals.begin(), m_proposals.end(), [](const SessionProposal& item) {
+                   return item.source == ProposalSource::Bridge && isPending(item.state);
+               })) >= kMaxPendingBridge;
 }
 
 //======================================================================================================================
@@ -207,6 +216,14 @@ ProposalReviewDetails proposalReviewDetails(const SessionProposal& proposal, boo
     return {.changes = expanded ? std::span<const asset::DocumentChange>(proposal.changes)
                                 : std::span<const asset::DocumentChange>{},
             .evidence = proposal.evidence};
+}
+
+//======================================================================================================================
+std::string proposalStatusLine(const SessionProposal& proposal) {
+    const auto state = sessionStateLabel(proposal.state);
+    return proposal.changes.empty()
+               ? std::string(state)
+               : std::format("{} changes · {}", proposal.changes.size(), state);
 }
 
 //======================================================================================================================

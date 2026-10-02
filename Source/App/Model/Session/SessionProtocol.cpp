@@ -9,8 +9,12 @@
 #include "Core/Diagnostics/Assert.h"
 #include "Core/IO/JsonWriter.h"
 
+#include <algorithm>
 #include <array>
 #include <format>
+#include <initializer_list>
+#include <optional>
+#include <span>
 #include <unordered_set>
 #include <utility>
 
@@ -118,6 +122,113 @@ std::string_view errorCode(SessionError code) {
     return "protocol";
 }
 
+//======================================================================================================================
+// A member name is echoed only while short, so a refusal always fits one response line.
+std::string shownName(std::string_view name) {
+    return name.size() <= 64 ? std::string(name) : std::string("(long name)");
+}
+
+//======================================================================================================================
+std::expected<void, std::string> uniqueMemberNames(const asset::JsonNode& value, size_t depth) {
+    if (!value.isObject() && !value.isArray())
+        return {};
+    if (depth > kMaxArgumentDepth)
+        return std::unexpected("Arguments nest deeper than 32 levels");
+    if (value.isArray()) {
+        for (const auto& element : value.elements())
+            if (const auto valid = uniqueMemberNames(element, depth + 1); !valid)
+                return valid;
+        return {};
+    }
+    // Member access walks from the first member, so the count is bounded before the loop.
+    if (value.size() > kMaxArgumentMembers)
+        return std::unexpected("An argument object has more than 64 members");
+    std::unordered_set<std::string> names;
+    for (size_t index = 0; index < value.size(); ++index) {
+        auto name = value.memberName(index);
+        if (names.contains(name))
+            return std::unexpected("Duplicate argument " + shownName(name));
+        names.insert(std::move(name));
+        if (const auto valid = uniqueMemberNames(value.memberValue(index), depth + 1); !valid)
+            return valid;
+    }
+    return {};
+}
+
+//======================================================================================================================
+std::expected<void, std::string> knownMemberNames(const asset::JsonNode& object,
+                                                  std::span<const std::string_view> allowed,
+                                                  std::string_view owner) {
+    for (size_t index = 0; index < object.size(); ++index) {
+        const auto name = object.memberName(index);
+        if (std::find(allowed.begin(), allowed.end(), name) == allowed.end())
+            return std::unexpected(
+                std::format("Unknown argument {} for {}", shownName(name), owner));
+    }
+    return {};
+}
+
+//======================================================================================================================
+// Returns the complete member-name set of a command, or empty for settings.set, whose single
+// member is named by the setting itself.
+std::optional<std::span<const std::string_view>> argumentNames(SessionCommand command) {
+    static constexpr std::array<std::string_view, 2> hello{"name", "protocol"};
+    static constexpr std::array<std::string_view, 1> console{"afterSequence"};
+    static constexpr std::array<std::string_view, 3> edits{"summary", "evidence", "edits"};
+    static constexpr std::array<std::string_view, 1> withdraw{"proposal"};
+    static constexpr std::array<std::string_view, 2> debugView{"topic", "value"};
+    static constexpr std::array<std::string_view, 1> scene{"scene"};
+    static constexpr std::array<std::string_view, 3> measure{"name", "warmup", "frames"};
+    static constexpr std::array<std::string_view, 1> dump{"name"};
+    static constexpr std::array<std::string_view, 2> screenshot{"name", "frames"};
+    static constexpr std::array<std::string_view, 3> sequence{"name", "frames", "warmup"};
+    static constexpr std::array<std::string_view, 2> plan{"summary", "steps"};
+    switch (command) {
+    case SessionCommand::Hello:
+        return hello;
+    case SessionCommand::QueryConsole:
+        return console;
+    case SessionCommand::ProposeEdits:
+        return edits;
+    case SessionCommand::ProposeWithdraw:
+        return withdraw;
+    case SessionCommand::SettingsSet:
+        return std::nullopt;
+    case SessionCommand::DebugViewSet:
+        return debugView;
+    case SessionCommand::SceneOpen:
+        return scene;
+    case SessionCommand::MeasureRun:
+        return measure;
+    case SessionCommand::GraphDump:
+        return dump;
+    case SessionCommand::CaptureScreenshot:
+        return screenshot;
+    case SessionCommand::CaptureSequence:
+        return sequence;
+    case SessionCommand::PlanSubmit:
+        return plan;
+    default:
+        return std::span<const std::string_view>{};
+    }
+}
+
+//======================================================================================================================
+std::string_view commandName(SessionCommand command) {
+    for (const auto& spec : sessionCommands())
+        if (spec.command == command)
+            return spec.name;
+    return "command";
+}
+
+//======================================================================================================================
+std::expected<void, std::string> knownCommandMembers(SessionCommand command,
+                                                     const asset::JsonNode& args) {
+    const auto names = argumentNames(command);
+    return names ? knownMemberNames(args, *names, commandName(command))
+                 : std::expected<void, std::string>{};
+}
+
 } // namespace
 
 //======================================================================================================================
@@ -180,6 +291,39 @@ std::expected<SessionRequest, std::string> decodeRequest(std::string line) {
     if (request && !findCommand(request->command))
         return std::unexpected("Unknown command " + request->command);
     return request;
+}
+
+//======================================================================================================================
+std::expected<void, std::string> validateSessionArguments(SessionCommand command,
+                                                          const asset::JsonNode& args) {
+    if (!args.isObject())
+        return std::unexpected("Arguments must be an object");
+    if (const auto valid = uniqueMemberNames(args, 1); !valid)
+        return valid;
+    if (const auto valid = knownCommandMembers(command, args); !valid)
+        return valid;
+    if (command != SessionCommand::PlanSubmit)
+        return {};
+    const auto steps = args.find("steps");
+    if (!steps || !steps->isArray())
+        return {};
+    static constexpr std::array<std::string_view, 2> stepNames{"command", "args"};
+    for (const auto& step : steps->elements()) {
+        if (!step.isObject())
+            continue;
+        if (const auto valid = knownMemberNames(step, stepNames, "a plan step"); !valid)
+            return valid;
+        const auto name = step.find("command");
+        const auto arguments = step.find("args");
+        const auto text =
+            name ? name->asString() : std::expected<std::string, std::string>{std::unexpected("")};
+        const auto* spec = text ? findCommand(*text) : nullptr;
+        if (spec && spec->command != SessionCommand::PlanSubmit && arguments &&
+            arguments->isObject())
+            if (const auto valid = knownCommandMembers(spec->command, *arguments); !valid)
+                return valid;
+    }
+    return {};
 }
 
 //======================================================================================================================

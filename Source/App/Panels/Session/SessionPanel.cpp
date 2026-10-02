@@ -94,8 +94,13 @@ SessionPanelResult drawSessionPanel(bool& open, SessionPanelContext& context) {
     ImGui::Separator();
 
     ImGui::TextUnformatted("Approvals");
-    if (const auto* approval = context.approvals.active();
-        approval && approval->state == SessionState::Awaiting) {
+    const auto* approval = context.approvals.active();
+    if (approval && approval->state != SessionState::Awaiting)
+        approval = nullptr;
+    // A card that replaced another under the pointer ignores clicks until it has been shown.
+    const bool acceptsClicks =
+        context.approvalGuard.accepts(approval ? approval->id : 0, ImGui::GetTime());
+    if (approval) {
         SessionProposal card;
         card.id = approval->id;
         card.source = ProposalSource::Bridge;
@@ -110,10 +115,12 @@ SessionPanelResult drawSessionPanel(bool& open, SessionPanelContext& context) {
         ImGui::PushID("approval");
         switch (editor_style::proposalCard(card, labels)) {
         case editor_style::CardAction::Accept:
-            result = {SessionPanelAction::Approve, approval->id};
+            if (acceptsClicks)
+                result = {SessionPanelAction::Approve, approval->id};
             break;
         case editor_style::CardAction::Reject:
-            result = {SessionPanelAction::Deny, approval->id};
+            if (acceptsClicks)
+                result = {SessionPanelAction::Deny, approval->id};
             break;
         default:
             break;
@@ -125,28 +132,10 @@ SessionPanelResult drawSessionPanel(bool& open, SessionPanelContext& context) {
                 if (spec.command == step.command)
                     name = spec.name;
             editor_style::proposedValue(std::format("{}. {}", index + 1, name), "", step.arguments);
-            if (step.command == SessionCommand::MeasureRun ||
-                step.command == SessionCommand::GraphDump ||
-                step.command == SessionCommand::CaptureGpu ||
-                step.command == SessionCommand::CaptureScreenshot ||
-                step.command == SessionCommand::CaptureSequence) {
-                std::string output = step.command == SessionCommand::CaptureGpu
-                                         ? captureGpuOutputName(approval->id, index)
-                                         : "";
-                if (output.empty()) {
-                    const auto parsed = asset::JsonTokens::parse(step.arguments);
-                    if (parsed) {
-                        const auto nameNode = parsed->root().find("name");
-                        if (nameNode) {
-                            const auto nameValue = nameNode->asString();
-                            if (nameValue)
-                                output = *nameValue;
-                        }
-                    }
-                }
+            if (const auto output = sessionStepOutputName(step, approval->id, index);
+                !output.empty())
                 ImGui::TextWrapped("Output: %s",
                                    (context.outputDirectory / output).string().c_str());
-            }
         }
         ImGui::PopID();
     } else {

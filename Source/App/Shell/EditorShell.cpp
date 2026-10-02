@@ -631,6 +631,7 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
             .proposals = m_sessionProposals,
             .log = m_sessionLog,
             .approvals = m_sessionApprovals,
+            .approvalGuard = m_sessionApprovalGuard,
             .expandedId = m_sessionExpandedProposal,
             .evidenceDirectory = m_session.loadedScene()
                                      ? sidecarPath(m_session.loadedScene()->path).parent_path()
