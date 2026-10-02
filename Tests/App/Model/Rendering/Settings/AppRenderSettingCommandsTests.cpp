@@ -5,7 +5,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <array>
+#include <string>
 #include <string_view>
 #include <tuple>
 #include <vector>
@@ -284,4 +286,148 @@ TEST_CASE("unavailable edits reject without mutation and cascades produce CLI-va
             if (applyRenderSetting(reachable, item.key, value))
                 CHECK(cliConstraintsHold(reachable));
         }
+}
+
+//======================================================================================================================
+TEST_CASE("headless arguments round-trip every reachable rendering state",
+          "[app][render-setting-commands]") {
+    const auto check = [](const EditorRenderSettings& settings) {
+        const auto arguments = settingsToArguments(settings, {}, false);
+        std::vector<std::string_view> argv;
+        for (const auto& argument : arguments)
+            argv.push_back(argument);
+        argv.insert(argv.end(), {"--screenshot", "x.png"});
+        const auto parsed = parseAppOptions(argv);
+        REQUIRE(parsed.has_value());
+        CHECK(parsed->mode == RunMode::Screenshot);
+        CHECK(parsed->temporal ==
+              (settings.temporalEnabled
+                   ? settings.reconstruction == lmx::render::ReconstructionMode::Raw
+                         ? TemporalMode::Raw
+                     : settings.reconstruction == lmx::render::ReconstructionMode::VendorTemporal
+                         ? TemporalMode::Vendor
+                         : TemporalMode::Taa
+                   : TemporalMode::Off));
+        CHECK(parsed->renderScale == (settings.temporalEnabled ? settings.renderScale : 1.0f));
+        CHECK(parsed->visibilityEnabled == settings.visibilityEnabled);
+        CHECK(parsed->classifyMode == settings.classifyMode);
+        CHECK(parsed->classifyCheck == settings.classifyCheck);
+        CHECK(parsed->occlusionEnabled == settings.occlusionEnabled);
+        CHECK(parsed->occlusionCheck == settings.occlusionCheck);
+        CHECK(parsed->submission == settings.submission);
+        CHECK(parsed->localLightMode == settings.localLightMode);
+        CHECK(parsed->lightCheck == settings.lightCheck);
+        CHECK(parsed->localLightRigOverride == false);
+        CHECK(std::ranges::find(arguments, "--scene") == arguments.end());
+        CHECK(std::ranges::find(arguments, "--screenshot") == arguments.end());
+        CHECK(std::ranges::find(arguments, "--measure") == arguments.end());
+    };
+
+    for (const auto temporal : {"off", "raw", "taa", "metalfx"})
+        for (const float scale : {0.5f, 0.7502604f, 1.0f})
+            for (const bool cull : {false, true})
+                for (const auto classify : {"cpu", "gpu"})
+                    for (const auto submission : {"direct", "indirect", "batched"})
+                        for (const auto lights : {"off", "direct", "clustered"})
+                            for (unsigned checks = 0; checks < 16; ++checks) {
+                                EditorRenderSettings settings;
+                                REQUIRE(applyRenderSetting(settings, RenderSettingKey::Temporal,
+                                                           temporal));
+                                if (settings.temporalEnabled)
+                                    REQUIRE(applyRenderSetting(settings,
+                                                               RenderSettingKey::RenderScale,
+                                                               renderScaleCommandValue(scale)));
+                                else
+                                    settings.renderScale = scale; // Dormant editor request.
+                                REQUIRE(applyRenderSetting(settings, RenderSettingKey::Visibility,
+                                                           cull ? "cull" : "off"));
+                                REQUIRE(applyRenderSetting(settings, RenderSettingKey::Classify,
+                                                           classify));
+                                REQUIRE(applyRenderSetting(settings, RenderSettingKey::Submission,
+                                                           submission));
+                                REQUIRE(applyRenderSetting(settings, RenderSettingKey::LocalLights,
+                                                           lights));
+                                if ((checks & 1) &&
+                                    settings.classifyMode == lmx::render::ClassifyMode::Gpu) {
+                                    REQUIRE(applyRenderSetting(
+                                        settings, RenderSettingKey::ClassifyCheck, "on"));
+                                }
+                                if ((checks & 2) &&
+                                    settings.classifyMode == lmx::render::ClassifyMode::Gpu &&
+                                    settings.visibilityEnabled) {
+                                    REQUIRE(applyRenderSetting(settings,
+                                                               RenderSettingKey::Occlusion, "on"));
+                                    REQUIRE(applyRenderSetting(settings,
+                                                               RenderSettingKey::OcclusionCheck,
+                                                               (checks & 4) ? "on" : "off"));
+                                }
+                                if ((checks & 8) && settings.localLightMode ==
+                                                        lmx::engine::LocalLightMode::Clustered)
+                                    REQUIRE(applyRenderSetting(settings,
+                                                               RenderSettingKey::LightCheck, "on"));
+                                check(settings);
+                            }
+}
+
+//======================================================================================================================
+TEST_CASE("headless arguments preserve only explicit lab overrides",
+          "[app][render-setting-commands]") {
+    AppOptions startup;
+    startup.labInstances = 123;
+    startup.labOccluders = 7;
+    startup.labLights = 12;
+    startup.labLightPile = 3;
+    auto arguments = settingsToArguments({}, startup, true);
+    CHECK(std::ranges::find(arguments, "--lab-instances") == arguments.end());
+    CHECK(std::ranges::find(arguments, "--lab-occluders") == arguments.end());
+    CHECK(std::ranges::find(arguments, "--lab-lights") == arguments.end());
+    CHECK(std::ranges::find(arguments, "--lab-light-pile") == arguments.end());
+    std::vector<std::string_view> defaultArgv;
+    for (const auto& argument : arguments)
+        defaultArgv.push_back(argument);
+    defaultArgv.insert(defaultArgv.end(), {"--screenshot", "x.png"});
+    const auto defaults = parseAppOptions(defaultArgv);
+    REQUIRE(defaults.has_value());
+    CHECK_FALSE(defaults->generatorOverrides.instances);
+    CHECK_FALSE(defaults->generatorOverrides.occluders);
+    CHECK_FALSE(defaults->generatorOverrides.lights);
+    CHECK_FALSE(defaults->generatorOverrides.pile);
+    startup.generatorOverrides.instances = 1024;
+    startup.generatorOverrides.occluders = 2;
+    startup.generatorOverrides.lights = 300;
+    startup.generatorOverrides.pile = 4;
+    arguments = settingsToArguments({}, startup, true);
+    std::vector<std::string_view> argv{"--scene", "Assets/Scenes/LightLab.scene.gltf"};
+    for (const auto& argument : arguments)
+        argv.push_back(argument);
+    argv.insert(argv.end(), {"--screenshot", "x.png"});
+    const auto parsed = parseAppOptions(argv);
+    REQUIRE(parsed.has_value());
+    CHECK(parsed->generatorOverrides.instances == 1024);
+    CHECK(parsed->generatorOverrides.occluders == 2);
+    CHECK(parsed->generatorOverrides.lights == 300);
+    CHECK(parsed->generatorOverrides.pile == 4);
+    CHECK(parsed->localLightRigOverride == true);
+}
+
+//======================================================================================================================
+TEST_CASE("temporal off serializes full-resolution output without clearing latent editor requests",
+          "[app][render-setting-commands]") {
+    EditorRenderSettings settings;
+    REQUIRE(applyRenderSetting(settings, RenderSettingKey::Temporal, "metalfx"));
+    REQUIRE(applyRenderSetting(settings, RenderSettingKey::RenderScale, "0.625"));
+    settings.dynamicResolutionEnabled = true;
+    REQUIRE(applyRenderSetting(settings, RenderSettingKey::Temporal, "off"));
+    const auto arguments = settingsToArguments(settings, {}, true);
+    std::vector<std::string_view> argv;
+    for (const auto& argument : arguments)
+        argv.push_back(argument);
+    argv.insert(argv.end(), {"--screenshot", "x.png"});
+    const auto parsed = parseAppOptions(argv);
+    REQUIRE(parsed.has_value());
+    CHECK(parsed->temporal == TemporalMode::Off);
+    CHECK(parsed->renderScale == 1.0f);
+    CHECK(settings.reconstruction == lmx::render::ReconstructionMode::VendorTemporal);
+    CHECK(settings.renderScale == 0.625f);
+    CHECK(settings.dynamicResolutionEnabled);
 }

@@ -233,4 +233,39 @@ std::string renderSettingValue(const EditorRenderSettings& settings, RenderSetti
     return {};
 }
 
+//======================================================================================================================
+std::vector<std::string> settingsToArguments(const EditorRenderSettings& settings,
+                                             const AppOptions& startup, bool localLightRig) {
+    std::vector<std::string> arguments;
+    const auto add = [&arguments](std::string_view flag, std::string value) {
+        arguments.emplace_back(flag);
+        arguments.push_back(std::move(value));
+    };
+    for (const auto key : {RenderSettingKey::Temporal, RenderSettingKey::Visibility,
+                           RenderSettingKey::Classify, RenderSettingKey::Occlusion,
+                           RenderSettingKey::Submission, RenderSettingKey::LocalLights}) {
+        add(std::format("--{}", renderSettingName(key)), renderSettingValue(settings, key));
+    }
+    // The editor retains the manual or controller scale while temporal is off. Headless runs
+    // rasterize at output resolution until reconstruction is enabled again.
+    add("--render-scale",
+        settings.temporalEnabled ? renderScaleCommandValue(settings.renderScale) : "1");
+    if (settings.classifyCheck)
+        arguments.emplace_back("--classify-check");
+    if (settings.occlusionCheck)
+        arguments.emplace_back("--occlusion-check");
+    if (settings.lightCheck)
+        arguments.emplace_back("--light-check");
+    add("--local-light-rig", localLightRig ? "on" : "off");
+    if (startup.generatorOverrides.instances)
+        add("--lab-instances", std::to_string(*startup.generatorOverrides.instances));
+    if (startup.generatorOverrides.occluders)
+        add("--lab-occluders", std::to_string(*startup.generatorOverrides.occluders));
+    if (startup.generatorOverrides.lights)
+        add("--lab-lights", std::to_string(*startup.generatorOverrides.lights));
+    if (startup.generatorOverrides.pile)
+        add("--lab-light-pile", std::to_string(*startup.generatorOverrides.pile));
+    return arguments;
+}
+
 } // namespace lmx::app

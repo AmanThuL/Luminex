@@ -13,6 +13,26 @@ using namespace lmx;
 using namespace lmx::app;
 
 //======================================================================================================================
+TEST_CASE("session startup is limited to the windowed editor", "[app][options]") {
+    const auto windowed = parseAppOptions(std::array<std::string_view, 1>{"--session"});
+    REQUIRE(windowed.has_value());
+    CHECK(windowed->session);
+    const auto defaults = parseAppOptions({});
+    REQUIRE(defaults.has_value());
+    CHECK_FALSE(defaults->session);
+    for (const auto mode : {"--screenshot", "--capture-sequence", "--measure"}) {
+        const std::array<std::string_view, 3> arguments{"--session", mode, "x.png"};
+        const auto parsed = parseAppOptions(arguments);
+        REQUIRE_FALSE(parsed.has_value());
+        CHECK(parsed.error().message.find("windowed editor") != std::string::npos);
+        const std::array<std::string_view, 3> reversed{mode, "x.png", "--session"};
+        const auto reversedParsed = parseAppOptions(reversed);
+        REQUIRE_FALSE(reversedParsed.has_value());
+        CHECK(reversedParsed.error().message.find("windowed editor") != std::string::npos);
+    }
+}
+
+//======================================================================================================================
 TEST_CASE("app options default to a windowed Sponza scene", "[app][options]") {
     const AppOptionsResult result = parseAppOptions({});
 
@@ -119,7 +139,7 @@ TEST_CASE("app options reject unknown arguments", "[app][options]") {
             "unknown argument '--unknown'; usage: App [--screenshot <out.png|out.bmp>] [--scene "
             "<sponza|material-lab|temporal-lab|san-miguel|visibility-lab|"
             "light-lab|path>"
-            "] [--windowed] [--appearance <auto|light|dark>] "
+            "] [--windowed] [--session] [--appearance <auto|light|dark>] "
             "[--frames <N>] [--temporal <off|raw|taa|metalfx>] "
             "[--temporal-view <off|motion|reprojection|reprojected|rejection|weight|age>] "
             "[--render-scale <0.5..1.0>] [--capture-sequence <directory> --warmup <N> "

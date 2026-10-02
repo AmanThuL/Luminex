@@ -5,12 +5,14 @@
 
 #pragma once
 
+#include "App/Model/Options/AppOptions.h"
 #include "App/Model/Rendering/Settings/EditorRenderSettings.h"
 
 #include <expected>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace lmx::app {
 
@@ -46,5 +48,12 @@ std::string renderSettingValue(const EditorRenderSettings& settings, RenderSetti
 /// Formats a panel slider scale without losing float precision before it reaches the command layer.
 /// The caller supplies a finite scale within the slider's [0.5, 1.0] range.
 std::string renderScaleCommandValue(float scale);
+
+/// Serializes the current rendering settings for a headless child. The caller supplies the scene
+/// and output mode separately. Temporal off emits full resolution because the editor retains its
+/// dormant reconstruction, render-scale and dynamic-resolution requests, which the headless parser
+/// cannot replay while temporal is off. Only explicit startup generator masks are serialized.
+std::vector<std::string> settingsToArguments(const EditorRenderSettings& settings,
+                                             const AppOptions& startup, bool localLightRig);
 
 } // namespace lmx::app
