@@ -225,6 +225,17 @@ bool EditorShell::startSessionListener() {
 void EditorShell::drainSessionBridge() {
     if (!m_sessionMailbox)
         return;
+    // Nothing in a drain changes the scene, so one complete tree serves every request that needs
+    // it and a drain of status queries builds none.
+    std::optional<SceneTreeView> drainTree;
+    const auto completeTree = [&]() -> const SceneTreeView* {
+        const auto* scene = m_session.loadedScene();
+        if (!scene)
+            return nullptr;
+        if (!drainTree)
+            drainTree = buildSceneTreeView(*scene, m_session.documentState(), "", {}, &m_session);
+        return &*drainTree;
+    };
     for (const auto& inbound : m_sessionMailbox->takeInbound()) {
         if (inbound.opened) {
             m_sessionConnection = inbound.connection;
@@ -384,10 +395,6 @@ void EditorShell::drainSessionBridge() {
         std::string outcome = "answered";
         bool responseSent = false;
         const auto* loaded = m_session.loadedScene();
-        const auto completeTree =
-            loaded ? std::optional<SceneTreeView>(
-                         buildSceneTreeView(*loaded, m_session.documentState(), "", {}, &m_session))
-                   : std::nullopt;
         switch (spec->command) {
         case SessionCommand::ProposeEdits: {
             if (m_sessionProposals.bridgeFull()) {
@@ -421,12 +428,13 @@ void EditorShell::drainSessionBridge() {
                         evidence.push_back(*name);
                     }
             }
-            if (refusal.empty() && !completeTree)
+            const auto* tree = refusal.empty() ? completeTree() : nullptr;
+            if (refusal.empty() && !tree)
                 refusal = "No loaded scene is available";
             std::expected<std::vector<asset::DocumentChange>, std::string> preview =
                 std::unexpected("No edits");
             if (refusal.empty()) {
-                preview = previewEdits(m_session, *completeTree, *edits);
+                preview = previewEdits(m_session, *tree, *edits);
                 if (!preview)
                     refusal = preview.error();
                 else if (preview->empty())
@@ -490,12 +498,12 @@ void EditorShell::drainSessionBridge() {
             break;
         }
         case SessionCommand::QueryHierarchy:
-            if (completeTree)
-                result = hierarchyJson(*completeTree);
+            if (const auto* tree = completeTree())
+                result = hierarchyJson(*tree);
             break;
         case SessionCommand::QuerySelection:
-            if (completeTree)
-                result = selectionJson(m_selection, *completeTree);
+            if (const auto* tree = completeTree())
+                result = selectionJson(m_selection, *tree);
             break;
         case SessionCommand::QueryCamera:
             if (m_session.activeScene())
@@ -1111,8 +1119,9 @@ EditorShell::executeSessionStep(const ApprovalStep& step, uint64_t approval) {
         const auto output = sessionOutputPath(*name);
         if (!output)
             return refusal(SessionError::Unavailable, output.error());
-        m_measurementWarmup = static_cast<uint32_t>(*args.find("warmup")->asUInt());
-        m_measurementFrames = static_cast<uint32_t>(*args.find("frames")->asUInt());
+        // The run carries its own plan; the Performance panel's inputs stay the operator's.
+        m_sessionMeasurementWarmup = static_cast<uint32_t>(*args.find("warmup")->asUInt());
+        m_sessionMeasurementFrames = static_cast<uint32_t>(*args.find("frames")->asUInt());
         m_sessionJobOutput = *output;
         m_sessionApprovalOutputs[approval].push_back(output->string());
         m_sessionStepOutputs[approval].push_back(output->string());
@@ -1244,10 +1253,8 @@ void EditorShell::runSessionApprovals() {
     if (m_sessionMeasurementApproval && !m_pendingSessionMeasurementStart &&
         !m_measurement.active()) {
         const bool completed = m_measurement.state() == MeasurementState::Complete;
-        if (completed) {
-            m_measurementExportPath = m_sessionJobOutput.string();
+        if (completed)
             exportMeasurement();
-        }
         finishSessionStep(*m_sessionMeasurementApproval,
                           completed && m_measurementFeedback.starts_with("Exported ") &&
                               !m_sessionJobCancelled,

@@ -506,6 +506,8 @@ private:
     std::filesystem::path m_sessionChildOutput;
     bool m_sessionChildSequence = false;
     std::optional<uint64_t> m_pendingSessionMeasurementStart;
+    uint32_t m_sessionMeasurementWarmup = 0;
+    uint32_t m_sessionMeasurementFrames = 0;
     std::filesystem::path m_sessionJobOutput;
     scenes::GeneratorOverrides m_sessionGeneratorOverrides;
     bool m_sessionJobCancelled = false;

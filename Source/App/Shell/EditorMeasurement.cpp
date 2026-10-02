@@ -64,8 +64,8 @@ bool EditorShell::startMeasurement(rojoRHI::Device& device, const render::Render
         return false;
     }
     MeasurementPlan plan;
-    plan.warmupFrames = m_measurementWarmup;
-    plan.measuredFrames = m_measurementFrames;
+    plan.warmupFrames = sessionOwned ? m_sessionMeasurementWarmup : m_measurementWarmup;
+    plan.measuredFrames = sessionOwned ? m_sessionMeasurementFrames : m_measurementFrames;
     plan.width = renderer.width();
     plan.height = renderer.height();
     plan.labInstances = m_labInstances;
@@ -106,8 +106,8 @@ bool EditorShell::startMeasurement(rojoRHI::Device& device, const render::Render
         return false;
     }
     m_session.setMeasurementActive(true);
-    endMouseLook();
     if (!sessionOwned) {
+        endMouseLook();
         m_playback.play(m_session, m_settings.followCameraTrack);
         m_measurementOwnsPlayback = true;
         m_session.camera() = engine::cameraFromScene(m_session.scene().initialCamera);
@@ -183,7 +183,10 @@ bool EditorShell::measurementNeedsRetirementWait() const {
 //======================================================================================================================
 void EditorShell::exportMeasurement() {
     std::error_code error;
-    const std::filesystem::path path(m_measurementExportPath);
+    // A session-owned run exports to its approved output, never through the panel's path field.
+    const std::filesystem::path path = m_sessionMeasurementApproval
+                                           ? m_sessionJobOutput
+                                           : std::filesystem::path(m_measurementExportPath);
     if (path.empty() || std::filesystem::exists(path, error)) {
         m_measurementFeedback = "Choose a new JSON path; existing files are preserved.";
         return;
