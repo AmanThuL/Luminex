@@ -1,11 +1,11 @@
 # UX5 validation
 
-**Status**: Implemented — pending owner review
+**Status**: Implemented — owner authorized integration on 2026-10-02; failed and incomplete gates retained as measured
 
-No owner acceptance or integration claim. The [independent review record](ux5-review-validation.md) covers the 2026-10-02 review, its fixes and their limits.
+This page changes no gate result. The [independent review record](ux5-review-validation.md) covers the 2026-10-02 review, its fixes and their limits, and the [owner authorization](ux5-review-validation.md#owner-authorization-and-integration) for integration.
 
 Execution uses `feat/ux5-session` in `../Luminex-ux5`, based on `docs/ux5-session`. The frozen parent is main at `3259457` in `../Luminex-ux5-parent`. Evidence is retained in
-`../Luminex-evidence/ux5/`; the executor plan stays in place.
+`../Luminex-evidence/ux5/`; the executor plan is closed and stays in the history of the tag `ux5-review-gates`.
 
 ## Commit chain and code gates
 
@@ -106,8 +106,8 @@ the editor camera and semantic selection, and refuses removal/remapping of the s
 rendering pass, shader, RojoRHI, capture format, manifest or dependency change is authorized.
 
 Tasks 1–22 are implemented; required native checkpoints 9 and 19 remain passing. Task 22 source/GPU/evidence checks and the final source review are recorded below with failed
-and incomplete image/native gates. Fresh publication review passes; root records publication-policy, tag/push/PR outcomes in the external `task22/` publication ledger. The record is Implemented pending owner review; no owner
-acceptance is implied. Both worktrees and all evidence are retained.
+and incomplete image/native gates. Fresh publication review passes; root records publication-policy, tag/push/PR outcomes in the external `task22/` publication ledger. The record was then Implemented pending owner review; these results imply no owner
+acceptance. Both worktrees and all evidence are retained.
 
 ## Task 10 binding conflict and authorized exception
 
@@ -284,14 +284,14 @@ Native schema 6 relaunch PID 77717 uses the same final App/Fonts/Icons and exist
 Remaining unverified: Listen off or Quit with a still-awaiting approval (Task 22 covered running children with connected clients; Task 19 disconnect mid-approval remains PASS);
 exact Console clipboard equality; narrow/full-value panel layout and floating Console;
 dirty file Accept Discard/Cancel, Save tooltip, missing-evidence/Error gestures, activity navigation and unavailable measurement execution during a child. Earlier Task 9/19
-required passes remain; earlier lock failures remain historical only. Fresh publication review passes; root records publication-policy/tag/push/PR outcomes in the external ledger. Owner acceptance remains pending. All Global authority/view/playback,
+required passes remain; earlier lock failures remain historical only. Fresh publication review passes; root records publication-policy/tag/push/PR outcomes in the external ledger. Owner acceptance was pending at that point. All Global authority/view/playback,
 module/comment/color, no-RHI/dependency/renderer/shader/capture-format/manifest, tests-first and retained-failure constraints remain; exceptions do not authorize acceptance.
 
 ## Post-publication documentation reconciliation
 
-Task 22 was published as `b31baf2`, pushed with `ux5-integration-chain`, and opened as [PR #66](https://github.com/AmanThuL/Luminex/pull/66); owner acceptance and merge remain pending.
+Task 22 was published as `b31baf2`, pushed with `ux5-integration-chain`, and opened as [PR #66](https://github.com/AmanThuL/Luminex/pull/66); owner acceptance and merge were then pending.
 Main advanced to docs-only `bbb108d`, replacing M9 with G1–G3. Root's no-commit merge exited 1 with five documentation conflicts: AGENTS, UX5 record/plan, roadmap and neural roadmap.
-Reconciliation keeps every upstream geometry decision and UX5's reviewed implementation, exceptions, validation and In progress plan. The published tag stays at `b31baf2`;
+Reconciliation keeps every upstream geometry decision and UX5's reviewed implementation, exceptions, validation and the then In progress plan. The published tag stays at `b31baf2`;
 it is not force-moved. Its original 11/11 gates (full unit 9.707 s), 93-document validator and frozen source/runtime evidence remain historical exact results.
 This documentation reconciliation syncs main. Root retains actual follow-up `task22-main-sync-gates.json`, distinct validator, an independent stronger review and merge-commit/publication
 command outcomes in the external `task22/merge-main/` ledger. Source/runtime bytes remain unchanged; no new source, runtime, owner-acceptance or scored-gate claim follows from the sync.

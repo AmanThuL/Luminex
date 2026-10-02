@@ -1,6 +1,6 @@
 # UX5 — Agent Session
 
-**Status**: Implemented — pending owner review; failed and incomplete gates retained
+**Status**: Implemented — owner authorized integration on 2026-10-02; failed and incomplete gates retained as measured
 
 Written on 2026-10-01 from the merged UX4 editor and a survey of its document, settings, console
 and menu code. UX5 lets work done by an external agent reach the operator inside the editor: a
@@ -285,7 +285,7 @@ cases / 1,167,008 assertions and the pinned validator 93 documents. An independe
 [review](ux5-review-validation.md) on 2026-10-02 found defects that eight fix commits corrected.
 Afterwards the unit group passes 1,105 cases, the GPU group 215 and the Python suite 331 tests.
 Fixes under `Source/App/Shell` and the Session panel have model-level unit tests only, and no native
-gesture was repeated. The owner has not accepted integration; the executor plan remains In progress.
+gesture was repeated. On 2026-10-02 the owner [authorized integration](ux5-review-validation.md#owner-authorization-and-integration) by squash merge without re-running native gestures; the executor plan is closed and ADR 0030 stays Proposed.
 
 Failed and incomplete gates, as measured, with no tolerance or default changed:
 

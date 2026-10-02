@@ -243,7 +243,7 @@ icon set; everything UX1–UX3 already defer.
 
 **Placement:** [UX4](#ux4--design-system-and-themes) → UX5 → N1. On 2026-10-01 the owner placed
 all three slices before N1, so N1's studies can be the first work run through the bridge; the
-[record](../milestones/ux/ux5.md) is implemented and pending owner review, with its plan in progress.
+[record](../milestones/ux/ux5.md) is implemented; the owner authorized integration (see below).
 Agents keep working as they do today, through documents, the CLI and pull requests; UX5 makes
 that work visible and reviewable in the editor without an agent runtime inside it.
 
@@ -259,6 +259,9 @@ row; a local command bridge (UX5.2): a socket carrying the CLI's commands and ed
 actor attribution, tiers (read-only, propose, apply with approval), plan-level approval for
 multi-step jobs, headless capture runs and the activity strip; session log and evidence export
 (UX5.3): the Console's actor filter and an exportable session record joining actions to evidence.
+
+Implemented; on 2026-10-02 the owner authorized integration by squash merge after an independent review, without re-running native gestures, and the executor plan is closed. Gallery exact comparison (Light and Dark 0/16), four of the five original CLI rejection pairs, the initial standing matrix (14/15) and native GPU capture certification (0/4) fail as measured, and the original five-case Off gate is incomplete; no tolerance or default changed and ADR 0030 stays Proposed.
+The [review validation](../milestones/ux/ux5-review-validation.md#owner-authorization-and-integration) lists the retained failures and unverified native checks, and does not amend the exit gates.
 
 **Exit gate:** a proposal from a modified document lists exactly the fields the writer reports as
 changed, Accept yields the same scene as opening the file and Reject leaves the in-memory scene

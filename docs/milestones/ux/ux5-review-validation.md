@@ -1,13 +1,13 @@
 # UX5 independent review and fix validation
 
-**Status**: Implemented — pending owner review; failed and incomplete gates retained as measured
+**Status**: Implemented — owner authorized integration on 2026-10-02; failed and incomplete gates retained as measured
 
 An independent stronger review examined the UX5 branch on 2026-10-02 in two rounds. Six fix commits
 followed the first round and two the second. This page records what the review verified, the gates
 it re-ran, each defect with its fix, and what remains unverified. It changes no gate result: every
 failure in the [validation record](ux5-validation.md) stays recorded as measured, [ADR
-0030](../../decisions/0030-session-protocol-and-trust.md) stays Proposed, the executor plan stays In
-progress and no owner acceptance is claimed.
+0030](../../decisions/0030-session-protocol-and-trust.md) stays Proposed. The owner's later
+[authorization](#owner-authorization-and-integration) of integration turns no result into a pass.
 
 ## Scope and identity
 
@@ -17,6 +17,7 @@ progress and no owner acceptance is claimed.
 | First fix range | `09485e5..6df16f7`, six commits |
 | Second fix range | `a27b970..7f5d832`, two commits |
 | Final code revision | `7f5d832` |
+| Last revision holding the executor plan | `a9150d9`, documentation only after `7f5d832` |
 | Parent | main at `3259457` |
 
 ## What the review verified
@@ -134,4 +135,25 @@ Every measured failure stays as the [validation record](ux5-validation.md) state
 - The unverified gestures are those the validation record enumerates, plus the checks under
   [Limits](#limits).
 
-Owner review remains pending.
+## Owner authorization and integration
+
+On 2026-10-02 the repository owner authorized integrating UX5 by squash merge of
+[pull request #66](https://github.com/AmanThuL/Luminex/pull/66) once CI is green, after this review
+and with both rounds of corrections on the branch. The owner did not re-run native gestures, so the
+authorization is not a manual verification: the milestone is Implemented, and every failed gate,
+incomplete gate and unverified gesture stays as recorded. No tolerance, threshold or default
+changed, and ADR 0030 stays Proposed.
+
+- **Retained failures.** The results under [Unchanged status](#unchanged-status) and in the
+  [validation record](ux5-validation.md) stand as measured.
+- **Retained limits.** The checks under [Limits](#limits) stay unverified. Neither round of fix
+  commits has a native re-run; the post-fix gates in [Gate re-runs](#gate-re-runs) were measured
+  at `7f5d832`, and later commits change documentation only.
+- **Executor plan.** Closed and removed from the published tree. It stays in the history of the
+  tag `ux5-review-gates`, placed on `a9150d9`, the last revision that contains it; that tag also
+  preserves both fix ranges and the revision the post-fix gates measured.
+- **Original chain.** The tag `ux5-integration-chain` stays on `b31baf2` and preserves the
+  development chain whose frozen source and runtime the validation record measured.
+- **Squash commit.** After the merge, the squash commit's file tree is to be verified against
+  the validated branch tip and its identifier recorded; squashing turns no failed gate or scoped
+  exception into a pass.
