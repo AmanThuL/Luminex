@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "App/Model/Rendering/Lighting/LightingDiagnostics.h"
 #include "App/Model/Rendering/Lighting/LightingHistory.h"
+#include "App/Model/Rendering/Settings/RenderSettingCommands.h"
 #include "App/Model/Rendering/Temporal/DiagnosticLegend.h"
 #include "App/Panels/Rendering/RenderingInternal.h"
 #include "App/Panels/Shared/EditorStyle.h"
@@ -23,19 +24,19 @@ void drawLightingTopic(const InspectorPanelContext& context) {
         editor_style::field("Local lights");
         int mode = static_cast<int>(settings.localLightMode);
         if (ImGui::Combo("##localLightMode", &mode, "Off\0Direct\0Clustered\0")) {
-            settings.localLightMode = static_cast<engine::LocalLightMode>(mode);
-            if (settings.localLightMode != engine::LocalLightMode::Clustered) {
-                settings.lightCheck = false;
-            }
+            const auto value = mode == static_cast<int>(engine::LocalLightMode::Off) ? "off"
+                               : mode == static_cast<int>(engine::LocalLightMode::Direct)
+                                   ? "direct"
+                                   : "clustered";
+            applyRenderSetting(settings, RenderSettingKey::LocalLights, value);
         }
         editorTooltip("Direct evaluates every enabled local light. Clustered builds bounded lists "
                       "per froxel. Off keeps directional lights and the environment. Views: View > "
                       "Debug View.");
         editor_style::field("CPU list check");
-        if (ImGui::Checkbox("##lightCheck", &settings.lightCheck)) {
-            if (settings.lightCheck)
-                settings.localLightMode = engine::LocalLightMode::Clustered;
-        }
+        bool lightCheck = settings.lightCheck;
+        if (ImGui::Checkbox("##lightCheck", &lightCheck))
+            applyRenderSetting(settings, RenderSettingKey::LightCheck, lightCheck ? "on" : "off");
         editorTooltip("Compare retired GPU lists and counters with an independent CPU mirror. "
                       "Checking adds CPU work and is excluded from scored measurements.");
         if (session.lightLabPileAvailable()) {

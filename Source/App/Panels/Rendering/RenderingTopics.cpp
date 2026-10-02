@@ -5,6 +5,7 @@
 
 #include "App/Panels/Rendering/RenderingInternal.h"
 
+#include "App/Model/Rendering/Settings/RenderSettingCommands.h"
 #include "App/Model/Rendering/Visibility/VisibilityDiagnostics.h"
 #include "App/Model/Scene/SceneTableDisplay.h"
 
@@ -55,7 +56,15 @@ static void drawTemporalSection(const InspectorPanelContext& context, RenderingC
                              context.renderer.width(), context.renderer.height());
     if (category == RenderingCategory::Reconstruction) {
         if (editor_style::beginPropertyGrid("reconstructionFields")) {
-            checkbox("Temporal inputs", "##temporal", &settings.temporalEnabled);
+            bool temporalEnabled = settings.temporalEnabled;
+            if (checkbox("Temporal inputs", "##temporal", &temporalEnabled)) {
+                auto retained = settings;
+                retained.temporalEnabled = true;
+                applyRenderSetting(settings, RenderSettingKey::Temporal,
+                                   temporalEnabled
+                                       ? renderSettingValue(retained, RenderSettingKey::Temporal)
+                                       : "off");
+            }
             editorTooltip("Enable motion and history inputs for reconstruction and diagnostics. "
                           "Turning this off renders at full resolution; algorithm and scale "
                           "requests are retained. Debug views are in View > Debug View.");
@@ -68,7 +77,11 @@ static void drawTemporalSection(const InspectorPanelContext& context, RenderingC
                     const auto name = reconstructionName(mode, context.temporalSupport);
                     if (ImGui::Selectable(std::string(name).c_str(),
                                           settings.reconstruction == mode)) {
-                        settings.reconstruction = mode;
+                        const auto value = mode == render::ReconstructionMode::Raw ? "raw"
+                                           : mode == render::ReconstructionMode::NativeTaa
+                                               ? "taa"
+                                               : "metalfx";
+                        applyRenderSetting(settings, RenderSettingKey::Temporal, value);
                     }
                 }
                 ImGui::EndCombo();
@@ -149,10 +162,22 @@ static void drawTemporalSection(const InspectorPanelContext& context, RenderingC
     if (category == RenderingCategory::Resolution) {
         if (editor_style::beginPropertyGrid("resolutionFields")) {
             ImGui::BeginDisabled(!settings.temporalEnabled || settings.dynamicResolutionEnabled);
-            slider("Render scale", "##scale", &settings.renderScale, render::kMinRenderScale, 1.0f);
-            editorTooltip("Scale the render width and height relative to output; 0.50 uses one "
-                          "quarter as many pixels. Reconstruction returns the image to output "
-                          "size. Device limits may clamp the effective scale.");
+            float scale = settings.renderScale;
+            if (slider("Render scale", "##scale", &scale, render::kMinRenderScale, 1.0f))
+                applyRenderSetting(settings, RenderSettingKey::RenderScale,
+                                   renderScaleCommandValue(scale));
+            std::string scaleTooltip =
+                "Scale the render width and height relative to output; 0.50 uses one quarter as "
+                "many pixels. Reconstruction returns the image to output size. Device limits may "
+                "clamp the effective scale.";
+            if (!settings.temporalEnabled || settings.dynamicResolutionEnabled) {
+                auto draft = settings;
+                const auto available =
+                    applyRenderSetting(draft, RenderSettingKey::RenderScale, "1");
+                if (!available)
+                    scaleTooltip = available.error() + " " + scaleTooltip;
+            }
+            editorTooltip(scaleTooltip.c_str());
             ImGui::EndDisabled();
             ImGui::BeginDisabled(!settings.temporalEnabled);
             checkbox("Dynamic resolution", "##dynamic", &settings.dynamicResolutionEnabled);
@@ -229,29 +254,25 @@ void drawRenderingTopic(const InspectorPanelContext& context, RenderingCategory 
     drawTemporalSection(context, category);
     if (category == RenderingCategory::Visibility) {
         if (editor_style::beginPropertyGrid("visibilityControls")) {
-            if (checkbox("Frustum culling", "##frustum", &settings.visibilityEnabled) &&
-                !settings.visibilityEnabled) {
-                settings.occlusionEnabled = false;
-                settings.occlusionCheck = false;
-            }
+            bool visibilityEnabled = settings.visibilityEnabled;
+            if (checkbox("Frustum culling", "##frustum", &visibilityEnabled))
+                applyRenderSetting(settings, RenderSettingKey::Visibility,
+                                   visibilityEnabled ? "cull" : "off");
             editorTooltip("Conservative camera-frustum test. Shadow candidates stay unculled.");
             editor_style::field("Classifier");
             int classifier = static_cast<int>(settings.classifyMode);
             if (ImGui::Combo("##classifier", &classifier, "CPU\0GPU\0")) {
-                settings.classifyMode = static_cast<render::ClassifyMode>(classifier);
-                if (settings.classifyMode == render::ClassifyMode::Gpu &&
-                    settings.submission == render::SubmissionMode::Direct)
-                    settings.submission = render::SubmissionMode::Indirect;
-                if (settings.classifyMode == render::ClassifyMode::Cpu) {
-                    settings.classifyCheck = false;
-                    settings.occlusionEnabled = false;
-                    settings.occlusionCheck = false;
-                }
+                applyRenderSetting(
+                    settings, RenderSettingKey::Classify,
+                    classifier == static_cast<int>(render::ClassifyMode::Gpu) ? "gpu" : "cpu");
             }
             editorTooltip(
                 "GPU results arrive after retirement. CPU remains the default reference.");
             if (settings.classifyMode == render::ClassifyMode::Gpu) {
-                checkbox("Verify against CPU", "##classifyCheck", &settings.classifyCheck);
+                bool classifyCheck = settings.classifyCheck;
+                if (checkbox("Verify against CPU", "##classifyCheck", &classifyCheck))
+                    applyRenderSetting(settings, RenderSettingKey::ClassifyCheck,
+                                       classifyCheck ? "on" : "off");
                 editorTooltip(
                     "CPU oracle check: compare GPU states, ordered rows, counts and arguments "
                     "with the CPU reference. Diagnostic runs are unscored.");
@@ -264,7 +285,10 @@ void drawRenderingTopic(const InspectorPanelContext& context, RenderingCategory 
             const bool occlusionAvailable =
                 settings.classifyMode == render::ClassifyMode::Gpu && settings.visibilityEnabled;
             ImGui::BeginDisabled(!occlusionAvailable);
-            checkbox("Occlusion", "##occlusion", &settings.occlusionEnabled);
+            bool occlusionEnabled = settings.occlusionEnabled;
+            if (checkbox("Occlusion", "##occlusion", &occlusionEnabled))
+                applyRenderSetting(settings, RenderSettingKey::Occlusion,
+                                   occlusionEnabled ? "on" : "off");
             ImGui::EndDisabled();
             editorTooltip(occlusionAvailable ? "Previous-frame depth evidence; camera motion can "
                                                "delay newly visible geometry by one frame. "
@@ -272,10 +296,13 @@ void drawRenderingTopic(const InspectorPanelContext& context, RenderingCategory 
                                                "HZB views are in View > Debug View."
                                              : "Requires GPU classification and frustum culling. "
                                                "HZB views are in View > Debug View.");
-            if (!settings.occlusionEnabled) {
-                settings.occlusionCheck = false;
-            } else {
-                checkbox("Independent ID check", "##occlusionCheck", &settings.occlusionCheck);
+            if (!settings.occlusionEnabled && settings.occlusionCheck)
+                applyRenderSetting(settings, RenderSettingKey::OcclusionCheck, "off");
+            if (settings.occlusionEnabled) {
+                bool occlusionCheck = settings.occlusionCheck;
+                if (checkbox("Independent ID check", "##occlusionCheck", &occlusionCheck))
+                    applyRenderSetting(settings, RenderSettingKey::OcclusionCheck,
+                                       occlusionCheck ? "on" : "off");
                 editorTooltip("Draw all candidates independently and check missing visible "
                               "instances. Unscored.");
                 checkbox("Rejected bounds (max 128)", "##occlusionBounds",
@@ -291,13 +318,11 @@ void drawRenderingTopic(const InspectorPanelContext& context, RenderingCategory 
             editor_style::field("Submission");
             int mode = static_cast<int>(settings.submission);
             if (ImGui::Combo("##submission", &mode, "Direct\0Indirect\0Batched\0")) {
-                settings.submission = static_cast<render::SubmissionMode>(mode);
-                if (settings.submission == render::SubmissionMode::Direct) {
-                    settings.classifyMode = render::ClassifyMode::Cpu;
-                    settings.classifyCheck = false;
-                    settings.occlusionEnabled = false;
-                    settings.occlusionCheck = false;
-                }
+                const auto value =
+                    mode == static_cast<int>(render::SubmissionMode::Direct)     ? "direct"
+                    : mode == static_cast<int>(render::SubmissionMode::Indirect) ? "indirect"
+                                                                                 : "batched";
+                applyRenderSetting(settings, RenderSettingKey::Submission, value);
             }
             editorTooltip(
                 "CPU indirect issues one command per retained object. GPU indirect issues one "

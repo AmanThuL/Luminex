@@ -20,8 +20,9 @@ Evidence is retained in `../Luminex-evidence/ux5/`; the executor plan stays in p
 | 6 | `5f076ee` | PASS | Error-card detail correction verified |
 | 7 | `71b78a7` | PASS, 11/11 | Docking and review-detail corrections verified |
 | 8 | `f33c3de` | PASS, 10/10 | Six findings corrected; no final findings |
-| 9 | This commit | Final code gates PASS, 11/11; required native checkpoint PASS | Parser and watcher corrections verified; no final findings |
-| 10–22 | Not started | Not run | Not run |
+| 9 | `7f48945` | Final code gates PASS, 11/11; required native checkpoint PASS | Parser and watcher corrections verified; no final findings |
+| 10 | This change | Final code gates PASS, 10/10; original rejection gate FAIL under exception | Precision and draw-time parity corrected; no final findings |
+| 11–22 | Not started | Not run | Not run |
 
 The gate JSON files retain every command, exit and log. Test-first red results and failed
 correction attempts are retained in each task's evidence ledger; a deliberate red test is
@@ -39,6 +40,7 @@ CPU IBL generation; full Release gates passed. That Debug run remains incomplete
 | 6 | Probe include/link/viewport failures and an App null-pointer compile failure; final layout run interrupted with exit 130 | Corrected probe and all code gates pass; native failure remains below |
 | 7 | Initial project policy exited 1; two docking implementations failed review/tests | Third docking implementation passed review and gates |
 | 8 | Buffer URI expected/optional mismatch; unqualified test namespace each failed to compile | Each corrected on attempt 2; final gates pass |
+| 10 | Initial layout check exited 1 on two missing test function separators; review found typed-scale rounding | Both corrected; final gates PASS, 10/10; original rejection failures retained below |
 | 9 | Corrected-candidate project policy exited 1 on this draft's Status field | Status corrected; final full gates PASS, 11/11 |
 
 Per-task evidence retains exact errors and test-first red results separately. Task 6's earlier
@@ -110,10 +112,40 @@ no rendering pass, shader, RojoRHI, capture format, manifest or dependency chang
 
 Task 9 resumed code gates pass (11/11), including the Inspector hash pin. Its required
 real-App checkpoint passes as described above. Task 9 is committed;
-Tasks 10–22, GPU validation, whole-branch review, final image matrix, evidence audit, integration
+Task 10 code gates and final source review now pass under the recorded exception.
+Tasks 11–22, GPU validation, whole-branch review, final image matrix, evidence audit, integration
 tag, push and pull request remain incomplete. The milestone record remains Accepted.
 
 All Task 19 gestures remain unverified: ceiling change, settings approval, three-step plan,
 denial, bridge proposal Accept, child Stop and disconnect mid-approval. Task 22 native
 checks, GPU suite, image matrix and evidence audit were not run. No integration tag, push
 or pull request was created. Both worktrees and all evidence are retained.
+
+## Task 10 binding conflict and authorized exception
+
+Execution stopped before violating the Global passing-commit gate. The record's UX5.2 exit
+gate and Task 10 both require unchanged panel cascades and rejection of CLI-invalid pairs
+through the same single-key API. Existing CPU/Direct → classify GPU succeeds by selecting
+Indirect; GPU/Indirect → submission Direct succeeds by selecting CPU; Direct lighting →
+light-check on succeeds by selecting Clustered. The CLI rejects each requested conflicting
+pair. Fresh implementer and stronger reviewer independently confirmed no shared operation
+can both succeed with that cascade and reject unchanged. Returning an error after mutation
+is not a valid rejection.
+
+The test-first build exited 255 on the absent new header (`task10/red-build.log`); this is
+expected red evidence, not a failed implementation attempt. Three measured CLI probes each
+exit 1 with the existing conflict reason (`task10/binding-conflict-cli.json`). No production
+Task 10 code changed, no tests were disabled, and no final Task 10 gates were run. The owner
+was asked to choose either a documented rejection-gate exception retaining panel cascades
+or strict rejection with an authorized panel behavior change. Worktrees and evidence remain.
+
+On 2026-10-02 the owner authorized the recommendation to preserve shared panel cascades and
+document the literal CLI-rejection exception, then continue all remaining work. The original
+rejection gate remains unmet for those cascades; implementation and review resume against the
+explicit scoped exception in the record and plan. No milestone acceptance is implied.
+
+Task 10 replayed the original five-pair rejection draft against the implemented cascades:
+four pairs failed with eight assertions (exit 42, `task10/original-conflict-red.log`), while
+temporal-off/render-scale correctly refused the unavailable edit. These original-gate failures
+remain failed under the owner-authorized exception; the preserved cascades include clearing
+occlusion when CPU classification or visibility off is selected.

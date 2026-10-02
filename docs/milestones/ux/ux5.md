@@ -217,6 +217,14 @@ is unchanged case by case; arguments from `settingsToArguments` parse back to th
 plan runs only its approved steps; a child screenshot is byte-identical to the same CLI run; the
 listener leaves no socket file and no thread behind.
 
+**Owner-authorized exception (2026-10-02):** preserve the existing panel cascades. The original
+CLI-rejection requirement above is not passed where a cascade resolves the requested conflict:
+classify GPU from CPU/Direct selects Indirect, submission Direct from GPU/Indirect selects CPU,
+light-check on selects Clustered, and CPU classification or visibility off clears occlusion.
+Unavailable operations reject without mutation; effective
+post-cascade states satisfy applicable CLI constraints. The owner authorized this recommendation
+and continuation; this is a scoped gate exception, not milestone acceptance.
+
 ## UX5.3 — Session log and evidence export
 
 **Deliver:** the Console actor filter; Export; evidence hashes; the architecture page, the guide,
