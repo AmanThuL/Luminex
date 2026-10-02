@@ -107,11 +107,12 @@ bool SessionApprovals::finishStep(uint64_t id, bool ok) {
 }
 
 //======================================================================================================================
-void SessionApprovals::cancelPending() {
+void SessionApprovals::cancelPending(std::string_view reason) {
     for (auto& approval : m_approvals) {
         if (approval.state == SessionState::Awaiting) {
             approval.state = SessionState::Error;
             approval.terminalError = SessionError::Cancelled;
+            approval.terminalMessage = reason;
         }
     }
 }
@@ -160,6 +161,15 @@ bool ApprovalClickGuard::accepts(uint64_t awaitingId, double now) {
         m_shownAt = now;
     }
     return awaitingId != 0 && now - m_shownAt >= kApprovalReviewDelaySeconds;
+}
+
+//======================================================================================================================
+bool CardListClickGuard::accepts(std::span<const uint64_t> shownCards, double now) {
+    if (!std::ranges::equal(shownCards, m_shown)) {
+        m_shown.assign(shownCards.begin(), shownCards.end());
+        m_shownAt = now;
+    }
+    return now - m_shownAt >= kApprovalReviewDelaySeconds;
 }
 
 } // namespace lmx::app

@@ -79,6 +79,13 @@ std::string proposalStatusLine(const SessionProposal& proposal);
 /// Names the owner, stable index, optional name and property of one change row.
 std::string proposalChangeLabel(const asset::DocumentChange& change);
 
+/// Decides whether a propose.withdraw request may stale a proposal: a Bridge proposal still
+/// awaiting review, asked for by the connection that submitted it, or, once that connection is no
+/// longer the live one, by a client using the same name. A reconnecting client keeps control of
+/// its own cards; while the submitting connection lives, no other connection can withdraw them.
+bool proposalWithdrawable(const SessionProposal& proposal, uint64_t requestConnection,
+                          uint64_t liveConnection, std::string_view requestClient);
+
 /// Returns whether a loaded Hierarchy node owns a changed node, camera, or shared light definition.
 bool proposalAffectsNode(const SessionProposal& proposal, const asset::SceneDocument& loaded,
                          uint32_t node);

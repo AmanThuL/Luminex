@@ -508,3 +508,40 @@ TEST_CASE("a reviewed bridge proposal goes stale when the operator edits what it
         CHECK(current.error().starts_with("stale: "));
     }
 }
+
+//======================================================================================================================
+TEST_CASE("an orbiting light's position cannot be proposed while playback runs",
+          "[app][session-edits]") {
+    engine::LightId id;
+    auto loaded = editableFixture(id);
+    loaded.scene->animation.lightTracks.push_back({.light = 0,
+                                                   .centre = {0.0f, 2.0f, 0.0f},
+                                                   .axis = {0.0f, 1.0f, 0.0f},
+                                                   .radius = 3.0f,
+                                                   .phase = 0.0f,
+                                                   .period = 4.0f});
+    app::SceneSession session;
+    session.activate(loaded, app::SceneActivationMotion::Reset);
+    const auto tree = editableTree(id);
+    REQUIRE(session.scene().animationLightId(0) == id);
+    const std::vector<app::ProposalEdit> position{{"environment", "shadowFilter", R"("pcss")"},
+                                                  {"node:2", "position", "[2,3,4]"}};
+    const std::vector<app::ProposalEdit> others{{"node:2", "intensity", "2"},
+                                                {"imported:0", "position", "[2,3,4]"},
+                                                {"node:0", "position", "[0,2,4]"}};
+    const auto refusal = app::animationOwnedEditRefusal(session, tree, position, false);
+    REQUIRE(refusal);
+    CHECK(*refusal == "Stop playback before proposing a position for orbiting light node:2");
+    // Stopped playback shows the position Accept will compare against.
+    CHECK_FALSE(app::animationOwnedEditRefusal(session, tree, position, true));
+    // Fields the orbit does not own, and positions of other subjects, stay proposable.
+    CHECK_FALSE(app::animationOwnedEditRefusal(session, tree, others, false));
+
+    SECTION("a light without a track is never refused") {
+        engine::LightId still;
+        auto resting = editableFixture(still);
+        app::SceneSession other;
+        other.activate(resting, app::SceneActivationMotion::Reset);
+        CHECK_FALSE(app::animationOwnedEditRefusal(other, editableTree(still), position, false));
+    }
+}

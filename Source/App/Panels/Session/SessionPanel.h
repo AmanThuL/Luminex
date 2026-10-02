@@ -23,6 +23,7 @@ struct SessionPanelContext {
     const SessionLog& log;                    ///< Retained action history.
     const SessionApprovals& approvals;        ///< Pending operator-reviewed Apply commands.
     ApprovalClickGuard& approvalGuard;        ///< Delays clicks on a newly shown approval card.
+    CardListClickGuard& proposalGuard;        ///< Delays clicks after proposal cards move.
     uint64_t& expandedId;                     ///< One expanded proposal, retained by the shell.
     std::filesystem::path evidenceDirectory;  ///< Base for relative sidecar evidence paths.
     std::filesystem::path outputDirectory;    ///< Planned run-local output directory.

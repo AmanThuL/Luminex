@@ -4,6 +4,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <limits>
@@ -246,4 +247,69 @@ TEST_CASE("session arguments reject unknown, repeated and unbounded members",
     };
     CHECK(validateSessionArguments(SessionCommand::ProposeEdits, deep(kMaxArgumentDepth - 1)));
     CHECK_FALSE(validateSessionArguments(SessionCommand::ProposeEdits, deep(kMaxArgumentDepth)));
+}
+
+//======================================================================================================================
+TEST_CASE("every session command accepts its documented argument names",
+          "[app][session-protocol]") {
+    const auto node = [](std::string text) {
+        return lmx::asset::JsonTokens::parse(std::move(text))->root();
+    };
+    struct Documented {
+        std::string_view command;
+        std::vector<std::string_view> members;
+    };
+    // The guide's command reference, kept apart from the validator's own table. settings.set is
+    // named by its setting and so accepts any single name.
+    const std::vector<Documented> documented{
+        {"hello", {"name", "protocol"}},
+        {"query.status", {}},
+        {"query.hierarchy", {}},
+        {"query.selection", {}},
+        {"query.camera", {}},
+        {"query.settings", {}},
+        {"query.readings", {}},
+        {"query.performance", {}},
+        {"query.graph", {}},
+        {"query.console", {"afterSequence"}},
+        {"query.proposals", {}},
+        {"query.log", {"afterSequence"}},
+        {"propose.edits", {"summary", "evidence", "edits"}},
+        {"propose.withdraw", {"proposal"}},
+        {"settings.set", {"temporal"}},
+        {"debugview.set", {"topic", "value"}},
+        {"scene.open", {"scene"}},
+        {"measure.run", {"name", "warmup", "frames"}},
+        {"capture.gpu", {}},
+        {"capture.screenshot", {"name", "frames"}},
+        {"capture.sequence", {"name", "frames", "warmup"}},
+        {"graph.dump", {"name"}},
+        {"plan.submit", {"summary", "steps"}},
+    };
+    CHECK(documented.size() == sessionCommands().size());
+    for (const auto& spec : sessionCommands()) {
+        INFO(spec.name);
+        const auto found =
+            std::find_if(documented.begin(), documented.end(),
+                         [&](const auto& entry) { return entry.command == spec.name; });
+        REQUIRE(found != documented.end());
+        // Names are checked here; a missing or mistyped value is each command's own refusal.
+        CHECK(validateSessionArguments(spec.command, node("{}")));
+        std::string all = "{";
+        for (const auto member : found->members) {
+            INFO(member);
+            CHECK(validateSessionArguments(spec.command,
+                                           node("{\"" + std::string(member) + "\":1}")));
+            all += std::string(all.size() > 1 ? "," : "") + "\"" + std::string(member) + "\":1";
+        }
+        CHECK(validateSessionArguments(spec.command, node(all + "}")));
+        const auto unknown = validateSessionArguments(spec.command, node(R"({"undocumented":1})"));
+        if (spec.command == SessionCommand::SettingsSet) {
+            CHECK(unknown);
+        } else {
+            REQUIRE_FALSE(unknown);
+            CHECK(unknown.error() == "Unknown argument undocumented for " + std::string(spec.name));
+        }
+        CHECK_FALSE(validateSessionArguments(spec.command, node("[]")));
+    }
 }

@@ -15,6 +15,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace lmx::app {
@@ -35,6 +36,7 @@ struct PendingApproval {
     size_t cursor = 0;                           ///< Next step to dispatch, or step that failed.
     SessionState state = SessionState::Awaiting; ///< Awaiting, Working, Applied or Error.
     std::optional<SessionError> terminalError;   ///< Distinguishes Denied, Failed and Cancelled.
+    std::string terminalMessage;                 ///< Cancellation reason for the client's reply.
 };
 
 /// Most requests that may be Awaiting or Working at once; a further submit is refused.
@@ -67,9 +69,10 @@ public:
     /// Completes only the in-flight step of the named approval. A late completion after
     /// cancellation or replacement is ignored and returns false.
     bool finishStep(uint64_t id, bool ok);
-    /// Cancels every Awaiting request with SessionError::Cancelled. An approved plan continues,
-    /// including its in-flight step and remaining approved steps.
-    void cancelPending();
+    /// Cancels every Awaiting request with SessionError::Cancelled and retains reason as its
+    /// terminalMessage. An approved plan continues, including its in-flight step and remaining
+    /// approved steps.
+    void cancelPending(std::string_view reason = {});
     /// Cancels awaiting and approved work when Listen is turned off or the shell shuts down.
     void cancelAll();
     /// Removes every terminal request from the queue and returns it once, in submission order.
@@ -100,6 +103,21 @@ public:
 
 private:
     uint64_t m_shownId = 0;
+    double m_shownAt = 0.0;
+};
+
+/// Holds Accept and Reject on every proposal card for kApprovalReviewDelaySeconds after the set
+/// or order of drawn cards changes, so a repeated click cannot resolve the card that moved under
+/// the pointer when the one above it left.
+class CardListClickGuard {
+public:
+    /// Records the cards drawn this frame, in drawing order, and returns whether their buttons may
+    /// act. The caller leads with the awaiting approval's identity (zero for none), since that
+    /// card moves every proposal card below it. The delay restarts whenever the list changes.
+    bool accepts(std::span<const uint64_t> shownCards, double now);
+
+private:
+    std::vector<uint64_t> m_shown;
     double m_shownAt = 0.0;
 };
 

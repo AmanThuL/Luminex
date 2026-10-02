@@ -244,4 +244,13 @@ bool sessionSceneOpenAllowed(EditorSubject subject, bool dirty, bool stopped, bo
             subject == EditorSubject::Environment);
 }
 
+//======================================================================================================================
+std::optional<std::string> runningPlanRefusal(DocumentAction action, bool planWorking) {
+    if (!planWorking || (action != DocumentAction::Open && action != DocumentAction::OpenCatalog &&
+                         action != DocumentAction::Revert))
+        return {};
+    return "A session plan is running; press Stop in the toolbar before opening or reverting a "
+           "scene.";
+}
+
 } // namespace lmx::app

@@ -246,7 +246,7 @@ void EditorShell::drainSessionBridge() {
         }
         if (inbound.closed) {
             if (inbound.connection == m_sessionConnection) {
-                m_sessionApprovals.cancelPending();
+                cancelAwaitingSessionApprovals("cancelled: client disconnected");
                 m_sessionConnection = 0;
                 m_sessionHello = false;
                 m_sessionTier = SessionTier::ReadOnly;
@@ -431,6 +431,17 @@ void EditorShell::drainSessionBridge() {
             const auto* tree = refusal.empty() ? completeTree() : nullptr;
             if (refusal.empty() && !tree)
                 refusal = "No loaded scene is available";
+            // Accept needs Stopped and Stop restores what playback moved, so such a card could
+            // never be current; it is refused before it takes a place in the queue.
+            if (refusal.empty()) {
+                if (const auto owned = animationOwnedEditRefusal(
+                        m_session, *tree, *edits, m_playback.state() == PlaybackState::Stopped)) {
+                    answerError(SessionError::Unavailable, *owned);
+                    outcome = "unavailable";
+                    responseSent = true;
+                    break;
+                }
+            }
             std::expected<std::vector<asset::DocumentChange>, std::string> preview =
                 std::unexpected("No edits");
             if (refusal.empty()) {
@@ -468,9 +479,8 @@ void EditorShell::drainSessionBridge() {
                 idNode ? idNode->asUInt()
                        : std::expected<uint64_t, std::string>{std::unexpected("Missing proposal")};
             const auto* proposal = id ? m_sessionProposals.find(*id) : nullptr;
-            if (!proposal || proposal->source != ProposalSource::Bridge ||
-                proposal->state != SessionState::Proposed ||
-                proposal->connection != inbound.connection) {
+            if (!proposal || !proposalWithdrawable(*proposal, inbound.connection,
+                                                   m_sessionConnection, m_sessionClient)) {
                 answerError(SessionError::Invalid, "No matching bridge proposal to withdraw");
                 outcome = "invalid";
                 responseSent = true;
@@ -1004,7 +1014,7 @@ void EditorShell::cancelAwaitingSessionApprovals(std::string_view reason) {
             recordSessionReview("approval.cancel", std::to_string(approval.request),
                                 std::string(reason), approval.client);
     }
-    m_sessionApprovals.cancelPending();
+    m_sessionApprovals.cancelPending(reason);
 }
 
 //======================================================================================================================
@@ -1327,10 +1337,11 @@ void EditorShell::runSessionApprovals() {
                 const auto code = failure != m_sessionApprovalFailures.end()
                                       ? failure->second.first
                                       : approval.terminalError.value_or(SessionError::Failed);
-                const auto message = failure != m_sessionApprovalFailures.end()
-                                         ? failure->second.second
-                                     : code == SessionError::Denied ? "Denied by operator"
-                                                                    : "Approval cancelled";
+                const std::string message =
+                    failure != m_sessionApprovalFailures.end() ? failure->second.second
+                    : code == SessionError::Denied             ? "Denied by operator"
+                    : !approval.terminalMessage.empty()        ? approval.terminalMessage
+                                                               : "Approval cancelled";
                 m_sessionMailbox->pushOutbound(reply->second,
                                                encodeError(approval.request, code, message));
             }

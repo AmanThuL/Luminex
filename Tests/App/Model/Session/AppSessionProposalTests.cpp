@@ -370,3 +370,30 @@ TEST_CASE("disk sidecar rejects invalid UTF-8 before proposal and log queries",
         CHECK(continued->root().find("ok")->asBool() == true);
     }
 }
+
+//======================================================================================================================
+TEST_CASE("a reconnected client withdraws its own proposals and a live one keeps its own",
+          "[app][session]") {
+    SessionProposal proposal;
+    proposal.source = ProposalSource::Bridge;
+    proposal.state = SessionState::Proposed;
+    proposal.client = "writer";
+    proposal.connection = 3;
+    // The submitting connection, under any name it now reports.
+    CHECK(proposalWithdrawable(proposal, 3, 3, "writer"));
+    CHECK(proposalWithdrawable(proposal, 3, 3, "renamed"));
+    // Connection 3 is gone; connection 5 is the same client reconnected.
+    CHECK(proposalWithdrawable(proposal, 5, 5, "writer"));
+    CHECK_FALSE(proposalWithdrawable(proposal, 5, 5, "other"));
+    CHECK_FALSE(proposalWithdrawable(proposal, 5, 5, ""));
+    // While the submitting connection is the live one, a matching name is not enough.
+    CHECK_FALSE(proposalWithdrawable(proposal, 5, 3, "writer"));
+    // Only a Bridge proposal still awaiting review can be withdrawn.
+    proposal.state = SessionState::Applied;
+    CHECK_FALSE(proposalWithdrawable(proposal, 3, 3, "writer"));
+    proposal.state = SessionState::Stale;
+    CHECK_FALSE(proposalWithdrawable(proposal, 5, 5, "writer"));
+    proposal.state = SessionState::Proposed;
+    proposal.source = ProposalSource::File;
+    CHECK_FALSE(proposalWithdrawable(proposal, 3, 3, "writer"));
+}

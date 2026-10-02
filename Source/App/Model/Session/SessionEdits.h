@@ -12,6 +12,7 @@
 #include "Engine/Asset/Model/JsonTokens.h"
 
 #include <expected>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -28,6 +29,15 @@ std::expected<std::vector<ProposalEdit>, std::string> parseEdits(const asset::Js
 std::expected<std::vector<asset::DocumentChange>, std::string>
 previewEdits(const SceneSession& session, const SceneTreeView& tree,
              std::span<const ProposalEdit> edits);
+
+/// Refuses a batch that sets the position of a local light an orbit track drives while playback is
+/// not Stopped. Its before value would be the orbit's sampled position, Accept needs Stopped, and
+/// Stop restores the captured position, so the reviewed rows could never be current at Accept.
+/// Returns the message naming the subject; every other edit may be proposed during playback.
+std::optional<std::string> animationOwnedEditRefusal(const SceneSession& session,
+                                                     const SceneTreeView& tree,
+                                                     std::span<const ProposalEdit> edits,
+                                                     bool playbackStopped);
 
 /// Re-runs the preview against the live scene and reports why the reviewed rows no longer describe
 /// what applying the edits would change: a named subject is gone or no longer editable, or a later

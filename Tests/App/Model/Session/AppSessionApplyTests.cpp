@@ -220,3 +220,23 @@ TEST_CASE("approval cards name the output each step writes", "[app][session-appl
               .empty());
     CHECK(sessionStepOutputName({SessionCommand::GraphDump, "not json"}, 4, 0).empty());
 }
+
+//======================================================================================================================
+TEST_CASE("a running plan refuses the operator's scene replacement and nothing else",
+          "[app][session-apply]") {
+    constexpr std::array replacing{DocumentAction::Open, DocumentAction::OpenCatalog,
+                                   DocumentAction::Revert};
+    constexpr std::array keeping{DocumentAction::Save, DocumentAction::SaveAs,
+                                 DocumentAction::Quit};
+    for (const auto action : replacing) {
+        const auto refusal = runningPlanRefusal(action, true);
+        REQUIRE(refusal);
+        CHECK(*refusal == "A session plan is running; press Stop in the toolbar before opening or "
+                          "reverting a scene.");
+        CHECK_FALSE(runningPlanRefusal(action, false));
+    }
+    for (const auto action : keeping) {
+        CHECK_FALSE(runningPlanRefusal(action, true));
+        CHECK_FALSE(runningPlanRefusal(action, false));
+    }
+}

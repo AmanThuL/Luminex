@@ -6,6 +6,7 @@
 #pragma once
 
 #include "App/Model/Rendering/Settings/DebugView.h"
+#include "App/Model/Scene/DocumentWorkflow.h"
 #include "App/Model/Scene/EditorSelection.h"
 #include "App/Model/Session/SessionApprovals.h"
 #include "Engine/Asset/Model/JsonTokens.h"
@@ -54,5 +55,11 @@ bool sessionCapturePathsAvailable(const std::filesystem::path& trace);
 /// can survive it; detailed document and scene availability checks remain shell-owned.
 bool sessionSceneOpenAllowed(EditorSubject subject, bool dirty, bool stopped, bool documentIdle,
                              bool measuring);
+
+/// Refuses the operator's Open, catalog open and Revert while an approved plan is Working: its
+/// remaining steps were approved for the loaded scene and would otherwise run against the new one.
+/// Returns the notice text, which names the control that ends the plan; Save, Save As and Quit are
+/// never refused here.
+std::optional<std::string> runningPlanRefusal(DocumentAction action, bool planWorking);
 
 } // namespace lmx::app

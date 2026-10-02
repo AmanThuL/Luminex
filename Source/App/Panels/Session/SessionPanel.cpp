@@ -16,6 +16,7 @@
 #include <format>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace lmx::app {
 namespace {
@@ -146,9 +147,18 @@ SessionPanelResult drawSessionPanel(bool& open, SessionPanelContext& context) {
     ImGui::TextUnformatted("Proposals");
     if (context.proposals.pending() == 0)
         ImGui::TextUnformatted("No proposals");
+    const auto drawn = [](const SessionProposal& proposal) {
+        return proposal.state == SessionState::Proposed ||
+               proposal.state == SessionState::Awaiting || proposal.state == SessionState::Error;
+    };
+    // A card that left moves the ones below it under the pointer; so does the approval card.
+    std::vector<uint64_t> shownCards{approval ? approval->id : 0};
+    for (const auto& proposal : context.proposals.all())
+        if (drawn(proposal))
+            shownCards.push_back(proposal.id);
+    const bool proposalsAcceptClicks = context.proposalGuard.accepts(shownCards, ImGui::GetTime());
     for (const auto& proposal : context.proposals.all()) {
-        if (proposal.state != SessionState::Proposed && proposal.state != SessionState::Awaiting &&
-            proposal.state != SessionState::Error)
+        if (!drawn(proposal))
             continue;
         ImGui::PushID(static_cast<int>(proposal.id));
         editor_style::CardLabels labels;
@@ -160,10 +170,12 @@ SessionPanelResult drawSessionPanel(bool& open, SessionPanelContext& context) {
             context.expandedId = context.expandedId == proposal.id ? 0 : proposal.id;
             break;
         case editor_style::CardAction::Accept:
-            result = {SessionPanelAction::Accept, proposal.id};
+            if (proposalsAcceptClicks)
+                result = {SessionPanelAction::Accept, proposal.id};
             break;
         case editor_style::CardAction::Reject:
-            result = {SessionPanelAction::Reject, proposal.id};
+            if (proposalsAcceptClicks)
+                result = {SessionPanelAction::Reject, proposal.id};
             break;
         case editor_style::CardAction::None:
             break;

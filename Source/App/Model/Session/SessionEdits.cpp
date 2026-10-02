@@ -540,6 +540,29 @@ previewEdits(const SceneSession& session, const SceneTreeView& tree,
 }
 
 //======================================================================================================================
+std::optional<std::string> animationOwnedEditRefusal(const SceneSession& session,
+                                                     const SceneTreeView& tree,
+                                                     std::span<const ProposalEdit> edits,
+                                                     bool playbackStopped) {
+    if (playbackStopped)
+        return {};
+    const auto& scene = session.scene();
+    for (const auto& edit : edits) {
+        if (edit.field != "position")
+            continue;
+        for (const auto& row : tree.rows) {
+            if (row.subject != EditorSubject::LocalLight || sceneTreeSubjectId(row) != edit.subject)
+                continue;
+            for (const auto& track : scene.animation.lightTracks)
+                if (scene.animationLightId(track.light) == row.lightId)
+                    return "Stop playback before proposing a position for orbiting light " +
+                           edit.subject;
+        }
+    }
+    return {};
+}
+
+//======================================================================================================================
 std::expected<void, std::string>
 reviewedEditsCurrent(const SceneSession& session, const SceneTreeView& tree,
                      std::span<const ProposalEdit> edits,

@@ -311,17 +311,51 @@ TEST_CASE("the probe rereads the glTF and its directory only when their stamps c
 //======================================================================================================================
 TEST_CASE("Save replaces only a pair the editor loaded or the operator rejected",
           "[unit][session][save-watch]") {
-    const std::string_view reason = "The scene file changed on disk; review its proposal first";
-    // The loaded document is still on disk.
-    CHECK_FALSE(saveOverwriteReason("loaded", "loaded", false, true));
-    CHECK_FALSE(saveOverwriteReason("loaded", "loaded", false, false));
-    // An external edit the watch has not turned into a card yet, or whose card is pending.
-    CHECK(saveOverwriteReason("loaded", "external", false, false) == reason);
-    CHECK(saveOverwriteReason("loaded", "external", false, true) == reason);
-    // The operator rejected exactly these bytes; a later Save overwrites them.
-    CHECK_FALSE(saveOverwriteReason("loaded", "external", true, false));
-    // An unreadable or missing pair is replaceable only at the stamp already loaded or rejected.
-    CHECK_FALSE(saveOverwriteReason("loaded", "", false, true));
-    CHECK(saveOverwriteReason("loaded", "", false, false) == reason);
-    CHECK(saveOverwriteReason("loaded", "", true, false) == reason);
+    const std::string_view review = "The scene file changed on disk; review its proposal first";
+    const std::string_view soon =
+        "The scene file changed on disk; its proposal will appear in the Session panel shortly";
+    const std::string_view unreadable = "The scene file or its buffer cannot be read on disk";
+    for (const bool pending : {false, true}) {
+        // The loaded document is still on disk.
+        CHECK_FALSE(saveOverwriteReason("loaded", "loaded", false, true, pending));
+        CHECK_FALSE(saveOverwriteReason("loaded", "loaded", false, false, pending));
+        // The operator rejected exactly these bytes; a later Save overwrites them.
+        CHECK_FALSE(saveOverwriteReason("loaded", "external", true, false, pending));
+        // An unreadable or missing pair is replaceable only at the stamp already loaded or
+        // rejected, and is never described as a proposal to review.
+        CHECK_FALSE(saveOverwriteReason("loaded", "", false, true, pending));
+        CHECK(saveOverwriteReason("loaded", "", false, false, pending) == unreadable);
+        CHECK(saveOverwriteReason("loaded", "", true, false, pending) == unreadable);
+    }
+    // An external edit the watch has not turned into a card yet.
+    CHECK(saveOverwriteReason("loaded", "external", false, false, false) == soon);
+    CHECK(saveOverwriteReason("loaded", "external", false, true, false) == soon);
+    // An external edit whose card is pending.
+    CHECK(saveOverwriteReason("loaded", "external", false, false, true) == review);
+    CHECK(saveOverwriteReason("loaded", "external", false, true, true) == review);
+}
+
+//======================================================================================================================
+TEST_CASE("the probe rescans while it reports a staging directory", "[unit][session]") {
+    namespace fs = std::filesystem;
+    const fs::path directory = "SessionWatchCoarseProbe";
+    fs::remove_all(directory);
+    fs::create_directories(directory);
+    const fs::path document = directory / "probe.scene.gltf";
+    {
+        std::ofstream output(document, std::ios::binary);
+        output << R"({"buffers":[]})";
+        REQUIRE(output.good());
+    }
+    DocumentProbe probe;
+    fs::create_directory(directory / ".lmx-save-1234.tmp");
+    const auto time = fs::last_write_time(directory);
+    CHECK(probe.observe(document).saving);
+    // A coarse modification clock: the removal lands in the tick the creation was observed in,
+    // so the directory's stamp does not move.
+    fs::remove(directory / ".lmx-save-1234.tmp");
+    fs::last_write_time(directory, time);
+    CHECK_FALSE(probe.observe(document).saving);
+    CHECK_FALSE(probe.observe(document).saving);
+    fs::remove_all(directory);
 }

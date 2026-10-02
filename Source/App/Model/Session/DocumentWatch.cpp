@@ -53,7 +53,9 @@ FileStamp DocumentProbe::observe(const std::filesystem::path& gltf,
         m_bufferKnown = document.present;
     }
     const auto directory = identify(gltf.parent_path());
-    if (!m_directoryKnown || gltf != m_gltf || directory != m_directory) {
+    // A staging directory that came and went within one modification-time tick leaves the
+    // directory's stamp where it was, so a positive answer is never trusted from the cache.
+    if (!m_directoryKnown || m_saving || gltf != m_gltf || directory != m_directory) {
         m_saving = false;
         std::error_code error;
         for (std::filesystem::directory_iterator it(gltf.parent_path(), error), end;
@@ -85,12 +87,16 @@ FileStamp DocumentProbe::observe(const std::filesystem::path& gltf,
 //======================================================================================================================
 std::optional<std::string> saveOverwriteReason(std::string_view loadedHash,
                                                std::string_view diskHash, bool diskHashRejected,
-                                               bool baselineStamp) {
+                                               bool baselineStamp, bool proposalPending) {
     const bool reviewed =
         diskHash.empty() ? baselineStamp : diskHash == loadedHash || diskHashRejected;
     if (reviewed)
         return {};
-    return "The scene file changed on disk; review its proposal first";
+    if (diskHash.empty())
+        return "The scene file or its buffer cannot be read on disk";
+    if (proposalPending)
+        return "The scene file changed on disk; review its proposal first";
+    return "The scene file changed on disk; its proposal will appear in the Session panel shortly";
 }
 
 //======================================================================================================================

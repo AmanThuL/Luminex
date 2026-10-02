@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -245,4 +246,61 @@ TEST_CASE("a newly shown approval card ignores clicks for half a second",
     CHECK(guard.accepts(9, 40.5));
     CHECK_FALSE(guard.accepts(0, 60.0));
     CHECK_FALSE(guard.accepts(9, 60.0));
+}
+
+//======================================================================================================================
+TEST_CASE("a cancelled approval carries the reason its client is told",
+          "[app][session-approvals]") {
+    SessionApprovals approvals;
+    const auto running =
+        approvals.submit(1, "client", "running", {{SessionCommand::GraphDump, "{}"}});
+    const auto waiting =
+        approvals.submit(2, "client", "waiting", {{SessionCommand::SceneOpen, "{}"}});
+    REQUIRE(running);
+    REQUIRE(waiting);
+    approvals.approve(*running);
+    approvals.cancelPending("cancelled: scene replaced");
+    // The approved plan keeps running and carries no reason.
+    CHECK(approvals.pending()[0].state == SessionState::Working);
+    CHECK(approvals.pending()[0].terminalMessage.empty());
+    CHECK(approvals.pending()[1].terminalError == SessionError::Cancelled);
+    CHECK(approvals.pending()[1].terminalMessage == "cancelled: scene replaced");
+    const auto later = approvals.submit(3, "client", "later", {{SessionCommand::GraphDump, "{}"}});
+    REQUIRE(later);
+    approvals.cancelPending();
+    CHECK(approvals.pending()[2].terminalError == SessionError::Cancelled);
+    CHECK(approvals.pending()[2].terminalMessage.empty());
+    // A second cancellation does not rewrite the reason of a request already cancelled.
+    approvals.cancelPending("cancelled: client disconnected");
+    CHECK(approvals.pending()[1].terminalMessage == "cancelled: scene replaced");
+}
+
+//======================================================================================================================
+TEST_CASE("proposal cards ignore clicks for half a second after the card list changes",
+          "[app][session-approvals]") {
+    CardListClickGuard guard;
+    const std::vector<uint64_t> three{0, 4, 5, 6};
+    CHECK_FALSE(guard.accepts(three, 10.0));
+    CHECK_FALSE(guard.accepts(three, 10.49));
+    CHECK(guard.accepts(three, 10.5));
+    CHECK(guard.accepts(three, 30.0));
+    // Rejecting the middle card moves the last one into its place.
+    const std::vector<uint64_t> two{0, 4, 6};
+    CHECK_FALSE(guard.accepts(two, 30.01));
+    CHECK_FALSE(guard.accepts(two, 30.5));
+    CHECK(guard.accepts(two, 30.51));
+    // An approval card appearing above moves every proposal card down.
+    const std::vector<uint64_t> withApproval{9, 4, 6};
+    CHECK_FALSE(guard.accepts(withApproval, 40.0));
+    CHECK(guard.accepts(withApproval, 40.5));
+    // The same cards in another order are a different layout.
+    const std::vector<uint64_t> reordered{9, 6, 4};
+    CHECK_FALSE(guard.accepts(reordered, 41.0));
+    CHECK(guard.accepts(reordered, 41.5));
+    // No approval and no proposal: nothing to click, and the next card starts its own delay.
+    const std::vector<uint64_t> none{0};
+    CHECK_FALSE(guard.accepts(none, 50.0));
+    const std::vector<uint64_t> one{0, 7};
+    CHECK_FALSE(guard.accepts(one, 60.0));
+    CHECK(guard.accepts(one, 60.5));
 }

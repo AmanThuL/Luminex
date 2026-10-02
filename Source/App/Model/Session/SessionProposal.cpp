@@ -256,6 +256,16 @@ std::string proposalChangeLabel(const asset::DocumentChange& change) {
 }
 
 //======================================================================================================================
+bool proposalWithdrawable(const SessionProposal& proposal, uint64_t requestConnection,
+                          uint64_t liveConnection, std::string_view requestClient) {
+    if (proposal.source != ProposalSource::Bridge || proposal.state != SessionState::Proposed)
+        return false;
+    if (proposal.connection == requestConnection)
+        return true;
+    return proposal.connection != liveConnection && proposal.client == requestClient;
+}
+
+//======================================================================================================================
 bool proposalAffectsNode(const SessionProposal& proposal, const asset::SceneDocument& loaded,
                          uint32_t node) {
     if (node >= loaded.nodes.size())

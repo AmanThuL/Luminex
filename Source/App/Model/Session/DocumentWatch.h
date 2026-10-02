@@ -32,7 +32,9 @@ struct FileStamp {
 
 /// Stamps a loaded pair with stat calls only while nothing moved. The glTF is re-read for its
 /// buffer URI only when its own size, time or identity changes, and its directory is re-scanned
-/// for staging directories only when the directory's modification time or identity changes.
+/// for staging directories when the directory's modification time or identity changes or while
+/// the last scan found one: a staging directory removed within one modification-time tick leaves
+/// the directory's stamp unchanged.
 class DocumentProbe {
 public:
     /// Observes gltf, the companion it names and any .lmx-save-*.tmp directory beside it. A glTF
@@ -65,10 +67,11 @@ private:
 /// pair's current hash, empty when it cannot be hashed. A hashable pair may be replaced when it is
 /// the loaded document or one the operator rejected; an unhashable pair only while its stamp is
 /// still the baseline the editor loaded or the operator rejected (baselineStamp). Otherwise
-/// returns the disabled reason: an external change the operator has not reviewed yet.
+/// returns the disabled reason: the pair cannot be read, an external change has a card to review
+/// (proposalPending), or its card has not appeared yet.
 std::optional<std::string> saveOverwriteReason(std::string_view loadedHash,
                                                std::string_view diskHash, bool diskHashRejected,
-                                               bool baselineStamp);
+                                               bool baselineStamp, bool proposalPending);
 
 /// Next main-thread operation permitted by a stable poll.
 enum class WatchDecision {

@@ -80,6 +80,14 @@ void EditorShell::requestDocumentAction(DocumentAction action,
                        ImGui::GetTime());
         return;
     }
+    // An approved plan's remaining steps were reviewed for this scene. Accepting a file proposal
+    // arrives here as Revert and is refused with it.
+    const auto* plan = m_sessionApprovals.active();
+    if (const auto reason =
+            runningPlanRefusal(action, plan && plan->state == SessionState::Working)) {
+        m_notices.post({ActionStatus::Unavailable, *reason, {}}, ImGui::GetTime());
+        return;
+    }
     if (m_documentWorkflow.request(action, std::move(target)))
         endMouseLook();
 }
@@ -116,9 +124,10 @@ bool EditorShell::saveDocument(const std::filesystem::path& path, bool saveAs) {
     if (!saveAs) {
         const auto diskHash = asset::sceneDocumentHash(m_session.loadedScene()->path);
         const std::string_view disk = diskHash ? std::string_view(*diskHash) : std::string_view{};
-        if (const auto reason = saveOverwriteReason(
-                m_session.loadedScene()->hash, disk, m_sessionProposals.rejected(disk),
-                currentDocumentStamp().samePair(m_loadedStamp))) {
+        if (const auto reason = saveOverwriteReason(m_session.loadedScene()->hash, disk,
+                                                    m_sessionProposals.rejected(disk),
+                                                    currentDocumentStamp().samePair(m_loadedStamp),
+                                                    m_sessionProposals.pendingFile() != nullptr)) {
             m_notices.post({ActionStatus::Unavailable, *reason, {}}, ImGui::GetTime());
             return false;
         }
@@ -310,6 +319,7 @@ bool EditorShell::executeDocumentWork(const PendingDocumentWork& work) {
                                  m_session.look());
             m_sessionProposals.resolve(id, SessionState::Applied);
             m_sessionProposals.markStale(ProposalSource::Bridge);
+            cancelAwaitingSessionApprovals("cancelled: scene replaced");
             m_sessionAttribution.clear();
             m_watchedStamp = reviewedStamp;
             m_loadedStamp = m_watchedStamp;
