@@ -32,7 +32,7 @@ Execution uses `feat/ux5-session` in `../Luminex-ux5`, based on `docs/ux5-sessio
 | 19 | `319c309` | Final code gates PASS, 11/11; seven required native gestures PASS | Five findings corrected; final review PASS and three Tools hashes match |
 | 20 | `2a4ac8b` | Final code gates PASS, 10/10; focused 510 assertions | Two evidence findings corrected; final 12 hashes match |
 | 21 | `1f967a4` | Final code gates PASS, 10/10; 22 CLI examples parse | Two documentation findings corrected; fresh stronger review PASS, 12 hashes match |
-| 22 | This commit | Final full code gates PASS, 11/11; pinned validator 93 PASS | Fresh whole-branch source and publication documentation/evidence reviews PASS |
+| 22 | `b31baf2` | Final full code gates PASS, 11/11; pinned validator 93 PASS | Fresh whole-branch source and publication documentation/evidence reviews PASS |
 
 The gate JSON files retain every command, exit and log. Test-first red results and failed correction attempts are retained in each task's evidence ledger; a deliberate red test is
 not reported as a failed final gate. Initial Debug unit execution was interrupted for costly CPU IBL generation; full Release gates passed. That Debug run remains incomplete.
@@ -286,3 +286,15 @@ exact Console clipboard equality; narrow/full-value panel layout and floating Co
 dirty file Accept Discard/Cancel, Save tooltip, missing-evidence/Error gestures, activity navigation and unavailable measurement execution during a child. Earlier Task 9/19
 required passes remain; earlier lock failures remain historical only. Fresh publication review passes; root records publication-policy/tag/push/PR outcomes in the external ledger. Owner acceptance remains pending. All Global authority/view/playback,
 module/comment/color, no-RHI/dependency/renderer/shader/capture-format/manifest, tests-first and retained-failure constraints remain; exceptions do not authorize acceptance.
+
+## Post-publication documentation reconciliation
+
+Task 22 was published as `b31baf2`, pushed with `ux5-integration-chain`, and opened as [PR #66](https://github.com/AmanThuL/Luminex/pull/66); owner acceptance and merge remain pending.
+Main advanced to docs-only `bbb108d`, replacing M9 with G1–G3. Root's no-commit merge exited 1 with five documentation conflicts: AGENTS, UX5 record/plan, roadmap and neural roadmap.
+Reconciliation keeps every upstream geometry decision and UX5's reviewed implementation, exceptions, validation and In progress plan. The published tag stays at `b31baf2`;
+it is not force-moved. Its original 11/11 gates (full unit 9.707 s), 93-document validator and frozen source/runtime evidence remain historical exact results.
+This documentation reconciliation syncs main. Root retains actual follow-up `task22-main-sync-gates.json`, distinct validator, fresh Astra review and merge-commit/publication
+command outcomes in the external `task22/merge-main/` ledger. Source/runtime bytes remain unchanged; no new source, runtime, owner-acceptance or scored-gate claim follows from the sync.
+Closing measured metadata after fresh content review: initial main-sync gates passed 10/11, exit 1, because the unmerged index listed the single active plan twice (`task22-main-sync-04-python3.log`, evidence root). Root staged the five resolved conflicts; `task22/merge-main/policy-staged-retry.json` passes 1,050 files without checker/status changes.
+Auxiliary diff check against published HEAD exited 2 on 13 upstream Frozen research Markdown hard-break lines; against incoming `origin/main` it exited 0 (`task22/merge-main/review.md` and retained logs). Research bytes and tolerance remain unchanged.
+Fresh Astra content review passes before this closing outcome metadata. Root's `task22/merge-main/final-gates.json` retains the first-run failure and explicit retry provenance, final 11/11 PASS: unit 10.162 s (10.163 total), Python 325/6.636 s, layout 3,135 definitions/389 files. Distinct `merge-main/validator.json` passes 93 = 6+87, 6.402641 s; original Task 22 results remain historical.
