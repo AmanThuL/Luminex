@@ -606,6 +606,11 @@ std::string_view SessionAttribution::client(std::string_view key) const {
 }
 
 //======================================================================================================================
+void SessionAttribution::erase(std::string_view key) {
+    m_clients.erase(std::string(key));
+}
+
+//======================================================================================================================
 void SessionAttribution::clear() {
     m_clients.clear();
 }

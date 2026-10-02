@@ -93,6 +93,16 @@ void SessionApprovals::finishStep(bool ok) {
 }
 
 //======================================================================================================================
+bool SessionApprovals::finishStep(uint64_t id, bool ok) {
+    const auto* approval = active();
+    if (!approval || approval->id != id || approval->state != SessionState::Working ||
+        !m_stepInFlight)
+        return false;
+    finishStep(ok);
+    return true;
+}
+
+//======================================================================================================================
 void SessionApprovals::cancelPending() {
     for (auto& approval : m_approvals) {
         if (approval.state == SessionState::Awaiting) {
@@ -100,6 +110,17 @@ void SessionApprovals::cancelPending() {
             approval.terminalError = SessionError::Cancelled;
         }
     }
+}
+
+//======================================================================================================================
+void SessionApprovals::cancelAll() {
+    for (auto& approval : m_approvals) {
+        if (isUnresolved(approval)) {
+            approval.state = SessionState::Error;
+            approval.terminalError = SessionError::Cancelled;
+        }
+    }
+    m_stepInFlight = false;
 }
 
 //======================================================================================================================

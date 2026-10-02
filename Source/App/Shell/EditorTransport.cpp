@@ -90,7 +90,14 @@ void EditorShell::buildPlaybackTransport() {
     if (const auto* proposal = m_sessionProposals.pendingFile())
         inputs.session =
             SessionActivity{proposal->state, proposal->summary, {}, false, proposal->actor};
-    if (m_measurement.active()) {
+    if (const auto* approval = m_sessionApprovals.active())
+        inputs.session = SessionActivity{
+            approval->state, approval->summary, {}, approval->state == SessionState::Working};
+    if (m_sessionCaptureApproval)
+        inputs.session = SessionActivity{SessionState::Working, "GPU capture", {}, true};
+    if (m_pendingSessionMeasurementStart)
+        inputs.session = SessionActivity{SessionState::Working, "Measurement", {}, true};
+    if (m_measurement.active() && !m_sessionMeasurementApproval) {
         const auto next = m_measurement.nextFrame();
         const bool warmup = m_measurement.state() == MeasurementState::Warmup;
         inputs.measure = MeasureProgress{
@@ -98,6 +105,17 @@ void EditorShell::buildPlaybackTransport() {
             warmup ? (next ? next->sequenceFrame : m_measurement.plan().warmupFrames)
                    : static_cast<uint32_t>(m_measurement.samples().size()),
             warmup ? m_measurement.plan().warmupFrames : m_measurement.plan().measuredFrames};
+    }
+    if (m_sessionMeasurementApproval) {
+        const auto& plan = m_measurement.plan();
+        const auto next = m_measurement.nextFrame();
+        const uint32_t done =
+            next ? next->sequenceFrame
+                 : plan.warmupFrames + static_cast<uint32_t>(m_measurement.samples().size());
+        const uint32_t total = plan.warmupFrames + plan.measuredFrames;
+        inputs.session =
+            SessionActivity{SessionState::Working, "Measurement",
+                            total ? std::optional(float(done) / total) : std::nullopt, true};
     }
     switch (m_documentWorkflow.step()) {
     case WorkflowStep::Idle:
@@ -160,8 +178,12 @@ void EditorShell::buildPlaybackTransport() {
         editorTooltip(
             "Current UI scale. Click to reset to 100% (Cmd+0). View > UI Scale has all sizes.");
     }
-    if (activityStop)
-        stopPlayback();
+    if (activityStop) {
+        if (activity && activity->source == ActivitySource::Session && activity->stoppable)
+            stopSessionWork();
+        else
+            stopPlayback();
+    }
     switch (action) {
     case PlaybackToolbarAction::Play:
         endMouseLook();
@@ -171,7 +193,13 @@ void EditorShell::buildPlaybackTransport() {
         m_playback.pause();
         break;
     case PlaybackToolbarAction::Stop:
-        stopPlayback();
+        if (m_sessionMeasurementApproval || m_sessionCaptureApproval ||
+            m_pendingSessionMeasurementStart ||
+            (m_sessionApprovals.active() &&
+             m_sessionApprovals.active()->state == SessionState::Working))
+            stopSessionWork();
+        else
+            stopPlayback();
         break;
     case PlaybackToolbarAction::Step:
         endMouseLook();

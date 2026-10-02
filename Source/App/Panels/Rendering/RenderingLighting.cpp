@@ -21,6 +21,9 @@ void drawLightingTopic(const InspectorPanelContext& context) {
     const auto draftId = ImGui::GetID("pileDraft");
     ImGui::PopID();
     if (editor_style::beginPropertyGrid("lightingControls")) {
+        if (context.settingAttribution && context.settingAttribution->has("setting/local-lights"))
+            editor_style::setNextFieldProvenance(sessionAppliedProvenance(
+                context.settingAttribution->client("setting/local-lights")));
         editor_style::field("Local lights");
         int mode = static_cast<int>(settings.localLightMode);
         if (ImGui::Combo("##localLightMode", &mode, "Off\0Direct\0Clustered\0")) {
@@ -33,12 +36,23 @@ void drawLightingTopic(const InspectorPanelContext& context) {
         editorTooltip("Direct evaluates every enabled local light. Clustered builds bounded lists "
                       "per froxel. Off keeps directional lights and the environment. Views: View > "
                       "Debug View.");
+        if (context.settingAttribution && context.settingAttribution->has("setting/light-check"))
+            editor_style::setNextFieldProvenance(sessionAppliedProvenance(
+                context.settingAttribution->client("setting/light-check")));
         editor_style::field("CPU list check");
         bool lightCheck = settings.lightCheck;
         if (ImGui::Checkbox("##lightCheck", &lightCheck))
             applyRenderSetting(settings, RenderSettingKey::LightCheck, lightCheck ? "on" : "off");
         editorTooltip("Compare retired GPU lists and counters with an independent CPU mirror. "
                       "Checking adds CPU work and is excluded from scored measurements.");
+        if (session.localLightRigAvailable()) {
+            if (context.settingAttribution &&
+                context.settingAttribution->has("setting/local-light-rig"))
+                editor_style::setNextFieldProvenance(sessionAppliedProvenance(
+                    context.settingAttribution->client("setting/local-light-rig")));
+            editor_style::field("Local light rig");
+            ImGui::TextUnformatted(session.localLightRigEnabled() ? "On" : "Off");
+        }
         if (session.lightLabPileAvailable()) {
             ImGui::PushID(&session.scene());
             int pile = storage->GetInt(draftId, static_cast<int>(session.lightLabPileCount()));

@@ -5,6 +5,9 @@
 
 #include "App/Shell/EditorShell.h"
 
+#include "App/Model/Rendering/Lighting/LightingHistory.h"
+#include "App/Model/Rendering/Settings/DebugView.h"
+#include "App/Model/Rendering/Settings/RenderSettingCommands.h"
 #include "App/Model/Scene/SceneDocumentSave.h"
 #include "App/Model/Session/SessionCommands.h"
 #include "App/Model/Session/SessionEdits.h"
@@ -18,13 +21,19 @@
 
 #include <imgui.h>
 
+#include <algorithm>
+#include <array>
+#include <cerrno>
 #include <chrono>
+#include <fcntl.h>
 #include <filesystem>
 #include <format>
 #include <fstream>
 #include <iterator>
 #include <limits>
+#include <span>
 #include <string>
+#include <unistd.h>
 #include <unordered_set>
 
 namespace lmx::app {
@@ -227,6 +236,9 @@ bool EditorShell::startSessionListener() {
     }
     m_sessionMailbox = std::move(mailbox);
     m_sessionListener = std::move(*listener);
+    if (m_sessionOutputName.empty())
+        m_sessionOutputName =
+            sessionDirectoryName(utcMilliseconds() / 1000, static_cast<uint32_t>(::getpid()));
     LMX_LOG_INFO("Session listening at {}", m_sessionListener->path().string());
     return true;
 }
@@ -245,6 +257,17 @@ void EditorShell::drainSessionBridge() {
         }
         if (inbound.closed) {
             if (inbound.connection == m_sessionConnection) {
+                for (const auto& approval : m_sessionApprovals.pending())
+                    if (approval.state == SessionState::Awaiting)
+                        m_sessionLog.record(
+                            SessionAction{.timestampMilliseconds = utcMilliseconds(),
+                                          .actor = Actor::Agent,
+                                          .client = approval.client,
+                                          .command = "approval.result",
+                                          .arguments = std::to_string(approval.request),
+                                          .tier = SessionTier::Apply,
+                                          .outcome = "cancelled on disconnect"});
+                m_sessionApprovals.cancelPending();
                 m_sessionConnection = 0;
                 m_sessionHello = false;
                 m_sessionTier = SessionTier::ReadOnly;
@@ -328,6 +351,36 @@ void EditorShell::drainSessionBridge() {
                                               .arguments = std::string(request->args.sourceJson()),
                                               .tier = m_sessionTier,
                                               .outcome = "tier"});
+            continue;
+        }
+        if (spec->tier == SessionTier::Apply) {
+            const auto parsed = parseApplyRequest(spec->command, request->args);
+            if (!parsed) {
+                answerError(SessionError::Invalid, parsed.error());
+                m_sessionLog.record(
+                    SessionAction{.timestampMilliseconds = utcMilliseconds(),
+                                  .actor = Actor::Agent,
+                                  .client = m_sessionClient,
+                                  .command = request->command,
+                                  .arguments = std::string(request->args.sourceJson()),
+                                  .tier = m_sessionTier,
+                                  .outcome = "invalid"});
+                continue;
+            }
+            auto submitted = m_sessionApprovals.submit(request->id, m_sessionClient,
+                                                       parsed->summary, std::move(parsed->steps));
+            if (!submitted) {
+                answerError(SessionError::Busy, submitted.error());
+                continue;
+            }
+            m_sessionApprovalConnections[*submitted] = inbound.connection;
+            m_sessionLog.record(SessionAction{.timestampMilliseconds = utcMilliseconds(),
+                                              .actor = Actor::Agent,
+                                              .client = m_sessionClient,
+                                              .command = request->command,
+                                              .arguments = std::string(request->args.sourceJson()),
+                                              .tier = m_sessionTier,
+                                              .outcome = "awaiting approval"});
             continue;
         }
         std::string result;
@@ -416,13 +469,18 @@ void EditorShell::drainSessionBridge() {
             break;
         }
         case SessionCommand::QueryStatus: {
-            result = statusJson({.documentPath = loaded ? loaded->path.string() : "",
-                                 .documentHash = loaded ? loaded->hash : "",
-                                 .dirty = m_documentDirty,
-                                 .playback = std::string(playbackName(m_playback.state())),
-                                 .measuring = m_measurement.active(),
-                                 .tier = m_sessionTier,
-                                 .pendingProposals = m_sessionProposals.pending()});
+            result =
+                statusJson({.documentPath = loaded ? loaded->path.string() : "",
+                            .documentHash = loaded ? loaded->hash : "",
+                            .dirty = m_documentDirty,
+                            .playback = std::string(playbackName(m_playback.state())),
+                            .measuring = m_measurement.active(),
+                            .tier = m_sessionTier,
+                            .pendingProposals = m_sessionProposals.pending(),
+                            .job = m_sessionMeasurementApproval || m_pendingSessionMeasurementStart
+                                       ? "measurement"
+                                   : m_sessionCaptureApproval ? "gpu capture"
+                                                              : "idle"});
             break;
         }
         case SessionCommand::QueryHierarchy:
@@ -515,6 +573,7 @@ void EditorShell::pumpSession(double now) {
         if (action.action == SessionPanelAction::ToggleListen) {
             m_sessionPanelAction.reset();
             if (m_sessionListener) {
+                stopSessionWork();
                 m_sessionListener.reset();
                 m_sessionMailbox.reset();
                 m_sessionConnection = 0;
@@ -534,6 +593,25 @@ void EditorShell::pumpSession(double now) {
         }
     }
     drainSessionBridge();
+    if (m_sessionPanelAction && (m_sessionPanelAction->action == SessionPanelAction::Approve ||
+                                 m_sessionPanelAction->action == SessionPanelAction::Deny)) {
+        const auto action = *m_sessionPanelAction;
+        m_sessionPanelAction.reset();
+        const auto* approval = m_sessionApprovals.active();
+        if (approval && approval->id == action.id && approval->state == SessionState::Awaiting) {
+            const auto client = approval->client;
+            const auto request = approval->request;
+            if (action.action == SessionPanelAction::Approve)
+                m_sessionApprovals.approve(action.id);
+            else
+                m_sessionApprovals.deny(action.id);
+            recordSessionReview(
+                action.action == SessionPanelAction::Approve ? "approval.approve" : "approval.deny",
+                std::to_string(request),
+                action.action == SessionPanelAction::Approve ? "approved" : "denied", client);
+        }
+    }
+    runSessionApprovals();
     const auto* loaded = m_session.loadedScene();
     if (!loaded)
         return;
@@ -656,6 +734,417 @@ void EditorShell::pumpSession(double now) {
                       .command = "proposal.arrive",
                       .arguments = std::to_string(id),
                       .outcome = document && m_watchReadError.empty() ? "proposed" : "error"});
+}
+
+//======================================================================================================================
+std::string EditorShell::captureOutputPath(std::string_view ordinaryPath) const {
+    return m_sessionCaptureApproval ? m_sessionJobOutput.string() : std::string(ordinaryPath);
+}
+
+//======================================================================================================================
+bool EditorShell::sessionCaptureTargetAvailable() const {
+    if (!m_sessionCaptureApproval)
+        return true;
+    std::error_code error;
+    const auto root = std::filesystem::symlink_status("session", error);
+    if (error || !std::filesystem::is_directory(root) || std::filesystem::is_symlink(root))
+        return false;
+    const auto run = std::filesystem::symlink_status(m_sessionOutputDirectory, error);
+    if (error || !std::filesystem::is_directory(run) || std::filesystem::is_symlink(run))
+        return false;
+    return sessionCapturePathsAvailable(m_sessionJobOutput);
+}
+
+//======================================================================================================================
+std::expected<std::filesystem::path, std::string>
+EditorShell::sessionOutputPath(std::string_view name) {
+    const auto safe = evidenceName(name);
+    if (!safe)
+        return std::unexpected(safe.error());
+    std::error_code error;
+    const std::filesystem::path root("session");
+    const auto rootStatus = std::filesystem::symlink_status(root, error);
+    if (error && error != std::errc::no_such_file_or_directory)
+        return std::unexpected("Cannot inspect session output root: " + error.message());
+    if (!error && std::filesystem::exists(rootStatus) &&
+        (!std::filesystem::is_directory(rootStatus) || std::filesystem::is_symlink(rootStatus)))
+        return std::unexpected("Session output root is not a real directory");
+    error.clear();
+    if (!std::filesystem::exists(root) && !std::filesystem::create_directory(root, error))
+        return std::unexpected("Cannot create session output root: " + error.message());
+    if (m_sessionOutputDirectory.empty()) {
+        const auto candidate =
+            m_sessionOutputName.empty()
+                ? std::filesystem::path(sessionDirectoryName(utcMilliseconds() / 1000,
+                                                             static_cast<uint32_t>(::getpid())))
+                : m_sessionOutputName;
+        error.clear();
+        if (!std::filesystem::create_directory(candidate, error))
+            return std::unexpected("Cannot create a new session output directory: " +
+                                   error.message());
+        m_sessionOutputDirectory = candidate;
+    }
+    const auto runStatus = std::filesystem::symlink_status(m_sessionOutputDirectory, error);
+    if (error || !std::filesystem::is_directory(runStatus) ||
+        std::filesystem::is_symlink(runStatus))
+        return std::unexpected("Session output directory is unavailable");
+    const auto target = m_sessionOutputDirectory / *safe;
+    error.clear();
+    const auto targetStatus = std::filesystem::symlink_status(target, error);
+    if (error && error != std::errc::no_such_file_or_directory)
+        return std::unexpected("Cannot inspect session output target: " + error.message());
+    if ((!error && std::filesystem::exists(targetStatus)) ||
+        (!error && std::filesystem::is_symlink(targetStatus)))
+        return std::unexpected("Session output already exists: " + target.string());
+    return std::filesystem::absolute(target);
+}
+
+//======================================================================================================================
+bool EditorShell::writeSessionFile(const std::filesystem::path& path, std::string_view contents) {
+    if (m_sessionOutputDirectory.empty() ||
+        path.parent_path() != std::filesystem::absolute(m_sessionOutputDirectory) ||
+        !evidenceName(path.filename().string()))
+        return false;
+    const int root = ::open("session", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (root < 0)
+        return false;
+    const int run = ::openat(root, m_sessionOutputDirectory.filename().c_str(),
+                             O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    ::close(root);
+    if (run < 0)
+        return false;
+    const int output = ::openat(run, path.filename().c_str(),
+                                O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+    if (output < 0) {
+        ::close(run);
+        return false;
+    }
+    bool written = true;
+    while (!contents.empty()) {
+        const auto count = ::write(output, contents.data(), contents.size());
+        if (count <= 0) {
+            written = false;
+            break;
+        }
+        contents.remove_prefix(static_cast<size_t>(count));
+    }
+    if (::close(output) != 0)
+        written = false;
+    if (!written)
+        ::unlinkat(run, path.filename().c_str(), 0);
+    ::close(run);
+    return written;
+}
+
+//======================================================================================================================
+void EditorShell::finishSessionStep(uint64_t approvalId, bool ok, SessionError error,
+                                    std::string message) {
+    const auto* approval = m_sessionApprovals.active();
+    if (!approval || approval->id != approvalId)
+        return;
+    const auto id = approval->id;
+    const auto command = approval->steps[approval->cursor].command;
+    std::string name;
+    for (const auto& spec : sessionCommands())
+        if (spec.command == command)
+            name = spec.name;
+    if (!ok)
+        m_sessionApprovalFailures[id] = {error, message};
+    m_sessionLog.record(SessionAction{
+        .timestampMilliseconds = utcMilliseconds(),
+        .actor = Actor::Agent,
+        .client = approval->client,
+        .command = name,
+        .arguments = approval->steps[approval->cursor].arguments,
+        .tier = SessionTier::Apply,
+        .plan = approval->steps.size() > 1 ? std::optional<uint64_t>(id) : std::nullopt,
+        .outcome = ok ? "applied" : message});
+    m_sessionApprovals.finishStep(approvalId, ok);
+}
+
+//======================================================================================================================
+void EditorShell::stopSessionWork() {
+    for (const auto& approval : m_sessionApprovals.pending()) {
+        if (approval.state != SessionState::Awaiting && approval.state != SessionState::Working)
+            continue;
+        recordSessionReview("approval.cancel", std::to_string(approval.request), "cancelled",
+                            approval.client);
+        m_sessionLog.record(SessionAction{.timestampMilliseconds = utcMilliseconds(),
+                                          .actor = Actor::Agent,
+                                          .client = approval.client,
+                                          .command = "approval.result",
+                                          .arguments = std::to_string(approval.request),
+                                          .tier = SessionTier::Apply,
+                                          .outcome = "cancelled"});
+    }
+    if (m_sessionMeasurementApproval) {
+        m_measurement.cancel("Cancelled by operator");
+        m_sessionJobCancelled = true;
+    }
+    if (m_sessionCaptureApproval) {
+        m_actions.consumeCapture();
+        auto& result = m_actions.captureResult();
+        result.status = ActionStatus::Failed;
+        result.message = "Cancelled by operator";
+        m_actions.releaseSessionCapture();
+        m_sessionJobCancelled = true;
+    }
+    if (m_pendingSessionMeasurementStart) {
+        m_pendingSessionMeasurementStart.reset();
+        m_sessionJobCancelled = true;
+    }
+    m_sessionApprovals.cancelAll();
+    m_sessionMeasurementApproval.reset();
+    m_sessionCaptureApproval.reset();
+    m_pendingSessionMeasurementStart.reset();
+    m_sessionJobOutput.clear();
+    m_sessionJobCancelled = false;
+}
+
+//======================================================================================================================
+std::expected<bool, std::pair<SessionError, std::string>>
+EditorShell::executeSessionStep(const ApprovalStep& step, uint64_t approval) {
+    const auto parsed = asset::JsonTokens::parse(step.arguments);
+    if (!parsed)
+        return std::unexpected(std::pair{SessionError::Invalid, parsed.error().message});
+    const auto args = parsed->root();
+    const auto refusal =
+        [](SessionError code,
+           std::string message) -> std::expected<bool, std::pair<SessionError, std::string>> {
+        return std::unexpected(std::pair{code, std::move(message)});
+    };
+    if (m_documentWorkflow.step() != WorkflowStep::Idle)
+        return refusal(SessionError::Unavailable, "Finish the current document operation first.");
+    if ((step.command == SessionCommand::SettingsSet ||
+         step.command == SessionCommand::DebugViewSet ||
+         step.command == SessionCommand::SceneOpen) &&
+        m_measurement.active())
+        return refusal(SessionError::Unavailable, "Stop measurement before changing editor state");
+    switch (step.command) {
+    case SessionCommand::SettingsSet: {
+        const auto name = args.memberName(0);
+        const auto value = args.memberValue(0).asString();
+        if (!value)
+            return refusal(SessionError::Invalid, "Setting value must be a string");
+        if (name == "local-light-rig") {
+            if (*value != "on" && *value != "off")
+                return refusal(SessionError::Invalid, "local-light-rig must be on or off");
+            if (!m_session.localLightRigAvailable())
+                return refusal(SessionError::Unavailable,
+                               "The current scene has no local light rig");
+            const bool enabled = *value == "on";
+            const auto before = m_session.localLightRigOverride();
+            if (auto result = m_session.setLocalLightRig(enabled); !result)
+                return refusal(SessionError::Unavailable, result.error().message);
+            if (before != m_session.localLightRigOverride())
+                m_settingAttribution.mark("setting/local-light-rig",
+                                          m_sessionApprovals.active()->client);
+            return false;
+        }
+        const auto key = parseRenderSettingName(name);
+        if (!key)
+            return refusal(SessionError::Invalid, "Unknown rendering setting");
+        const auto before = m_settings;
+        if (const auto result = applyRenderSetting(m_settings, *key, *value); !result)
+            return refusal(SessionError::Unavailable, result.error());
+        constexpr std::array<RenderSettingKey, 10> keys{
+            RenderSettingKey::Temporal,       RenderSettingKey::RenderScale,
+            RenderSettingKey::Visibility,     RenderSettingKey::Classify,
+            RenderSettingKey::ClassifyCheck,  RenderSettingKey::Occlusion,
+            RenderSettingKey::OcclusionCheck, RenderSettingKey::Submission,
+            RenderSettingKey::LocalLights,    RenderSettingKey::LightCheck};
+        for (const auto candidate : keys)
+            if (renderSettingValue(before, candidate) != renderSettingValue(m_settings, candidate))
+                m_settingAttribution.mark("setting/" + std::string(renderSettingName(candidate)),
+                                          m_sessionApprovals.active()->client);
+        if (lightingChangeNeedsHistoryReset(before.localLightMode, m_settings.localLightMode,
+                                            m_session.scene().enabledLightCount(), false))
+            requestCameraCut(m_temporalState);
+        return false;
+    }
+    case SessionCommand::DebugViewSet: {
+        const auto view = sessionDebugView(args);
+        if (!view)
+            return refusal(SessionError::Invalid, view.error());
+        if (*view) {
+            const auto entries =
+                debugViewEntries(m_settings, m_sessionHzbLevels, m_sessionEffectiveReconstruction);
+            const auto found = std::find_if(entries.begin(), entries.end(), [&](const auto& entry) {
+                return entry.view.topic == (*view)->topic && entry.view.value == (*view)->value;
+            });
+            if (found == entries.end())
+                return refusal(SessionError::Invalid, "Unknown diagnostic view");
+            if (!found->available)
+                return refusal(SessionError::Unavailable, found->reason);
+        }
+        selectDebugView(m_settings, *view);
+        return false;
+    }
+    case SessionCommand::SceneOpen: {
+        refreshDocumentDirty(true);
+        if (const auto reason = DocumentWorkflow::unavailableReason(
+                DocumentAction::OpenCatalog, m_playback.state() == PlaybackState::Stopped,
+                m_measurement.active(), m_sessionProposals.pendingFile() != nullptr))
+            return refusal(SessionError::Unavailable, *reason);
+        if (m_sessionProposals.pendingFile())
+            return refusal(SessionError::Unavailable, "Review the pending proposal first");
+        if (!sessionSceneOpenAllowed(
+                m_selection.subject, m_documentDirty, m_playback.state() == PlaybackState::Stopped,
+                m_documentWorkflow.step() == WorkflowStep::Idle, m_measurement.active()))
+            return refusal(SessionError::Unavailable,
+                           "Scene open requires a clean stopped document and stable selection");
+        const auto value = args.find("scene")->asString();
+        if (!value)
+            return refusal(SessionError::Invalid, "scene must be a string");
+        const auto id = scenes::parseSceneId(*value).value_or(scenes::sceneIdFromPath(*value));
+        if (id == m_activeSceneId)
+            return false;
+        if (!selectSessionScene(id))
+            return refusal(SessionError::Failed, std::string(m_sceneLoading.failureMessage()));
+        return false;
+    }
+    case SessionCommand::MeasureRun: {
+        if (m_measurement.active() || m_sessionMeasurementApproval || m_sessionCaptureApproval)
+            return refusal(SessionError::Busy, "A session job is already running");
+        const auto name = args.find("name")->asString();
+        const auto output = sessionOutputPath(*name);
+        if (!output)
+            return refusal(SessionError::Unavailable, output.error());
+        m_measurementWarmup = static_cast<uint32_t>(*args.find("warmup")->asUInt());
+        m_measurementFrames = static_cast<uint32_t>(*args.find("frames")->asUInt());
+        m_sessionJobOutput = *output;
+        m_sessionApprovalOutputs[approval].push_back(output->string());
+        m_pendingSessionMeasurementStart = approval;
+        return true;
+    }
+    case SessionCommand::CaptureGpu: {
+        if (m_measurement.active() || m_sessionMeasurementApproval || m_sessionCaptureApproval ||
+            m_actions.capturePending())
+            return refusal(SessionError::Busy, "A capture or measurement is already running");
+        if (!m_actions.captureAvailable())
+            return refusal(SessionError::Unavailable, m_actions.captureResult().message);
+        const auto output =
+            sessionOutputPath(captureGpuOutputName(approval, m_sessionApprovals.active()->cursor));
+        if (!output)
+            return refusal(SessionError::Unavailable, output.error());
+        if (!sessionCapturePathsAvailable(*output))
+            return refusal(SessionError::Unavailable,
+                           "Session capture trace or schema output already exists");
+        m_sessionJobOutput = *output;
+        m_sessionApprovalOutputs[approval].push_back(output->string());
+        m_sessionCaptureApproval = approval;
+        m_actions.requestCapture();
+        m_actions.reserveSessionCapture();
+        m_actions.captureResult().actor = Actor::Agent;
+        return true;
+    }
+    case SessionCommand::GraphDump: {
+        const auto* frame = m_renderGraphPanel.snapshot.displayed();
+        if (!frame)
+            return refusal(SessionError::Unavailable, "No graph frame is published");
+        const auto name = args.find("name")->asString();
+        const auto output = sessionOutputPath(*name);
+        if (!output)
+            return refusal(SessionError::Unavailable, output.error());
+        if (!writeSessionFile(*output, render::dumpCompiledFrame(frame->record)))
+            return refusal(SessionError::Failed, "Could not write the graph dump");
+        m_sessionApprovalOutputs[approval].push_back(output->string());
+        return false;
+    }
+    case SessionCommand::CaptureScreenshot:
+    case SessionCommand::CaptureSequence:
+        return refusal(SessionError::Unavailable,
+                       "Headless capture execution is unavailable in this build");
+    default:
+        return refusal(SessionError::Invalid, "Command is not an Apply step");
+    }
+}
+
+//======================================================================================================================
+void EditorShell::runSessionApprovals() {
+    if (m_sessionMeasurementApproval && !m_pendingSessionMeasurementStart &&
+        !m_measurement.active()) {
+        const bool completed = m_measurement.state() == MeasurementState::Complete;
+        if (completed) {
+            m_measurementExportPath = m_sessionJobOutput.string();
+            exportMeasurement();
+        }
+        finishSessionStep(*m_sessionMeasurementApproval,
+                          completed && m_measurementFeedback.starts_with("Exported ") &&
+                              !m_sessionJobCancelled,
+                          m_sessionJobCancelled ? SessionError::Cancelled : SessionError::Failed,
+                          m_sessionJobCancelled ? "Cancelled by operator"
+                          : completed           ? m_measurementFeedback
+                                                : m_measurement.failure());
+        m_sessionMeasurementApproval.reset();
+        m_sessionJobCancelled = false;
+    }
+    if (m_sessionCaptureApproval && m_actions.captureResult().status != ActionStatus::Pending) {
+        const auto& result = m_actions.captureResult();
+        finishSessionStep(*m_sessionCaptureApproval,
+                          result.status == ActionStatus::Succeeded && !m_sessionJobCancelled,
+                          m_sessionJobCancelled ? SessionError::Cancelled : SessionError::Failed,
+                          m_sessionJobCancelled ? "Cancelled by operator" : result.message);
+        m_sessionCaptureApproval.reset();
+        m_actions.releaseSessionCapture();
+        m_sessionJobCancelled = false;
+    }
+    if (const auto* step = m_sessionApprovals.next()) {
+        const auto approval = m_sessionApprovals.active()->id;
+        auto execution = executeSessionStep(*step, approval);
+        if (!execution)
+            finishSessionStep(approval, false, execution.error().first, execution.error().second);
+        else if (!*execution)
+            finishSessionStep(approval, true);
+    }
+    for (const auto& approval : m_sessionApprovals.pending()) {
+        if (approval.state != SessionState::Applied && approval.state != SessionState::Error)
+            continue;
+        const auto reply = m_sessionApprovalConnections.find(approval.id);
+        if (reply == m_sessionApprovalConnections.end())
+            continue;
+        m_sessionLog.record(SessionAction{
+            .timestampMilliseconds = utcMilliseconds(),
+            .actor = Actor::Agent,
+            .client = approval.client,
+            .command = "approval.result",
+            .arguments = std::to_string(approval.request),
+            .tier = SessionTier::Apply,
+            .outcome = approval.state == SessionState::Applied ? "applied" : "denied or failed"});
+        if (m_sessionMailbox && reply->second == m_sessionConnection) {
+            if (approval.state == SessionState::Applied) {
+                JsonWriter result;
+                result.beginObject();
+                result.key("approval");
+                result.integer(approval.id);
+                result.key("steps");
+                result.integer(approval.steps.size());
+                result.key("outputs");
+                result.beginArray();
+                for (const auto& path : m_sessionApprovalOutputs[approval.id])
+                    result.string(path);
+                result.endArray();
+                result.endObject();
+                m_sessionMailbox->pushOutbound(reply->second,
+                                               encodeResult(approval.request, result.take()));
+            } else {
+                const auto failure = m_sessionApprovalFailures.find(approval.id);
+                const auto code = failure != m_sessionApprovalFailures.end()
+                                      ? failure->second.first
+                                      : approval.terminalError.value_or(SessionError::Failed);
+                const auto message = failure != m_sessionApprovalFailures.end()
+                                         ? failure->second.second
+                                     : code == SessionError::Denied ? "Denied by operator"
+                                                                    : "Approval cancelled";
+                m_sessionMailbox->pushOutbound(reply->second,
+                                               encodeError(approval.request, code, message));
+            }
+            m_sessionListener->wake();
+        }
+        m_sessionApprovalConnections.erase(reply);
+        m_sessionApprovalFailures.erase(approval.id);
+        m_sessionApprovalOutputs.erase(approval.id);
+    }
 }
 
 } // namespace lmx::app

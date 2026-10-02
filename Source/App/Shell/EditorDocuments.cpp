@@ -86,6 +86,7 @@ void EditorShell::requestDocumentAction(DocumentAction action,
 
 //======================================================================================================================
 void EditorShell::requestQuit() {
+    stopSessionWork();
     requestDocumentAction(DocumentAction::Quit);
 }
 
@@ -169,6 +170,36 @@ bool EditorShell::selectScene(scenes::SceneId id) {
     refreshDocumentDirty(true);
     LMX_LOG_INFO("scene opened '{}' ({} objects)", m_session.scene().name,
                  m_session.scene().objects.size());
+    return true;
+}
+
+//======================================================================================================================
+bool EditorShell::selectSessionScene(scenes::SceneId id) {
+    const auto camera = m_session.camera();
+    const auto selection = m_selection;
+    const auto result = replaceSessionDocument(m_library, m_session, m_activeSceneId, id, {});
+    if (!result) {
+        m_sceneLoading.fail(id, result.error().message);
+        return false;
+    }
+    m_session.camera() = camera;
+    m_selection = selection;
+    m_selection.sceneId = id;
+    m_sceneLoading = {};
+    m_visibilityDisplay.clear();
+    m_lightingDisplay.clear();
+    m_lightingFailureLogged = false;
+    m_visibilityFailureLogged = false;
+    onSceneSelected(m_temporalState, m_settings, id);
+    activateExposureLook(m_exposureContext, m_exposureResetPending, id, m_session.look());
+    m_sessionProposals.markStale(ProposalSource::File);
+    m_sessionProposals.markStale(ProposalSource::Bridge);
+    m_sessionAttribution.clear();
+    m_watchedPath = m_session.loadedScene()->path;
+    m_watchedStamp = currentDocumentStamp();
+    m_loadedStamp = m_watchedStamp;
+    m_documentWatch.reset(m_watchedStamp);
+    refreshDocumentDirty(true);
     return true;
 }
 

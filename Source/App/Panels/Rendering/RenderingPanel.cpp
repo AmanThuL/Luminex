@@ -5,6 +5,7 @@
 #include "App/Panels/Rendering/RenderingPanel.h"
 #include "App/Model/Rendering/Lighting/LightingHistory.h"
 #include "App/Model/Rendering/Settings/EditorRenderDefaults.h"
+#include "App/Model/Rendering/Settings/RenderSettingCommands.h"
 #include "App/Model/Rendering/Temporal/TemporalEditorState.h"
 #include "App/Model/Rendering/Visibility/VisibilityDiagnostics.h"
 #include "App/Model/Scene/SceneDefaults.h"
@@ -62,6 +63,7 @@ void drawPerformanceDetails(const InspectorPanelContext& context) {
 }
 //======================================================================================================================
 void drawRenderingPanel(bool& open, const InspectorPanelContext& context) {
+    const auto priorSettings = context.settings;
     ImGui::SetNextWindowSize(ImVec2(360.0f, 600.0f), ImGuiCond_FirstUseEver);
     if (ImGui::Begin(kRenderingPanelWindowName, &open)) {
         const auto& latestVisibility = context.visibilityDisplay
@@ -107,13 +109,36 @@ void drawRenderingPanel(bool& open, const InspectorPanelContext& context) {
                 if (*scope == EditorRenderGroup::Display)
                     tooltip += " Also restores the clear color.";
                 if (editor_style::iconButton("resetTopic", EditorIcon::Reset,
-                                             topicChanged(context, *scope), tooltip.c_str()))
+                                             topicChanged(context, *scope), tooltip.c_str())) {
                     resetTopic(context, *scope);
+                    if (context.settingAttribution) {
+                        if (*scope == EditorRenderGroup::Lighting) {
+                            context.settingAttribution->erase("setting/local-lights");
+                            context.settingAttribution->erase("setting/light-check");
+                            context.settingAttribution->erase("setting/local-light-rig");
+                        } else if (*scope == EditorRenderGroup::Reconstruction) {
+                            context.settingAttribution->erase("setting/temporal");
+                        } else if (*scope == EditorRenderGroup::Resolution) {
+                            context.settingAttribution->erase("setting/render-scale");
+                        }
+                    }
+                }
             }
             if (expanded)
                 drawRenderingTopic(context, topic);
             ImGui::PopID();
         }
+    }
+    if (context.settingAttribution) {
+        constexpr std::array<RenderSettingKey, 10> keys{
+            RenderSettingKey::Temporal,       RenderSettingKey::RenderScale,
+            RenderSettingKey::Visibility,     RenderSettingKey::Classify,
+            RenderSettingKey::ClassifyCheck,  RenderSettingKey::Occlusion,
+            RenderSettingKey::OcclusionCheck, RenderSettingKey::Submission,
+            RenderSettingKey::LocalLights,    RenderSettingKey::LightCheck};
+        for (const auto key : keys)
+            if (renderSettingValue(priorSettings, key) != renderSettingValue(context.settings, key))
+                context.settingAttribution->erase("setting/" + std::string(renderSettingName(key)));
     }
     ImGui::End();
 }

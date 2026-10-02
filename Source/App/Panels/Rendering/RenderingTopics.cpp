@@ -29,6 +29,16 @@ using editor_style::field;
 using editor_style::slider;
 
 //======================================================================================================================
+static void markSetting(const InspectorPanelContext& context, std::string_view name) {
+    if (!context.settingAttribution)
+        return;
+    const std::string key = "setting/" + std::string(name);
+    if (context.settingAttribution->has(key))
+        editor_style::setNextFieldProvenance(
+            sessionAppliedProvenance(context.settingAttribution->client(key)));
+}
+
+//======================================================================================================================
 static void drawTemporalReadings(const InspectorPanelContext& context) {
     const auto& renderer = context.renderer;
     const auto status = renderer.temporalStatus();
@@ -57,6 +67,7 @@ static void drawTemporalSection(const InspectorPanelContext& context, RenderingC
     if (category == RenderingCategory::Reconstruction) {
         if (editor_style::beginPropertyGrid("reconstructionFields")) {
             bool temporalEnabled = settings.temporalEnabled;
+            markSetting(context, "temporal");
             if (checkbox("Temporal inputs", "##temporal", &temporalEnabled)) {
                 auto retained = settings;
                 retained.temporalEnabled = true;
@@ -69,6 +80,7 @@ static void drawTemporalSection(const InspectorPanelContext& context, RenderingC
                           "Turning this off renders at full resolution; algorithm and scale "
                           "requests are retained. Debug views are in View > Debug View.");
             ImGui::BeginDisabled(!settings.temporalEnabled);
+            markSetting(context, "temporal");
             field("Algorithm");
             if (ImGui::BeginCombo("##reconstruction",
                                   std::string(presentation.requestedName).c_str())) {
@@ -163,6 +175,7 @@ static void drawTemporalSection(const InspectorPanelContext& context, RenderingC
         if (editor_style::beginPropertyGrid("resolutionFields")) {
             ImGui::BeginDisabled(!settings.temporalEnabled || settings.dynamicResolutionEnabled);
             float scale = settings.renderScale;
+            markSetting(context, "render-scale");
             if (slider("Render scale", "##scale", &scale, render::kMinRenderScale, 1.0f))
                 applyRenderSetting(settings, RenderSettingKey::RenderScale,
                                    renderScaleCommandValue(scale));
@@ -255,10 +268,12 @@ void drawRenderingTopic(const InspectorPanelContext& context, RenderingCategory 
     if (category == RenderingCategory::Visibility) {
         if (editor_style::beginPropertyGrid("visibilityControls")) {
             bool visibilityEnabled = settings.visibilityEnabled;
+            markSetting(context, "visibility");
             if (checkbox("Frustum culling", "##frustum", &visibilityEnabled))
                 applyRenderSetting(settings, RenderSettingKey::Visibility,
                                    visibilityEnabled ? "cull" : "off");
             editorTooltip("Conservative camera-frustum test. Shadow candidates stay unculled.");
+            markSetting(context, "classify");
             editor_style::field("Classifier");
             int classifier = static_cast<int>(settings.classifyMode);
             if (ImGui::Combo("##classifier", &classifier, "CPU\0GPU\0")) {
@@ -270,6 +285,7 @@ void drawRenderingTopic(const InspectorPanelContext& context, RenderingCategory 
                 "GPU results arrive after retirement. CPU remains the default reference.");
             if (settings.classifyMode == render::ClassifyMode::Gpu) {
                 bool classifyCheck = settings.classifyCheck;
+                markSetting(context, "classify-check");
                 if (checkbox("Verify against CPU", "##classifyCheck", &classifyCheck))
                     applyRenderSetting(settings, RenderSettingKey::ClassifyCheck,
                                        classifyCheck ? "on" : "off");
@@ -286,6 +302,7 @@ void drawRenderingTopic(const InspectorPanelContext& context, RenderingCategory 
                 settings.classifyMode == render::ClassifyMode::Gpu && settings.visibilityEnabled;
             ImGui::BeginDisabled(!occlusionAvailable);
             bool occlusionEnabled = settings.occlusionEnabled;
+            markSetting(context, "occlusion");
             if (checkbox("Occlusion", "##occlusion", &occlusionEnabled))
                 applyRenderSetting(settings, RenderSettingKey::Occlusion,
                                    occlusionEnabled ? "on" : "off");
@@ -300,6 +317,7 @@ void drawRenderingTopic(const InspectorPanelContext& context, RenderingCategory 
                 applyRenderSetting(settings, RenderSettingKey::OcclusionCheck, "off");
             if (settings.occlusionEnabled) {
                 bool occlusionCheck = settings.occlusionCheck;
+                markSetting(context, "occlusion-check");
                 if (checkbox("Independent ID check", "##occlusionCheck", &occlusionCheck))
                     applyRenderSetting(settings, RenderSettingKey::OcclusionCheck,
                                        occlusionCheck ? "on" : "off");
@@ -315,6 +333,7 @@ void drawRenderingTopic(const InspectorPanelContext& context, RenderingCategory 
     }
     if (category == RenderingCategory::Submission) {
         if (editor_style::beginPropertyGrid("submissionControls")) {
+            markSetting(context, "submission");
             editor_style::field("Submission");
             int mode = static_cast<int>(settings.submission);
             if (ImGui::Combo("##submission", &mode, "Direct\0Indirect\0Batched\0")) {

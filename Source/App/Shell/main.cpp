@@ -302,13 +302,18 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         // drawable retains the request; failed attempts are consumed rather than retried.
         bool capturingThisFrame = false;
         if (shell->actions().consumeCapture()) {
-            capturingThisFrame = rojoRHI::metal4::beginCapture(**device, capturePath);
+            const auto outputPath = shell->captureOutputPath(capturePath);
+            const bool targetAvailable = shell->sessionCaptureTargetAvailable();
+            if (targetAvailable)
+                capturingThisFrame = rojoRHI::metal4::beginCapture(**device, outputPath);
             auto& result = shell->actions().captureResult();
             std::error_code pathError;
-            result.path = std::filesystem::absolute(capturePath, pathError).string();
+            result.path = std::filesystem::absolute(outputPath, pathError).string();
             if (!capturingThisFrame) {
                 result.status = lmx::app::ActionStatus::Failed;
-                result.message = rojoRHI::metal4::captureFailureReason();
+                result.message = targetAvailable
+                                     ? rojoRHI::metal4::captureFailureReason()
+                                     : "Session capture output changed before the drawable frame.";
             } else {
                 result.message = "Capturing GPU work; waiting for completion.";
             }

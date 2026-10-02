@@ -8,9 +8,11 @@
 #include "App/Shell/EditorShell.h"
 
 #include <chrono>
+#include <fcntl.h>
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <unistd.h>
 
 namespace lmx::app {
 namespace {
@@ -42,17 +44,20 @@ std::string temporalName(const EditorRenderSettings& settings) {
 }
 } // namespace
 //======================================================================================================================
-void EditorShell::startMeasurement(rojoRHI::Device& device, const render::Renderer& renderer) {
-    if (m_measurement.active())
-        return;
+bool EditorShell::startMeasurement(rojoRHI::Device& device, const render::Renderer& renderer,
+                                   bool sessionOwned) {
+    if (m_measurement.active()) {
+        m_measurementFeedback = "A measurement is already running.";
+        return false;
+    }
     if (m_playback.active()) {
         m_measurementFeedback = "Stop scene playback before starting a measurement.";
-        return;
+        return false;
     }
     if (m_settings.dynamicResolutionEnabled) {
         m_measurementFeedback =
             "Turn off dynamic resolution before starting a fixed-plan measurement.";
-        return;
+        return false;
     }
     MeasurementPlan plan;
     plan.warmupFrames = m_measurementWarmup;
@@ -80,6 +85,7 @@ void EditorShell::startMeasurement(rojoRHI::Device& device, const render::Render
     plan.renderScale = m_settings.renderScale;
     plan.interactive = true;
     plan.unscored = true;
+    plan.cameraTrack = sessionOwned ? false : m_settings.followCameraTrack;
     plan.localLightMode = localLightModeName(m_settings.localLightMode);
     plan.localLightRig = m_session.localLightRigEnabled();
     plan.startingPopulation = measurementPopulation(m_session.scene());
@@ -93,23 +99,27 @@ void EditorShell::startMeasurement(rojoRHI::Device& device, const render::Render
     plan.lightDebugView = lightDebugViewName(m_settings.lightDebugView);
     if (!m_measurement.start(std::move(plan), collectMeasurementProvenance(device))) {
         m_measurementFeedback = m_measurement.failure();
-        return;
+        return false;
     }
     m_session.setMeasurementActive(true);
     endMouseLook();
-    m_playback.play(m_session, m_settings.followCameraTrack);
-    m_measurementOwnsPlayback = true;
-    m_session.camera() = engine::cameraFromScene(m_session.scene().initialCamera);
-    m_session.rewindAnimation();
-    requestCameraCut(m_temporalState);
-    m_exposureResetPending = true;
+    if (!sessionOwned) {
+        m_playback.play(m_session, m_settings.followCameraTrack);
+        m_measurementOwnsPlayback = true;
+        m_session.camera() = engine::cameraFromScene(m_session.scene().initialCamera);
+        m_session.rewindAnimation();
+        requestCameraCut(m_temporalState);
+        m_exposureResetPending = true;
+    }
     const auto stamp = std::chrono::duration_cast<std::chrono::milliseconds>(
                            std::chrono::system_clock::now().time_since_epoch())
                            .count();
-    m_measurementExportPath = (std::filesystem::temp_directory_path() /
-                               std::format("luminex-interactive-measurement-{}.json", stamp))
-                                  .string();
+    if (!sessionOwned)
+        m_measurementExportPath = (std::filesystem::temp_directory_path() /
+                                   std::format("luminex-interactive-measurement-{}.json", stamp))
+                                      .string();
     m_measurementFeedback.clear();
+    return true;
 }
 //======================================================================================================================
 void EditorShell::retireMeasurement(uint64_t frameId,
@@ -174,10 +184,28 @@ void EditorShell::exportMeasurement() {
         m_measurementFeedback = "Choose a new JSON path; existing files are preserved.";
         return;
     }
-    std::ofstream output(path);
-    output << m_measurement.json();
-    output.close();
-    m_measurementFeedback =
-        output ? "Exported " + path.string() : "Could not write " + path.string();
+    const auto contents = m_measurement.json();
+    if (m_sessionMeasurementApproval) {
+        m_measurementFeedback = writeSessionFile(path, contents)
+                                    ? "Exported " + path.string()
+                                    : "Could not write " + path.string();
+        return;
+    }
+    const int descriptor = ::open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600);
+    if (descriptor < 0) {
+        m_measurementFeedback = "Could not write " + path.string();
+        return;
+    }
+    size_t offset = 0;
+    while (offset < contents.size()) {
+        const auto count = ::write(descriptor, contents.data() + offset, contents.size() - offset);
+        if (count <= 0)
+            break;
+        offset += static_cast<size_t>(count);
+    }
+    const bool closed = ::close(descriptor) == 0;
+    m_measurementFeedback = offset == contents.size() && closed
+                                ? "Exported " + path.string()
+                                : "Could not write " + path.string();
 }
 } // namespace lmx::app

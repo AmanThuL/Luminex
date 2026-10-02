@@ -182,6 +182,9 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
 
 //======================================================================================================================
 EditorShell::~EditorShell() {
+    stopSessionWork();
+    m_sessionListener.reset();
+    m_sessionMailbox.reset();
 #ifdef __APPLE__
     m_nativeMenu.reset();
 #endif
@@ -312,6 +315,8 @@ void EditorShell::prepareUIFrame() {
 //======================================================================================================================
 void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, float deltaSeconds,
                           const FrameRecordRing& frameRecords) {
+    m_sessionHzbLevels = viewportHzbLevels(renderer);
+    m_sessionEffectiveReconstruction = effectiveReconstruction(renderer, device);
     refreshDocumentDirty();
     const RetainedFrame* newestTimed = frameRecords.newestTimedFrame();
     observeRetiredTemporal(m_temporalState, newestTimed);
@@ -424,6 +429,18 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
 //======================================================================================================================
 void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& renderer,
                               const FrameRecordRing& frameRecords) {
+    const auto priorRigOverride = m_session.localLightRigOverride();
+    if (m_pendingSessionMeasurementStart) {
+        const auto approval = *m_pendingSessionMeasurementStart;
+        m_pendingSessionMeasurementStart.reset();
+        if (m_documentWorkflow.step() != WorkflowStep::Idle)
+            finishSessionStep(approval, false, SessionError::Unavailable,
+                              "Finish the current document operation first.");
+        else if (startMeasurement(device, renderer, true))
+            m_sessionMeasurementApproval = approval;
+        else
+            finishSessionStep(approval, false, SessionError::Unavailable, m_measurementFeedback);
+    }
     m_visibilityDisplay.publishReadings(ImGui::GetTime());
     m_lightingDisplay.publishReadings(ImGui::GetTime());
     ImGui::BeginDisabled(m_measurement.active());
@@ -530,6 +547,7 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
                               .viewportVisible = viewportUsable,
                               .documentDirty = m_documentDirty,
                               .attribution = &m_sessionAttribution,
+                              .settingAttribution = &m_settingAttribution,
                               .selectionHiddenByFilter = selectionHidden,
                               .visibilityDisplay = &m_visibilityDisplay,
                               .sceneFilter = &m_sceneFilter,
@@ -552,6 +570,8 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
     }
 
     ImGui::EndDisabled();
+    if (priorRigOverride != m_session.localLightRigOverride())
+        m_settingAttribution.erase("setting/local-light-rig");
     if (m_workspace.visibility.isVisible(EditorPanel::Performance)) {
         bool open = true;
         m_performanceModel.setContextEpoch(metricsContextEpoch());
@@ -610,10 +630,12 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
         SessionPanelContext context{
             .proposals = m_sessionProposals,
             .log = m_sessionLog,
+            .approvals = m_sessionApprovals,
             .expandedId = m_sessionExpandedProposal,
             .evidenceDirectory = m_session.loadedScene()
                                      ? sidecarPath(m_session.loadedScene()->path).parent_path()
                                      : std::filesystem::path{},
+            .outputDirectory = m_sessionOutputName,
             .pathFeedback = m_sessionPathFeedback};
         context.listening = m_sessionListener != nullptr;
         context.socketPath =
@@ -734,8 +756,10 @@ void EditorShell::controllerDeclared(uint64_t frame) {
 //======================================================================================================================
 void EditorShell::advanceFrameAnimation() {
     if (m_measurement.active()) {
-        if (const auto frame = m_measurement.nextFrame())
-            m_session.prepareSequenceFrame(frame->sequenceFrame);
+        if (!m_sessionMeasurementApproval && !m_pendingSessionMeasurementStart) {
+            if (const auto frame = m_measurement.nextFrame())
+                m_session.prepareSequenceFrame(frame->sequenceFrame);
+        }
         return;
     }
     m_session.advanceEditorFrame(m_playback.playing(),

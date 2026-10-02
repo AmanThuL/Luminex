@@ -53,6 +53,8 @@ public:
     bool has(std::string_view key) const;
     /// Returns the client's owned name for a key, or empty when absent.
     std::string_view client(std::string_view key) const;
+    /// Removes one mark after the operator edits or resets that field.
+    void erase(std::string_view key);
     /// Removes all marks after Save, Revert, or scene replacement.
     void clear();
 

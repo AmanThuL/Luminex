@@ -137,29 +137,31 @@ void menuTooltip(const MenuItem& item) {
 //======================================================================================================================
 MenuContext EditorShell::menuContext(const render::Renderer& renderer,
                                      const rojoRHI::Device& device) {
-    MenuContext context{.documentIdle = m_documentWorkflow.step() == WorkflowStep::Idle,
-                        .stopped = m_playback.state() == PlaybackState::Stopped,
-                        .measuring = m_measurement.active(),
-                        .proposalPending = m_sessionProposals.pendingFile() != nullptr,
-                        .canRetryScene = m_sceneLoading.failedScene().has_value(),
-                        .canFrame =
-                            selectedObjectBounds(m_session.scene(), m_selection).has_value(),
-                        .objectSelected = m_selection.subject == EditorSubject::Object,
-                        .outlineReady = m_selectionOutline->target().width() == renderer.width() &&
-                                        m_selectionOutline->target().height() == renderer.height(),
-                        .showOutline = m_showSelectionOutline,
-                        .debug = activeDebugView(m_settings),
-                        .debugEntries = debugViewEntries(m_settings, viewportHzbLevels(renderer),
-                                                         effectiveReconstruction(renderer, device)),
-                        .appearance = m_workspace.appearance.effective(),
-                        .density = m_workspace.density,
-                        .uiScalePercent = m_workspace.uiScalePercent,
-                        .visibility = m_workspace.visibility,
-                        .styleGallery = m_styleGallery.open,
-                        .captureAvailable = m_actions.captureAvailable(),
-                        .capturePending = m_actions.captureResult().status == ActionStatus::Pending,
-                        .captureReason = m_actions.captureResult().message,
-                        .labControls = std::string(labDescription(m_activeSceneId))};
+    MenuContext context{
+        .documentIdle = m_documentWorkflow.step() == WorkflowStep::Idle,
+        .stopped = m_playback.state() == PlaybackState::Stopped,
+        .measuring = m_measurement.active(),
+        .proposalPending = m_sessionProposals.pendingFile() != nullptr,
+        .canRetryScene = m_sceneLoading.failedScene().has_value(),
+        .canFrame = selectedObjectBounds(m_session.scene(), m_selection).has_value(),
+        .objectSelected = m_selection.subject == EditorSubject::Object,
+        .outlineReady = m_selectionOutline->target().width() == renderer.width() &&
+                        m_selectionOutline->target().height() == renderer.height(),
+        .showOutline = m_showSelectionOutline,
+        .debug = activeDebugView(m_settings),
+        .debugEntries = debugViewEntries(m_settings, viewportHzbLevels(renderer),
+                                         effectiveReconstruction(renderer, device)),
+        .appearance = m_workspace.appearance.effective(),
+        .density = m_workspace.density,
+        .uiScalePercent = m_workspace.uiScalePercent,
+        .visibility = m_workspace.visibility,
+        .styleGallery = m_styleGallery.open,
+        .captureAvailable = m_actions.captureAvailable(),
+        .capturePending = m_actions.sessionCaptureOwned() ||
+                          m_actions.captureResult().status == ActionStatus::Pending,
+        .captureReason = m_actions.sessionCaptureOwned() ? "Session capture is finishing."
+                                                         : m_actions.captureResult().message,
+        .labControls = std::string(labDescription(m_activeSceneId))};
     for (const auto& entry : m_library.entries())
         context.scenes.push_back(
             {entry.displayName, entry.available, entry.id == m_activeSceneId, entry.hint});

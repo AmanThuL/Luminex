@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "App/Model/Session/SessionApprovals.h"
 #include "App/Model/Session/SessionLog.h"
 #include "App/Model/Session/SessionProposal.h"
 
@@ -20,8 +21,10 @@ inline constexpr const char* kSessionWindowName = "Session"; ///< Dockable Sessi
 struct SessionPanelContext {
     ProposalQueue& proposals;                 ///< Retained proposals, read only during drawing.
     const SessionLog& log;                    ///< Retained action history.
+    const SessionApprovals& approvals;        ///< Pending operator-reviewed Apply commands.
     uint64_t& expandedId;                     ///< One expanded proposal, retained by the shell.
     std::filesystem::path evidenceDirectory;  ///< Base for relative sidecar evidence paths.
+    std::filesystem::path outputDirectory;    ///< Planned run-local output directory.
     std::string& pathFeedback;                ///< Last Copy or Reveal result.
     bool listening = false;                   ///< Listener is open for this run.
     std::filesystem::path socketPath;         ///< Run-local socket path, if listening.

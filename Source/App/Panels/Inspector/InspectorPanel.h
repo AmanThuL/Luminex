@@ -53,7 +53,8 @@ struct InspectorPanelContext {
     uint32_t viewportHeight = 0;  ///< Measured image backing height in pixels.
     bool viewportVisible = false; ///< Whether the image was measured this frame.
     bool documentDirty = false;   ///< Canonical active document differs from its loaded/saved pair.
-    const SessionAttribution* attribution = nullptr; ///< Applied field marks until Save or Revert.
+    SessionAttribution* attribution = nullptr;        ///< Applied field marks until Save or Revert.
+    SessionAttribution* settingAttribution = nullptr; ///< Rendering marks until an operator edit.
     bool selectionHiddenByFilter = false; ///< Selected subject remains valid but search hides it.
     const VisibilityDisplay* visibilityDisplay = nullptr; ///< Last rendered object identity map.
     std::string* sceneFilter = nullptr; ///< Borrowed Scene search text for the Clear filter action.

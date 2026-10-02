@@ -21,11 +21,14 @@ bool EditorActions::consumeQuit() {
 
 //======================================================================================================================
 void EditorActions::requestCapture() {
+    if (m_sessionCaptureOwned)
+        return;
     m_captureFeedbackVisible = true;
     if (!m_captureAvailable || m_captureResult.status == ActionStatus::Pending) {
         return;
     }
     m_captureResult = {ActionStatus::Pending, "Waiting for the next drawable frame.", {}};
+    m_captureResult.actor = Actor::Operator;
     m_capturePending = true;
 }
 

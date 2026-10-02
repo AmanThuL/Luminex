@@ -1,0 +1,127 @@
+#include "App/Model/Session/SessionApply.h"
+
+#include <catch2/catch_test_macros.hpp>
+
+#include <array>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+
+using namespace lmx::app;
+
+namespace {
+struct ScopedDirectory {
+    std::filesystem::path path;
+    //==================================================================================================================
+    ScopedDirectory() {
+        const auto tick = std::chrono::steady_clock::now().time_since_epoch().count();
+        path =
+            std::filesystem::temp_directory_path() / ("lmx-apply-capture-" + std::to_string(tick));
+        if (!std::filesystem::create_directory(path))
+            path.clear();
+    }
+    //==================================================================================================================
+    ~ScopedDirectory() {
+        if (!path.empty())
+            std::filesystem::remove_all(path);
+    }
+};
+
+//======================================================================================================================
+lmx::asset::JsonNode args(std::string text) {
+    return lmx::asset::JsonTokens::parse(std::move(text))->root();
+}
+} // namespace
+
+//======================================================================================================================
+TEST_CASE("apply requests freeze validated steps before approval", "[app][session-apply]") {
+    const auto single =
+        parseApplyRequest(SessionCommand::SettingsSet, args(R"({"temporal":"off"})"));
+    REQUIRE(single);
+    REQUIRE(single->steps.size() == 1);
+    CHECK(single->steps[0].command == SessionCommand::SettingsSet);
+    CHECK(single->steps[0].arguments == R"({"temporal":"off"})");
+
+    const auto plan = parseApplyRequest(
+        SessionCommand::PlanSubmit,
+        args(
+            R"({"summary":"Evidence","steps":[{"command":"settings.set","args":{"temporal":"off"}},{"command":"graph.dump","args":{"name":"frame.txt"}}]})"));
+    REQUIRE(plan);
+    REQUIRE(plan->steps.size() == 2);
+    CHECK(plan->steps[1].command == SessionCommand::GraphDump);
+    CHECK_FALSE(
+        parseApplyRequest(SessionCommand::PlanSubmit, args(R"({"summary":"x","steps":[]})")));
+    CHECK_FALSE(parseApplyRequest(
+        SessionCommand::PlanSubmit,
+        args(R"({"summary":"x","steps":[{"command":"plan.submit","args":{}}]})")));
+}
+
+//======================================================================================================================
+TEST_CASE("apply arguments reject unsafe outputs and malformed work", "[app][session-apply]") {
+    CHECK_FALSE(parseApplyRequest(SessionCommand::GraphDump, args(R"({"name":"../escape"})")));
+    CHECK_FALSE(parseApplyRequest(SessionCommand::MeasureRun,
+                                  args(R"({"name":"m.json","warmup":0,"frames":0})")));
+    CHECK_FALSE(parseApplyRequest(SessionCommand::SceneOpen, args(R"({"scene":""})")));
+    CHECK_FALSE(parseApplyRequest(SessionCommand::DebugViewSet,
+                                  args(R"({"topic":"temporal","value":"bad"})")));
+    CHECK_FALSE(parseApplyRequest(SessionCommand::SettingsSet, args(R"({"temporal":"bogus"})")));
+    CHECK_FALSE(parseApplyRequest(SessionCommand::SettingsSet, args(R"({"render-scale":"2"})")));
+    CHECK_FALSE(parseApplyRequest(
+        SessionCommand::PlanSubmit,
+        args(
+            R"({"summary":"bad","steps":[{"command":"settings.set","args":{"temporal":"off"}},{"command":"settings.set","args":{"render-scale":"2"}}]})")));
+    CHECK_FALSE(parseApplyRequest(SessionCommand::MeasureRun,
+                                  args(R"({"name":"m","warmup":4294967295,"frames":1})")));
+    CHECK(parseApplyRequest(SessionCommand::CaptureScreenshot,
+                            args(R"({"name":"still","frames":1})")));
+}
+
+//======================================================================================================================
+TEST_CASE("session output directory name is deterministic UTC", "[app][session-apply]") {
+    CHECK(sessionDirectoryName(0, 42) == "session/19700101-000000-42");
+    CHECK(sessionDirectoryName(1'760'000'000, 99).starts_with("session/20251009-"));
+    CHECK(captureGpuOutputName(12, 0) == "capture-12-1.gputrace");
+    CHECK(captureGpuOutputName(12, 1) == "capture-12-2.gputrace");
+}
+
+//======================================================================================================================
+TEST_CASE("GPU capture refuses existing trace and schema companion paths", "[app][session-apply]") {
+    ScopedDirectory directory;
+    REQUIRE_FALSE(directory.path.empty());
+    const auto trace = directory.path / "capture.gputrace";
+    const std::array paths{trace, std::filesystem::path(trace.string() + ".schema.json"),
+                           std::filesystem::path(trace.string() + ".schema.json.tmp")};
+    REQUIRE(sessionCapturePathsAvailable(trace));
+    for (const auto& path : paths) {
+        {
+            std::ofstream file(path);
+            file << "owner";
+        }
+        CHECK_FALSE(sessionCapturePathsAvailable(trace));
+        std::ifstream file(path);
+        std::string contents;
+        file >> contents;
+        CHECK(contents == "owner");
+        file.close();
+        std::filesystem::remove(path);
+        REQUIRE(sessionCapturePathsAvailable(trace));
+
+        std::filesystem::create_symlink(directory.path / "missing", path);
+        CHECK_FALSE(sessionCapturePathsAvailable(trace));
+        CHECK(std::filesystem::is_symlink(path));
+        std::filesystem::remove(path);
+        REQUIRE(sessionCapturePathsAvailable(trace));
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("scene open preserves only stable semantic selection", "[app][session-apply]") {
+    CHECK(sessionSceneOpenAllowed(EditorSubject::None, false, true, true, false));
+    CHECK(sessionSceneOpenAllowed(EditorSubject::Camera, false, true, true, false));
+    CHECK(sessionSceneOpenAllowed(EditorSubject::Environment, false, true, true, false));
+    CHECK_FALSE(sessionSceneOpenAllowed(EditorSubject::Object, false, true, true, false));
+    CHECK_FALSE(sessionSceneOpenAllowed(EditorSubject::Camera, true, true, true, false));
+    CHECK_FALSE(sessionSceneOpenAllowed(EditorSubject::Camera, false, false, true, false));
+    CHECK_FALSE(sessionSceneOpenAllowed(EditorSubject::Camera, false, true, false, false));
+    CHECK_FALSE(sessionSceneOpenAllowed(EditorSubject::Camera, false, true, true, true));
+}

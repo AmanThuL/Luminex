@@ -123,6 +123,23 @@ TEST_CASE("cancel drops waiting approvals while an approved plan finishes",
 }
 
 //======================================================================================================================
+TEST_CASE("a late completion cannot advance a new approval after cancellation",
+          "[app][session-approvals]") {
+    SessionApprovals approvals;
+    const auto old = approvals.submit(7, "first", "old", {{SessionCommand::MeasureRun, "{}"}});
+    REQUIRE(old);
+    approvals.approve(*old);
+    REQUIRE(approvals.next());
+    approvals.cancelAll();
+    const auto fresh = approvals.submit(8, "second", "new", {{SessionCommand::GraphDump, "{}"}});
+    REQUIRE(fresh);
+    CHECK_FALSE(approvals.finishStep(*old, true));
+    REQUIRE(approvals.active());
+    CHECK(approvals.active()->id == *fresh);
+    CHECK(approvals.active()->state == SessionState::Awaiting);
+}
+
+//======================================================================================================================
 TEST_CASE("stale approval identities and invalid commands cannot advance work",
           "[app][session-approvals]") {
     SessionApprovals approvals;

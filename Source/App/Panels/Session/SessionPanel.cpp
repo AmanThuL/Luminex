@@ -5,6 +5,8 @@
 
 #include "App/Panels/Session/SessionPanel.h"
 
+#include "App/Model/Session/SessionApply.h"
+#include "App/Model/Session/SessionCommands.h"
 #include "App/Panels/Shared/EditorStyle.h"
 
 #include <SDL3/SDL.h>
@@ -89,6 +91,67 @@ SessionPanelResult drawSessionPanel(bool& open, SessionPanelContext& context) {
     if (ImGui::Combo("Ceiling", &tier, tierNames, 3))
         result = {SessionPanelAction::SetTier, 0, static_cast<SessionTier>(tier)};
     ImGui::EndDisabled();
+    ImGui::Separator();
+
+    ImGui::TextUnformatted("Approvals");
+    if (const auto* approval = context.approvals.active();
+        approval && approval->state == SessionState::Awaiting) {
+        SessionProposal card;
+        card.id = approval->id;
+        card.source = ProposalSource::Bridge;
+        card.actor = Actor::Agent;
+        card.client = approval->client;
+        card.summary = approval->summary;
+        card.state = SessionState::Awaiting;
+        editor_style::CardLabels labels;
+        labels.accept = "Approve";
+        labels.reject = "Deny";
+        labels.show = false;
+        ImGui::PushID("approval");
+        switch (editor_style::proposalCard(card, labels)) {
+        case editor_style::CardAction::Accept:
+            result = {SessionPanelAction::Approve, approval->id};
+            break;
+        case editor_style::CardAction::Reject:
+            result = {SessionPanelAction::Deny, approval->id};
+            break;
+        default:
+            break;
+        }
+        for (size_t index = 0; index < approval->steps.size(); ++index) {
+            const auto& step = approval->steps[index];
+            std::string_view name = "unknown";
+            for (const auto& spec : sessionCommands())
+                if (spec.command == step.command)
+                    name = spec.name;
+            editor_style::proposedValue(std::format("{}. {}", index + 1, name), "", step.arguments);
+            if (step.command == SessionCommand::MeasureRun ||
+                step.command == SessionCommand::GraphDump ||
+                step.command == SessionCommand::CaptureGpu ||
+                step.command == SessionCommand::CaptureScreenshot ||
+                step.command == SessionCommand::CaptureSequence) {
+                std::string output = step.command == SessionCommand::CaptureGpu
+                                         ? captureGpuOutputName(approval->id, index)
+                                         : "";
+                if (output.empty()) {
+                    const auto parsed = asset::JsonTokens::parse(step.arguments);
+                    if (parsed) {
+                        const auto nameNode = parsed->root().find("name");
+                        if (nameNode) {
+                            const auto nameValue = nameNode->asString();
+                            if (nameValue)
+                                output = *nameValue;
+                        }
+                    }
+                }
+                ImGui::TextWrapped("Output: %s",
+                                   (context.outputDirectory / output).string().c_str());
+            }
+        }
+        ImGui::PopID();
+    } else {
+        ImGui::TextUnformatted("No approval awaiting review");
+    }
     ImGui::Separator();
 
     ImGui::TextUnformatted("Proposals");

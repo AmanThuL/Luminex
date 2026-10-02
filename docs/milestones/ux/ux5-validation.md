@@ -27,8 +27,9 @@ Evidence is retained in `../Luminex-evidence/ux5/`; the executor plan stays in p
 | 13 | `003e342` | Final code gates PASS, 10/10; focused 69 assertions | Retried stronger review completed; no actionable findings |
 | 14 | `9c2a4c6` | Final code gates PASS, 10/10; focused 713 assertions | No final source findings; reviewed hashes retained |
 | 15 | `3bed162` | Final code gates PASS, 10/10; focused 373 assertions | Both P2 findings corrected; no final source findings |
-| 16 | Pending commit | Final code gates PASS, 10/10; final guards pass | Three P2 findings corrected; final 25 reviewed hashes match |
-| 17–22 | Not started | Not run | Not run |
+| 16 | `b99446b` | Final code gates PASS, 10/10; final guards pass | Three P2 findings corrected; final 25 reviewed hashes match |
+| 17 | Pending commit | Final code gates PASS, 10/10; focused 56 assertions | Seven findings and root companion collision corrected; final hashes match |
+| 18–22 | Not started | Not run | Not run |
 
 The gate JSON files retain every command, exit and log. Test-first red results and failed
 correction attempts are retained in each task's evidence ledger; a deliberate red test is
@@ -46,6 +47,7 @@ CPU IBL generation; full Release gates passed. That Debug run remains incomplete
 | 6 | Probe include/link/viewport failures and an App null-pointer compile failure; final layout run interrupted with exit 130 | Corrected probe and all code gates pass; native failure remains below |
 | 7 | Initial project policy exited 1; two docking implementations failed review/tests | Third docking implementation passed review and gates |
 | 8 | Buffer URI expected/optional mismatch; unqualified test namespace each failed to compile | Each corrected on attempt 2; final gates pass |
+| 17 | Initial App include/string conversion error; three layout gate failures; public-API comments gate failure | Corrected; final code gates PASS, 10/10 |
 | 16 | Span fixture compile error; 19 initially-dirty fixture assertions; exact input cone-angle assertion | Fixture baseline corrected; exact stored-value readback used without tolerance; final gates PASS, 10/10 |
 | 15 | Fixture accessor/compiler errors; tier log omitted client/resulting ceiling; hidden Console query stayed stale | Red-to-green corrections; final gates PASS, 10/10 |
 | 14 | SIGPIPE; comment/layout failures; bounded queues, close retention, closure saturation, weak EOF assertion and drain race | All corrected; final gates PASS, 10/10 |
@@ -203,4 +205,20 @@ Exposure/bloom values are partial objects using document key names; review shows
 objects. Color and cone inputs follow Inspector sRGB/degrees, camera yaw/pitch use radians.
 Generated and animation-owned unsavable edits are refused. Empty change sets are refused and
 only changed keys are attributed. Stronger review required the existing exposure-feedback and
-temporal-reset side effects plus normalized yaw previews; these corrections are being gated.
+temporal-reset side effects plus normalized yaw previews; final gates pass and all 25 reviewed
+Source/Tests hashes match. Foreign light identities, animated object transforms and inactive
+camera subjects are refused without mutation. Native provenance gestures remain unverified.
+
+Task 17 uses shared document replacement directly for session scene opens instead of the
+planned DocumentWorkflow Open call, whose ordinary path resets selection and view. It refuses
+dirty, playing or busy documents and object/light/node selections; None, Camera and Environment
+retain semantic selection and the full editor camera. Session measurement samples the stopped
+current view, with cameraTrack false, instead of the operator measurement path that starts
+playback and rewinds. These adjustments preserve the Global view/playback constraint.
+Rendering provenance is separate from scene provenance so Save/Revert do not clear it.
+
+Task 17 review corrected cancellation ownership, static value/count validation, repeated GPU
+output names, Stop between plan steps, delayed directory-symlink handling, document/Quit guards
+and capture-result ownership. A root audit also found GPU schema/temp collisions; the added
+regression checks all three existing capture outputs without changing RojoRHI or its format.
+These are source/test corrections; adversarial native gestures remain unverified.

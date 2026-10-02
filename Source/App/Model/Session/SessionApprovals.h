@@ -58,9 +58,14 @@ public:
     /// Completes the in-flight step. Failure stops the plan with SessionError::Failed; success
     /// advances to the next step and marks the plan Applied after its last step.
     void finishStep(bool ok);
+    /// Completes only the in-flight step of the named approval. A late completion after
+    /// cancellation or replacement is ignored and returns false.
+    bool finishStep(uint64_t id, bool ok);
     /// Cancels every Awaiting request with SessionError::Cancelled. An approved plan continues,
     /// including its in-flight step and remaining approved steps.
     void cancelPending();
+    /// Cancels awaiting and approved work when Listen is turned off or the shell shuts down.
+    void cancelAll();
     /// Returns the oldest Awaiting or Working request, or null when all requests are terminal.
     const PendingApproval* active() const;
     /// Returns all retained requests in submission order, including terminal results. The span is
