@@ -8,7 +8,7 @@
 
 ## Global constraints
 
-- Parent `main` at `272369a`, built and frozen (App and `Shaders` recorded by SHA-256) in the sibling worktree `../Luminex-ux6-parent`; branch `feat/ux6-scene-authoring`, started from `docs/ux6-design`, in the sibling worktree `../Luminex-ux6` (`git submodule update --init`; `ThirdParty/*` subdirectories and `Assets/Fetched` copied from the main checkout). One pull request, squash-merged after owner acceptance.
+- Parent `main` at `80fa716`, built and frozen (App and `Shaders` recorded by SHA-256) in the sibling worktree `../Luminex-ux6-parent`; branch `feat/ux6-scene-authoring`, started from `docs/ux6-design`, in the sibling worktree `../Luminex-ux6` (`git submodule update --init`; `ThirdParty/*` subdirectories and `Assets/Fetched` copied from the main checkout). One pull request, squash-merged after owner acceptance.
 - Every xmake command takes `-P .`. Every commit builds and passes `xmake test -P . Tests/unit`, `xmake format -P . --check` and the root checkers run from the worktree root (`AGENTS.md`, nested-worktree gotcha), plus `python3 -m unittest discover -s Tools/tests` when a tool changes. Regenerate `compile_commands.json` before the layout and comment checkers.
 - Subjects `<scope>: <outcome> (UX6)`, at most 72 characters, scopes from `docs/conventions/commits.md`; no AI co-author, session link or footer. Run `python3 Tools/check_project_policy.py --commits origin/main..HEAD` before pushing.
 - Nothing under `RojoRHI/`; no new xrepo dependency; no pass, shader, instance-row, `MotionClass`, workspace-schema, capture-manifest or measurement-schema change. Colors only through `ThemeRole`. US English. Pages ≤ 300 lines.
@@ -30,8 +30,8 @@
 Waves: W1 Tasks 1–12 (UX6.1), W2 13–16 (UX6.2), W3 17–22 (UX6.3). Tasks 2 and 11 may run beside their neighbors; Task 17 may start any time after Task 1; all others are serial. Design-sensitive tasks: 3, 4, 6, 8, 14, 18, 20. Stop after three failed attempts on one issue and report. Checkpoints at Tasks 12, 16 and 22 run the real App; record every gesture not exercised as unverified.
 
 ### Task 1: Start execution (main thread)
-- [ ] Confirm `editor/app-name-transform-rows` is merged, or record that UX6 rebases over it (it changes `editor_style::vector3` and `drawObjectSection`). Create both worktrees, build and freeze the parent, record its App and shader hashes.
-- [ ] Set the record `Accepted`, this plan `In progress`, roadmap row 17 and `AGENTS.md` to "in progress". With the owner's approval, reword completion-gate task 6 in `docs/roadmap/editor-experience.md` from "identify MaterialLab axes" to "identify a selected object's axes with the gizmo"; without it, stop. Commit `docs: start UX6 execution (UX6)`.
+- [ ] The parent already holds the one-row vector fields (`editor_style::vector3`, `drawObjectSection`) that Tasks 15 and 20 build on. Create both worktrees, build and freeze the parent, record its App and shader hashes.
+- [ ] Set the record `Accepted`, this plan `In progress`, roadmap row 17 and `AGENTS.md` to "in progress". Reword completion-gate task 6 in `docs/roadmap/editor-experience.md` from "identify MaterialLab axes" to "identify a selected object's axes with the gizmo" (owner-approved 2026-10-03). Commit `docs: start UX6 execution (UX6)`.
 
 ### Task 2: Parity tool reads two buffers
 **Files:** `Tools/Screenshots/parity.py`; create `Tools/tests/test_parity.py` (beside the existing `test_parity_rounds.py`); `Tools/Screenshots/reference.json` (hashes only at Task 12).
