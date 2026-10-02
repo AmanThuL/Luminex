@@ -34,7 +34,8 @@ struct PendingApproval {
     std::vector<ApprovalStep> steps;             ///< Copied steps; never extended after submission.
     size_t cursor = 0;                           ///< Next step to dispatch, or step that failed.
     SessionState state = SessionState::Awaiting; ///< Awaiting, Working, Applied or Error.
-    std::optional<SessionError> terminalError;   ///< Distinguishes Denied, Failed and Cancelled.
+    bool terminalReported = false; ///< Whether the shell has consumed the terminal result.
+    std::optional<SessionError> terminalError; ///< Distinguishes Denied, Failed and Cancelled.
 };
 
 /// Main-thread approval queue. Requests are reviewed and run in submission order. Borrowed
@@ -66,6 +67,9 @@ public:
     void cancelPending();
     /// Cancels awaiting and approved work when Listen is turned off or the shell shuts down.
     void cancelAll();
+    /// Returns owned copies of newly terminal results once; subsequent calls omit them. The shell
+    /// uses this single dispatch point for logging and responding, including cancelled connections.
+    std::vector<PendingApproval> takeTerminalResults();
     /// Returns the oldest Awaiting or Working request, or null when all requests are terminal.
     const PendingApproval* active() const;
     /// Returns all retained requests in submission order, including terminal results. The span is

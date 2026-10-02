@@ -30,8 +30,9 @@ Evidence is retained in `../Luminex-evidence/ux5/`; the executor plan stays in p
 | 16 | `b99446b` | Final code gates PASS, 10/10; final guards pass | Three P2 findings corrected; final 25 reviewed hashes match |
 | 17 | `3ded3aa` | Final code gates PASS, 10/10; focused 56 assertions | Seven findings and root companion collision corrected; final hashes match |
 | 18 | `1b99fd3` | Final code gates PASS, 11/11; final App child/direct PNG exact | Status P2 corrected; eight reviewed hashes match |
-| 19 | This task commit | Final code gates PASS, 11/11; seven required native gestures PASS | Five findings corrected; final review PASS and three Tools hashes match |
-| 20–22 | Not started | Not run | Not run |
+| 19 | `319c309` | Final code gates PASS, 11/11; seven required native gestures PASS | Five findings corrected; final review PASS and three Tools hashes match |
+| 20 | This task commit | Final code gates PASS, 10/10; focused 510 assertions | Two evidence findings corrected; final 12 hashes match |
+| 21–22 | Not started | Not run | Not run |
 
 The gate JSON files retain every command, exit and log. Test-first red results and failed
 correction attempts are retained in each task's evidence ledger; a deliberate red test is
@@ -59,6 +60,7 @@ CPU IBL generation; full Release gates passed. That Debug run remains incomplete
 | 11 | Exact usage-text assertion failed after adding the session flag | Expected usage updated for the new flag; final gates PASS, 10/10 |
 | 10 | Initial layout check exited 1 on two missing test function separators; review found typed-scale rounding | Both corrected; final gates PASS, 10/10; original rejection failures retained below |
 | 9 | Corrected-candidate project policy exited 1 on this draft's Status field | Status corrected; final full gates PASS, 11/11 |
+| 20 | Warning enum typo; tooltip policy failure; production-probe missing spdlog include; incomplete trace/failed-spawn hashes | Corrected test-first; final full gates PASS, 10/10 and fresh stronger review PASS |
 
 Per-task evidence retains exact errors and test-first red results separately. Task 6's earlier
 scroll-access stop and missing capture coverage were superseded by the retained final native
@@ -127,15 +129,10 @@ Task 9 also corrects Task 8 encoded-buffer observation and malformed-JSON shape 
 using a public Engine helper backed by its private URI decoder. This is an integration fix;
 no rendering pass, shader, RojoRHI, capture format, manifest or dependency change is authorized.
 
-Task 9 resumed code gates pass (11/11), including the Inspector hash pin. Its required
-real-App checkpoint passes as described above. Task 9 is committed;
-Task 10 code gates and final source review now pass under the recorded exception.
-Tasks 20–22, GPU validation, whole-branch review, final image matrix, evidence audit, integration
-tag, push and pull request remain incomplete. The milestone record remains Accepted.
-
-Task 19 completed all seven required native gestures as recorded below. Task 22 native
-checks, GPU suite, image matrix and evidence audit were not run. No integration tag, push
-or pull request was created. Both worktrees and all evidence are retained.
+Tasks 1–20 are implemented with passing final code gates and stronger reviews. Required native
+checkpoints 9 and 19 pass. Tasks 21–22, final GPU/image/evidence gates, whole-branch review,
+tag, push and pull request remain incomplete. The record remains Accepted; no owner acceptance
+is implied. Both worktrees and all evidence are retained.
 
 ## Task 10 binding conflict and authorized exception
 
@@ -148,12 +145,9 @@ pair. Fresh implementer and stronger reviewer independently confirmed no shared 
 can both succeed with that cascade and reject unchanged. Returning an error after mutation
 is not a valid rejection.
 
-The test-first build exited 255 on the absent new header (`task10/red-build.log`); this is
-expected red evidence, not a failed implementation attempt. Three measured CLI probes each
-exit 1 with the existing conflict reason (`task10/binding-conflict-cli.json`). No production
-Task 10 code changed, no tests were disabled, and no final Task 10 gates were run. The owner
-was asked to choose either a documented rejection-gate exception retaining panel cascades
-or strict rejection with an authorized panel behavior change. Worktrees and evidence remain.
+At the initial stop, the absent-header red build exited 255 (`task10/red-build.log`) and three
+CLI probes exited 1 with existing conflict reasons (`task10/binding-conflict-cli.json`). No
+production implementation or final gates had run; the owner was asked to resolve the conflict.
 
 On 2026-10-02 the owner authorized the recommendation to preserve shared panel cascades and
 document the literal CLI-rejection exception, then continue all remaining work. The original
@@ -196,9 +190,8 @@ length errors are returned by `SessionListener::start`; the path helper itself r
 Task 15 adds an envelope decoder preserving unknown command names for an `invalid` response,
 while the earlier strict known-command decoder remains available. Status/readings encoders and
 a pure tier-action builder support tests. Its real-App read-only check covered ten queries,
-hello-first, unknown-command and tier errors, reconnect at ReadOnly and socket removal; it did
-not query Graph or demonstrate a raised ceiling resetting on reconnect. Those native checks
-remain unverified until an operator raises the ceiling. Large query replies return an explicit
+hello-first, unknown-command and tier errors, reconnect at ReadOnly and socket removal. Task 19
+later verified Graph and raised-ceiling reconnect reset. Large query replies return an explicit
 `unavailable` error; retained Console rows are read without altering the frozen Console view.
 
 Task 16 adds authored-camera and persistence helpers, Inspector units for field attribution and
@@ -209,7 +202,8 @@ Generated and animation-owned unsavable edits are refused. Empty change sets are
 only changed keys are attributed. Stronger review required the existing exposure-feedback and
 temporal-reset side effects plus normalized yaw previews; final gates pass and all 25 reviewed
 Source/Tests hashes match. Foreign light identities, animated object transforms and inactive
-camera subjects are refused without mutation. Native provenance gestures remain unverified.
+camera subjects are refused without mutation. Task 19 verified saved-camera provenance;
+other Inspector field gestures remain unverified.
 
 Task 17 uses shared document replacement directly for session scene opens instead of the
 planned DocumentWorkflow Open call, whose ordinary path resets selection and view. It refuses
@@ -229,7 +223,8 @@ Task 18 adds private ChildRun ownership and job guards in Measurement/Transport.
 refused linking a private shell source into Tests; standalone probes compile the unchanged
 production source instead, preserving the one-source/one-target rule. Fresh stronger review
 corrected query.status for headless jobs. Stop/Listen-off/shutdown kill and reap by source and
-process probes; live operator gestures remain for Task 19. Final App SHA-256 is
+process probes; Task 19 verified live Stop, while active-child Listen-off/Quit remain unverified.
+Final App SHA-256 is
 `afccbc79e94a165cba6dc99866ddd303f6828e459643a8ec9e6e8761a3a65c4a`.
 The production ChildRun API locates a test-only stub which execs that App, with the same CWD,
 arguments and output path as the direct run. Both complete PNGs have SHA-256
@@ -267,3 +262,21 @@ All original red probes and the intermediate fake-server fixture failure are ret
 The final CLI `--wait-tier` workflow also passed in the real App: its named connection waited
 for the operator ceiling choice, then awaited real Approve; JSON returned `ok` with exit 0,
 and a fresh query read temporal off (`task19/native/cli-wait-tier.json`).
+
+## Console and session export
+
+Task 20 adds actor chips/filter and schema 1 export of ordered actions and the displayed Console
+snapshot, with current search/severity and Operator/Agent selected. Multiline payloads remain
+one string per entry. Live views refresh; frozen views stay held. Export records an operator
+request before the snapshot and the actual write result afterward; a later export includes it.
+The last authenticated client is retained after Listen off. Export safely replaces its reserved
+`session.json`; ASCII case aliases cannot be used for bridge outputs.
+
+Evidence uses actual file-byte SHA-256: graph, measure, PNG and logs; sequences explicitly hash
+their manifest; GPU traces hash every regular payload file plus the schema companion. Required
+missing/unsafe/unreadable outputs fail certification and the approval step. Failed/cancelled
+jobs omit unwritten outputs, while existing unsafe outputs produce an explicit certification
+error. Production-linked ENOENT/ENOEXEC probes verify logs left before failed child launch are
+hashed and attached. One consumed terminal result fixes duplicate cancellation records observed
+in Task 19. These supporting APIs extend the task's file list to approvals and output validation.
+Native Export/Console/evidence gestures remain for Task 22; no GPU payload production is claimed.

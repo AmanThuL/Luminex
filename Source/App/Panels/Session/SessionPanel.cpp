@@ -193,6 +193,10 @@ SessionPanelResult drawSessionPanel(bool& open, SessionPanelContext& context) {
     if (!context.pathFeedback.empty())
         ImGui::TextWrapped("%s", context.pathFeedback.c_str());
     ImGui::Separator();
+    if (editor_style::primaryButton("Export"))
+        result.action = SessionPanelAction::Export;
+    editorTooltip("Export ordered actions, evidence hashes and the held Console view using "
+                  "operator and session client messages.");
     ImGui::TextUnformatted("Session log");
     if (context.log.actions().empty())
         ImGui::TextUnformatted("No session actions");

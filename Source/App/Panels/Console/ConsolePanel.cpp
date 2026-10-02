@@ -118,6 +118,9 @@ bool drawHeader(ConsoleModel& model) {
         actionWidth +=
             ImGui::CalcTextSize(labels[level].c_str()).x + style.FramePadding.x * 2 + spacing;
     }
+    constexpr std::array<const char*, 3> actorNames{"Operator", "System", "Agent"};
+    for (const auto* name : actorNames)
+        actionWidth += ImGui::CalcTextSize(name).x + style.FramePadding.x * 2 + spacing;
     drawSearch(model, std::max(editor_style::scaled(80.0f),
                                ImGui::GetContentRegionAvail().x - actionWidth));
     for (size_t level = 0; level < labels.size(); ++level) {
@@ -138,6 +141,19 @@ bool drawHeader(ConsoleModel& model) {
                                      consoleSeverityName(severity), counts[level],
                                      consoleSeverityName(severity));
         editorTooltip(tip.c_str());
+    }
+    for (size_t index = 0; index < actorNames.size(); ++index) {
+        ImGui::SameLine();
+        const bool selected = model.filter.actors[index];
+        if (selected)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+        ImGui::PushID(static_cast<int>(index));
+        if (ImGui::Button((std::string(actorNames[index]) + "###actorFilter").c_str()))
+            model.filter.actors[index] = !model.filter.actors[index];
+        ImGui::PopID();
+        if (selected)
+            ImGui::PopStyleColor();
+        editorTooltip("Toggle this actor's messages; severity and search still apply.");
     }
     ImGui::SameLine();
     if (editor_style::overflowMenu("ConsoleActions")) {
@@ -230,6 +246,13 @@ void drawConsolePanel(bool& open, ConsoleModel& model) {
                     ImGui::TextUnformatted(
                         std::string(consoleSeverityName(entry.severity)).c_str());
                     ImGui::TableNextColumn();
+                    ImGui::PopStyleColor();
+                    if (entry.actor != Actor::System) {
+                        editor_style::actorChip(
+                            entry.actor, entry.actor == Actor::Operator ? "Operator" : "Agent");
+                        ImGui::SameLine();
+                    }
+                    ImGui::PushStyleColor(ImGuiCol_Text, severityColor(entry.severity));
                     ImGui::TextWrapped("%s", entry.message.c_str());
                     if (entry.truncated)
                         ImGui::TextUnformatted("[message truncated at 16 KiB]");

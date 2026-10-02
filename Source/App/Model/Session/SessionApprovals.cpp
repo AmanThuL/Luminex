@@ -124,6 +124,18 @@ void SessionApprovals::cancelAll() {
 }
 
 //======================================================================================================================
+std::vector<PendingApproval> SessionApprovals::takeTerminalResults() {
+    std::vector<PendingApproval> results;
+    for (auto& approval : m_approvals) {
+        if (isUnresolved(approval) || approval.terminalReported)
+            continue;
+        approval.terminalReported = true;
+        results.push_back(approval);
+    }
+    return results;
+}
+
+//======================================================================================================================
 const PendingApproval* SessionApprovals::active() const {
     const auto found = std::find_if(m_approvals.begin(), m_approvals.end(), isUnresolved);
     return found == m_approvals.end() ? nullptr : &*found;

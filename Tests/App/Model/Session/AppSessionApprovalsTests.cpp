@@ -160,3 +160,31 @@ TEST_CASE("stale approval identities and invalid commands cannot advance work",
     approvals.deny(*id);
     CHECK(approvals.pending()[0].state == SessionState::Applied);
 }
+
+//======================================================================================================================
+TEST_CASE("terminal approval results are consumed exactly once", "[app][session-approval]") {
+    SessionApprovals approvals;
+    const auto pending =
+        approvals.submit(18, "client", "pending", {{SessionCommand::GraphDump, "{}"}});
+    REQUIRE(pending);
+    CHECK(approvals.takeTerminalResults().empty());
+    approvals.cancelPending();
+    auto results = approvals.takeTerminalResults();
+    REQUIRE(results.size() == 1);
+    CHECK(results[0].request == 18);
+    CHECK(results[0].terminalError == SessionError::Cancelled);
+    approvals.cancelAll();
+    CHECK(approvals.takeTerminalResults().empty());
+    const auto running =
+        approvals.submit(28, "client", "running", {{SessionCommand::CaptureScreenshot, "{}"}});
+    REQUIRE(running);
+    approvals.approve(*running);
+    REQUIRE(approvals.next());
+    approvals.cancelAll();
+    CHECK_FALSE(approvals.finishStep(*running, true));
+    results = approvals.takeTerminalResults();
+    REQUIRE(results.size() == 1);
+    CHECK(results[0].request == 28);
+    CHECK(results[0].terminalError == SessionError::Cancelled);
+    CHECK(approvals.takeTerminalResults().empty());
+}

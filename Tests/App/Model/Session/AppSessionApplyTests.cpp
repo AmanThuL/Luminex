@@ -125,3 +125,17 @@ TEST_CASE("scene open preserves only stable semantic selection", "[app][session-
     CHECK_FALSE(sessionSceneOpenAllowed(EditorSubject::Camera, false, true, false, false));
     CHECK_FALSE(sessionSceneOpenAllowed(EditorSubject::Camera, false, true, true, true));
 }
+
+//======================================================================================================================
+TEST_CASE("session record name is reserved before approval", "[app][session-apply]") {
+    for (const auto command :
+         {SessionCommand::GraphDump, SessionCommand::MeasureRun, SessionCommand::CaptureSequence}) {
+        CHECK_FALSE(
+            parseApplyRequest(command, args(R"({"name":"session.json","warmup":0,"frames":1})")));
+    }
+    CHECK_FALSE(parseApplyRequest(SessionCommand::GraphDump, args(R"({"name":"SESSION.JSON"})")));
+    CHECK_FALSE(parseApplyRequest(
+        SessionCommand::PlanSubmit,
+        args(
+            R"({"summary":"collision","steps":[{"command":"graph.dump","args":{"name":"session.json"}}]})")));
+}

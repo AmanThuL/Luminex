@@ -6,9 +6,12 @@
 #pragma once
 
 #include "App/Model/Console/ConsoleLog.h"
+#include "App/Model/Console/ConsoleModel.h"
 #include "App/Model/Session/SessionTypes.h"
 
 #include <cstdint>
+#include <expected>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <span>
@@ -55,5 +58,31 @@ private:
     std::vector<SessionAction> m_actions;
     uint64_t m_nextSequence = 1;
 };
+
+/// Hashes the supplied regular file's actual bytes, retaining that explicit path. Callers supply a
+/// sequence manifest or GPU schema companion; directories, missing, unreadable and symlink files
+/// fail.
+std::expected<SessionEvidence, std::string>
+hashSessionEvidence(const std::filesystem::path& output);
+
+/// Hashes a regular output file, or every regular file in a GPU trace bundle plus its schema
+/// companion, in sorted path order. Unsafe entries, missing companions and read errors fail the
+/// entire collection. Sequence callers pass their manifest file explicitly.
+std::expected<std::vector<SessionEvidence>, std::string>
+hashSessionOutputEvidence(const std::filesystem::path& output);
+
+/// Certifies all registered outputs before a result is recorded. Required missing outputs fail;
+/// failed or cancelled jobs may omit unwritten outputs. Any existing unsafe or unreadable output
+/// fails either mode, without returning a partially certified collection.
+std::expected<std::vector<SessionEvidence>, std::string>
+hashSessionOutputs(std::span<const std::string> outputs, bool required);
+
+/// Encodes schema 1, protocol 1, document identity, client and ordered actions with evidence.
+/// Console preserves one string per matching entry, including embedded newlines, using the supplied
+/// displayed snapshot and current severity/search filter with operator and session-client actors
+/// selected.
+std::string sessionRecordJson(const SessionLog& log, const ConsoleSnapshot& console,
+                              std::string_view documentPath, std::string_view documentHash,
+                              std::string_view client, const ConsoleFilter& filter = {});
 
 } // namespace lmx::app

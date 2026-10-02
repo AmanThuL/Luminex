@@ -6,6 +6,7 @@
 #include "App/Model/Session/SessionApply.h"
 
 #include "App/Model/Rendering/Settings/RenderSettingCommands.h"
+#include "Core/Util/String.h"
 
 #include <array>
 #include <charconv>
@@ -43,6 +44,11 @@ std::expected<uint32_t, std::string> requiredCount(const asset::JsonNode& args,
 std::expected<void, std::string> validateStep(SessionCommand command, const asset::JsonNode& args) {
     if (!args.isObject())
         return std::unexpected("Apply arguments must be an object");
+    if (const auto name = args.find("name"); name && name->isString()) {
+        const auto value = name->asString();
+        if (value && toLowerAscii(*value) == "session.json")
+            return std::unexpected("session.json is reserved for Session Export");
+    }
     switch (command) {
     case SessionCommand::SettingsSet:
         if (args.size() != 1)

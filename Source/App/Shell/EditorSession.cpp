@@ -15,6 +15,7 @@
 #include "App/Model/Session/SessionQueries.h"
 #include "Core/Diagnostics/Log.h"
 #include "Core/IO/JsonWriter.h"
+#include "Core/Util/String.h"
 #include "Engine/Asset/Document/SceneDocument.h"
 #include "Engine/Asset/Document/SceneDocumentDiff.h"
 #include "Render/Graph/GraphDump.h"
@@ -33,8 +34,10 @@
 #include <limits>
 #include <span>
 #include <string>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <unordered_set>
+#include <utility>
 
 namespace lmx::app {
 namespace {
@@ -257,16 +260,6 @@ void EditorShell::drainSessionBridge() {
         }
         if (inbound.closed) {
             if (inbound.connection == m_sessionConnection) {
-                for (const auto& approval : m_sessionApprovals.pending())
-                    if (approval.state == SessionState::Awaiting)
-                        m_sessionLog.record(
-                            SessionAction{.timestampMilliseconds = utcMilliseconds(),
-                                          .actor = Actor::Agent,
-                                          .client = approval.client,
-                                          .command = "approval.result",
-                                          .arguments = std::to_string(approval.request),
-                                          .tier = SessionTier::Apply,
-                                          .outcome = "cancelled on disconnect"});
                 m_sessionApprovals.cancelPending();
                 m_sessionConnection = 0;
                 m_sessionHello = false;
@@ -320,6 +313,7 @@ void EditorShell::drainSessionBridge() {
                 continue;
             }
             m_sessionClient = *parsedName;
+            m_sessionRecordClient = m_sessionClient;
             m_sessionHello = true;
             m_sessionMailbox->pushOutbound(inbound.connection,
                                            encodeResult(request->id, "{\"protocol\":1}"));
@@ -593,6 +587,33 @@ void EditorShell::pumpSession(double now) {
             }
         }
     }
+    if (m_sessionPanelAction && m_sessionPanelAction->action == SessionPanelAction::Export) {
+        m_sessionPanelAction.reset();
+        const auto output = sessionOutputPath("session.json", true);
+        recordSessionReview("export.request", output ? output->string() : "session.json",
+                            "requested", m_sessionRecordClient);
+        ActionResult result{.status = ActionStatus::Failed, .actor = Actor::Operator};
+        if (!output) {
+            result.message = "Session Export failed: " + output.error();
+        } else {
+            m_consoleModel.refresh();
+            const auto* loaded = m_session.loadedScene();
+            const auto contents = sessionRecordJson(
+                m_sessionLog, m_consoleModel.snapshot(), loaded ? loaded->path.string() : "",
+                loaded ? loaded->hash : "", m_sessionRecordClient, m_consoleModel.filter);
+            result.path = output->string();
+            if (writeSessionFile(*output, contents)) {
+                result.status = ActionStatus::Succeeded;
+                result.message = "Exported session record";
+            } else {
+                result.message = "Session Export failed: cannot write the session directory";
+            }
+        }
+        recordSessionReview("export.result", result.path,
+                            result.status == ActionStatus::Succeeded ? "exported" : result.message,
+                            m_sessionRecordClient);
+        m_notices.post(std::move(result), now);
+    }
     drainSessionBridge();
     if (m_sessionPanelAction && (m_sessionPanelAction->action == SessionPanelAction::Approve ||
                                  m_sessionPanelAction->action == SessionPanelAction::Deny)) {
@@ -758,7 +779,9 @@ bool EditorShell::sessionCaptureTargetAvailable() const {
 
 //======================================================================================================================
 std::expected<std::filesystem::path, std::string>
-EditorShell::sessionOutputPath(std::string_view name) {
+EditorShell::sessionOutputPath(std::string_view name, bool exporting) {
+    if (toLowerAscii(name) == "session.json" && !exporting)
+        return std::unexpected("session.json is reserved for Session Export");
     const auto safe = evidenceName(name);
     if (!safe)
         return std::unexpected(safe.error());
@@ -794,8 +817,8 @@ EditorShell::sessionOutputPath(std::string_view name) {
     const auto targetStatus = std::filesystem::symlink_status(target, error);
     if (error && error != std::errc::no_such_file_or_directory)
         return std::unexpected("Cannot inspect session output target: " + error.message());
-    if ((!error && std::filesystem::exists(targetStatus)) ||
-        (!error && std::filesystem::is_symlink(targetStatus)))
+    if (!exporting && ((!error && std::filesystem::exists(targetStatus)) ||
+                       (!error && std::filesystem::is_symlink(targetStatus))))
         return std::unexpected("Session output already exists: " + target.string());
     return std::filesystem::absolute(target);
 }
@@ -814,9 +837,18 @@ bool EditorShell::writeSessionFile(const std::filesystem::path& path, std::strin
     ::close(root);
     if (run < 0)
         return false;
-    const int output = ::openat(run, path.filename().c_str(),
-                                O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+    const bool replace = path.filename() == "session.json";
+    const int output = ::openat(
+        run, path.filename().c_str(),
+        O_WRONLY | O_CREAT | (replace ? 0 : O_EXCL) | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC, 0600);
     if (output < 0) {
+        ::close(run);
+        return false;
+    }
+    struct stat status{};
+    if (::fstat(output, &status) != 0 || !S_ISREG(status.st_mode) || status.st_nlink != 1 ||
+        (replace && ::ftruncate(output, 0) != 0)) {
+        ::close(output);
         ::close(run);
         return false;
     }
@@ -849,9 +881,17 @@ void EditorShell::finishSessionStep(uint64_t approvalId, bool ok, SessionError e
     for (const auto& spec : sessionCommands())
         if (spec.command == command)
             name = spec.name;
+    const auto evidence = sessionOutputEvidence(id, ok);
+    if (!evidence) {
+        const auto certification = "Evidence certification failed: " + evidence.error();
+        message = message.empty() ? certification : message + "; " + certification;
+        if (ok)
+            error = SessionError::Failed;
+        ok = false;
+    }
     if (!ok)
         m_sessionApprovalFailures[id] = {error, message};
-    m_sessionLog.record(SessionAction{
+    const auto sequence = m_sessionLog.record(SessionAction{
         .timestampMilliseconds = utcMilliseconds(),
         .actor = Actor::Agent,
         .client = approval->client,
@@ -860,7 +900,18 @@ void EditorShell::finishSessionStep(uint64_t approvalId, bool ok, SessionError e
         .tier = SessionTier::Apply,
         .plan = approval->steps.size() > 1 ? std::optional<uint64_t>(id) : std::nullopt,
         .outcome = ok ? "applied" : message});
+    if (evidence)
+        for (const auto& file : *evidence)
+            m_sessionLog.attach(sequence, file);
+
     m_sessionApprovals.finishStep(approvalId, ok);
+}
+
+//======================================================================================================================
+std::expected<std::vector<SessionEvidence>, std::string>
+EditorShell::sessionOutputEvidence(uint64_t approval, bool required) {
+    const auto outputs = std::exchange(m_sessionStepOutputs[approval], {});
+    return hashSessionOutputs(outputs, required);
 }
 
 //======================================================================================================================
@@ -870,13 +921,6 @@ void EditorShell::stopSessionWork() {
             continue;
         recordSessionReview("approval.cancel", std::to_string(approval.request), "cancelled",
                             approval.client);
-        m_sessionLog.record(SessionAction{.timestampMilliseconds = utcMilliseconds(),
-                                          .actor = Actor::Agent,
-                                          .client = approval.client,
-                                          .command = "approval.result",
-                                          .arguments = std::to_string(approval.request),
-                                          .tier = SessionTier::Apply,
-                                          .outcome = "cancelled"});
     }
     if (m_sessionMeasurementApproval) {
         m_measurement.cancel("Cancelled by operator");
@@ -884,6 +928,12 @@ void EditorShell::stopSessionWork() {
     }
     if (m_sessionChild) {
         m_sessionChild->kill();
+        if (m_sessionChildApproval) {
+            auto& outputs = m_sessionStepOutputs[*m_sessionChildApproval];
+            outputs.push_back((m_sessionChildSequence ? m_sessionChildOutput / "manifest.json"
+                                                      : m_sessionChildOutput)
+                                  .string());
+        }
         m_sessionChild.reset();
         m_sessionChildApproval.reset();
         m_sessionChildOutput.clear();
@@ -1026,6 +1076,7 @@ EditorShell::executeSessionStep(const ApprovalStep& step, uint64_t approval) {
         m_measurementFrames = static_cast<uint32_t>(*args.find("frames")->asUInt());
         m_sessionJobOutput = *output;
         m_sessionApprovalOutputs[approval].push_back(output->string());
+        m_sessionStepOutputs[approval].push_back(output->string());
         m_pendingSessionMeasurementStart = approval;
         return true;
     }
@@ -1044,6 +1095,7 @@ EditorShell::executeSessionStep(const ApprovalStep& step, uint64_t approval) {
                            "Session capture trace or schema output already exists");
         m_sessionJobOutput = *output;
         m_sessionApprovalOutputs[approval].push_back(output->string());
+        m_sessionStepOutputs[approval].push_back(output->string());
         m_sessionCaptureApproval = approval;
         m_actions.requestCapture();
         m_actions.reserveSessionCapture();
@@ -1061,6 +1113,7 @@ EditorShell::executeSessionStep(const ApprovalStep& step, uint64_t approval) {
         if (!writeSessionFile(*output, render::dumpCompiledFrame(frame->record)))
             return refusal(SessionError::Failed, "Could not write the graph dump");
         m_sessionApprovalOutputs[approval].push_back(output->string());
+        m_sessionStepOutputs[approval].push_back(output->string());
         return false;
     }
     case SessionCommand::CaptureScreenshot:
@@ -1105,6 +1158,7 @@ EditorShell::executeSessionStep(const ApprovalStep& step, uint64_t approval) {
             argv.push_back("--warmup");
             argv.push_back(std::to_string(*args.find("warmup")->asUInt()));
         }
+        m_sessionStepOutputs[approval].push_back(log->string());
         auto child = ChildRun::spawn(std::move(argv));
         if (!child)
             return refusal(SessionError::Failed, child.error() + "; log: " + log->string());
@@ -1133,6 +1187,12 @@ void EditorShell::runSessionApprovals() {
             const auto approval = *m_sessionChildApproval;
             if (*result == 0 && outputReady)
                 m_sessionApprovalOutputs[approval].push_back(m_sessionChildOutput.string());
+            if (outputReady) {
+                m_sessionStepOutputs[approval].push_back(
+                    (m_sessionChildSequence ? m_sessionChildOutput / "manifest.json"
+                                            : m_sessionChildOutput)
+                        .string());
+            }
             finishSessionStep(approval, *result == 0 && outputReady, SessionError::Failed,
                               std::format("Headless capture exited {} (log: {})", *result,
                                           m_sessionChildLog.string()));
@@ -1177,21 +1237,30 @@ void EditorShell::runSessionApprovals() {
         else if (!*execution)
             finishSessionStep(approval, true);
     }
-    for (const auto& approval : m_sessionApprovals.pending()) {
-        if (approval.state != SessionState::Applied && approval.state != SessionState::Error)
-            continue;
+    for (const auto& approval : m_sessionApprovals.takeTerminalResults()) {
         const auto reply = m_sessionApprovalConnections.find(approval.id);
-        if (reply == m_sessionApprovalConnections.end())
-            continue;
-        m_sessionLog.record(SessionAction{
-            .timestampMilliseconds = utcMilliseconds(),
-            .actor = Actor::Agent,
-            .client = approval.client,
-            .command = "approval.result",
-            .arguments = std::to_string(approval.request),
-            .tier = SessionTier::Apply,
-            .outcome = approval.state == SessionState::Applied ? "applied" : "denied or failed"});
-        if (m_sessionMailbox && reply->second == m_sessionConnection) {
+
+        const auto evidence =
+            sessionOutputEvidence(approval.id, approval.state == SessionState::Applied);
+        std::string outcome = approval.state == SessionState::Applied             ? "applied"
+                              : approval.terminalError == SessionError::Cancelled ? "cancelled"
+                              : approval.terminalError == SessionError::Denied    ? "denied"
+                                                                                  : "failed";
+        if (!evidence)
+            outcome += "; Evidence certification failed: " + evidence.error();
+        const auto sequence =
+            m_sessionLog.record(SessionAction{.timestampMilliseconds = utcMilliseconds(),
+                                              .actor = Actor::Agent,
+                                              .client = approval.client,
+                                              .command = "approval.result",
+                                              .arguments = std::to_string(approval.request),
+                                              .tier = SessionTier::Apply,
+                                              .outcome = std::move(outcome)});
+        if (evidence)
+            for (const auto& file : *evidence)
+                m_sessionLog.attach(sequence, file);
+        if (reply != m_sessionApprovalConnections.end() && m_sessionMailbox &&
+            reply->second == m_sessionConnection) {
             if (approval.state == SessionState::Applied) {
                 JsonWriter result;
                 result.beginObject();
@@ -1221,9 +1290,11 @@ void EditorShell::runSessionApprovals() {
             }
             m_sessionListener->wake();
         }
-        m_sessionApprovalConnections.erase(reply);
+        if (reply != m_sessionApprovalConnections.end())
+            m_sessionApprovalConnections.erase(reply);
         m_sessionApprovalFailures.erase(approval.id);
         m_sessionApprovalOutputs.erase(approval.id);
+        m_sessionStepOutputs.erase(approval.id);
     }
 }
 

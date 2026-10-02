@@ -345,8 +345,11 @@ private:
                            std::string message = {});
     std::expected<bool, std::pair<SessionError, std::string>>
     executeSessionStep(const ApprovalStep& step, uint64_t approval);
-    std::expected<std::filesystem::path, std::string> sessionOutputPath(std::string_view name);
+    std::expected<std::filesystem::path, std::string> sessionOutputPath(std::string_view name,
+                                                                        bool exporting = false);
     bool writeSessionFile(const std::filesystem::path& path, std::string_view contents);
+    std::expected<std::vector<SessionEvidence>, std::string>
+    sessionOutputEvidence(uint64_t approval, bool required);
     void stopSessionWork();
     void updateCameraInput(float deltaSeconds);
     uint64_t metricsContextEpoch();
@@ -489,6 +492,7 @@ private:
     std::unordered_map<uint64_t, uint64_t> m_sessionApprovalConnections;
     std::unordered_map<uint64_t, std::pair<SessionError, std::string>> m_sessionApprovalFailures;
     std::unordered_map<uint64_t, std::vector<std::string>> m_sessionApprovalOutputs;
+    std::unordered_map<uint64_t, std::vector<std::string>> m_sessionStepOutputs;
     std::filesystem::path m_sessionOutputDirectory;
     std::filesystem::path m_sessionOutputName;
     std::optional<uint64_t> m_sessionMeasurementApproval;
@@ -511,6 +515,7 @@ private:
     bool m_sessionHello = false;
     SessionTier m_sessionTier = SessionTier::ReadOnly;
     std::string m_sessionClient;
+    std::string m_sessionRecordClient;
     uint64_t m_sessionExpandedProposal = 0;
     std::string m_sessionPathFeedback;
     SessionDockPlacement m_sessionDockPlacement;
