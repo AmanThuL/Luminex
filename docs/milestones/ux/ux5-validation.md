@@ -22,8 +22,9 @@ Evidence is retained in `../Luminex-evidence/ux5/`; the executor plan stays in p
 | 8 | `f33c3de` | PASS, 10/10 | Six findings corrected; no final findings |
 | 9 | `7f48945` | Final code gates PASS, 11/11; required native checkpoint PASS | Parser and watcher corrections verified; no final findings |
 | 10 | `f323a10` | Final code gates PASS, 10/10; original rejection gate FAIL under exception | Precision and draw-time parity corrected; no final findings |
-| 11 | This change | Final code gates PASS, 10/10; named effective settings round-trip | No actionable findings; dormant values remain editor-only |
-| 12–22 | Not started | Not run | Not run |
+| 11 | `4c42900` | Final code gates PASS, 10/10; named effective settings round-trip | No actionable findings; dormant values remain editor-only |
+| 12 | This change | Final code gates PASS, 10/10; focused 311 assertions | Bounded-envelope P2 corrected; no final findings |
+| 13–22 | Not started | Not run | Not run |
 
 The gate JSON files retain every command, exit and log. Test-first red results and failed
 correction attempts are retained in each task's evidence ledger; a deliberate red test is
@@ -41,6 +42,7 @@ CPU IBL generation; full Release gates passed. That Debug run remains incomplete
 | 6 | Probe include/link/viewport failures and an App null-pointer compile failure; final layout run interrupted with exit 130 | Corrected probe and all code gates pass; native failure remains below |
 | 7 | Initial project policy exited 1; two docking implementations failed review/tests | Third docking implementation passed review and gates |
 | 8 | Buffer URI expected/optional mismatch; unqualified test namespace each failed to compile | Each corrected on attempt 2; final gates pass |
+| 12 | Comment gate reported 24 undocumented enum values; review found quadratic root-key validation | Corrected; final gates PASS, 10/10; no timing measurement claimed |
 | 11 | Exact usage-text assertion failed after adding the session flag | Expected usage updated for the new flag; final gates PASS, 10/10 |
 | 10 | Initial layout check exited 1 on two missing test function separators; review found typed-scale rounding | Both corrected; final gates PASS, 10/10; original rejection failures retained below |
 | 9 | Corrected-candidate project policy exited 1 on this draft's Status field | Status corrected; final full gates PASS, 11/11 |
@@ -115,7 +117,7 @@ no rendering pass, shader, RojoRHI, capture format, manifest or dependency chang
 Task 9 resumed code gates pass (11/11), including the Inspector hash pin. Its required
 real-App checkpoint passes as described above. Task 9 is committed;
 Task 10 code gates and final source review now pass under the recorded exception.
-Tasks 12–22, GPU validation, whole-branch review, final image matrix, evidence audit, integration
+Tasks 13–22, GPU validation, whole-branch review, final image matrix, evidence audit, integration
 tag, push and pull request remain incomplete. The milestone record remains Accepted.
 
 All Task 19 gestures remain unverified: ceiling change, settings approval, three-step plan,
