@@ -146,50 +146,65 @@ AssetResult<PngImage> readPng(const std::filesystem::path& path) {
     if (!file) {
         return fail(path, "read failed", AssetErrorCode::Io);
     }
+    const auto decoded = readPng(std::as_bytes(std::span(bytes)));
+    if (!decoded)
+        return fail(path, decoded.error().message, decoded.error().code);
+    return decoded;
+}
+
+//======================================================================================================================
+AssetResult<PngImage> readPng(std::span<const std::byte> encoded) {
+    const auto invalid = [](std::string message) {
+        return std::unexpected(AssetError{AssetErrorCode::Malformed, std::move(message)});
+    };
+    if (encoded.size() < 8 || encoded.size() > std::numeric_limits<int>::max())
+        return invalid("file is truncated or exceeds decoder size limits");
+    const std::span<const uint8_t> bytes(reinterpret_cast<const uint8_t*>(encoded.data()),
+                                         encoded.size());
     if (!std::equal(kSignature.begin(), kSignature.end(), bytes.begin())) {
-        return fail(path, "invalid PNG signature");
+        return invalid("invalid PNG signature");
     }
     PngImage image;
     bool ended = false;
     for (size_t offset = 8; offset < bytes.size();) {
         if (bytes.size() - offset < 12) {
-            return fail(path, "truncated chunk header");
+            return invalid("truncated chunk header");
         }
         const uint32_t length = readBigEndian(bytes.data() + offset);
         if (length > bytes.size() - offset - 12) {
-            return fail(path, "truncated chunk payload");
+            return invalid("truncated chunk payload");
         }
         const std::string_view type(reinterpret_cast<const char*>(bytes.data() + offset + 4), 4);
         const auto payload = std::span(bytes).subspan(offset + 8, length);
         if (crc32(std::span(bytes).subspan(offset + 4, size_t{length} + 4)) !=
             readBigEndian(bytes.data() + offset + 8 + length)) {
-            return fail(path, "CRC mismatch in " + std::string(type));
+            return invalid("CRC mismatch in " + std::string(type));
         }
         if (offset == 8 && (type != "IHDR" || length != 13)) {
-            return fail(path, "missing or invalid initial IHDR");
+            return invalid("missing or invalid initial IHDR");
         }
         if (type == "tEXt") {
             const auto separator = std::find(payload.begin(), payload.end(), 0);
             if (separator == payload.end()) {
-                return fail(path, "tEXt has no keyword separator");
+                return invalid("tEXt has no keyword separator");
             }
             PngTextChunk entry{std::string(payload.begin(), separator),
                                std::string(separator + 1, payload.end())};
             if (!validKeyword(entry.keyword) || entry.text.contains('\0')) {
-                return fail(path, "invalid tEXt keyword or payload");
+                return invalid("invalid tEXt keyword or payload");
             }
             image.text.push_back(std::move(entry));
         }
         offset += size_t{length} + 12;
         if (type == "IEND") {
             if (length != 0 || offset != bytes.size()) {
-                return fail(path, "invalid IEND or trailing bytes");
+                return invalid("invalid IEND or trailing bytes");
             }
             ended = true;
         }
     }
     if (!ended) {
-        return fail(path, "missing IEND");
+        return invalid("missing IEND");
     }
     int width = 0;
     int height = 0;
@@ -200,7 +215,7 @@ AssetResult<PngImage> readPng(const std::filesystem::path& path) {
         &stbi_image_free);
     if (!decoded) {
         const char* reason = stbi_failure_reason();
-        return fail(path, reason ? reason : "decoder failed");
+        return invalid(reason ? reason : "decoder failed");
     }
     image.width = static_cast<uint32_t>(width);
     image.height = static_cast<uint32_t>(height);

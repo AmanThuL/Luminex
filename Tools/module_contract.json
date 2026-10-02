@@ -220,7 +220,8 @@
         "Tests/Support/GraphTestSupport.h",
         "Tests/Support/RenderGraphTestSupport.h",
         "Tests/Support/SceneTableTestSupport.h",
-        "Tests/Support/SceneDocumentTestSupport.h"
+        "Tests/Support/SceneDocumentTestSupport.h",
+        "Tests/Support/SceneDocumentFixtures.h"
       ]
     },
     "texture-bake": {

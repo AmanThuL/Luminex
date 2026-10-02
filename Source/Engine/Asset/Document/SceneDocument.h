@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Engine/Asset/Asset.h"
+#include "Engine/Asset/Document/SceneDocumentContent.h"
 #include "Engine/Asset/Document/SceneLook.h"
 
 #include <glm/gtc/quaternion.hpp>
@@ -15,6 +16,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -88,6 +90,8 @@ struct DocNode {
     glm::vec3 scale{1.0f};                 ///< Node-local per-axis scale.
     std::optional<uint32_t> camera;        ///< Perspective camera index.
     std::optional<uint32_t> light;         ///< Punctual-light index.
+    std::optional<uint32_t> mesh;          ///< Saved mesh index; schema 2 only.
+    DocMotion motion = DocMotion::Rigid;   ///< Authored motion-vector behavior.
     bool enabled = true;                   ///< Authored own-enabled state.
     std::optional<DocAsset> asset;         ///< External asset instantiated below this node.
     std::vector<DocOverride> overrides;    ///< Imported-node edits, valid only with asset.
@@ -122,23 +126,28 @@ struct DocAnimation {
 
 /// Owned glTF scene-document model with no GPU objects or live editor state.
 struct SceneDocument {
-    uint32_t schemaVersion = 1;           ///< Supported LMX_scene schema version.
-    std::string name;                     ///< glTF scene label.
-    uint32_t camera = 0;                  ///< Initial camera's document node index.
-    bool loop = true;                     ///< Whether the one scene clock loops.
-    SceneLook look;                       ///< Authored look.
-    std::vector<uint32_t> rootNodes;      ///< Ordered scene roots.
-    std::vector<DocNode> nodes;           ///< Original document node order.
-    std::vector<DocCamera> cameras;       ///< Standard perspective camera definitions.
-    std::vector<DocLight> lights;         ///< Standard punctual lights in document order.
-    std::vector<DocAnimation> animations; ///< Standard animation clips in source order.
-    std::vector<std::string> warnings;    ///< Read diagnostics; excluded from canonical output.
+    uint32_t schemaVersion = 1;                ///< Supported LMX_scene schema version.
+    std::string name;                          ///< glTF scene label.
+    uint32_t camera = 0;                       ///< Initial camera's document node index.
+    bool loop = true;                          ///< Whether the one scene clock loops.
+    SceneLook look;                            ///< Authored look.
+    std::vector<uint32_t> rootNodes;           ///< Ordered scene roots.
+    std::vector<DocNode> nodes;                ///< Original document node order.
+    std::vector<DocCamera> cameras;            ///< Standard perspective camera definitions.
+    std::vector<DocLight> lights;              ///< Standard punctual lights in document order.
+    std::vector<DocAnimation> animations;      ///< Standard animation clips in source order.
+    std::vector<DocMesh> meshes;               ///< Saved meshes in source order.
+    std::vector<DocMaterial> materials;        ///< Saved material rows in source order.
+    std::shared_ptr<const DocContent> content; ///< Immutable geometry/images; null without meshes.
+    std::optional<std::pair<glm::vec3, glm::vec3>> bounds; ///< Authored scene-space min/max bounds.
+    std::vector<std::string> warnings; ///< Read diagnostics; excluded from canonical output.
     /// Validated decoded buffer URI from the read source. Provenance only: excluded from canonical
     /// output and dirty comparison; successful save adoption replaces it with the saved source URI.
     std::optional<std::string> sourceBufferUri;
 };
 
-/// Reads and validates a document plus its standard external animation buffer. All malformed
+/// Reads and validates a document, animation buffer and hash-verified schema 2 geometry/images.
+/// PNG pixels are decoded from the verified byte snapshot. All malformed
 /// field errors name a JSON pointer; skipped unbounded local lights produce one warning each.
 /// Referenced asset/HDRI URIs and hashes are syntax-checked here; instantiation resolves the files
 /// and verifies their content hashes before creating GPU resources.

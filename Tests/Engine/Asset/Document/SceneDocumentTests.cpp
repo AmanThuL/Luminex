@@ -6,6 +6,7 @@
 #include "Core/Util/Sha256.h"
 #include "Engine/Asset/Model/JsonTokens.h"
 #include "Support/GoldenFile.h"
+#include "Support/SceneDocumentFixtures.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -17,6 +18,8 @@
 #include <string>
 
 using namespace lmx::asset;
+using lmx::test::animatedDocument;
+using lmx::test::completeDocument;
 namespace fs = std::filesystem;
 
 namespace {
@@ -40,23 +43,6 @@ std::string readText(const fs::path& path) {
     const auto bytes = lmx::readWholeFile(path);
     REQUIRE(bytes);
     return {reinterpret_cast<const char*>(bytes->data()), bytes->size()};
-}
-
-//======================================================================================================================
-SceneDocument animatedDocument() {
-    SceneDocument doc;
-    doc.name = "Document test";
-    doc.nodes = {{.name = "Camera", .camera = 0}};
-    doc.rootNodes = {0};
-    doc.cameras = {{.name = "Perspective"}};
-    DocAnimation animation;
-    animation.name = "Camera rail";
-    animation.keyCount = 2;
-    animation.channels = {{.node = 0,
-                           .path = DocChannelPath::Translation,
-                           .values = {{0.0f, 1.0f, 2.0f, 0.0f}, {1.0f, 2.0f, 3.0f, 0.0f}}}};
-    doc.animations.push_back(animation);
-    return doc;
 }
 
 //======================================================================================================================
@@ -89,24 +75,6 @@ void copyJson(lmx::JsonWriter& writer, const JsonNode& node, std::string_view ta
         writer.number(*node.asDouble());
     else
         FAIL("unexpected null in fixture");
-}
-
-//======================================================================================================================
-SceneDocument completeDocument() {
-    auto doc = animatedDocument();
-    doc.look.environment.hdri =
-        SceneLook::Hdri{.uri = "Fetched/studio.hdr", .sha256 = std::string(64, 'a')};
-    DocNode source;
-    source.name = "Asset";
-    source.asset = DocAsset{"Fetched/model.gltf", std::string(64, 'b')};
-    source.overrides = {{.node = 7, .name = "Mesh", .enabled = false, .pose = ObjectPose{}}};
-    doc.nodes.push_back(source);
-    doc.nodes.push_back(
-        {.name = "Lab", .generator = DocGenerator{"MaterialLab", {{"first", 1.25}, {"a/b", 5.0}}}});
-    doc.lights = {{.name = "Key"}};
-    doc.nodes.push_back({.name = "Key node", .light = 0, .role = "key", .castsShadow = true});
-    doc.rootNodes = {0, 1, 2, 3};
-    return doc;
 }
 
 //======================================================================================================================

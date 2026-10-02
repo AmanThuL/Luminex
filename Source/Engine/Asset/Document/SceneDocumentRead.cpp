@@ -9,15 +9,19 @@
 #include "Core/IO/File.h"
 #include "Core/Util/Sha256.h"
 #include "Engine/Asset/Document/DocumentUri.h"
+#include "Engine/Asset/Image/PngImage.h"
 #include "Engine/Asset/Model/JsonTokens.h"
 
 #include <glm/gtc/constants.hpp>
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cmath>
+#include <cstring>
 #include <functional>
 #include <limits>
+#include <map>
 #include <set>
 #include <span>
 #include <utility>
@@ -121,6 +125,28 @@ private:
     //==================================================================================================================
     void animations(SceneDocument& doc, const std::vector<std::byte>& bytes);
 
+    //==================================================================================================================
+    AssetResult<std::vector<std::byte>> contentFile(const JsonNode& uri,
+                                                    const std::string& decoded);
+    AssetResult<std::vector<std::byte>> contentBuffers();
+    //==================================================================================================================
+    std::pair<JsonNode, uint32_t> geometryAccessor(const JsonNode& reference, std::string_view type,
+                                                   uint32_t component);
+    //==================================================================================================================
+    std::pair<uint64_t, uint64_t> geometryView(const JsonNode& reference, bool vertices);
+    //==================================================================================================================
+    GeoData geometry(const JsonNode& primitive);
+    //==================================================================================================================
+    std::vector<int> images(DocContent& content);
+    //==================================================================================================================
+    DocMaterial material(const JsonNode& node, const std::vector<int>& textures);
+    //==================================================================================================================
+    void content(SceneDocument& doc);
+
+    uint32_t m_schemaVersion = 1;
+    std::optional<uint32_t> m_animationIndex = 0;
+    std::optional<uint32_t> m_geometryIndex;
+    std::vector<std::byte> m_geometryBytes;
     JsonNode m_root;
     std::filesystem::path m_path;
     std::optional<AssetError> m_error;
@@ -427,8 +453,12 @@ DocNode Reader::node(const JsonNode& value) {
     result.name = string(required(value, "name"));
     if (optional(value, "matrix"))
         fail(value.path() + "/matrix", "document nodes use TRS only");
-    if (optional(value, "mesh"))
-        fail(value.path() + "/mesh", "scene documents contain no meshes");
+    if (auto mesh = optional(value, "mesh")) {
+        if (m_schemaVersion == 1)
+            fail(mesh->path(), "scene documents contain no meshes");
+        else
+            result.mesh = integer(*mesh);
+    }
     if (auto children = optional(value, "children"))
         result.children = indices(*children);
     if (auto translation = optional(value, "translation"))
@@ -454,6 +484,15 @@ DocNode Reader::node(const JsonNode& value) {
     }
     const auto lmx = required(extensions, "LMX_scene");
     result.enabled = boolean(required(lmx, "enabled"));
+    if (m_schemaVersion == 2) {
+        if (auto motion = optional(lmx, "motion")) {
+            const auto value = string(*motion);
+            if (value == "invalid")
+                result.motion = DocMotion::Invalid;
+            else if (value != "rigid")
+                fail(motion->path(), "expected rigid or invalid");
+        }
+    }
     if (auto asset = optional(lmx, "asset")) {
         auto& ref = result.asset.emplace();
         reference(*asset, ref.uri, ref.sha256);
@@ -508,6 +547,8 @@ void Reader::hierarchy(SceneDocument& doc) {
     for (size_t i = 0; i < count; ++i) {
         const auto& node = doc.nodes[i];
         const auto path = "/nodes/" + std::to_string(i);
+        if (node.mesh && *node.mesh >= doc.meshes.size())
+            fail(path + "/mesh", "mesh index is out of range");
         if (node.camera && *node.camera >= doc.cameras.size())
             fail(path + "/camera", "camera index is out of range");
         for (size_t j = 0; j < node.children.size(); ++j) {
@@ -592,6 +633,8 @@ void Reader::hierarchy(SceneDocument& doc) {
 
 //======================================================================================================================
 AssetResult<std::vector<std::byte>> Reader::buffer() {
+    if (m_schemaVersion == 2)
+        return contentBuffers();
     const auto buffers = optional(m_root, "buffers");
     if (!buffers) {
         if (m_error)
@@ -658,8 +701,8 @@ std::vector<glm::vec4> Reader::accessor(const JsonNode& index, uint32_t componen
         return {};
     }
     const auto v = views.at(viewValue);
-    if (integer(required(v, "buffer")) != 0)
-        fail(v.path() + "/buffer", "buffer index is out of range");
+    if (integer(required(v, "buffer")) != m_animationIndex)
+        fail(v.path() + "/buffer", "expected the animation buffer index");
     uint64_t viewOffset = 0;
     if (auto o = optional(v, "byteOffset"))
         viewOffset = wideInteger(*o);
@@ -802,14 +845,439 @@ void Reader::animations(SceneDocument& doc, const std::vector<std::byte>& bytes)
 }
 
 //======================================================================================================================
+AssetResult<std::vector<std::byte>> Reader::contentFile(const JsonNode& uriNode,
+                                                        const std::string& decoded) {
+    const auto uri = string(uriNode);
+    const auto lmx = extension(m_root, "LMX_scene");
+    const auto hashes = optional(lmx, "contentHashes");
+    const auto hash = hashes && hashes->isObject() ? hashes->find(uri) : std::nullopt;
+    if (!hash || !hash->isString())
+        fail(uriNode.path(), "content hash is missing for '" + uri + "'");
+    const auto expected = hash && hash->isString() ? *hash->asString() : std::string{};
+    if (expected.size() != 64 || !std::all_of(expected.begin(), expected.end(), [](char c) {
+            return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+        }))
+        fail(uriNode.path(), "expected a lowercase SHA-256 for '" + uri + "'");
+    if (m_error)
+        return std::unexpected(*m_error);
+    auto bytes = fileBytes(m_path.parent_path() / decoded, uriNode.path());
+    if (!bytes)
+        return bytes;
+    if (sha256Hex(*bytes) != expected)
+        return std::unexpected(malformed(uriNode.path(), "SHA-256 mismatch for '" + uri + "'"));
+    return bytes;
+}
+
+//======================================================================================================================
+AssetResult<std::vector<std::byte>> Reader::contentBuffers() {
+    std::vector<std::byte> animation;
+    m_animationIndex.reset();
+    const auto buffers = optional(m_root, "buffers");
+    const auto meshes = optional(m_root, "meshes");
+    const bool hasMeshes = meshes && array(*meshes) != 0;
+    if (!buffers) {
+        if (hasMeshes)
+            fail("/buffers", "meshes require the external geometry buffer");
+        if (m_error)
+            return std::unexpected(*m_error);
+        return animation;
+    }
+    const auto count = array(*buffers);
+    if (!count || count > 2)
+        fail(buffers->path(), "expected the named animation and/or geometry buffers");
+    const auto stem = m_path.stem().string();
+    for (size_t i = 0; i < count && !m_error; ++i) {
+        const auto b = buffers->at(i);
+        const auto uriNode = required(b, "uri");
+        const auto uri = string(uriNode);
+        const auto decoded = detail::decodeDocumentUri(uri, uriNode.path());
+        if (!decoded) {
+            m_error = decoded.error();
+            break;
+        }
+        const bool geometry = *decoded == stem + ".geometry.bin";
+        if (!geometry && *decoded != stem + ".bin")
+            fail(uriNode.path(), "expected '" + stem + ".bin' or '" + stem + ".geometry.bin'");
+        auto& index = geometry ? m_geometryIndex : m_animationIndex;
+        if (index)
+            fail(uriNode.path(), "duplicate buffer URI");
+        index = uint32_t(i);
+        const auto expected = wideInteger(required(b, "byteLength"));
+        if (!expected)
+            fail(b.path() + "/byteLength", "buffer must not be empty");
+        if (m_error)
+            break;
+        auto bytes = geometry ? contentFile(uriNode, *decoded)
+                              : fileBytes(m_path.parent_path() / *decoded, uriNode.path());
+        if (!bytes)
+            return std::unexpected(bytes.error());
+        if (bytes->size() != expected)
+            return std::unexpected(
+                malformed(uriNode.path(), "buffer '" + uri + "' byte length is " +
+                                              std::to_string(bytes->size()) + ", expected " +
+                                              std::to_string(expected)));
+        if (geometry)
+            m_geometryBytes = std::move(*bytes);
+        else {
+            m_bufferUri = *decoded;
+            animation = std::move(*bytes);
+        }
+    }
+    if (hasMeshes && !m_geometryIndex)
+        fail(buffers->path(), "meshes require the external geometry buffer");
+    if (m_error)
+        return std::unexpected(*m_error);
+    return animation;
+}
+
+//======================================================================================================================
+std::pair<JsonNode, uint32_t> Reader::geometryAccessor(const JsonNode& reference,
+                                                       std::string_view type, uint32_t component) {
+    const auto accessors = required(m_root, "accessors");
+    const auto index = integer(reference);
+    if (index >= array(accessors)) {
+        fail(reference.path(), "accessor index is out of range");
+        return {reference, 0};
+    }
+    const auto a = accessors.at(index);
+    if (optional(a, "sparse"))
+        fail(a.path() + "/sparse", "sparse document accessors are unsupported");
+    if (integer(required(a, "componentType")) != component)
+        fail(a.path() + "/componentType",
+             component == 5126 ? "expected FLOAT (5126)" : "expected UNSIGNED_INT (5125)");
+    if (string(required(a, "type")) != type)
+        fail(a.path() + "/type", "accessor shape does not match the mesh attribute");
+    if (auto n = optional(a, "normalized"); n && boolean(*n))
+        fail(n->path(), "document geometry must not be normalized");
+    const auto count = integer(required(a, "count"));
+    if (!count)
+        fail(a.path() + "/count", "geometry count must be positive");
+    return {a, count};
+}
+
+//======================================================================================================================
+std::pair<uint64_t, uint64_t> Reader::geometryView(const JsonNode& reference, bool vertices) {
+    const auto views = required(m_root, "bufferViews");
+    const auto index = integer(reference);
+    if (index >= array(views)) {
+        fail(reference.path(), "buffer view index is out of range");
+        return {};
+    }
+    const auto v = views.at(index);
+    if (integer(required(v, "buffer")) != m_geometryIndex)
+        fail(v.path() + "/buffer", "mesh data must reference the geometry buffer");
+    uint64_t offset = 0;
+    if (auto o = optional(v, "byteOffset"))
+        offset = wideInteger(*o);
+    const auto length = wideInteger(required(v, "byteLength"));
+    if (vertices) {
+        if (integer(required(v, "byteStride")) != sizeof(VertexPNTU))
+            fail(v.path() + "/byteStride", "expected VertexPNTU byte stride 48");
+    } else if (optional(v, "byteStride"))
+        fail(v.path() + "/byteStride", "indices must be tightly packed");
+    if (auto target = optional(v, "target");
+        target && integer(*target) != (vertices ? 34962u : 34963u))
+        fail(target->path(), "buffer view target does not match its geometry use");
+    if (offset % 4 != 0)
+        fail(v.path() + "/byteOffset", "geometry must be four-byte aligned");
+    if (offset > m_geometryBytes.size() ||
+        length > m_geometryBytes.size() - std::min<uint64_t>(offset, m_geometryBytes.size()))
+        fail(v.path(), "buffer view exceeds the geometry buffer");
+    return {offset, length};
+}
+
+//======================================================================================================================
+GeoData Reader::geometry(const JsonNode& primitive) {
+    GeoData result;
+    const auto attributes = required(primitive, "attributes");
+    constexpr std::array<std::string_view, 4> names{"POSITION", "NORMAL", "TANGENT", "TEXCOORD_0"};
+    constexpr std::array<std::string_view, 4> types{"VEC3", "VEC3", "VEC4", "VEC2"};
+    constexpr std::array<uint32_t, 4> offsets{0, 12, 24, 40};
+    std::optional<uint32_t> vertexView;
+    uint32_t vertexCount = 0;
+    uint64_t vertexOffset = 0;
+    for (size_t i = 0; i < names.size() && !m_error; ++i) {
+        const auto [a, count] = geometryAccessor(required(attributes, names[i]), types[i], 5126);
+        const auto view = required(a, "bufferView");
+        const auto index = integer(view);
+        if (vertexView && index != *vertexView)
+            fail(view.path(), "vertex attributes must share one buffer view");
+        if (i && count != vertexCount)
+            fail(a.path() + "/count", "vertex attribute counts must agree");
+        vertexCount = count;
+        uint64_t offset = 0;
+        if (auto o = optional(a, "byteOffset"))
+            offset = wideInteger(*o);
+        if (offset != offsets[i])
+            fail(a.path() + "/byteOffset", "expected the packed VertexPNTU attribute offset");
+        if (!vertexView) {
+            const auto [start, length] = geometryView(view, true);
+            vertexOffset = start;
+            if (uint64_t(count) * sizeof(VertexPNTU) > length)
+                fail(a.path(), "vertex accessor exceeds its buffer view");
+            vertexView = index;
+        }
+    }
+    const auto [a, count] = geometryAccessor(required(primitive, "indices"), "SCALAR", 5125);
+    const auto [indexOffset, indexLength] = geometryView(required(a, "bufferView"), false);
+    uint64_t offset = 0;
+    if (auto o = optional(a, "byteOffset"))
+        offset = wideInteger(*o);
+    if (offset % 4 != 0)
+        fail(a.path() + "/byteOffset", "indices must be four-byte aligned");
+    if (offset > indexLength ||
+        uint64_t(count) * sizeof(uint32_t) > indexLength - std::min(offset, indexLength))
+        fail(a.path(), "index accessor exceeds its buffer view");
+    if (count % 3)
+        fail(a.path() + "/count", "triangle-list index count must be divisible by three");
+    if (m_error)
+        return result;
+    static_assert(std::endian::native == std::endian::little);
+    result.vertices.resize(vertexCount);
+    result.indices.resize(count);
+    std::memcpy(result.vertices.data(), m_geometryBytes.data() + vertexOffset,
+                vertexCount * sizeof(VertexPNTU));
+    std::memcpy(result.indices.data(), m_geometryBytes.data() + indexOffset + offset,
+                count * sizeof(uint32_t));
+    for (const auto& vertex : result.vertices) {
+        const auto components = std::bit_cast<std::array<float, 12>>(vertex);
+        for (float component : components)
+            if (!std::isfinite(component))
+                fail(attributes.path(), "vertex contains a non-finite component");
+    }
+    for (uint32_t index : result.indices)
+        if (index >= vertexCount)
+            fail(primitive.path() + "/indices", "vertex index is out of range");
+    return result;
+}
+
+//======================================================================================================================
+std::vector<int> Reader::images(DocContent& content) {
+    if (auto images = optional(m_root, "images")) {
+        const auto folder = m_path.stem().string() + ".textures";
+        for (size_t i = 0, count = array(*images); i < count && !m_error; ++i) {
+            const auto image = images->at(i);
+            const auto uriNode = required(image, "uri");
+            const auto uri = string(uriNode);
+            const auto decoded = detail::decodeDocumentUri(uri, uriNode.path());
+            if (!decoded) {
+                m_error = decoded.error();
+                break;
+            }
+            const auto path = std::filesystem::path(*decoded).lexically_normal();
+            if (path.extension() != ".png" || path.begin()->string() != folder || path == folder)
+                fail(uriNode.path(), "expected a relative PNG below '" + folder + "/'");
+            if (optional(image, "bufferView"))
+                fail(image.path() + "/bufferView", "document images use external PNG files");
+            if (m_error)
+                break;
+            auto bytes = contentFile(uriNode, *decoded);
+            if (!bytes) {
+                m_error = bytes.error();
+                break;
+            }
+            const auto png = readPng(std::span<const std::byte>(*bytes));
+            if (!png) {
+                fail(uriNode.path(), "cannot decode '" + uri + "': " + png.error().message);
+                break;
+            }
+            DocImage result;
+            result.name = path.stem().string();
+            if (auto name = optional(image, "name"))
+                result.name = string(*name);
+            result.sha256 = sha256Hex(*bytes);
+            result.file = std::move(*bytes);
+            result.width = png->width;
+            result.height = png->height;
+            const auto pixels = std::as_bytes(std::span(png->rgba));
+            result.rgba8.assign(pixels.begin(), pixels.end());
+            content.images.push_back(std::move(result));
+        }
+    }
+    std::vector<bool> samplers;
+    if (auto entries = optional(m_root, "samplers")) {
+        for (size_t i = 0, count = array(*entries); i < count && !m_error; ++i) {
+            bool mipmapped = true;
+            if (auto filter = optional(entries->at(i), "minFilter")) {
+                const auto value = integer(*filter);
+                mipmapped = value != 9728 && value != 9729;
+                if (value != 9728 && value != 9729 && (value < 9984 || value > 9987))
+                    fail(filter->path(), "unsupported glTF minification filter");
+            }
+            samplers.push_back(mipmapped);
+        }
+    }
+    std::vector<int> textures;
+    std::vector<std::optional<bool>> levels(content.images.size());
+    if (auto entries = optional(m_root, "textures")) {
+        for (size_t i = 0, count = array(*entries); i < count && !m_error; ++i) {
+            const auto t = entries->at(i);
+            const auto source = required(t, "source");
+            const auto index = integer(source);
+            if (index >= content.images.size()) {
+                fail(source.path(), "image index is out of range");
+                break;
+            }
+            bool mipmapped = true;
+            if (auto s = optional(t, "sampler")) {
+                const auto sampler = integer(*s);
+                if (sampler >= samplers.size()) {
+                    fail(s->path(), "sampler index is out of range");
+                    break;
+                }
+                mipmapped = samplers[sampler];
+            }
+            if (levels[index] && *levels[index] != mipmapped)
+                fail(t.path() + "/sampler", "one document image cannot use conflicting mip levels");
+            levels[index] = mipmapped;
+            content.images[index].mipmapped = mipmapped;
+            textures.push_back(int(index));
+        }
+    }
+    return textures;
+}
+
+//======================================================================================================================
+DocMaterial Reader::material(const JsonNode& node, const std::vector<int>& textures) {
+    DocMaterial result;
+    auto& values = result.values;
+    if (auto name = optional(node, "name"))
+        result.name = string(*name);
+    const auto factor = [&](const JsonNode& node) {
+        const float value = number<float>(node);
+        if (value < 0.f || value > 1.f)
+            fail(node.path(), "factor must be in [0,1]");
+        return value;
+    };
+    const auto texture = [&](const JsonNode& node) {
+        const auto reference = required(node, "index");
+        const auto index = integer(reference);
+        if (index >= textures.size()) {
+            fail(reference.path(), "texture index is out of range");
+            return -1;
+        }
+        if (auto uv = optional(node, "texCoord"); uv && integer(*uv) != 0)
+            fail(uv->path(), "document meshes only have TEXCOORD_0");
+        return textures[index];
+    };
+    if (auto pbr = optional(node, "pbrMetallicRoughness")) {
+        if (auto color = optional(*pbr, "baseColorFactor")) {
+            values.baseColorFactor = vector<float, 4>(*color);
+            for (size_t i = 0; i < 4 && !m_error; ++i)
+                factor(color->at(i));
+        }
+        if (auto metallic = optional(*pbr, "metallicFactor"))
+            values.metallic = factor(*metallic);
+        if (auto roughness = optional(*pbr, "roughnessFactor"))
+            values.roughness = factor(*roughness);
+        if (auto image = optional(*pbr, "baseColorTexture"))
+            values.baseColorImage = texture(*image);
+        if (auto image = optional(*pbr, "metallicRoughnessTexture"))
+            values.metallicRoughnessImage = texture(*image);
+    }
+    if (auto image = optional(node, "normalTexture")) {
+        values.normalImage = texture(*image);
+        if (auto scale = optional(*image, "scale"); scale && number<float>(*scale) != 1.f)
+            fail(scale->path(), "document normal scale must be one");
+    }
+    if (auto image = optional(node, "occlusionTexture")) {
+        values.occlusionImage = texture(*image);
+        if (auto strength = optional(*image, "strength"))
+            values.occlusionStrength = factor(*strength);
+    }
+    if (auto image = optional(node, "emissiveTexture"))
+        values.emissiveImage = texture(*image);
+    if (auto emissive = optional(node, "emissiveFactor")) {
+        values.emissiveFactor = vector<float, 3>(*emissive);
+        for (size_t i = 0; i < 3 && !m_error; ++i)
+            factor(emissive->at(i));
+    }
+    if (auto mode = optional(node, "alphaMode")) {
+        const auto text = string(*mode);
+        if (text == "MASK")
+            values.alphaMode = GltfAlphaMode::Mask;
+        else if (text != "OPAQUE")
+            fail(mode->path(), "document materials support OPAQUE or MASK");
+    }
+    if (auto cutoff = optional(node, "alphaCutoff")) {
+        values.alphaCutoff = number<float>(*cutoff);
+        if (values.alphaCutoff < 0.f)
+            fail(cutoff->path(), "alpha cutoff must be nonnegative");
+    }
+    if (auto doubleSided = optional(node, "doubleSided"))
+        values.doubleSided = boolean(*doubleSided);
+    if (auto extensions = optional(node, "extensions")) {
+        if (auto emissive = optional(*extensions, "KHR_materials_emissive_strength")) {
+            if (auto strength = optional(*emissive, "emissiveStrength")) {
+                result.emissiveStrength = number<float>(*strength);
+                if (result.emissiveStrength < 0.f)
+                    fail(strength->path(), "emissive strength must be nonnegative");
+            }
+        }
+    }
+    return result;
+}
+
+//======================================================================================================================
+void Reader::content(SceneDocument& doc) {
+    const auto meshes = optional(m_root, "meshes");
+    auto content = std::make_shared<DocContent>();
+    const auto textures = images(*content);
+    if (!meshes || array(*meshes) == 0)
+        return;
+    content->geometrySha256 = sha256Hex(m_geometryBytes);
+    const auto materials = required(m_root, "materials");
+    for (size_t i = 0, count = array(materials); i < count && !m_error; ++i)
+        doc.materials.push_back(material(materials.at(i), textures));
+    std::map<std::array<uint32_t, 5>, uint32_t> geometries;
+    for (size_t i = 0, count = array(*meshes); i < count && !m_error; ++i) {
+        const auto m = meshes->at(i);
+        DocMesh mesh;
+        if (auto name = optional(m, "name"))
+            mesh.name = string(*name);
+        const auto primitives = required(m, "primitives");
+        if (array(primitives) != 1) {
+            fail(primitives.path(), "document meshes require exactly one primitive");
+            break;
+        }
+        const auto p = primitives.at(0);
+        if (auto mode = optional(p, "mode"); mode && integer(*mode) != 4)
+            fail(mode->path(), "document meshes require TRIANGLES");
+        if (optional(p, "targets"))
+            fail(p.path() + "/targets", "document meshes do not support morph targets");
+        const auto attributes = required(p, "attributes");
+        object(attributes);
+        if (attributes.size() != 4)
+            fail(attributes.path(), "expected POSITION, NORMAL, TANGENT and TEXCOORD_0");
+        const std::array<uint32_t, 5> key{
+            integer(required(attributes, "POSITION")), integer(required(attributes, "NORMAL")),
+            integer(required(attributes, "TANGENT")), integer(required(attributes, "TEXCOORD_0")),
+            integer(required(p, "indices"))};
+        mesh.material = integer(required(p, "material"));
+        if (mesh.material >= doc.materials.size())
+            fail(p.path() + "/material", "material index is out of range");
+        if (m_error)
+            break;
+        if (const auto found = geometries.find(key); found != geometries.end())
+            mesh.geometry = found->second;
+        else {
+            mesh.geometry = uint32_t(content->geometries.size());
+            content->geometries.push_back(geometry(p));
+            geometries.emplace(key, mesh.geometry);
+        }
+        doc.meshes.push_back(std::move(mesh));
+    }
+    doc.content = std::move(content);
+}
+
+//======================================================================================================================
 AssetResult<SceneDocument> Reader::document() {
     uniqueKeys(m_root);
     object(m_root);
     const auto version = required(required(m_root, "asset"), "version");
     if (string(version) != "2.0")
         fail(version.path(), "expected glTF 2.0");
-    if (optional(m_root, "meshes"))
-        fail("/meshes", "scene documents contain no meshes");
+
     if (const auto requiredExtensions = optional(m_root, "extensionsRequired")) {
         if (array(*requiredExtensions))
             fail(requiredExtensions->path(), "scene documents use no required extensions");
@@ -827,8 +1295,21 @@ AssetResult<SceneDocument> Reader::document() {
     SceneDocument doc;
     const auto lmx = extension(m_root, "LMX_scene");
     doc.schemaVersion = integer(required(lmx, "schemaVersion"));
-    if (doc.schemaVersion != 1)
+    m_schemaVersion = doc.schemaVersion;
+    if (doc.schemaVersion != 1 && doc.schemaVersion != kSceneDocumentSchema)
         fail(lmx.path() + "/schemaVersion", "unsupported schema version");
+    if (doc.schemaVersion == 1 && optional(m_root, "meshes"))
+        fail("/meshes", "scene documents contain no meshes");
+    if (doc.schemaVersion == 2) {
+        if (auto bounds = optional(lmx, "bounds")) {
+            const auto min = vector<float, 3>(required(*bounds, "min"));
+            const auto max = vector<float, 3>(required(*bounds, "max"));
+            for (int i = 0; i < 3; ++i)
+                if (min[i] > max[i])
+                    fail(bounds->path() + "/min", "bounds minimum must not exceed maximum");
+            doc.bounds = std::pair{min, max};
+        }
+    }
     doc.camera = integer(required(lmx, "camera"));
     doc.look = look(required(lmx, "look"));
     doc.loop = boolean(required(lmx, "loop"));
@@ -866,12 +1347,16 @@ AssetResult<SceneDocument> Reader::document() {
         doc.nodes.push_back(node(nodes.at(i)));
     if (m_error)
         return std::unexpected(*m_error);
-    hierarchy(doc);
-    if (m_error)
-        return std::unexpected(*m_error);
     const auto bytes = buffer();
     if (!bytes)
         return std::unexpected(bytes.error());
+    if (doc.schemaVersion == 2)
+        content(doc);
+    if (m_error)
+        return std::unexpected(*m_error);
+    hierarchy(doc);
+    if (m_error)
+        return std::unexpected(*m_error);
     doc.sourceBufferUri = m_bufferUri;
     animations(doc, *bytes);
     if (m_error)

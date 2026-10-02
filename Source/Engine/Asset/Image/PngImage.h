@@ -7,6 +7,7 @@
 
 #include "Engine/Asset/Asset.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <span>
@@ -40,5 +41,8 @@ AssetResult<void> writePng(const std::filesystem::path& path, std::span<const ui
 /// Decodes PNG pixels to owned 8-bit RGBA without color conversion and retains tEXt entries.
 /// Rejects malformed chunks, CRC mismatches, decode failures, and inaccessible files.
 AssetResult<PngImage> readPng(const std::filesystem::path& path);
+/// Decodes one immutable PNG byte snapshot with the same pixel, chunk and CRC checks as the file
+/// overload. No filesystem read occurs; malformed or oversized encoded data fails.
+AssetResult<PngImage> readPng(std::span<const std::byte> bytes);
 
 } // namespace lmx::asset
