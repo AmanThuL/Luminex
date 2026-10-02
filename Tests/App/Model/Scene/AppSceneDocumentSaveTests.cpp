@@ -10,6 +10,7 @@
 #include "Scenes/SceneDocumentExport.h"
 #include "Support/EngineTestSupport.h"
 #include "Support/GraphTestSupport.h"
+#include "Support/SceneDocumentFixtures.h"
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <fstream>
@@ -1094,4 +1095,107 @@ TEST_CASE("a formatting-only disk change adopts its hash and a real change does 
     CHECK(loaded.hash == "reformatted");
     CHECK(loaded.document.sourceBufferUri == "renamed.bin");
     CHECK(asset::diffSceneDocuments(loaded.document, saveFixture()).empty());
+}
+
+//======================================================================================================================
+TEST_CASE("content Save As rejects geometry and texture aliases before invoking the writer",
+          "[app][document-save][ux6-write]") {
+    FakeDevice device;
+    scenes::SceneLibrary library(device);
+    const auto path = savePath("content-alias");
+    auto id = scenes::sceneIdFromPath(path);
+    REQUIRE(library.get(id));
+    app::SceneSession session;
+    session.activate(*library.loaded(id), app::SceneActivationMotion::Reset);
+    auto& doc = session.loadedScene()->document;
+    doc.content = test::contentDocument().content;
+    const auto geometry = path.parent_path() / "content-alias.scene.geometry.bin";
+    const auto textures = path.parent_path() / "content-alias.scene.textures";
+    fs::create_directories(textures);
+    std::ofstream(geometry) << "source geometry";
+    auto target = path.parent_path() / "content-copy.scene.gltf";
+    const auto targetGeometry = path.parent_path() / "content-copy.scene.geometry.bin";
+    const auto targetTextures = path.parent_path() / "content-copy.scene.textures";
+    std::error_code ignored;
+    fs::remove(targetGeometry, ignored);
+    fs::remove(targetTextures, ignored);
+    SECTION("geometry hard link") {
+        fs::create_hard_link(geometry, targetGeometry);
+    }
+    SECTION("geometry symlink") {
+        fs::create_symlink(geometry, targetGeometry);
+    }
+    SECTION("texture directory symlink") {
+        fs::create_directory_symlink(textures, targetTextures);
+    }
+    SECTION("document inside active texture folder") {
+        target = textures / "copy.scene.gltf";
+    }
+    SECTION("document inside symlinked active texture folder") {
+        fs::create_directory_symlink(textures, targetTextures);
+        target = targetTextures / "copy.scene.gltf";
+    }
+    bool called = false;
+    app::SceneDocumentSaveIO io;
+    io.write = [&](const auto&, const auto&) -> asset::AssetResult<void> {
+        called = true;
+        return std::unexpected(asset::AssetError{asset::AssetErrorCode::Io, "unexpected writer"});
+    };
+    const auto result = app::saveSessionDocument(library, session, id, target, true, io);
+    REQUIRE_FALSE(result);
+    CHECK_FALSE(called);
+    CHECK(result.error().message.contains("Save As requires"));
+    fs::remove(targetGeometry, ignored);
+    fs::remove(targetTextures, ignored);
+}
+
+//======================================================================================================================
+TEST_CASE("document probe ignores geometry and an unrelated bin beside geometry-only JSON",
+          "[app][document-save][ux6-write]") {
+    const auto root = fs::current_path() / "SceneDocuments/probe-content";
+    fs::remove_all(root);
+    fs::create_directories(root);
+    const auto path = root / "cube.scene.gltf";
+    std::ofstream(path)
+        << R"({"extensions":{"LMX_scene":{"schemaVersion":2}},"buffers":[{"uri":"cube.scene.geometry.bin","byteLength":3}]})";
+    std::ofstream(root / "cube.scene.geometry.bin") << "geo";
+    std::ofstream(root / "cube.scene.bin") << "foreign";
+    app::DocumentProbe probe;
+    const auto before = probe.observe(path);
+    CHECK(before.bufferSize == 0);
+    CHECK(before.bufferTime == 0);
+    std::ofstream(root / "cube.scene.bin") << "foreign changed";
+    std::ofstream(root / "cube.scene.geometry.bin") << "geometry changed";
+    CHECK(probe.observe(path) == before);
+}
+
+//======================================================================================================================
+TEST_CASE("content save receipt covers JSON and animation only and adopts a clean document",
+          "[app][document-save][ux6-write]") {
+    FakeDevice device;
+    scenes::SceneLibrary library(device);
+    const auto path = savePath("content-receipt");
+    auto id = scenes::sceneIdFromPath(path);
+    REQUIRE(library.get(id));
+    app::SceneSession session;
+    session.activate(*library.loaded(id), app::SceneActivationMotion::Reset);
+    auto& doc = session.loadedScene()->document;
+    const auto content = test::contentDocument();
+    doc.schemaVersion = 2;
+    doc.content = content.content;
+    doc.meshes = content.meshes;
+    doc.materials = content.materials;
+    SECTION("animation and geometry") {}
+    SECTION("geometry alone") {
+        doc.animations.clear();
+    }
+    app::SceneDocumentWrite receipt;
+    REQUIRE(app::saveSessionDocument(library, session, id, path, false, {}, &receipt));
+    auto expected = *readWholeFile(path);
+    const auto animation = asset::sceneDocumentBuffer(doc);
+    expected.insert(expected.end(), animation.begin(), animation.end());
+    CHECK(receipt.hash == sha256Hex(expected));
+    CHECK(receipt.hash == *asset::sceneDocumentHash(path));
+    CHECK_FALSE(dirty(session));
+    CHECK(doc.sourceBufferUri.has_value() == !animation.empty());
 }

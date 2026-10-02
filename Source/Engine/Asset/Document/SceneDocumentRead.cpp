@@ -9,6 +9,7 @@
 #include "Core/IO/File.h"
 #include "Core/Util/Sha256.h"
 #include "Engine/Asset/Document/DocumentUri.h"
+#include "Engine/Asset/Document/SceneDocumentWriteInternal.h"
 #include "Engine/Asset/Image/PngImage.h"
 #include "Engine/Asset/Model/JsonTokens.h"
 
@@ -54,6 +55,8 @@ public:
     AssetResult<SceneDocument> document();
 
     AssetResult<std::vector<std::byte>> buffer();
+
+    AssetResult<std::vector<std::byte>> hashBuffer();
 
 private:
     //==================================================================================================================
@@ -128,7 +131,8 @@ private:
     //==================================================================================================================
     AssetResult<std::vector<std::byte>> contentFile(const JsonNode& uri,
                                                     const std::string& decoded);
-    AssetResult<std::vector<std::byte>> contentBuffers();
+    //==================================================================================================================
+    AssetResult<std::vector<std::byte>> contentBuffers(bool animationOnly = false);
     //==================================================================================================================
     std::pair<JsonNode, uint32_t> geometryAccessor(const JsonNode& reference, std::string_view type,
                                                    uint32_t component);
@@ -672,6 +676,18 @@ AssetResult<std::vector<std::byte>> Reader::buffer() {
 }
 
 //======================================================================================================================
+AssetResult<std::vector<std::byte>> Reader::hashBuffer() {
+    const auto extensions = optional(m_root, "extensions");
+    const auto lmx = extensions ? optional(*extensions, "LMX_scene") : std::nullopt;
+    const auto schema = lmx ? optional(*lmx, "schemaVersion") : std::nullopt;
+    if (schema)
+        m_schemaVersion = integer(*schema);
+    if (m_error)
+        return std::unexpected(*m_error);
+    return m_schemaVersion == 2 ? contentBuffers(true) : buffer();
+}
+
+//======================================================================================================================
 std::vector<glm::vec4> Reader::accessor(const JsonNode& index, uint32_t components,
                                         const std::vector<std::byte>& bytes) {
     const auto accessors = required(m_root, "accessors");
@@ -869,7 +885,7 @@ AssetResult<std::vector<std::byte>> Reader::contentFile(const JsonNode& uriNode,
 }
 
 //======================================================================================================================
-AssetResult<std::vector<std::byte>> Reader::contentBuffers() {
+AssetResult<std::vector<std::byte>> Reader::contentBuffers(bool animationOnly) {
     std::vector<std::byte> animation;
     m_animationIndex.reset();
     const auto buffers = optional(m_root, "buffers");
@@ -907,6 +923,8 @@ AssetResult<std::vector<std::byte>> Reader::contentBuffers() {
             fail(b.path() + "/byteLength", "buffer must not be empty");
         if (m_error)
             break;
+        if (geometry && animationOnly)
+            continue;
         auto bytes = geometry ? contentFile(uriNode, *decoded)
                               : fileBytes(m_path.parent_path() / *decoded, uriNode.path());
         if (!bytes)
@@ -1085,6 +1103,18 @@ std::vector<int> Reader::images(DocContent& content) {
             result.name = path.stem().string();
             if (auto name = optional(image, "name"))
                 result.name = string(*name);
+            if (auto name = detail::validateImageName(result.name, i, content.images); !name) {
+                m_error = name.error();
+                break;
+            }
+            if (path.parent_path() != folder) {
+                fail(uriNode.path(), "PNG must be directly inside the document texture folder");
+                break;
+            }
+            if (path.filename() != result.name + ".png") {
+                fail(image.path() + "/name", "image name must equal its PNG filename stem");
+                break;
+            }
             result.sha256 = sha256Hex(*bytes);
             result.file = std::move(*bytes);
             result.width = png->width;
@@ -1230,6 +1260,7 @@ void Reader::content(SceneDocument& doc) {
     for (size_t i = 0, count = array(materials); i < count && !m_error; ++i)
         doc.materials.push_back(material(materials.at(i), textures));
     std::map<std::array<uint32_t, 5>, uint32_t> geometries;
+    std::vector<std::pair<uint64_t, uint32_t>> physicalOrder;
     for (size_t i = 0, count = array(*meshes); i < count && !m_error; ++i) {
         const auto m = meshes->at(i);
         DocMesh mesh;
@@ -1264,10 +1295,32 @@ void Reader::content(SceneDocument& doc) {
             mesh.geometry = uint32_t(content->geometries.size());
             content->geometries.push_back(geometry(p));
             geometries.emplace(key, mesh.geometry);
+            if (!m_error) {
+                const auto accessor = required(m_root, "accessors").at(key[0]);
+                physicalOrder.emplace_back(
+                    geometryView(required(accessor, "bufferView"), true).first, mesh.geometry);
+            }
         }
         doc.meshes.push_back(std::move(mesh));
     }
+    if (m_error)
+        return;
+    // Geometry identity follows the immutable buffer, independently of editable mesh-array order.
+    std::sort(physicalOrder.begin(), physicalOrder.end());
+    std::vector<uint32_t> remap(physicalOrder.size());
+    auto discovered = std::move(content->geometries);
+    for (const auto& [offset, previous] : physicalOrder) {
+        (void)offset;
+        remap[previous] = uint32_t(content->geometries.size());
+        content->geometries.push_back(std::move(discovered[previous]));
+    }
+    for (auto& mesh : doc.meshes)
+        mesh.geometry = remap[mesh.geometry];
     doc.content = std::move(content);
+    if (sceneDocumentGeometry(doc) != m_geometryBytes)
+        fail("/buffers/" + std::to_string(*m_geometryIndex) + "/uri",
+             "geometry buffer must contain exactly each geometry's vertices then indices in "
+             "physical order");
 }
 
 //======================================================================================================================
@@ -1426,26 +1479,42 @@ sceneDocumentBufferPath(std::string_view gltfJson, const std::filesystem::path& 
     const auto buffers = root.find("buffers");
     if (!buffers)
         return std::optional<std::filesystem::path>{};
-    if (!buffers->isArray() || buffers->size() != 1)
+    const auto extensions = root.find("extensions");
+    const auto lmx = extensions ? extensions->find("LMX_scene") : std::nullopt;
+    const auto schema = lmx ? lmx->find("schemaVersion") : std::nullopt;
+    const bool contentSchema = schema && schema->asDouble() && *schema->asDouble() == 2;
+    if (!buffers->isArray() || buffers->size() == 0 || buffers->size() > (contentSchema ? 2u : 1u))
         return std::unexpected(
-            malformed("/buffers", "expected exactly one external animation buffer"));
-    const auto entry = buffers->at(0);
-    if (!entry.isObject())
-        return std::unexpected(malformed("/buffers/0", "expected an object"));
-    const auto uriNode = entry.find("uri");
-    if (!uriNode || !uriNode->isString())
-        return std::unexpected(
-            malformed("/buffers/0/uri", "expected a relative external .bin URI"));
-    const auto uri = uriNode->asString();
-    if (!uri)
-        return std::unexpected(malformed("/buffers/0/uri", uri.error()));
-    const auto decoded = detail::decodeDocumentUri(*uri, uriNode->path());
-    if (!decoded)
-        return std::unexpected(decoded.error());
-    if (std::filesystem::path(*decoded).extension() != ".bin")
-        return std::unexpected(
-            malformed("/buffers/0/uri", "expected a relative external .bin URI"));
-    return std::optional<std::filesystem::path>{document.parent_path() / *decoded};
+            malformed("/buffers", "expected external animation and/or geometry buffers"));
+    std::optional<std::filesystem::path> animation;
+    bool geometry = false;
+    for (size_t i = 0; i < buffers->size(); ++i) {
+        const auto entry = buffers->at(i);
+        if (!entry.isObject())
+            return std::unexpected(malformed(entry.path(), "expected an object"));
+        const auto uriNode = entry.find("uri");
+        if (!uriNode || !uriNode->isString())
+            return std::unexpected(
+                malformed(entry.path() + "/uri", "expected a relative external .bin URI"));
+        const auto uri = uriNode->asString();
+        if (!uri)
+            return std::unexpected(malformed(uriNode->path(), uri.error()));
+        const auto decoded = detail::decodeDocumentUri(*uri, uriNode->path());
+        if (!decoded)
+            return std::unexpected(decoded.error());
+        if (contentSchema && *decoded == document.stem().string() + ".geometry.bin") {
+            if (geometry)
+                return std::unexpected(malformed(uriNode->path(), "duplicate geometry buffer"));
+            geometry = true;
+        } else {
+            if (animation || (contentSchema && *decoded != document.stem().string() + ".bin") ||
+                std::filesystem::path(*decoded).extension() != ".bin")
+                return std::unexpected(
+                    malformed(uriNode->path(), "expected the named external animation buffer"));
+            animation = document.parent_path() / *decoded;
+        }
+    }
+    return animation;
 }
 
 //======================================================================================================================
@@ -1457,11 +1526,11 @@ AssetResult<std::string> sceneDocumentHash(const std::filesystem::path& path) {
         JsonTokens::parse(std::string(reinterpret_cast<const char*>(bytes->data()), bytes->size()));
     if (!json)
         return std::unexpected(json.error());
-    auto buffer = Reader(json->root(), path).buffer();
-    if (!buffer)
-        return std::unexpected(buffer.error());
+    const auto animation = Reader(json->root(), path).hashBuffer();
+    if (!animation)
+        return std::unexpected(animation.error());
     std::vector<std::byte> content = *bytes;
-    content.insert(content.end(), buffer->begin(), buffer->end());
+    content.insert(content.end(), animation->begin(), animation->end());
     return sha256Hex(content);
 }
 

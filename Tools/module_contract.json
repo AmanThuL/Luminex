@@ -22,6 +22,11 @@
       "file": "Tests/Engine/Asset/Document/SceneDocumentTests.cpp",
       "header": "Source/Engine/Asset/Document/SceneDocumentSaveInternal.h",
       "reason": "Inject filesystem rename failures to verify two-file save rollback."
+    },
+    {
+      "file": "Tests/Engine/Asset/Document/SceneDocumentContentTests.cpp",
+      "header": "Source/Engine/Asset/Document/SceneDocumentSaveInternal.h",
+      "reason": "Inject rename failures to verify rollback of new geometry and PNG companions."
     }
   ],
   "units": {
@@ -56,7 +61,8 @@
       ],
       "privateHeaders": [
         "Source/Engine/Asset/Document/DocumentUri.h",
-        "Source/Engine/Asset/Document/SceneDocumentSaveInternal.h"
+        "Source/Engine/Asset/Document/SceneDocumentSaveInternal.h",
+        "Source/Engine/Asset/Document/SceneDocumentWriteInternal.h"
       ]
     },
     "engine": {

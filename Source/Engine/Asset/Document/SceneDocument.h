@@ -147,6 +147,8 @@ struct SceneDocument {
 };
 
 /// Reads and validates a document, animation buffer and hash-verified schema 2 geometry/images.
+/// Geometry uses consecutive vertices/indices in physical buffer order with no unused bytes;
+/// PNGs sit directly in the texture folder with unique safe names matching filename stems.
 /// PNG pixels are decoded from the verified byte snapshot. All malformed
 /// field errors name a JSON pointer; skipped unbounded local lights produce one warning each.
 /// Referenced asset/HDRI URIs and hashes are syntax-checked here; instantiation resolves the files
@@ -161,16 +163,23 @@ std::string sceneDocumentJson(const SceneDocument& doc, std::string_view bufferU
 AssetResult<void> validateSceneDocumentModel(const SceneDocument& doc);
 /// Returns standard little-endian FLOAT animation data in deterministic accessor order.
 std::vector<std::byte> sceneDocumentBuffer(const SceneDocument& doc);
+/// Returns immutable vertices then indices for each geometry, four-byte aligned in model order.
+/// Empty when content is absent; preserves the native little-endian VertexPNTU bytes.
+std::vector<std::byte> sceneDocumentGeometry(const SceneDocument& doc);
 /// Stages the glTF and, for animated documents only, its companion beside path, checks target
 /// permissions and rolls back reported replacement failures. An existing companion that the target
 /// document does not reference is never overwritten. This is not a crash-atomic transaction.
+/// Geometry and PNG companions are installed only when absent; existing hashes must match.
+/// All companion conflicts fail before staging; newly installed files participate in rollback.
 /// Invalid models and filesystem errors fail.
 AssetResult<void> saveSceneDocument(const SceneDocument& doc, const std::filesystem::path& path);
 /// Returns the decoded path of a glTF's external animation buffer without reading that file.
-/// An absent buffers property returns no path; malformed JSON, buffer shape or URI fails.
+/// No animation buffer returns no path, including a schema 2 geometry-only document. Schema 2
+/// permits only the named animation/geometry pair; malformed JSON, buffer shape or URI fails.
 AssetResult<std::optional<std::filesystem::path>>
 sceneDocumentBufferPath(std::string_view gltfJson, const std::filesystem::path& document);
-/// Hashes the on-disk glTF bytes followed by its referenced external buffer bytes, if present.
+/// Hashes on-disk glTF bytes followed only by the referenced animation bytes, if present.
+/// Geometry and images are covered by recorded hashes; their files are not read here.
 AssetResult<std::string> sceneDocumentHash(const std::filesystem::path& path);
 
 } // namespace lmx::asset

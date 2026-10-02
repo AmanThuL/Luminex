@@ -30,6 +30,22 @@ bool samePath(const std::filesystem::path& first, const std::filesystem::path& s
 }
 
 //======================================================================================================================
+bool insideDirectory(const std::filesystem::path& path, const std::filesystem::path& directory) {
+    std::error_code error;
+    const auto canonical = std::filesystem::weakly_canonical(path, error);
+    if (error)
+        return false;
+    const auto root = std::filesystem::weakly_canonical(directory, error);
+    if (error)
+        return false;
+    auto value = canonical.begin();
+    for (auto part = root.begin(); part != root.end(); ++part, ++value)
+        if (value == canonical.end() || *value != *part)
+            return false;
+    return true;
+}
+
+//======================================================================================================================
 std::optional<EditorSelection> selectionInReplacement(const EditorSelection& selected,
                                                       const engine::LoadedScene& before,
                                                       const engine::LoadedScene& after) {
@@ -89,12 +105,33 @@ asset::AssetResult<void> saveSessionDocument(scenes::SceneLibrary& library, Scen
         loaded->document.sourceBufferUri
             ? std::optional(loaded->path.parent_path() / *loaded->document.sourceBufferUri)
             : std::nullopt;
-    if (saveAs &&
-        (samePath(path, loaded->path) || samePath(targetBin, loaded->path) ||
-         (sourceBuffer && (samePath(path, *sourceBuffer) || samePath(targetBin, *sourceBuffer)))))
-        return std::unexpected(asset::AssetError{asset::AssetErrorCode::Io,
-                                                 "Save As requires a different document and "
-                                                 "companion path; use Save for the active file."});
+    std::vector<std::filesystem::path> sources{loaded->path};
+    std::vector<std::filesystem::path> targets{path, targetBin};
+    if (sourceBuffer)
+        sources.push_back(*sourceBuffer);
+    if (loaded->document.content) {
+        const auto sourceStem = loaded->path.parent_path() / loaded->path.stem();
+        const auto targetStem = path.parent_path() / path.stem();
+        sources.emplace_back(sourceStem.string() + ".geometry.bin");
+        sources.emplace_back(sourceStem.string() + ".textures");
+        targets.emplace_back(targetStem.string() + ".geometry.bin");
+        targets.emplace_back(targetStem.string() + ".textures");
+        for (const auto& image : loaded->document.content->images) {
+            sources.emplace_back(sourceStem.string() + ".textures/" + image.name + ".png");
+            targets.emplace_back(targetStem.string() + ".textures/" + image.name + ".png");
+        }
+    }
+    if (saveAs)
+        for (const auto& target : targets)
+            for (const auto& source : sources)
+                if (samePath(target, source) ||
+                    (loaded->document.content &&
+                     insideDirectory(target, loaded->path.parent_path() /
+                                                 (loaded->path.stem().string() + ".textures"))))
+                    return std::unexpected(
+                        asset::AssetError{asset::AssetErrorCode::Io,
+                                          "Save As requires a different document and "
+                                          "companion path; use Save for the active file."});
     scenes::ExportReport report;
     auto exported =
         scenes::exportSceneDocument(*loaded, session.scene(), session.documentState(), &report);

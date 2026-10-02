@@ -29,7 +29,7 @@ struct DocImage {
 
 /// Shared immutable payload; copies of an editable document retain this allocation.
 struct DocContent {
-    std::vector<GeoData> geometries; ///< Unique accessor sets in first-mesh order.
+    std::vector<GeoData> geometries; ///< Unique accessor sets in physical geometry-buffer order.
     std::vector<DocImage> images;    ///< Images in source order.
     std::string geometrySha256;      ///< Lowercase SHA-256 of the external geometry buffer.
 };

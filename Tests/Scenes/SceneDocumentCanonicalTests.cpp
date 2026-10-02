@@ -1,6 +1,7 @@
 #include "Engine/Asset/Document/SceneDocument.h"
 
 #include "Core/IO/File.h"
+#include "Support/SceneDocumentFixtures.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -99,4 +100,24 @@ TEST_CASE("every catalog scene document equals its canonical rewrite",
         REQUIRE(doc);
         CHECK(canonicalBytesMatch(*doc, path));
     }
+}
+
+//======================================================================================================================
+TEST_CASE("schema 2 content and animation documents equal their canonical rewrite",
+          "[scene-document][canonical][ux6-write]") {
+    const fs::path root = "SceneDocuments/canonical-content";
+    fs::remove_all(root);
+    fs::create_directories(root);
+    const auto path = root / "cube.scene.gltf";
+    auto doc = lmx::test::contentDocument();
+    SECTION("geometry alone") {}
+    SECTION("animation and geometry") {
+        doc.animations = lmx::test::animatedDocument().animations;
+    }
+    REQUIRE(saveSceneDocument(doc, path));
+    const auto read = readSceneDocument(path);
+    REQUIRE(read);
+    CHECK(canonicalBytesMatch(*read, path));
+    CHECK(*lmx::readWholeFile(root / "cube.scene.geometry.bin") ==
+          lmx::asset::sceneDocumentGeometry(*read));
 }

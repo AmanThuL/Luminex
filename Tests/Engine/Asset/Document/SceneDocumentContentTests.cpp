@@ -2,13 +2,17 @@
 
 #include "Core/IO/File.h"
 #include "Core/Util/Sha256.h"
+#include "Engine/Asset/Document/SceneDocumentSaveInternal.h"
 #include "Engine/Asset/Image/PngImage.h"
+#include "Scenes/SceneDocumentExport.h"
 #include "Support/SceneDocumentFixtures.h"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
 #include <bit>
+#include <chrono>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -537,5 +541,329 @@ TEST_CASE("schema 2 validates orphan image references without retaining content"
         const auto doc = fixture.read();
         REQUIRE(doc);
         CHECK_FALSE(doc->content);
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("content writer round trips geometry materials images and node fields",
+          "[asset][scene-document-content][ux6-write]") {
+    Fixture fixture;
+    auto doc = lmx::test::contentDocument();
+    SECTION("geometry alone") {}
+    SECTION("animation before geometry") {
+        doc.animations = lmx::test::animatedDocument().animations;
+    }
+    doc.materials[0].values.metallic = std::nextafter(0.3f, 1.f);
+    doc.materials[0].values.baseColorFactor.x = std::nextafter(0.2f, 1.f);
+    doc.materials[0].emissiveStrength = std::nextafter(2.5f, 3.f);
+    REQUIRE(saveSceneDocument(doc, fixture.path));
+    const auto read = readSceneDocument(fixture.path);
+    REQUIRE(read);
+    REQUIRE(read->content);
+    REQUIRE(read->meshes.size() == 2);
+    CHECK(sceneDocumentJson(doc, "cube.scene.bin") == sceneDocumentJson(*read, "cube.scene.bin"));
+    CHECK_FALSE(lmx::scenes::documentDirty(doc, *read));
+    CHECK(read->nodes[1].mesh == 0);
+    CHECK(read->nodes[2].motion == DocMotion::Invalid);
+    CHECK(read->bounds == doc.bounds);
+    CHECK(read->materials[0].values.metallic == doc.materials[0].values.metallic);
+    CHECK(read->materials[0].values.baseColorFactor == doc.materials[0].values.baseColorFactor);
+    CHECK(read->materials[0].emissiveStrength == doc.materials[0].emissiveStrength);
+    REQUIRE(read->content->geometries.size() == 1);
+    const auto& geo = read->content->geometries[0];
+    CHECK(std::memcmp(geo.vertices.data(), fixture.geometry.data(), 384) == 0);
+    CHECK(std::memcmp(geo.indices.data(), fixture.geometry.data() + 384, 144) == 0);
+    REQUIRE(read->content->images.size() == doc.content->images.size());
+    for (size_t i = 0; i < doc.content->images.size(); ++i) {
+        CHECK(read->content->images[i].file == doc.content->images[i].file);
+        CHECK(read->content->images[i].rgba8 == doc.content->images[i].rgba8);
+        CHECK(read->content->images[i].mipmapped == doc.content->images[i].mipmapped);
+    }
+    const auto first = *lmx::readWholeFile(fixture.path);
+    REQUIRE(saveSceneDocument(*read, fixture.path));
+    CHECK(*lmx::readWholeFile(fixture.path) == first);
+}
+
+//======================================================================================================================
+TEST_CASE("content save preserves matching immutable files including read-only companions",
+          "[asset][scene-document-content][ux6-write]") {
+    Fixture fixture;
+    const auto doc = lmx::test::contentDocument();
+    const std::array<fs::path, 3> files{fixture.directory / "cube.scene.geometry.bin",
+                                        fixture.directory / "cube.scene.textures/color.png",
+                                        fixture.directory / "cube.scene.textures/linear.png"};
+    const auto time = fs::file_time_type::clock::now() - std::chrono::hours(24);
+    for (const auto& file : files) {
+        fs::last_write_time(file, time);
+        fs::permissions(file, fs::perms::owner_read, fs::perm_options::replace);
+    }
+    REQUIRE(saveSceneDocument(doc, fixture.path));
+    for (const auto& file : files) {
+        CHECK((fs::last_write_time(file) == time));
+        CHECK(fs::status(file).permissions() == fs::perms::owner_read);
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("content Save As copies a standalone set with encoded companion URIs",
+          "[asset][scene-document-content][ux6-write]") {
+    Fixture fixture;
+    const auto original = fixture.read();
+    REQUIRE(original);
+    const auto destination = fixture.directory / "copy";
+    fs::create_directory(destination);
+    const auto path = destination / "copied % cube.scene.gltf";
+    REQUIRE(saveSceneDocument(*original, path));
+    fs::remove(fixture.path);
+    fs::remove(fixture.directory / "cube.scene.geometry.bin");
+    fs::remove_all(fixture.directory / "cube.scene.textures");
+    const auto read = readSceneDocument(path);
+    REQUIRE(read);
+    REQUIRE(read->content);
+    CHECK_FALSE(lmx::scenes::documentDirty(*original, *read));
+    CHECK(*lmx::readWholeFile(destination / "copied % cube.scene.geometry.bin") ==
+          fixture.geometry);
+    CHECK(read->content->images[0].file == original->content->images[0].file);
+}
+
+//======================================================================================================================
+TEST_CASE("content save refuses foreign targets and invalid image names before staging",
+          "[asset][scene-document-content][ux6-write]") {
+    Fixture fixture;
+    auto doc = lmx::test::contentDocument();
+    std::string namedFile;
+    SECTION("mismatching geometry") {
+        namedFile = "cube.scene.geometry.bin";
+        writeBytes(fixture.directory / namedFile, {});
+    }
+    SECTION("mismatching texture") {
+        namedFile = "color.png";
+        writeBytes(fixture.directory / "cube.scene.textures" / namedFile, {});
+    }
+    SECTION("foreign texture") {
+        namedFile = "foreign.txt";
+        writeBytes(fixture.directory / "cube.scene.textures" / namedFile, {});
+    }
+    SECTION("foreign subdirectory") {
+        namedFile = "foreign";
+        fs::create_directory(fixture.directory / "cube.scene.textures" / namedFile);
+    }
+    SECTION("unsafe image name") {
+        auto content = std::make_shared<DocContent>(*doc.content);
+        content->images[0].name = "../escape";
+        doc.content = content;
+        namedFile = "/images/0/name";
+    }
+    SECTION("duplicate image name") {
+        auto content = std::make_shared<DocContent>(*doc.content);
+        content->images[1].name = "color";
+        doc.content = content;
+        namedFile = "/images/1/name";
+    }
+    SECTION("case-colliding image name") {
+        auto content = std::make_shared<DocContent>(*doc.content);
+        content->images[1].name = "COLOR";
+        doc.content = content;
+        namedFile = "/images/1/name";
+    }
+    const auto entries =
+        std::distance(fs::directory_iterator(fixture.directory), fs::directory_iterator{});
+    const auto result = saveSceneDocument(doc, fixture.path);
+    REQUIRE_FALSE(result);
+    CHECK(result.error().message.contains(namedFile));
+    CHECK_FALSE(fs::exists(fixture.path));
+    CHECK(std::distance(fs::directory_iterator(fixture.directory), fs::directory_iterator{}) ==
+          entries);
+}
+
+//======================================================================================================================
+TEST_CASE("content save rolls back new companions at every rename failure",
+          "[asset][scene-document-content][ux6-write]") {
+    for (unsigned failAt = 1; failAt <= 5; ++failAt) {
+        Fixture fixture;
+        auto doc = lmx::test::contentDocument();
+        doc.animations = lmx::test::animatedDocument().animations;
+        fs::remove_all(fixture.directory / "cube.scene.textures");
+        fs::remove(fixture.directory / "cube.scene.geometry.bin");
+        unsigned calls = 0;
+        const auto result = detail::saveSceneDocumentWithRename(
+            doc, fixture.path,
+            [&](const fs::path& from, const fs::path& to, std::error_code& error) {
+                if (++calls == failAt)
+                    error = std::make_error_code(std::errc::io_error);
+                else
+                    fs::rename(from, to, error);
+            });
+        INFO(failAt);
+        REQUIRE_FALSE(result);
+        CHECK(calls >= failAt);
+        CHECK(fs::is_empty(fixture.directory));
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("schema 2 hash and buffer discovery use only the animation companion",
+          "[asset][scene-document-content][ux6-write]") {
+    Fixture fixture;
+    auto doc = lmx::test::contentDocument();
+    SECTION("geometry alone") {}
+    SECTION("both buffers") {
+        doc.animations = lmx::test::animatedDocument().animations;
+    }
+    REQUIRE(saveSceneDocument(doc, fixture.path));
+    const auto bytes = *lmx::readWholeFile(fixture.path);
+    const std::string text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    const auto animation = sceneDocumentBuffer(doc);
+    auto expected = bytes;
+    expected.insert(expected.end(), animation.begin(), animation.end());
+    const auto hash = sceneDocumentHash(fixture.path);
+    REQUIRE(hash);
+    CHECK(*hash == lmx::sha256Hex(expected));
+    const auto buffer = sceneDocumentBufferPath(text, fixture.path);
+    REQUIRE(buffer);
+    CHECK(buffer->has_value() == !animation.empty());
+    if (*buffer)
+        CHECK(**buffer == fixture.directory / "cube.scene.bin");
+}
+
+//======================================================================================================================
+TEST_CASE("document geometry serialization is stable in geometry order independent of mesh order",
+          "[asset][scene-document-content][ux6-write][ux6-layout]") {
+    Fixture fixture;
+    auto doc = lmx::test::contentDocument();
+    auto content = std::make_shared<DocContent>(*doc.content);
+    content->geometries.push_back(content->geometries[0]);
+    content->geometries[1].vertices[0].px = -2.f;
+    doc.content = content;
+    doc.meshes[0].geometry = 1;
+    content->geometrySha256 = lmx::sha256Hex(sceneDocumentGeometry(doc));
+    auto expected = fixture.geometry;
+    auto second = fixture.geometry;
+    const float value = -2.f;
+    std::memcpy(second.data(), &value, sizeof(value));
+    expected.insert(expected.end(), second.begin(), second.end());
+    CHECK(sceneDocumentGeometry(doc) == expected);
+    CHECK(sceneDocumentGeometry(doc) == sceneDocumentGeometry(doc));
+    CHECK(sceneDocumentGeometry(SceneDocument{}).empty());
+    fs::remove(fixture.directory / "cube.scene.geometry.bin");
+    REQUIRE(saveSceneDocument(doc, fixture.path));
+    const auto read = readSceneDocument(fixture.path);
+    REQUIRE(read);
+    CHECK_FALSE(lmx::scenes::documentDirty(doc, *read));
+    CHECK(sceneDocumentGeometry(*read) == expected);
+    const auto again = saveSceneDocument(*read, fixture.path);
+    INFO((again ? "saved" : again.error().message));
+    REQUIRE(again);
+}
+
+//======================================================================================================================
+TEST_CASE("noncanonical geometry bytes fail at the geometry URI before a document is returned",
+          "[asset][scene-document-content][ux6-write][ux6-layout]") {
+    Fixture fixture;
+    const auto originalHash = lmx::sha256Hex(fixture.geometry);
+    SECTION("unused trailing bytes") {
+        fixture.geometry.resize(fixture.geometry.size() + 4);
+    }
+    SECTION("leading padding") {
+        fixture.geometry.insert(fixture.geometry.begin(), 4, std::byte{});
+        replace(fixture.json, "\"byteOffset\":0,\"byteLength\":384",
+                "\"byteOffset\":4,\"byteLength\":384");
+        replace(fixture.json, "\"byteOffset\":384", "\"byteOffset\":388");
+    }
+    replace(fixture.json, "\"byteLength\":528", "\"byteLength\":532");
+    replace(fixture.json, originalHash, lmx::sha256Hex(fixture.geometry));
+    writeBytes(fixture.directory / "cube.scene.geometry.bin", fixture.geometry);
+    failsAt(fixture, "/buffers/0/uri");
+}
+
+//======================================================================================================================
+TEST_CASE("schema 2 image names and paths must preserve immutable save filenames",
+          "[asset][scene-document-content][ux6-write][ux6-layout]") {
+    Fixture fixture;
+    std::string pointer = "/images/0/name";
+    SECTION("name differs from filename") {
+        replace(fixture.json, "\"name\":\"color\"", "\"name\":\"Color Image\"");
+    }
+    SECTION("unsafe name") {
+        replace(fixture.json, "\"name\":\"color\"", "\"name\":\"../color\"");
+    }
+    SECTION("duplicate name") {
+        replace(fixture.json, "\"name\":\"linear\"", "\"name\":\"color\"");
+        pointer = "/images/1/name";
+    }
+    SECTION("nested image") {
+        const auto nested = fixture.directory / "cube.scene.textures/nested";
+        fs::create_directory(nested);
+        fs::rename(fixture.directory / "cube.scene.textures/color.png", nested / "color.png");
+        replace(fixture.json, "\"uri\":\"cube.scene.textures/color.png\"",
+                "\"uri\":\"cube.scene.textures/nested/color.png\"");
+        replace(fixture.json,
+                "\"cube.scene.textures/color.png\":", "\"cube.scene.textures/nested/color.png\":");
+        pointer = "/images/0/uri";
+    }
+    failsAt(fixture, pointer);
+}
+
+//======================================================================================================================
+TEST_CASE("document hash retains animation length checks without reading immutable content",
+          "[asset][scene-document-content][ux6-write][ux6-hash]") {
+    Fixture fixture;
+    auto doc = lmx::test::contentDocument();
+    doc.animations = lmx::test::animatedDocument().animations;
+    SECTION("schema 1") {
+        doc = lmx::test::animatedDocument();
+    }
+    SECTION("schema 2") {}
+    REQUIRE(saveSceneDocument(doc, fixture.path));
+    const auto jsonBytes = *lmx::readWholeFile(fixture.path);
+    std::string json(reinterpret_cast<const char*>(jsonBytes.data()), jsonBytes.size());
+    writeBytes(fixture.directory / "cube.scene.bin", {});
+    CHECK_FALSE(sceneDocumentHash(fixture.path));
+    writeBytes(fixture.directory / "cube.scene.bin", sceneDocumentBuffer(doc));
+    replace(json, "\"byteLength\": 32", "\"byteLength\": 0");
+    writeBytes(fixture.path, std::as_bytes(std::span(json)));
+    CHECK_FALSE(sceneDocumentHash(fixture.path));
+    replace(json, "\"byteLength\": 0", "\"byteLength\": -1");
+    writeBytes(fixture.path, std::as_bytes(std::span(json)));
+    CHECK_FALSE(sceneDocumentHash(fixture.path));
+    writeBytes(fixture.path, jsonBytes);
+    const auto before = sceneDocumentHash(fixture.path);
+    REQUIRE(before);
+    fs::remove(fixture.directory / "cube.scene.geometry.bin");
+    fs::remove_all(fixture.directory / "cube.scene.textures");
+    const auto after = sceneDocumentHash(fixture.path);
+    REQUIRE(after);
+    CHECK(*after == *before);
+}
+
+//======================================================================================================================
+TEST_CASE("content save rollback restores the old document pair and removes new companions",
+          "[asset][scene-document-content][ux6-write]") {
+    for (unsigned failAt = 1; failAt <= 7; ++failAt) {
+        Fixture fixture;
+        fs::remove_all(fixture.directory / "cube.scene.textures");
+        fs::remove(fixture.directory / "cube.scene.geometry.bin");
+        const auto old = lmx::test::animatedDocument();
+        REQUIRE(saveSceneDocument(old, fixture.path));
+        const auto oldJson = *lmx::readWholeFile(fixture.path);
+        const auto oldBin = *lmx::readWholeFile(fixture.directory / "cube.scene.bin");
+        auto doc = lmx::test::contentDocument();
+        doc.animations = old.animations;
+        unsigned calls = 0;
+        const auto result = detail::saveSceneDocumentWithRename(
+            doc, fixture.path,
+            [&](const fs::path& from, const fs::path& to, std::error_code& error) {
+                if (++calls == failAt)
+                    error = std::make_error_code(std::errc::io_error);
+                else
+                    fs::rename(from, to, error);
+            });
+        INFO(failAt);
+        REQUIRE_FALSE(result);
+        CHECK(calls >= failAt);
+        CHECK(*lmx::readWholeFile(fixture.path) == oldJson);
+        CHECK(*lmx::readWholeFile(fixture.directory / "cube.scene.bin") == oldBin);
+        CHECK(std::distance(fs::directory_iterator(fixture.directory), fs::directory_iterator{}) ==
+              2);
     }
 }

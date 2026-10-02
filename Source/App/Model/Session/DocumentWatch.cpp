@@ -44,9 +44,8 @@ FileStamp DocumentProbe::observe(const std::filesystem::path& gltf,
         std::ifstream input(gltf, std::ios::binary);
         if (input) {
             const std::string text(std::istreambuf_iterator<char>{input}, {});
-            if (const auto candidate = asset::sceneDocumentBufferPath(text, gltf);
-                candidate && *candidate)
-                m_buffer = **candidate;
+            if (const auto candidate = asset::sceneDocumentBufferPath(text, gltf); candidate)
+                m_buffer = candidate->value_or(std::filesystem::path{});
         } else if (fallbackBufferUri) {
             m_buffer = gltf.parent_path() / *fallbackBufferUri;
         }
