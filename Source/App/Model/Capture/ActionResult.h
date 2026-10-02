@@ -4,6 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
+#include "App/Model/Workspace/Provenance.h"
+
 #include <string>
 
 namespace lmx::app {
@@ -42,6 +44,7 @@ struct ActionResult {
     std::string path;              ///< Absolute output path when known, including failed attempts.
     std::string pathActionError{}; ///< Last clipboard/Finder failure; does not
                                    ///< change the operation result.
+    Actor actor = Actor::System;   ///< Actor attributed to this notice.
 };
 
 } // namespace lmx::app

@@ -174,3 +174,23 @@ TEST_CASE("dismissing capture feedback preserves the operation and a new request
     REQUIRE(actions.captureResult().status == ActionStatus::Unavailable);
     REQUIRE_FALSE(actions.consumeCapture());
 }
+
+//======================================================================================================================
+TEST_CASE("operator requests cannot replace a completed session capture before its owner reads it",
+          "[app][session-apply]") {
+    EditorActions actions;
+    actions.requestCapture();
+    actions.reserveSessionCapture();
+    REQUIRE(actions.consumeCapture());
+    actions.captureResult() = {ActionStatus::Succeeded, "Saved", "/session/frame.gputrace"};
+
+    actions.requestCapture();
+    REQUIRE_FALSE(actions.capturePending());
+    REQUIRE(actions.captureResult().status == ActionStatus::Succeeded);
+    REQUIRE(actions.captureResult().path == "/session/frame.gputrace");
+
+    actions.releaseSessionCapture();
+    actions.requestCapture();
+    REQUIRE(actions.capturePending());
+    REQUIRE(actions.captureResult().status == ActionStatus::Pending);
+}

@@ -11,6 +11,21 @@
 using namespace lmx::app;
 
 //======================================================================================================================
+TEST_CASE("retained session console query sees arrivals without changing frozen display",
+          "[app][console]") {
+    auto store = std::make_shared<ConsoleLog>();
+    ConsoleModel model(store);
+    model.setFrozen(true);
+    store->append(lmx::log::Level::Info, 123, "session arrival", Actor::Agent);
+    REQUIRE(model.snapshot().entries.empty());
+    const auto retained = model.retainedSnapshot();
+    REQUIRE(retained.entries.size() == 1);
+    CHECK(retained.entries.front().message == "session arrival");
+    CHECK(model.snapshot().entries.empty());
+    CHECK(model.frozen());
+}
+
+//======================================================================================================================
 TEST_CASE("console count and byte caps evict oldest messages with explicit counters",
           "[app][console]") {
     ConsoleLog log;
@@ -252,4 +267,32 @@ TEST_CASE("console severity counts describe each level of the displayed snapshot
     CHECK(consoleSeverityCounts(model.snapshot()) == expected);
     model.resumeAtEnd();
     CHECK(consoleSeverityCounts(model.snapshot())[4] == 6);
+}
+
+//======================================================================================================================
+TEST_CASE("console actor filters keep System output and isolate attributed rows",
+          "[app][console]") {
+    auto log = std::make_shared<ConsoleLog>();
+    log->append(lmx::log::Level::Info, 1000, "engine ready");
+    log->append(lmx::log::Level::Warning, 2000, "review", Actor::Operator);
+    log->append(lmx::log::Level::Info, 3000, "proposal", Actor::Agent);
+    ConsoleModel model(log);
+    const std::string attributedLine =
+        std::string("[00:00:03.000 UTC] [Info] [") + "Agent" + "] proposal\n";
+    CHECK(consoleVisibleText(model.snapshot(), model.filter) ==
+          std::string("[00:00:01.000 UTC] [Info] engine ready\n"
+                      "[00:00:02.000 UTC] [Warning] [Operator] review\n") +
+              attributedLine);
+
+    model.filter.actors = {false, false, true};
+    CHECK(consoleVisibleText(model.snapshot(), model.filter) == attributedLine);
+    model.setFrozen(true);
+    log->append(lmx::log::Level::Error, 4000, "later proposal", Actor::Agent);
+    model.refresh();
+    CHECK(model.newSinceFreeze() == 1);
+    CHECK(consoleVisibleText(model.snapshot(), model.filter) == attributedLine);
+    model.clear();
+    CHECK(model.filter.actors == std::array<bool, 3>{false, false, true});
+    model.resumeAtEnd();
+    CHECK(consoleVisibleText(model.snapshot(), model.filter).empty());
 }

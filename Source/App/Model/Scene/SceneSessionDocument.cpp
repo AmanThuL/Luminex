@@ -49,4 +49,34 @@ void SceneSession::adoptDocumentCamera(const engine::SceneCamera& camera) {
     if (auto& saved = m_documentStates.at(m_scene).sceneCamera)
         saved = camera;
 }
+
+//======================================================================================================================
+engine::SceneCamera SceneSession::authoredSceneCamera() const {
+    LMX_ASSERT(m_loaded, "authored scene camera requires a loaded document");
+    return documentState().sceneCamera.value_or(scene().initialCamera);
+}
+
+//======================================================================================================================
+rojoRHI::Result<void> SceneSession::setSceneCamera(const engine::SceneCamera& requested) {
+    if (!m_loaded || m_measurementActive)
+        return std::unexpected(
+            rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
+                           "Authored camera requires a document and no measurement"});
+    auto camera = requested;
+    if (!isFinite(camera.position) || !std::isfinite(camera.yaw) || !std::isfinite(camera.pitch) ||
+        std::abs(camera.pitch) > glm::half_pi<float>() || !std::isfinite(camera.fovY) ||
+        camera.fovY <= 0 || camera.fovY >= glm::pi<float>() || !std::isfinite(camera.nearZ) ||
+        camera.nearZ <= 0 || !(camera.farZ > camera.nearZ))
+        return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
+                                              "Authored camera has an invalid pose or lens"});
+    camera.yaw = asset::unwrapYaw(0.0f, camera.yaw);
+    const auto previous = authoredSceneCamera();
+    if (previous.position == camera.position && previous.yaw == camera.yaw &&
+        previous.pitch == camera.pitch && previous.fovY == camera.fovY &&
+        previous.nearZ == camera.nearZ && previous.farZ == camera.farZ)
+        return {};
+    m_documentStates.at(m_scene).sceneCamera = camera;
+    notifyPersistentEdit();
+    return {};
+}
 } // namespace lmx::app

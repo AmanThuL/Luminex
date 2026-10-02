@@ -49,6 +49,7 @@ render::ReconstructionMode temporalReconstructionMode(TemporalMode mode);
 /// Fully parsed, owned application startup configuration.
 struct AppOptions {
     RunMode mode = RunMode::Windowed; ///< Execution path selected by command-line options.
+    bool session = false;             ///< Start the local session listener in the windowed editor.
     scenes::SceneId initialScene = scenes::defaultSceneId(); ///< Scene selected at startup.
     std::filesystem::path screenshotPath;      ///< Destination used in screenshot mode.
     std::filesystem::path captureSequencePath; ///< New or empty directory for a frame sequence.

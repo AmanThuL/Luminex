@@ -25,12 +25,21 @@
 #include "App/Model/Scene/SceneLoadState.h"
 #include "App/Model/Scene/SceneSession.h"
 #include "App/Model/Scene/SceneTreeState.h"
+#include "App/Model/Session/DocumentWatch.h"
+#include "App/Model/Session/SessionApply.h"
+#include "App/Model/Session/SessionEdits.h"
+#include "App/Model/Session/SessionListener.h"
+#include "App/Model/Session/SessionLog.h"
+#include "App/Model/Session/SessionMailbox.h"
+#include "App/Model/Session/SessionProposal.h"
 #include "App/Model/Workspace/ActivityModel.h"
 #include "App/Model/Workspace/MenuModel.h"
 #include "App/Model/Workspace/WorkspaceModel.h"
 #include "App/Panels/Gallery/StyleGalleryPanel.h"
 #include "App/Panels/Graph/RenderGraphPanel.h"
 #include "App/Panels/Performance/PerformancePanel.h"
+#include "App/Panels/Session/SessionPanel.h"
+#include "App/Shell/ChildRun.h"
 #include "App/Shell/NativeMenu.h"
 #include "Engine/View/Camera.h"
 #include "Render/Passes/SelectionOutline/SelectionOutline.h"
@@ -39,9 +48,12 @@
 #include "Scenes/SceneLibrary.h"
 
 #include <cstdint>
+#include <expected>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 /// SDL is an implementation detail of shell input; this header uses an opaque window handle.
@@ -246,6 +258,14 @@ public:
     /// Consumes ready document work and native responses before drawable acquisition, even when
     /// no frame can render. Dirty confirmation remains pending until buildUI can present it.
     void pumpDocuments();
+    /// Polls the open document and processes operator Session review clicks before document work.
+    void pumpSession(double now);
+    /// Uses the session output path while an approved GPU capture owns the shared capture intent.
+    std::string captureOutputPath(std::string_view ordinaryPath) const;
+    /// Rechecks a queued session trace destination at the acquired-drawable boundary.
+    bool sessionCaptureTargetAvailable() const;
+    /// Opens the run-local socket after startup or an operator Listen action.
+    bool startSessionListener();
     /// Publishes native menu state before SDL polls AppKit events; a no-op outside macOS.
     void updateNativeMenu(const render::Renderer& renderer, const rojoRHI::Device& device);
     /// Drains native actions in order and consumes framing with the supplied renderer.
@@ -314,9 +334,28 @@ private:
     // Builds a fresh snapshot before discarding the active one; failure retains scene and
     // selection.
     bool selectScene(scenes::SceneId id);
+    bool selectSessionScene(scenes::SceneId id);
+    bool acceptFileProposal(uint64_t id);
+    FileStamp currentDocumentStamp();
+    void recordSessionReview(std::string command, std::string arguments, std::string outcome,
+                             std::string client = {});
+    void drainSessionBridge();
+    void runSessionApprovals();
+    void finishSessionStep(uint64_t approval, bool ok, SessionError error = SessionError::Failed,
+                           std::string message = {});
+    std::expected<bool, std::pair<SessionError, std::string>>
+    executeSessionStep(const ApprovalStep& step, uint64_t approval);
+    std::expected<std::filesystem::path, std::string> sessionOutputPath(std::string_view name,
+                                                                        bool exporting = false);
+    bool writeSessionFile(const std::filesystem::path& path, std::string_view contents);
+    std::expected<std::vector<SessionEvidence>, std::string>
+    sessionOutputEvidence(uint64_t approval, bool required);
+    void stopSessionWork();
+    void cancelAwaitingSessionApprovals(std::string_view reason);
     void updateCameraInput(float deltaSeconds);
     uint64_t metricsContextEpoch();
-    void startMeasurement(rojoRHI::Device& device, const render::Renderer& renderer);
+    bool startMeasurement(rojoRHI::Device& device, const render::Renderer& renderer,
+                          bool sessionOwned = false);
     void exportMeasurement();
 
     SDL_Window* m_window = nullptr;
@@ -438,6 +477,54 @@ private:
     // panel's timing, resolution, count, and transient-memory state so the panel itself holds none.
     PerformanceModel m_performanceModel;
     ConsoleModel m_consoleModel;
+    ProposalQueue m_sessionProposals;
+    SessionAttribution m_sessionAttribution;
+    SessionAttribution m_settingAttribution;
+    DocumentWatch m_documentWatch;
+    DocumentProbe m_documentProbe;
+    std::filesystem::path m_watchedPath;
+    FileStamp m_loadedStamp;
+    FileStamp m_watchedStamp;
+    std::string m_watchedHash;
+    std::string m_watchReadError;
+    std::optional<uint64_t> m_fileAcceptId;
+    std::optional<SessionPanelResult> m_sessionPanelAction;
+    SessionLog m_sessionLog;
+    SessionApprovals m_sessionApprovals;
+    ApprovalClickGuard m_sessionApprovalGuard;
+    CardListClickGuard m_sessionProposalGuard;
+    std::unordered_map<uint64_t, uint64_t> m_sessionApprovalConnections;
+    std::unordered_map<uint64_t, std::pair<SessionError, std::string>> m_sessionApprovalFailures;
+    std::unordered_map<uint64_t, std::vector<std::string>> m_sessionApprovalOutputs;
+    std::unordered_map<uint64_t, std::vector<std::string>> m_sessionStepOutputs;
+    std::filesystem::path m_sessionOutputDirectory;
+    std::filesystem::path m_sessionOutputName;
+    std::optional<uint64_t> m_sessionMeasurementApproval;
+    std::optional<uint64_t> m_sessionCaptureApproval;
+    std::optional<uint64_t> m_sessionChildApproval;
+    std::optional<ChildRun> m_sessionChild;
+    std::filesystem::path m_sessionChildLog;
+    std::filesystem::path m_sessionChildOutput;
+    bool m_sessionChildSequence = false;
+    std::optional<uint64_t> m_pendingSessionMeasurementStart;
+    uint32_t m_sessionMeasurementWarmup = 0;
+    uint32_t m_sessionMeasurementFrames = 0;
+    std::filesystem::path m_sessionJobOutput;
+    scenes::GeneratorOverrides m_sessionGeneratorOverrides;
+    bool m_sessionJobCancelled = false;
+    uint32_t m_sessionHzbLevels = 0;
+    render::ReconstructionMode m_sessionEffectiveReconstruction =
+        render::ReconstructionMode::NativeTaa;
+    std::shared_ptr<SessionMailbox> m_sessionMailbox;
+    std::unique_ptr<SessionListener> m_sessionListener;
+    uint64_t m_sessionConnection = 0;
+    bool m_sessionHello = false;
+    SessionTier m_sessionTier = SessionTier::ReadOnly;
+    std::string m_sessionClient;
+    std::string m_sessionRecordClient;
+    uint64_t m_sessionExpandedProposal = 0;
+    std::string m_sessionPathFeedback;
+    SessionDockPlacement m_sessionDockPlacement;
 
     // The Render Graph canvas's session state: the node-editor context, the shape it is laid out
     // for, and the selected node. Owned here rather than by the panel because the context has to

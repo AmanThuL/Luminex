@@ -133,8 +133,8 @@ never written as the saved preference. Style Gallery visibility is not persisted
 AppModel owns pure tables and models; the shell owns ImGui application and AppKit bridges.
 Shared shape/type/density constants avoid parallel per-theme metrics. Geist 1.7.2 is hash-pinned
 with SIL Open Font License 1.1; Sans/Medium digits force 0.6 em while Mono keeps native advances.
-Agent roles and proposal/attention components have Gallery consumers only; the runtime uses
-operator/system attribution for existing work. No agent backend or editor bridge is introduced.
+Current consumers of the actor roles and proposal/attention components are described in
+[App Session](../architecture/app-session.md) and the [App companion](../architecture/app-design-system.md).
 
 The [App companion](../architecture/app-design-system.md) and
 [operator guide](../guides/editor-workspace.md) describe current source behavior and recovery.

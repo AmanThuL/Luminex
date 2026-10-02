@@ -60,7 +60,8 @@ void EditorShell::refreshDocumentDirty(bool force) {
             (documentTitle(m_session.scene().name, m_documentDirty) + " — Luminex").c_str());
     }
     m_documentWorkflow.setContext(m_documentDirty, m_playback.state() == PlaybackState::Stopped,
-                                  m_measurement.active());
+                                  m_measurement.active(),
+                                  m_sessionProposals.pendingFile() != nullptr);
 }
 
 //======================================================================================================================
@@ -68,7 +69,8 @@ void EditorShell::requestDocumentAction(DocumentAction action,
                                         std::optional<scenes::SceneId> target) {
     refreshDocumentDirty();
     if (const auto reason = DocumentWorkflow::unavailableReason(
-            action, m_playback.state() == PlaybackState::Stopped, m_measurement.active())) {
+            action, m_playback.state() == PlaybackState::Stopped, m_measurement.active(),
+            m_sessionProposals.pendingFile() != nullptr)) {
         m_notices.post({ActionStatus::Unavailable, *reason, {}}, ImGui::GetTime());
         return;
     }
@@ -78,12 +80,21 @@ void EditorShell::requestDocumentAction(DocumentAction action,
                        ImGui::GetTime());
         return;
     }
+    // An approved plan's remaining steps were reviewed for this scene. Accepting a file proposal
+    // arrives here as Revert and is refused with it.
+    const auto* plan = m_sessionApprovals.active();
+    if (const auto reason =
+            runningPlanRefusal(action, plan && plan->state == SessionState::Working)) {
+        m_notices.post({ActionStatus::Unavailable, *reason, {}}, ImGui::GetTime());
+        return;
+    }
     if (m_documentWorkflow.request(action, std::move(target)))
         endMouseLook();
 }
 
 //======================================================================================================================
 void EditorShell::requestQuit() {
+    stopSessionWork();
     requestDocumentAction(DocumentAction::Quit);
 }
 
@@ -104,12 +115,51 @@ void EditorShell::setSceneCamera() {
 bool EditorShell::saveDocument(const std::filesystem::path& path, bool saveAs) {
     if (const auto reason = DocumentWorkflow::unavailableReason(
             DocumentAction::Save, m_playback.state() == PlaybackState::Stopped,
-            m_measurement.active())) {
+            m_measurement.active(), m_sessionProposals.pendingFile() != nullptr)) {
         m_notices.post({ActionStatus::Unavailable, *reason, {}}, ImGui::GetTime());
         return false;
     }
+    // A proposal card appears only after the stable poll and the sidecar grace; until then Save
+    // must not replace an external edit the operator has not seen. Save As writes elsewhere.
+    if (!saveAs) {
+        const auto diskHash = asset::sceneDocumentHash(m_session.loadedScene()->path);
+        const std::string_view disk = diskHash ? std::string_view(*diskHash) : std::string_view{};
+        if (const auto reason = saveOverwriteReason(m_session.loadedScene()->hash, disk,
+                                                    m_sessionProposals.rejected(disk),
+                                                    currentDocumentStamp().samePair(m_loadedStamp),
+                                                    m_sessionProposals.pendingFile() != nullptr)) {
+            m_notices.post({ActionStatus::Unavailable, *reason, {}}, ImGui::GetTime());
+            return false;
+        }
+    }
     const auto previousSceneId = m_activeSceneId;
-    const auto result = saveSessionDocument(m_library, m_session, m_activeSceneId, path, saveAs);
+    SceneDocumentWrite completedWrite;
+    const auto result = saveSessionDocument(m_library, m_session, m_activeSceneId, path, saveAs, {},
+                                            &completedWrite);
+    if (result) {
+        // Rekeying changes only the selection's document identity, never its subject.
+        m_selection.sceneId = m_activeSceneId;
+        m_sceneTree.rekey(previousSceneId.key, m_activeSceneId.key);
+        m_exposureContext.sceneId = m_activeSceneId;
+        m_watchedPath = m_session.loadedScene()->path;
+    }
+    // Pre-write failures retain attribution. Both save outcomes suppress only certified editor
+    // bytes; an adopted document with a later external pair invalidates the stamp baseline.
+    if (result || !completedWrite.hash.empty()) {
+        const auto beforeHash = currentDocumentStamp();
+        const auto currentHash = asset::sceneDocumentHash(m_watchedPath);
+        const auto currentStamp = currentDocumentStamp();
+        if (m_documentWatch.adoptSave(
+                beforeHash, currentStamp, m_watchedPath, completedWrite.path, completedWrite.hash,
+                currentHash ? std::string_view(*currentHash) : std::string_view{},
+                result.has_value())) {
+            m_watchedStamp = currentStamp;
+            m_loadedStamp = currentStamp;
+        } else if (result) {
+            m_watchedStamp = {};
+            m_loadedStamp = {};
+        }
+    }
     if (!result) {
         m_notices.post(
             {ActionStatus::Failed, "Scene save failed: " + result.error().message, path.string()},
@@ -117,11 +167,8 @@ bool EditorShell::saveDocument(const std::filesystem::path& path, bool saveAs) {
         refreshDocumentDirty(true);
         return false;
     }
-    // Rekeying a live scene changes only the selection's document identity, never its subject.
-    m_selection.sceneId = m_activeSceneId;
-    m_sceneTree.rekey(previousSceneId.key, m_activeSceneId.key);
-    m_exposureContext.sceneId = m_activeSceneId;
     refreshDocumentDirty(true);
+    m_sessionAttribution.clear();
     m_notices.post({ActionStatus::Succeeded, "Scene saved.", path.string()}, ImGui::GetTime());
     return true;
 }
@@ -147,9 +194,48 @@ bool EditorShell::selectScene(scenes::SceneId id) {
     m_visibilityFailureLogged = false;
     onSceneSelected(m_temporalState, m_settings, id);
     activateExposureLook(m_exposureContext, m_exposureResetPending, id, m_session.look());
+    m_sessionProposals.markStale(ProposalSource::File);
+    m_sessionProposals.markStale(ProposalSource::Bridge);
+    cancelAwaitingSessionApprovals("cancelled: scene replaced");
+    m_sessionAttribution.clear();
+    m_watchedPath = m_session.loadedScene()->path;
+    m_watchedStamp = currentDocumentStamp();
+    m_loadedStamp = m_watchedStamp;
+    m_documentWatch.reset(m_watchedStamp);
     refreshDocumentDirty(true);
     LMX_LOG_INFO("scene opened '{}' ({} objects)", m_session.scene().name,
                  m_session.scene().objects.size());
+    return true;
+}
+
+//======================================================================================================================
+bool EditorShell::selectSessionScene(scenes::SceneId id) {
+    const auto camera = m_session.camera();
+    const auto selection = m_selection;
+    const auto result = replaceSessionDocument(m_library, m_session, m_activeSceneId, id, {});
+    if (!result) {
+        m_sceneLoading.fail(id, result.error().message);
+        return false;
+    }
+    m_session.camera() = camera;
+    m_selection = selection;
+    m_selection.sceneId = id;
+    m_sceneLoading = {};
+    m_visibilityDisplay.clear();
+    m_lightingDisplay.clear();
+    m_lightingFailureLogged = false;
+    m_visibilityFailureLogged = false;
+    onSceneSelected(m_temporalState, m_settings, id);
+    activateExposureLook(m_exposureContext, m_exposureResetPending, id, m_session.look());
+    m_sessionProposals.markStale(ProposalSource::File);
+    m_sessionProposals.markStale(ProposalSource::Bridge);
+    cancelAwaitingSessionApprovals("cancelled: scene replaced");
+    m_sessionAttribution.clear();
+    m_watchedPath = m_session.loadedScene()->path;
+    m_watchedStamp = currentDocumentStamp();
+    m_loadedStamp = m_watchedStamp;
+    m_documentWatch.reset(m_watchedStamp);
+    refreshDocumentDirty(true);
     return true;
 }
 
@@ -168,6 +254,10 @@ void EditorShell::pumpDocuments() {
                                ImGui::GetTime());
             }))
         m_actions.requestQuit();
+    if (m_fileAcceptId && m_documentWorkflow.step() == WorkflowStep::Idle) {
+        recordSessionReview("proposal.accept", std::to_string(*m_fileAcceptId), "cancelled");
+        m_fileAcceptId.reset();
+    }
 }
 
 //======================================================================================================================
@@ -184,6 +274,59 @@ bool EditorShell::executeDocumentWork(const PendingDocumentWork& work) {
     case DocumentAction::OpenCatalog:
         return work.target && selectScene(*work.target);
     case DocumentAction::Revert:
+        if (m_fileAcceptId) {
+            const auto id = *m_fileAcceptId;
+            m_fileAcceptId.reset();
+            const auto* proposal = m_sessionProposals.find(id);
+            const auto* loaded = m_session.loadedScene();
+            auto hash = asset::sceneDocumentHash(loaded->path);
+            if (!proposal || proposal->state != SessionState::Proposed || !hash ||
+                *hash != proposal->hash) {
+                if (proposal && proposal->state == SessionState::Proposed)
+                    m_sessionProposals.resolve(id, SessionState::Stale);
+                m_documentWatch.reset(FileStamp{});
+                recordSessionReview("proposal.accept", std::to_string(id), "stale file hash");
+                return false;
+            }
+            const auto reviewedStamp = currentDocumentStamp();
+            if (reviewedStamp != m_watchedStamp) {
+                m_sessionProposals.resolve(id, SessionState::Stale);
+                m_documentWatch.reset(FileStamp{});
+                recordSessionReview("proposal.accept", std::to_string(id), "stale file stamp");
+                return false;
+            }
+            auto document = asset::readSceneDocument(loaded->path);
+            if (!document || !canPreserveSessionSelection(m_selection, *loaded, *document)) {
+                recordSessionReview("proposal.accept", std::to_string(id),
+                                    "selected subject unavailable");
+                return false;
+            }
+            const auto result = replaceSessionDocumentPreservingView(
+                m_library, m_session, m_activeSceneId, m_selection, *document, proposal->hash);
+            if (!result) {
+                const auto current = asset::sceneDocumentHash(loaded->path);
+                if (!current || *current != proposal->hash) {
+                    m_sessionProposals.resolve(id, SessionState::Stale);
+                    m_documentWatch.reset(FileStamp{});
+                }
+                recordSessionReview("proposal.accept", std::to_string(id), result.error().message);
+                return false;
+            }
+            m_visibilityDisplay.clear();
+            m_lightingDisplay.clear();
+            onSceneSelected(m_temporalState, m_settings, m_activeSceneId);
+            activateExposureLook(m_exposureContext, m_exposureResetPending, m_activeSceneId,
+                                 m_session.look());
+            m_sessionProposals.resolve(id, SessionState::Applied);
+            m_sessionProposals.markStale(ProposalSource::Bridge);
+            cancelAwaitingSessionApprovals("cancelled: scene replaced");
+            m_sessionAttribution.clear();
+            m_watchedStamp = reviewedStamp;
+            m_loadedStamp = m_watchedStamp;
+            m_documentWatch.reset(m_watchedStamp);
+            recordSessionReview("proposal.accept", std::to_string(id), "applied");
+            return true;
+        }
         return selectScene(m_activeSceneId);
     case DocumentAction::Quit:
         return true;
@@ -223,7 +366,7 @@ void EditorShell::buildDocumentWorkflow() {
         ImGui::PopTextWrapPos();
         const auto reason = DocumentWorkflow::unavailableReason(
             DocumentAction::Save, m_playback.state() == PlaybackState::Stopped,
-            m_measurement.active());
+            m_measurement.active(), m_sessionProposals.pendingFile() != nullptr);
         {
             const editor_style::ScopedType type(TypeRole::BodyStrong);
             const auto pending = m_documentWorkflow.action();

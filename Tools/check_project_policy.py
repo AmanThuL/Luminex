@@ -239,28 +239,6 @@ def check_line_budgets(files: list[Path], errors: list[str]) -> None:
                 break
 
 
-def mask_gallery_semantic_copy(text: str) -> str:
-    """Allow the exact actor-chip label only as a C++ string in its specimen expression."""
-    parsed = semantic_cpp_code(text)
-    if parsed is None:
-        return text
-    code, offsets = parsed
-    masked = list(text)
-    expression = re.compile(
-        r"\bkind\s*==\s*(?P<kind>@{7})\s*\?\s*(?P<label>@{17})"
-    )
-    for match in expression.finditer(code):
-        first, last = match.span("kind")
-        if "".join(text[index] for index in offsets[first:last]) != '"Actor"':
-            continue
-        first, last = match.span("label")
-        if "".join(text[index] for index in offsets[first:last]) != '"Agent · working"':
-            continue
-        for index in offsets[first + 1:first + 6]:
-            masked[index] = " "
-    return "".join(masked)
-
-
 def semantic_cpp_code(text: str) -> tuple[str, list[int]] | None:
     """Return nonliteral, nondirective C++ code with offsets into the original source."""
     # C++ splices physical lines before recognizing comments or directives. Keep the
@@ -297,65 +275,41 @@ def semantic_cpp_code(text: str) -> tuple[str, list[int]] | None:
         code[start:end] = replacement * (end - start)
 
     # Comments are whitespace before directive recognition, including a prefix before
-    # either spelling of '#'. Directives and literals are declaration barriers.
+    # either spelling of '#'. Directives and literals remain distinct barriers.
     code = re.sub(
         r"(?:#|%:)[^\n]*",
-        lambda match: "@" * len(match.group(0)),
+        lambda match: "!" * len(match.group(0)),
         "".join(code),
         flags=re.MULTILINE,
     )
     return code, offsets
 
 
-def mask_provenance_actor_enumerator(text: str) -> str:
-    """Allow only the software-attributed enumerator in the exact actor declaration."""
+def mask_session_actor_copy(text: str) -> str:
+    """Mask the actor identifiers and visible labels permitted in App C++ code."""
     parsed = semantic_cpp_code(text)
     if parsed is None:
         return text
     code, offsets = parsed
+    masked = list(text)
+
+    def mask_span(start: int, end: int) -> None:
+        for index in offsets[start:end]:
+            masked[index] = " "
+
     declaration = re.compile(
         r"\benum\s+class\s+Actor\s*\{\s*Operator\s*,\s*System\s*,\s*"
         r"(?P<actor>Agent)\s*,?\s*\}\s*;"
     )
-    masked = list(text)
     for match in declaration.finditer(code):
-        start, end = match.span("actor")
-        for index in offsets[start:end]:
-            masked[index] = " "
-    return "".join(masked)
-
-
-def mask_actor_consumers(text: str, gallery: bool) -> str:
-    """Allow exact actor references and the proposal specimen's single actor label."""
-    parsed = semantic_cpp_code(text)
-    if parsed is None:
-        return text
-    code, offsets = parsed
-    masked = list(text)
+        mask_span(*match.span("actor"))
     for match in re.finditer(r"\bActor\s*::\s*(?P<actor>Agent)\b", code):
-        start, end = match.span("actor")
-        for index in offsets[start:end]:
-            masked[index] = " "
-    if gallery:
-        for function in re.finditer(r"\bvoid\s+proposalSpecimen\s*\(\s*\)\s*\{", code):
-            start = function.end()
-            depth = 1
-            end = start
-            while end < len(code) and depth:
-                if code[end] == "{":
-                    depth += 1
-                elif code[end] == "}":
-                    depth -= 1
-                end += 1
-            if depth:
-                continue
-            call = re.compile(r"\bImGui\s*::\s*TextUnformatted\s*\(\s*(?P<label>@{7})\s*\)\s*;")
-            for match in call.finditer(code, start, end - 1):
-                first, last = match.span("label")
-                literal = "".join(text[index] for index in offsets[first:last])
-                if literal == '"Agent"':
-                    for index in offsets[first + 1:last - 1]:
-                        masked[index] = " "
+        mask_span(*match.span("actor"))
+    for match in re.finditer(r"@+", code):
+        start, end = match.span()
+        literal = "".join(text[index] for index in offsets[start:end])
+        if literal in ('"Agent"', '"Agent · working"'):
+            mask_span(start, end)
     return "".join(masked)
 
 
@@ -367,14 +321,8 @@ def check_process_narration(files: list[Path], errors: list[str]) -> None:
         text = read_text(path)
         if text is None:
             continue
-        if name == "Source/App/Panels/Gallery/StyleGalleryPanel.cpp":
-            text = mask_gallery_semantic_copy(text)
-        if name in ("Source/App/Panels/Shared/EditorStyle.cpp",
-                    "Source/App/Panels/Gallery/StyleGalleryPanel.cpp"):
-            text = mask_actor_consumers(
-                text, gallery=name == "Source/App/Panels/Gallery/StyleGalleryPanel.cpp")
-        if name == "Source/App/Model/Workspace/Provenance.h":
-            text = mask_provenance_actor_enumerator(text)
+        if name.startswith(("Source/App/", "Tests/App/")) and path.suffix in (".h", ".cpp"):
+            text = mask_session_actor_copy(text)
         reported_lines: set[int] = set()
         for pattern in PROCESS_PATTERNS:
             for match in pattern.finditer(text):

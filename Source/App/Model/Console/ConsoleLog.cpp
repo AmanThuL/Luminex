@@ -13,7 +13,7 @@ namespace lmx::app {
 
 //======================================================================================================================
 void ConsoleLog::append(log::Level severity, int64_t timestampMilliseconds,
-                        std::string_view message) {
+                        std::string_view message, Actor actor) {
     size_t count = std::min(message.size(), kMaxMessageBytes);
     const bool truncated = count < message.size();
     if (truncated) {
@@ -22,8 +22,9 @@ void ConsoleLog::append(log::Level severity, int64_t timestampMilliseconds,
         }
     }
     std::scoped_lock lock(m_mutex);
-    ConsoleEntry entry{m_nextSequence++, timestampMilliseconds, severity,
-                       std::string(message.substr(0, count)), truncated};
+    ConsoleEntry entry{m_nextSequence++, timestampMilliseconds,
+                       severity,         std::string(message.substr(0, count)),
+                       truncated,        actor};
     if (m_entries.size() == kMaxEntries) {
         m_payloadBytes -= m_entries[0].message.size();
         m_entries.popOldest();

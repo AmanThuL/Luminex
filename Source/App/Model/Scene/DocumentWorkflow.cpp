@@ -8,15 +8,19 @@
 namespace lmx::app {
 
 //======================================================================================================================
-void DocumentWorkflow::setContext(bool dirty, bool stopped, bool measuring) {
+void DocumentWorkflow::setContext(bool dirty, bool stopped, bool measuring, bool proposalPending) {
     m_dirty = dirty;
     m_stopped = stopped;
     m_measuring = measuring;
+    m_proposalPending = proposalPending;
 }
 
 //======================================================================================================================
 std::optional<std::string> DocumentWorkflow::unavailableReason(DocumentAction action, bool stopped,
-                                                               bool measuring) {
+                                                               bool measuring,
+                                                               bool proposalPending) {
+    if (proposalPending && (action == DocumentAction::Save || action == DocumentAction::SaveAs))
+        return "Review the pending proposal first";
     if (action != DocumentAction::Save && action != DocumentAction::SaveAs &&
         action != DocumentAction::Revert)
         return {};
@@ -34,7 +38,7 @@ bool DocumentWorkflow::offersSave(DocumentAction action) {
 
 //======================================================================================================================
 bool DocumentWorkflow::request(DocumentAction action, std::optional<scenes::SceneId> target) {
-    if (unavailableReason(action, m_stopped, m_measuring))
+    if (unavailableReason(action, m_stopped, m_measuring, m_proposalPending))
         return false;
     if (m_step != WorkflowStep::Idle) {
         if (action != DocumentAction::Quit)
@@ -85,7 +89,8 @@ void DocumentWorkflow::confirm(ConfirmChoice choice) {
     } else if (choice == ConfirmChoice::Discard) {
         advance();
     } else if (offersSave(m_pending->action) &&
-               !unavailableReason(DocumentAction::Save, m_stopped, m_measuring)) {
+               !unavailableReason(DocumentAction::Save, m_stopped, m_measuring,
+                                  m_proposalPending)) {
         m_pending->saveFirst = true;
         if (savingBeforeOpen())
             m_step = WorkflowStep::Ready;

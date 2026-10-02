@@ -59,6 +59,7 @@ reconstruction, exposure/bloom/display, and the editor-only selection outline.
 `AppModel`, the ImGui/SDL/Metal-free editor logic under `Source/App/Model`, and `App`, the SDL3
 shell, panels, and frame loops under `Source/App` outside `Model`. Its
 [design-system companion](app-design-system.md) covers tokens, typography, appearance and native menus.
+[App Session](app-session.md) covers document proposals, the local bridge, threads and evidence export.
 
 [RojoRHI](rojorhi.md) is the repository-root RHI component: a dependency-free API over Metal 4,
 mounted as a git submodule of the public `rojo-rhi` repository. Engine, Scenes, Render and the

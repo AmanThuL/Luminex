@@ -115,6 +115,20 @@ struct DensityMetrics {
 /// Returns unscaled metrics for the selected density.
 DensityMetrics densityMetrics(Density density);
 
+/// Pixel-space bounds for a complete stacked before/after value after wrapping each text block.
+struct ProposedValueLayout {
+    float textWidth; ///< Positive wrapping width, reserving the right-side actor symbol.
+    float fieldTop;  ///< Field offset from the card top.
+    float beforeTop; ///< Current value offset from the card top.
+    float afterTop;  ///< Proposed value offset from the card top.
+    float height;    ///< Total height including every measured line and outer padding.
+};
+
+/// Reserves complete measured text heights; a zero height omits that block and its gap.
+/// Callers measure with the returned textWidth, then call again with those wrapped heights.
+ProposedValueLayout layoutProposedValue(float width, float padding, float markerWidth,
+                                        float fieldHeight, float beforeHeight, float afterHeight);
+
 /// Owned palette crossfade; caller serializes access and supplies monotonic seconds.
 class ThemeTransition {
 public:

@@ -1,6 +1,6 @@
 # UX5 — Agent Session
 
-**Status**: Proposed
+**Status**: Implemented — owner authorized integration on 2026-10-02; failed and incomplete gates retained as measured
 
 Written on 2026-10-01 from the merged UX4 editor and a survey of its document, settings, console
 and menu code. UX5 lets work done by an external agent reach the operator inside the editor: a
@@ -75,8 +75,9 @@ approval between an agent and every change.
 | `SessionLog` | `App/Model/Session` | Action records and the exported session record |
 | `SessionMailbox` | `App/Model/Session` | Mutex-guarded inbox and outbox; the only state both threads touch |
 | `RenderSettingCommands` | `App/Model/Rendering/Settings` | `applyRenderSetting` with cascades and reasons; `settingsToArguments` for a headless run |
-| `SessionListener` | `App/Shell` | The socket, its thread, peer check and line limits |
-| `DocumentWatch`, `ChildRun` | `App/Shell` | Polling the open pair; spawning and reaping a headless run |
+| `SessionListener` | `App/Model/Session` | The socket, its thread, peer check and line limits |
+| `DocumentWatch` | `App/Model/Session` | Stable-poll decisions and verified save ownership |
+| `ChildRun` | `App/Shell` | Spawning and reaping a headless run |
 | `EditorSession` | `App/Shell` | Draining the mailbox at the frame's safe point and executing commands |
 | `SessionPanel` | `App/Panels/Session` | Connection, tier ceiling, cards, log and Export |
 | `EditorStyle` growth | `App/Panels/Shared` | Proposal card, attention ring, proposed-value row and actor chip, which the Gallery then reuses |
@@ -104,10 +105,11 @@ is one property. Animation sample data is one row per channel. Nodes match by in
 node shows as many rows; the result is still complete. The diff is empty exactly when
 `documentDirty` is false.
 
-**Detection.** The shell polls the open pair's sizes and modification times twice a second. After
-a change, it waits for one further identical poll and for the writer's `.lmx-save-*.tmp` directory
-to be absent, then hashes the pair. A hash other than the loaded one produces a file proposal. The
-editor's own Save adopts its hash before the next poll.
+**Detection.** The shell polls the open pair's size, modification time, inode and device twice a
+second, except during Measure. After a change, it waits for one further identical poll, and up to
+5 s for a writer's `.lmx-save-*.tmp` directory to clear, then hashes the pair. A hash other than the
+loaded one produces a file proposal, unless no canonical value changed: then the hash is adopted.
+The editor's own Save suppresses a proposal only for its verified writer bytes and coherent stamps.
 
 **Sidecar.** `<name>.scene.proposal.json` beside `<name>.scene.gltf` holds `schema` (1), `actor`,
 `summary`, `evidence` (paths relative to the sidecar) and `documentSha256` (the pair's hash, as
@@ -121,16 +123,17 @@ path and Reveal, missing evidence flagged, then Show, Accept and Reject.
 - Show lists the rows as old and new values and rings the changed nodes in Hierarchy.
 - Accept on a file proposal reloads through the Revert path. It needs Stopped and no measurement,
   and asks Discard or Cancel when the operator has unsaved edits.
-- Accept on a bridge proposal applies its edits to the live scene, which becomes dirty. The edited
-  fields carry the agent-applied mark until Save or Revert.
+- Accept on a bridge proposal re-runs the preview, stales the card when its rows differ, and
+  otherwise applies its edits to the live scene, which becomes dirty. The edited fields carry the
+  agent-applied mark until Save or Revert.
 - Reject leaves the scene untouched. For a file proposal the editor remembers the rejected hash so
   the card does not return; a later Save overwrites the file.
 - While a file proposal is pending, Save and Save As are disabled with the reason "Review the
-  pending proposal first".
+  pending proposal first". Save also hashes the pair on disk and refuses an unreviewed change.
 - A file the reader rejects becomes a card in the error state showing the reader's message, with
   Reject only.
-- A proposal goes stale when its file changes again, the scene is replaced, or a subject it names
-  no longer exists. A stale proposal cannot be accepted.
+- A file proposal goes stale when its file changes again or the scene is replaced; a bridge one
+  when the scene is replaced, its rows change or the ceiling drops to read-only. Stale is final.
 
 **Surfacing.** The activity strip shows the agent mark with the state and opens the panel on click;
 the Hierarchy root carries the proposed mark. The panel never opens itself. It is a persisted
@@ -143,13 +146,15 @@ schema 5 restores unchanged with the panel hidden.
 panel's Listen toggle opens `$TMPDIR/luminex-session-<pid>.sock` with mode 0600 and logs the path.
 One client connects at a time, and its user must be the editor's. A line is at most 1 MiB and the
 inbox holds 64 requests; beyond either the client gets an error. The socket file is removed on
-close. The client finds it by `--socket`, `LMX_SESSION_SOCKET`, or the newest live match.
+close; Listen replaces a stale one the same user owns (`/tmp` when TMPDIR is unset). The client
+finds it by `--socket`, `LMX_SESSION_SOCKET`, or the newest live match.
 
 **Protocol.** A request is `{"id", "command", "args"}`. Each request gets exactly one response,
 `{"id", "ok": true, "result"}` or `{"id", "ok": false, "error": {"code", "message"}}`, sent when
 the command finishes; a command waiting for approval or for a job answers later. The first request
 is `hello` with a client name and `protocol` 1. Error codes are `protocol`, `tier`, `denied`,
-`unavailable`, `invalid`, `busy`, `failed` and `cancelled`.
+`unavailable`, `invalid`, `busy`, `failed` and `cancelled`. Unknown or repeated argument members,
+objects over 64 members and nesting over 32 answer `invalid`.
 
 | Tier | Commands |
 |---|---|
@@ -162,12 +167,14 @@ connection. A command above it is refused with `tier` and logged; nothing is que
 
 **Edits.** `propose.edits` takes a summary, evidence and edits to what the Inspector edits and the
 exporter saves: node enabled, object transform, local-light fields, the look (exposure, bloom,
-shadows) and the scene camera. Subjects are named by the identifiers `query.hierarchy` returns.
+shadows) and the scene camera. Subjects use `query.hierarchy` identifiers; look values the reader's
+ranges. Playback refuses an orbiting light's position. A 65th pending proposal answers `busy`.
 
-**Approval.** Every apply command shows an approval card with the command, its arguments and its
-output location, and Approve and Deny. `plan.submit` carries a summary and an ordered list of apply
-commands; one approval runs them in order inside the editor and stops at the first failure. A plan
-cannot grow after approval. Disconnecting cancels pending approvals; a running job finishes.
+**Approval.** Every apply command shows an approval card with its arguments, output location,
+Approve and Deny. `plan.submit` carries a summary and an ordered list of apply commands; one
+approval runs them in order and stops at the first failure. A plan cannot grow after approval.
+Disconnect, a lowered ceiling or a replaced scene cancels pending approvals with that reason; a
+running plan refuses Open and Revert. At most 8 await or run; changed cards ignore clicks for 0.5 s.
 
 **Settings.** `settings.set` uses the CLI's flag names (`temporal`, `render-scale`, `visibility`,
 `classify`, `classify-check`, `occlusion`, `occlusion-check`, `submission`, `local-lights`,
@@ -188,7 +195,8 @@ time. It shows on the activity strip with the agent mark, and the operator's Sto
   results are agent; Accept, Reject, Approve, Deny and tier changes are operator. The Console gains
   the actor chip and an actor filter beside severity.
 - `SessionLog` records each action: sequence, UTC time, actor, client name, command, arguments,
-  tier, approval (time and plan), result, and evidence paths with SHA-256.
+  tier, approval (time and plan), result, and evidence paths with SHA-256; command, arguments
+  and history are bounded at 128 bytes, 4,096 bytes and 10,000 actions, with a dropped count.
 - Export writes `session.json` into the session directory: document path and hash, client,
   protocol, the actions, and a `console` array equal to the Console's Copy visible text under the
   agent and operator filter.
@@ -216,6 +224,14 @@ combination the CLI parser rejects is rejected by `applyRenderSetting`, and the 
 is unchanged case by case; arguments from `settingsToArguments` parse back to the same settings; a
 plan runs only its approved steps; a child screenshot is byte-identical to the same CLI run; the
 listener leaves no socket file and no thread behind.
+
+**Owner-authorized exception (2026-10-02):** preserve the existing panel cascades. The original
+CLI-rejection requirement above is not passed where a cascade resolves the requested conflict:
+classify GPU from CPU/Direct selects Indirect, submission Direct from GPU/Indirect selects CPU,
+light-check on selects Clustered, and CPU classification or visibility off clears occlusion.
+Unavailable operations reject without mutation; effective
+post-cascade states satisfy applicable CLI constraints. The owner authorized this recommendation
+and continuation; this is a scoped gate exception, not milestone acceptance.
 
 ## UX5.3 — Session log and evidence export
 
@@ -260,3 +276,25 @@ format or manifest change; no Windows support; nothing UX1–UX4 already defer.
 - **Output confinement.** Evidence names are checked against path separators and `..`.
 - **Gestures.** Operator approval cannot be automated without contradicting the first principle,
   so part of the gate depends on manual or input-helper runs.
+
+## Implementation and review limits
+
+All three slices are implemented; [validation](ux5-validation.md) retains every failed attempt,
+scoped exception and unverified gesture. The frozen final App of the original chain passed 215 GPU
+cases / 1,167,008 assertions and the pinned validator 93 documents. An independent
+[review](ux5-review-validation.md) on 2026-10-02 found defects that eight fix commits corrected.
+Afterwards the unit group passes 1,105 cases, the GPU group 215 and the Python suite 331 tests.
+Fixes under `Source/App/Shell` and the Session panel have model-level unit tests only, and no native
+gesture was repeated. On 2026-10-02 the owner [authorized integration](ux5-review-validation.md#owner-authorization-and-integration) by squash merge without re-running native gestures; the executor plan is closed and ADR 0030 stays Proposed.
+
+Failed and incomplete gates, as measured, with no tolerance or default changed:
+
+- Gallery exact comparison fails in both themes: Light 0/16 and Dark 0/16.
+- Four of the five original CLI rejection pairs fail under the scoped cascade exception.
+- The initial final-App standing matrix fails 14/15; three additional eight-round attempts each
+  pass 15/15.
+- Native approved GPU capture certification failed in all four attempts (0/4 passed): the traces
+  contain internal symlinks that the evidence checks refuse. Checks and RojoRHI remain unchanged.
+- The literal five-case Off gate lacks case definitions and is incomplete; the separately defined
+  supplemental Off matrix passes 120/120 strict same-round pairs.
+- Console Copy visible byte equality and the remaining gestures stay unverified.

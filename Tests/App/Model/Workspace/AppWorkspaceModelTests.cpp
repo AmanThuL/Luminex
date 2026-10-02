@@ -43,6 +43,85 @@ TEST_CASE("default workspace opens docked panels and closes detached diagnostics
     REQUIRE(visibility.isVisible(EditorPanel::Console));
     REQUIRE_FALSE(visibility.isVisible(EditorPanel::Performance));
     REQUIRE_FALSE(visibility.isVisible(EditorPanel::RenderGraph));
+    REQUIRE_FALSE(visibility.isVisible(EditorPanel::Session));
+}
+
+//======================================================================================================================
+TEST_CASE("schema six persists Session independently of all existing panels", "[app][workspace]") {
+    WorkspaceVisibility visibility;
+    const std::array<EditorPanel, 9> panels{EditorPanel::Scene,
+                                            EditorPanel::Viewport,
+                                            EditorPanel::Rendering,
+                                            EditorPanel::Inspector,
+                                            EditorPanel::PerformanceSummary,
+                                            EditorPanel::Performance,
+                                            EditorPanel::RenderGraph,
+                                            EditorPanel::Console,
+                                            EditorPanel::Session};
+    for (size_t index = 0; index < panels.size(); ++index)
+        visibility.setVisible(panels[index], index % 2 == 0);
+    const auto text =
+        writeWorkspaceSettings(6, visibility, 113, Appearance::Light, Density::Compact);
+    REQUIRE(text.contains("Session=1\n"));
+    const auto restored = decideWorkspace(parseWorkspaceSettings(text));
+    REQUIRE(restored.kind == WorkspaceDecisionKind::Restore);
+    for (size_t index = 0; index < panels.size(); ++index)
+        REQUIRE(restored.visibility.isVisible(panels[index]) == (index % 2 == 0));
+    REQUIRE(restored.uiScalePercent == 113);
+    REQUIRE(restored.appearance == Appearance::Light);
+    REQUIRE(restored.density == Density::Compact);
+}
+
+//======================================================================================================================
+TEST_CASE("schema five restores old workspace without opening Session or rebuilding docks",
+          "[app][workspace]") {
+    const auto old = parseWorkspaceSettings(
+        "Schema=5\nScene=0\nViewport=1\nRendering=0\nInspector=1\nPerformanceSummary=0\n"
+        "Performance=1\nRenderGraph=1\nConsole=0\nSession=1\nUiScalePercent=125\n"
+        "Appearance=dark\nDensity=compact\n");
+    const auto restored = decideWorkspace(old);
+    REQUIRE(restored.kind == WorkspaceDecisionKind::Restore);
+    REQUIRE_FALSE(restored.resetPerformancePlacement);
+    REQUIRE_FALSE(restored.visibility.scene);
+    REQUIRE(restored.visibility.viewport);
+    REQUIRE_FALSE(restored.visibility.rendering);
+    REQUIRE(restored.visibility.inspector);
+    REQUIRE_FALSE(restored.visibility.performanceSummary);
+    REQUIRE(restored.visibility.performance);
+    REQUIRE(restored.visibility.renderGraph);
+    REQUIRE_FALSE(restored.visibility.console);
+    REQUIRE_FALSE(restored.visibility.session);
+    REQUIRE(restored.uiScalePercent == 125);
+    REQUIRE(restored.appearance == Appearance::Dark);
+    REQUIRE(restored.density == Density::Compact);
+}
+
+//======================================================================================================================
+TEST_CASE("Session first opening docks beside Console only when no placement was saved",
+          "[app][workspace]") {
+    constexpr uint32_t savedConsoleDock = 0x1234;
+    constexpr uint32_t liveConsoleDock = 0x5678;
+    SessionDockPlacement live;
+    REQUIRE(live.onFirstOpen(liveConsoleDock, savedConsoleDock) == liveConsoleDock);
+    REQUIRE(live.initialized());
+    REQUIRE_FALSE(live.onFirstOpen(savedConsoleDock, savedConsoleDock));
+
+    SessionDockPlacement floatingConsole;
+    REQUIRE_FALSE(floatingConsole.onFirstOpen(0u, savedConsoleDock));
+    REQUIRE(floatingConsole.initialized());
+    REQUIRE_FALSE(floatingConsole.onFirstOpen(liveConsoleDock, savedConsoleDock));
+
+    SessionDockPlacement restoredConsole;
+    REQUIRE(restoredConsole.onFirstOpen(std::nullopt, savedConsoleDock) == savedConsoleDock);
+    SessionDockPlacement noTarget;
+    REQUIRE_FALSE(noTarget.onFirstOpen(std::nullopt, 0));
+    REQUIRE(noTarget.initialized());
+    REQUIRE_FALSE(noTarget.onFirstOpen(liveConsoleDock, savedConsoleDock));
+
+    SessionDockPlacement savedSession;
+    savedSession.setSavedPlacement(true);
+    REQUIRE_FALSE(savedSession.onFirstOpen(liveConsoleDock, savedConsoleDock));
+    REQUIRE(savedSession.initialized());
 }
 
 //======================================================================================================================
@@ -251,6 +330,7 @@ TEST_CASE("write emits the exact persisted section text for default visibility",
                                 "PerformanceSummary=1\n"
                                 "RenderGraph=0\n"
                                 "Console=1\n"
+                                "Session=0\n"
                                 "UiScalePercent=100\n"
                                 "Appearance=auto\n"
                                 "Density=comfortable\n",
@@ -295,7 +375,7 @@ TEST_CASE("reset default layout is idempotent", "[app]") {
 //======================================================================================================================
 TEST_CASE("schema four restores console visibility without resetting saved docks",
           "[app][workspace]") {
-    REQUIRE(kWorkspaceSchemaVersion == 5);
+    REQUIRE(kWorkspaceSchemaVersion == 6);
     const auto parsedCurrent =
         parseWorkspaceSettings("Schema=4\nScene=0\nPerformance=0\nRenderGraph=1\n");
     const auto restored = decideWorkspace(parsedCurrent);
@@ -397,7 +477,7 @@ TEST_CASE("workspace scale accepts optional integers and safely defaults malform
 //======================================================================================================================
 TEST_CASE("unknown workspace schemas reset UI scale and visibility", "[app][workspace]") {
     for (const std::string_view schema :
-         {"Schema=0\n", "Schema=1\n", "Schema=6\n", "Schema=no\n", "Schema=2\nSchema=no\n", ""}) {
+         {"Schema=0\n", "Schema=1\n", "Schema=7\n", "Schema=no\n", "Schema=2\nSchema=no\n", ""}) {
         const auto parsed = parseWorkspaceSettings(
             std::string(schema) + "UiScalePercent=125\nPerformance=1\nRenderGraph=1\nConsole=0\n");
         REQUIRE(parsed.uiScalePercent == 125);
@@ -463,7 +543,7 @@ TEST_CASE("Performance summary visibility is independent and persisted in schema
     const auto restored = decideWorkspace(parseWorkspaceSettings(saved));
     REQUIRE_FALSE(restored.visibility.isVisible(EditorPanel::PerformanceSummary));
     REQUIRE(restored.visibility.isVisible(EditorPanel::Performance));
-    REQUIRE(kWorkspaceSchemaVersion == 5);
+    REQUIRE(kWorkspaceSchemaVersion == 6);
 }
 
 //======================================================================================================================
@@ -503,7 +583,7 @@ TEST_CASE("schema three migration preserves six visibilities and native placemen
 //======================================================================================================================
 TEST_CASE("schema four defaults persist all eight visibilities without changing UI scale",
           "[app][workspace][schema4]") {
-    REQUIRE(kWorkspaceSchemaVersion == 5);
+    REQUIRE(kWorkspaceSchemaVersion == 6);
     auto visibility = resetWorkspaceVisibility();
     REQUIRE(visibility.rendering);
     REQUIRE(visibility.performanceSummary);
@@ -525,7 +605,7 @@ TEST_CASE("schema four defaults persist all eight visibilities without changing 
 
 //======================================================================================================================
 TEST_CASE("schema five round-trips appearance and density preferences", "[app][workspace][ux4]") {
-    REQUIRE(kWorkspaceSchemaVersion == 5);
+    REQUIRE(kWorkspaceSchemaVersion == 6);
     for (const auto appearance : {Appearance::Auto, Appearance::Light, Appearance::Dark}) {
         for (const auto density : {Density::Comfortable, Density::Compact}) {
             const auto text =

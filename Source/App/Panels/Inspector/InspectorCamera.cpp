@@ -10,6 +10,7 @@
 #include <glm/glm.hpp>
 #include <imgui.h>
 
+#include <format>
 #include <limits>
 #include <utility>
 
@@ -182,6 +183,29 @@ void drawCameraSection(const InspectorPanelContext& context) {
                          ImGuiSliderFlags_AlwaysClamp);
 
         editor_style::endFields();
+    }
+    if (const auto* loaded = context.session.loadedScene()) {
+        const auto saved = context.session.authoredSceneCamera();
+        const auto key = std::format("node:{}", loaded->document.camera);
+        const auto mark = [&](std::string_view field) -> std::optional<ProvenanceMark> {
+            if (!context.attribution)
+                return std::nullopt;
+            const auto fieldKey = key + "/" + std::string(field);
+            if (!context.attribution->has(fieldKey))
+                return std::nullopt;
+            return sessionAppliedProvenance(context.attribution->client(fieldKey));
+        };
+        ImGui::SeparatorText("Saved Scene Camera");
+        if (editor_style::beginPropertyGrid("savedSceneCamera")) {
+            valueRow("Position (world)",
+                     std::format("{:.3f}, {:.3f}, {:.3f}", saved.position.x, saved.position.y,
+                                 saved.position.z),
+                     mark("position"));
+            valueRow("Yaw (deg)", std::format("{:.1f}", glm::degrees(saved.yaw)), mark("yaw"));
+            valueRow("Pitch (deg)", std::format("{:.1f}", glm::degrees(saved.pitch)),
+                     mark("pitch"));
+            editor_style::endFields();
+        }
     }
 }
 

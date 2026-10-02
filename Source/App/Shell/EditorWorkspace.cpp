@@ -10,6 +10,7 @@
 #include "App/Panels/Performance/PerformancePanel.h"
 #include "App/Panels/Rendering/RenderingPanel.h"
 #include "App/Panels/Scene/ScenePanel.h"
+#include "App/Panels/Session/SessionPanel.h"
 #include "App/Panels/Shared/EditorStyle.h"
 #include "App/Panels/Viewport/ViewportPanel.h"
 #include "Core/Diagnostics/Assert.h"
@@ -171,6 +172,7 @@ void buildDefaultDocking(uint32_t dockspaceId) {
     ImGui::DockBuilderDockWindow(kInspectorPanelWindowName, inspectorId);
     ImGui::DockBuilderDockWindow(kPerformanceSummaryWindowName, consoleId);
     ImGui::DockBuilderDockWindow(kConsolePanelWindowName, consoleId);
+    ImGui::DockBuilderDockWindow(kSessionWindowName, consoleId);
     // Performance and Render Graph are deliberately absent: their window classes forbid docking
     // into an unclassed node, so each owns its own OS window and has no default dock node.
     ImGui::DockBuilderDockWindow(kViewportPanelWindowName, centerId);

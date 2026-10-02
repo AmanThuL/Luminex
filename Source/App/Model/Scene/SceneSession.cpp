@@ -253,6 +253,12 @@ void SceneSession::editObject(size_t index, const DecomposedTransform& transform
 }
 
 //======================================================================================================================
+bool SceneSession::objectTransformPersistable(size_t index) const {
+    return m_loaded && index < scene().objects.size() && persistentObject(index) &&
+           m_loaded->binding.objectImportedNode.at(index) != engine::kGeneratedNode;
+}
+
+//======================================================================================================================
 void SceneSession::resetObject(size_t index) {
     editObject(index, objectDefault(index));
 }

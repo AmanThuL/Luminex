@@ -41,8 +41,10 @@ void drawLocalLightSection(const InspectorPanelContext& context, engine::LightId
     const auto headerMark = inspectorProvenance(
         session, context.selection, inspectorSubjectEdited(session, context.selection), {}, true,
         animated && light.position != baseline.position);
-    const auto enabledMark = inspectorProvenance(
-        session, context.selection, enabledState->own != enabledState->baseline, "Enabled", true);
+    const auto enabledMark = inspectorAppliedMark(
+        context, "enabled",
+        inspectorProvenance(session, context.selection, enabledState->own != enabledState->baseline,
+                            "Enabled", true));
     if (drawInspectorHeader(enabledState->label.c_str(), enabledState->kind.c_str(),
                             "Restore the authored enable state, color, intensity, range, "
                             "direction and cones. An orbiting light resets its position to the "

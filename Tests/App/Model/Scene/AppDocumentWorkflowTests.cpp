@@ -183,6 +183,20 @@ TEST_CASE("document mutations and save choice refuse preview and measurement",
 }
 
 //======================================================================================================================
+TEST_CASE("pending file proposal guards both save paths until review", "[app][document-workflow]") {
+    DocumentWorkflow flow;
+    flow.setContext(true, true, false, true);
+    for (const auto action : {DocumentAction::Save, DocumentAction::SaveAs}) {
+        CHECK(DocumentWorkflow::unavailableReason(action, true, false, true) ==
+              "Review the pending proposal first");
+        CHECK_FALSE(flow.request(action));
+    }
+    CHECK_FALSE(DocumentWorkflow::unavailableReason(DocumentAction::Revert, true, false, true));
+    flow.setContext(true, true, false, false);
+    CHECK(flow.request(DocumentAction::Save));
+}
+
+//======================================================================================================================
 TEST_CASE("busy document requests cannot replace a pending operation", "[app][document-workflow]") {
     DocumentWorkflow flow;
     flow.setContext(false, true, false);

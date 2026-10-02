@@ -35,8 +35,10 @@ void drawDirectionalLightSection(const InspectorPanelContext& context, size_t in
     const auto& baseline = session.lightDefault(index);
     const auto headerMark = inspectorProvenance(
         session, context.selection, inspectorSubjectEdited(session, context.selection), {}, true);
-    const auto enabledMark = inspectorProvenance(
-        session, context.selection, enabledState->own != enabledState->baseline, "Enabled", true);
+    const auto enabledMark = inspectorAppliedMark(
+        context, "enabled",
+        inspectorProvenance(session, context.selection, enabledState->own != enabledState->baseline,
+                            "Enabled", true));
     bool enabled = enabledState->own;
     if (drawInspectorHeader(enabledState->label.c_str(), "Directional",
                             "Restore this directional light's direction and scene-linear "

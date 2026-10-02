@@ -280,5 +280,16 @@ Geist resources and font recovery.
 ### Editor appearance and density
 
 View > Appearance selects Auto (system), Light or Dark; View > Density selects Comfortable or
-Compact. Both persist in workspace schema 5. See [appearance and density](editor-workspace.md#appearance-and-density)
+Compact. Both persist in workspace schema 6. See [appearance and density](editor-workspace.md#appearance-and-density)
 for CLI override scope, native chrome, Reduce Motion and recovery.
+
+### Session evidence
+
+[Agent Session](agent-session.md) documents approved measure/GPU/graph/headless jobs and Export.
+GPU capture needs the same startup capability; graph dump uses the displayed frozen/live frame.
+Headless children require the clean loaded pair and use effective settings and current lab overrides,
+with temporal-off scale 1. One job runs at a time; Stop cancels session work. Output names stay in
+the build-local session directory; failed spawn logs are retained. GPU certification hashes each
+regular trace payload and schema sidecar; sequence certification hashes the manifest and log.
+Hash failures are explicit. Export retains the held Console search/severity view with Operator and
+Agent selected; its actual-write result appears after the write and in the next Export.

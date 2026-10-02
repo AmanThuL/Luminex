@@ -90,8 +90,8 @@ MenuItem fileMenu(const MenuContext& context) {
     }
     const auto document = [&](const char* label, MenuCommand command, DocumentAction action,
                               std::optional<Shortcut> shortcut = {}) {
-        const auto reason =
-            DocumentWorkflow::unavailableReason(action, context.stopped, context.measuring);
+        const auto reason = DocumentWorkflow::unavailableReason(
+            action, context.stopped, context.measuring, context.proposalPending);
         return item(label, command, 0, false, busy.empty() ? reason.value_or("") : busy, shortcut);
     };
     return submenu("File",
@@ -193,6 +193,7 @@ MenuItem windowMenu(const MenuContext& context) {
          panel("Performance summary", EditorPanel::PerformanceSummary),
          panel("Performance", EditorPanel::Performance),
          panel("Render Graph", EditorPanel::RenderGraph), panel("Console", EditorPanel::Console),
+         panel("Session", EditorPanel::Session),
          item("Style Gallery", MenuCommand::StyleGallery, 0, context.styleGallery), separator(),
          item("Reset Default Layout", MenuCommand::ResetLayout)});
 }

@@ -26,6 +26,20 @@ std::optional<ProvenanceMark> documentProvenance(bool dirty, std::string_view pa
 }
 
 //======================================================================================================================
+ProvenanceMark proposedProvenance(std::string_view client) {
+    const bool unknown = client.empty() || client == "Unknown external change";
+    return ProvenanceMark{
+        Provenance::Proposed, unknown ? Actor::System : Actor::Agent,
+        std::format("Pending scene proposal · {}", unknown ? "Unknown external change" : client)};
+}
+
+//======================================================================================================================
+ProvenanceMark sessionAppliedProvenance(std::string_view client) {
+    return {Provenance::AgentApplied, Actor::Agent,
+            std::format("Applied by {}", client.empty() ? "Agent" : client)};
+}
+
+//======================================================================================================================
 std::optional<ProvenanceMark> subjectProvenance(std::optional<std::string_view> generatedBy,
                                                 std::optional<std::string_view> cliFlag,
                                                 bool edited) {

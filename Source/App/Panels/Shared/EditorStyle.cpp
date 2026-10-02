@@ -13,6 +13,7 @@
 #include <array>
 #include <cmath>
 #include <numbers>
+#include <string>
 
 namespace lmx::app::editor_style {
 namespace {
@@ -192,6 +193,148 @@ void actorMark(Actor actor, float size) {
     ImGui::Dummy({scaled(size), ImGui::GetTextLineHeight()});
     drawActor({start.x + scaled(size) * 0.5f, start.y + ImGui::GetTextLineHeight() * 0.5f}, actor,
               size);
+}
+
+//======================================================================================================================
+void actorChip(Actor actor, std::string_view label) {
+    const ScopedType type(TypeRole::Caption);
+    const std::string text(label);
+    const ImVec2 start = ImGui::GetCursorScreenPos();
+    const float padding = scaled(8.0f);
+    const float width = std::min(ImGui::GetContentRegionAvail().x,
+                                 ImGui::CalcTextSize(text.c_str()).x + padding * 2 + scaled(16.0f));
+    const float paddingY = scaled(3.5f);
+    const float textWidth = std::max(scaled(1.0f), width - padding * 2 - scaled(16.0f));
+    const ImVec2 textSize = ImGui::CalcTextSize(text.c_str(), nullptr, false, textWidth);
+    const float height = std::max(scaled(20.0f), textSize.y + paddingY * 2);
+    const ImVec2 end{start.x + width, start.y + height};
+    auto* draw = ImGui::GetWindowDrawList();
+    draw->AddRectFilled(start, end, colorU32(ThemeRole::SurfaceHover), scaled(kShape.pill));
+    draw->AddRect(start, end, colorU32(ThemeRole::BorderSubtle), scaled(kShape.pill), 0,
+                  scaled(kShape.border));
+    draw->AddText(ImGui::GetFont(), ImGui::GetFontSize(), {start.x + padding, start.y + paddingY},
+                  colorU32(actor == Actor::Agent ? ThemeRole::AccentAgentText : actorRole(actor)),
+                  text.c_str(), nullptr, textWidth);
+    drawActor({end.x - padding, start.y + height * 0.5f}, actor, kActorMarkSize);
+    ImGui::Dummy({width, height});
+}
+
+//======================================================================================================================
+void attentionRing(ImVec2 min, ImVec2 max) {
+    ImGui::GetWindowDrawList()->AddRect(min, max, colorU32(ThemeRole::AccentAgent),
+                                        scaled(kShape.control), 0, scaled(2.0f));
+}
+
+//======================================================================================================================
+void proposedValue(std::string_view field, std::string_view before, std::string_view after) {
+    const ScopedType type(TypeRole::Body);
+    const std::string fieldText(field);
+    const std::string oldText(before);
+    const std::string newText(after);
+    const auto start = ImGui::GetCursorScreenPos();
+    const float width = ImGui::GetContentRegionAvail().x;
+    const float padding = scaled(8.0f);
+    const float markerWidth = scaled(kActorMarkSize);
+    const auto widths = layoutProposedValue(width, padding, markerWidth, 0, 0, 0);
+    const auto measure = [&](const std::string& text) {
+        return text.empty() ? ImVec2{}
+                            : ImGui::CalcTextSize(text.c_str(), nullptr, false, widths.textWidth);
+    };
+    const auto fieldSize = measure(fieldText);
+    const auto oldSize = measure(oldText);
+    const auto newSize = measure(newText);
+    const auto layout =
+        layoutProposedValue(width, padding, markerWidth, fieldSize.y, oldSize.y, newSize.y);
+    const ImVec2 end{start.x + width, start.y + layout.height};
+    auto* draw = ImGui::GetWindowDrawList();
+    draw->AddRectFilled(start, end, colorU32(ThemeRole::SurfaceSunken), scaled(kShape.control));
+    draw->AddRect(start, end, colorU32(ThemeRole::AccentAgent), scaled(kShape.control), 0,
+                  scaled(kShape.border));
+    draw->PushClipRect(start, end, true);
+    const auto text = [&](const std::string& value, float top, ThemeRole role) {
+        if (!value.empty())
+            draw->AddText(ImGui::GetFont(), ImGui::GetFontSize(),
+                          {start.x + padding, start.y + top}, colorU32(role), value.c_str(),
+                          nullptr, layout.textWidth);
+    };
+    text(fieldText, layout.fieldTop, ThemeRole::TextSecondary);
+    text(oldText, layout.beforeTop, ThemeRole::TextDisabled);
+    text(newText, layout.afterTop, ThemeRole::AccentAgentText);
+    drawActor({end.x - padding, start.y + layout.afterTop + ImGui::GetFontSize() * 0.5f},
+              Actor::Agent, kActorMarkSize, true);
+    draw->PopClipRect();
+    ImGui::Dummy({width, layout.height});
+    editorTooltip("Proposed value; the current value is unchanged.");
+}
+
+//======================================================================================================================
+CardAction proposalCard(const SessionProposal& proposal, const CardLabels& labels) {
+    CardAction action = CardAction::None;
+    const bool applied = proposal.state == SessionState::Applied;
+    ImGui::PushID(static_cast<int>(proposal.id));
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, scaled(kShape.card));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, color(ThemeRole::SurfaceRaised));
+    ImGui::PushStyleColor(ImGuiCol_Border,
+                          color(applied ? ThemeRole::BorderSubtle : ThemeRole::AccentAgent));
+    if (ImGui::BeginChild("##proposal", {0, 0},
+                          ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY)) {
+        {
+            const ScopedType strong(TypeRole::BodyStrong);
+            ImGui::TextWrapped("%s", proposal.summary.c_str());
+        }
+        actorMark(proposal.actor);
+        const std::string source = proposal.client + " · proposal source";
+        editorTooltip(source.c_str());
+        ImGui::SameLine();
+        ImGui::TextUnformatted(proposal.actor == Actor::Agent ? "Agent" : "System");
+        ImGui::SameLine();
+        ImGui::TextColored(color(ThemeRole::TextSecondary), "%s",
+                           proposalStatusLine(proposal).c_str());
+        if (proposal.state == SessionState::Error && !proposal.error.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, color(ThemeRole::StatusError));
+            ImGui::TextWrapped("%s", proposal.error.c_str());
+            ImGui::PopStyleColor();
+        }
+        if (labels.showDetails) {
+            for (const auto& change : proposal.changes)
+                proposedValue(change.property, change.before, change.after);
+            for (const auto& evidence : proposal.evidence) {
+                const std::string text = "Evidence: " + evidence;
+                ImGui::TextLink(text.c_str());
+            }
+        }
+        if (applied) {
+            if (labels.appliedMessage)
+                message(labels.appliedMessage);
+            if (labels.appliedAction && ImGui::Button(labels.appliedAction))
+                action = CardAction::Accept;
+        } else if (proposal.state == SessionState::Proposed ||
+                   proposal.state == SessionState::Awaiting) {
+            if (labels.show && ImGui::Button("Show"))
+                action = CardAction::Show;
+            if (labels.show)
+                nextInRow(ImGui::CalcTextSize(labels.accept).x +
+                          ImGui::GetStyle().FramePadding.x * 2);
+            ImGui::BeginDisabled(!labels.acceptDisabledReason.empty());
+            if (primaryButton(labels.accept))
+                action = CardAction::Accept;
+            if (!labels.acceptDisabledReason.empty())
+                editorTooltip(labels.acceptDisabledReason.c_str());
+            ImGui::EndDisabled();
+            nextInRow(ImGui::CalcTextSize(labels.reject).x + ImGui::GetStyle().FramePadding.x * 2);
+            if (ImGui::Button(labels.reject))
+                action = CardAction::Reject;
+        } else if (proposal.state == SessionState::Error && ImGui::Button(labels.reject)) {
+            action = CardAction::Reject;
+        }
+        if (labels.footer)
+            message(labels.footer);
+    }
+    ImGui::EndChild();
+    ImGui::PopStyleColor(2);
+    ImGui::PopStyleVar();
+    ImGui::PopID();
+    return action;
 }
 
 //======================================================================================================================
@@ -509,7 +652,7 @@ void drawNotice(NoticeQueue& notices, double nowSeconds) {
         if (iconButton("dismiss", EditorIcon::Close, true, "Dismiss notice")) {
             notices.dismiss();
         }
-        actorMark(Actor::System);
+        actorMark(result->actor);
         const std::string source = "Editor status report · " + result->message +
                                    (result->path.empty() ? "" : " · " + result->path);
         editorTooltip(source.c_str());

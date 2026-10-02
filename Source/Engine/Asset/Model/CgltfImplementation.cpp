@@ -386,6 +386,13 @@ std::string_view JsonNode::tokenText() const {
 }
 
 //======================================================================================================================
+std::string_view JsonNode::sourceJson() const {
+    const auto& token = m_storage->tokens[m_index];
+    const size_t start = tokenStart(token);
+    return std::string_view(m_storage->text).substr(start, tokenEnd(token) - start);
+}
+
+//======================================================================================================================
 bool JsonNode::isObject() const {
     return m_storage->tokens[m_index].type == JSMN_OBJECT;
 }
@@ -462,6 +469,19 @@ JsonNode JsonNode::at(size_t index) const {
         token = m_storage->next[token];
     }
     return JsonNode(m_storage, token, m_path + '/' + std::to_string(index));
+}
+
+//======================================================================================================================
+std::vector<JsonNode> JsonNode::elements() const {
+    LMX_ASSERT(isArray(), "JSON elements require an array");
+    std::vector<JsonNode> result;
+    result.reserve(size());
+    size_t token = m_index + 1;
+    for (size_t index = 0; index < size(); ++index) {
+        result.push_back(JsonNode(m_storage, token, m_path + '/' + std::to_string(index)));
+        token = m_storage->next[token];
+    }
+    return result;
 }
 
 //======================================================================================================================

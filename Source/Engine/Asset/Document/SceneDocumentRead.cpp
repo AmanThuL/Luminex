@@ -308,26 +308,12 @@ SceneLook Reader::look(const JsonNode& node) {
     exposure.compensationEv = number<float>(required(e, "compensationEv"));
     exposure.adaptUpStopsPerSecond = number<float>(required(e, "adaptUpStopsPerSecond"));
     exposure.adaptDownStopsPerSecond = number<float>(required(e, "adaptDownStopsPerSecond"));
-    if (exposure.lowPercentile < 0.0f || exposure.lowPercentile >= exposure.highPercentile)
-        fail(e.path() + "/lowPercentile", "must be nonnegative and smaller than highPercentile");
-    if (exposure.highPercentile > 100.0f)
-        fail(e.path() + "/highPercentile", "must not exceed 100");
-    if (exposure.targetGrey <= 0.0f)
-        fail(e.path() + "/targetGrey", "must be positive");
-    if (exposure.evMin > exposure.evMax)
-        fail(e.path() + "/evMin", "must not exceed evMax");
-    if (exposure.adaptUpStopsPerSecond < 0.0f)
-        fail(e.path() + "/adaptUpStopsPerSecond", "must be nonnegative");
-    if (exposure.adaptDownStopsPerSecond < 0.0f)
-        fail(e.path() + "/adaptDownStopsPerSecond", "must be nonnegative");
     const auto b = required(node, "bloom");
     result.bloom.enabled = boolean(required(b, "enabled"));
     result.bloom.threshold = number<float>(required(b, "threshold"));
     result.bloom.intensity = number<float>(required(b, "intensity"));
-    if (result.bloom.threshold < 0.0f)
-        fail(b.path() + "/threshold", "must be nonnegative");
-    if (result.bloom.intensity < 0.0f)
-        fail(b.path() + "/intensity", "must be nonnegative");
+    if (const auto range = sceneLookRangeError(result))
+        fail(node.path() + range->path, range->message);
     const auto filter = required(required(node, "shadow"), "filter");
     const auto filterName = string(filter);
     if (filterName == "pcf")
@@ -913,11 +899,68 @@ AssetResult<JsonTokens> readJson(const std::filesystem::path& path) {
 } // namespace
 
 //======================================================================================================================
+std::optional<SceneLookRangeError> sceneLookRangeError(const SceneLook& look) {
+    const auto& e = look.exposure;
+    if (e.lowPercentile < 0.0f || e.lowPercentile >= e.highPercentile)
+        return SceneLookRangeError{"/exposure/lowPercentile",
+                                   "must be nonnegative and smaller than highPercentile"};
+    if (e.highPercentile > 100.0f)
+        return SceneLookRangeError{"/exposure/highPercentile", "must not exceed 100"};
+    if (e.targetGrey <= 0.0f)
+        return SceneLookRangeError{"/exposure/targetGrey", "must be positive"};
+    if (e.evMin > e.evMax)
+        return SceneLookRangeError{"/exposure/evMin", "must not exceed evMax"};
+    if (e.adaptUpStopsPerSecond < 0.0f)
+        return SceneLookRangeError{"/exposure/adaptUpStopsPerSecond", "must be nonnegative"};
+    if (e.adaptDownStopsPerSecond < 0.0f)
+        return SceneLookRangeError{"/exposure/adaptDownStopsPerSecond", "must be nonnegative"};
+    if (look.bloom.threshold < 0.0f)
+        return SceneLookRangeError{"/bloom/threshold", "must be nonnegative"};
+    if (look.bloom.intensity < 0.0f)
+        return SceneLookRangeError{"/bloom/intensity", "must be nonnegative"};
+    return std::nullopt;
+}
+
+//======================================================================================================================
 AssetResult<SceneDocument> readSceneDocument(const std::filesystem::path& path) {
     const auto json = readJson(path);
     if (!json)
         return std::unexpected(json.error());
     return Reader(json->root(), path).document();
+}
+
+//======================================================================================================================
+AssetResult<std::optional<std::filesystem::path>>
+sceneDocumentBufferPath(std::string_view gltfJson, const std::filesystem::path& document) {
+    const auto parsed = JsonTokens::parse(std::string(gltfJson));
+    if (!parsed)
+        return std::unexpected(parsed.error());
+    const auto root = parsed->root();
+    if (!root.isObject())
+        return std::unexpected(malformed("", "expected a JSON object"));
+    const auto buffers = root.find("buffers");
+    if (!buffers)
+        return std::optional<std::filesystem::path>{};
+    if (!buffers->isArray() || buffers->size() != 1)
+        return std::unexpected(
+            malformed("/buffers", "expected exactly one external animation buffer"));
+    const auto entry = buffers->at(0);
+    if (!entry.isObject())
+        return std::unexpected(malformed("/buffers/0", "expected an object"));
+    const auto uriNode = entry.find("uri");
+    if (!uriNode || !uriNode->isString())
+        return std::unexpected(
+            malformed("/buffers/0/uri", "expected a relative external .bin URI"));
+    const auto uri = uriNode->asString();
+    if (!uri)
+        return std::unexpected(malformed("/buffers/0/uri", uri.error()));
+    const auto decoded = detail::decodeDocumentUri(*uri, uriNode->path());
+    if (!decoded)
+        return std::unexpected(decoded.error());
+    if (std::filesystem::path(*decoded).extension() != ".bin")
+        return std::unexpected(
+            malformed("/buffers/0/uri", "expected a relative external .bin URI"));
+    return std::optional<std::filesystem::path>{document.parent_path() / *decoded};
 }
 
 //======================================================================================================================

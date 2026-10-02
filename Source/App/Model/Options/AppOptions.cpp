@@ -128,6 +128,7 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     bool captureFormatSpecified = false;
     std::string sceneName = scenes::defaultSceneId().key;
     bool maximized = true;
+    bool session = false;
     std::optional<Appearance> appearance;
     uint32_t frames = 1;
     TemporalMode temporal = TemporalMode::Taa;
@@ -289,6 +290,8 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
             }
         } else if (argument == "--windowed") {
             maximized = false;
+        } else if (argument == "--session") {
+            session = true;
         } else if (argument == "--frames") {
             if (++i >= arguments.size()) {
                 return fail("--frames needs a count: App --frames <N> (N >= 1)");
@@ -361,7 +364,8 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
             return fail(
                 "unknown argument '" + std::string(argument) +
                 "'; usage: App [--screenshot <out.png|out.bmp>] [--scene <" + sceneIdList("|") +
-                "|path>] [--windowed] [--appearance <auto|light|dark>] [--frames <N>] [--temporal "
+                "|path>] [--windowed] [--session] [--appearance <auto|light|dark>] [--frames <N>] "
+                "[--temporal "
                 "<off|raw|taa|metalfx>] "
                 "[--temporal-view <off|motion|reprojection|reprojected|rejection|weight|age>] "
                 "[--render-scale <0.5..1.0>] [--capture-sequence <directory> --warmup <N> "
@@ -386,6 +390,10 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
         (!screenshotPath.empty() || !captureSequencePath.empty() || !measurementPath.empty())) {
         return fail("--appearance is only available in the windowed editor");
     }
+
+    if (session &&
+        (!screenshotPath.empty() || !captureSequencePath.empty() || !measurementPath.empty()))
+        return fail("--session is only available in the windowed editor");
 
     if ((lightCheck || lightDebugView != engine::LightDebugView::Off) &&
         localLightMode != engine::LocalLightMode::Clustered)
@@ -518,6 +526,7 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     options.labLightPile = labLightPile;
     options.initialScene = *sceneId;
     options.maximized = maximized;
+    options.session = session;
     options.appearance = appearance;
     options.frames = frames;
     options.warmup = warmup;

@@ -63,8 +63,9 @@ hides. Actions and the activity mark remain.
 Authored subjects have no provenance mark. Dirty documents/edits show an operator dot; generated
 and CLI-masked state shows a session-only dashed underline with the generator/flag in its tooltip.
 Active dynamic resolution shows a system-applied gear naming scale and budget. The window title
-keeps `*` and generated subjects keep "not saved". Agent lifecycle, proposals and attention rings
-are Style Gallery specimens only; no runtime agent session or command bridge exists.
+keeps `*` and generated subjects keep "not saved". Session proposals show an Agent/System mark,
+Show rings changed nodes and accepted bridge edits show applied attribution. Window > Session opens
+review, Listen/ceiling and Export; [Agent Session](agent-session.md) explains operator approval and client use.
 
 ## Editor playback
 
@@ -93,8 +94,9 @@ Rendering groups restore these editor defaults without resetting playback or ano
 
 ## Workspace recovery
 
-Workspace schema 5 persists appearance, density, eight panel visibilities and UI scale in
-build-local `imgui.ini`, alongside docking and viewport bounds. Schema 4 restores without a dock
+Workspace schema 6 persists appearance, density, nine panel visibilities and UI scale in
+build-local `imgui.ini`, alongside docking and viewport bounds. Session defaults hidden, tabbed with Console;
+schema 5 restores unchanged with Session hidden. Schema 4 restores without a dock
 rebuild using Auto and Comfortable. Schema 3 keeps six visibilities, valid scale and detached
 bounds, adds Rendering and the Performance summary and rebuilds main docks once. Schema 2 keeps
 valid scale and rebuilds defaults; unknown schemas use default preferences/layout.
@@ -103,7 +105,7 @@ Window > Reset Default Layout preserves scale, appearance and density, closes de
 and Render Graph and resets Performance's next-open bounds. Ordinary launches retain both windows'
 geometry. Style Gallery starts closed, is not persisted and can be opened with Window > Style
 Gallery. Its Current/Dark/Light selector previews content only; it does not save a workspace theme.
-The Gallery shows the type ramp and 21 component sets, including reserved proposal/attention states.
+The Gallery shows the type ramp and 21 component sets, including shared proposal/attention states.
 Native Gallery captures and Figma correspondence remain limited as recorded in
 [Gallery validation](../milestones/ux/ux4-gallery-validation.md).
 

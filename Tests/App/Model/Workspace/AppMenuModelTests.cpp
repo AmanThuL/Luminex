@@ -115,9 +115,10 @@ TEST_CASE("menu has exactly one of every action and option identity", "[app][men
         expected.emplace(MenuCommand::Density, static_cast<uint32_t>(value));
     for (auto value : kUiScalePresets)
         expected.emplace(MenuCommand::UiScale, value);
-    for (auto value : {EditorPanel::Scene, EditorPanel::Viewport, EditorPanel::Inspector,
-                       EditorPanel::Rendering, EditorPanel::PerformanceSummary,
-                       EditorPanel::Performance, EditorPanel::RenderGraph, EditorPanel::Console})
+    for (auto value :
+         {EditorPanel::Scene, EditorPanel::Viewport, EditorPanel::Inspector, EditorPanel::Rendering,
+          EditorPanel::PerformanceSummary, EditorPanel::Performance, EditorPanel::RenderGraph,
+          EditorPanel::Console, EditorPanel::Session})
         expected.emplace(MenuCommand::Panel, static_cast<uint32_t>(value));
     expected.emplace(MenuCommand::DebugView, 0);
     for (const auto& entry : context.debugEntries)
@@ -281,9 +282,10 @@ TEST_CASE("menu checked preferences use every current choice including intermedi
 TEST_CASE("menu panel and gallery checks reflect every visibility independently",
           "[app][menu-model]") {
     auto context = ready();
-    for (auto panel : {EditorPanel::Scene, EditorPanel::Viewport, EditorPanel::Inspector,
-                       EditorPanel::Rendering, EditorPanel::PerformanceSummary,
-                       EditorPanel::Performance, EditorPanel::RenderGraph, EditorPanel::Console}) {
+    for (auto panel :
+         {EditorPanel::Scene, EditorPanel::Viewport, EditorPanel::Inspector, EditorPanel::Rendering,
+          EditorPanel::PerformanceSummary, EditorPanel::Performance, EditorPanel::RenderGraph,
+          EditorPanel::Console, EditorPanel::Session}) {
         for (bool visible : {false, true}) {
             context.visibility.setVisible(panel, visible);
             context.styleGallery = visible;

@@ -28,6 +28,10 @@ std::optional<ProvenanceMark> inspectorProvenance(const SceneSession& session,
 /// Supplies a mark for the next property label using that field's baseline comparison.
 void markInspectorField(const InspectorPanelContext& context, bool edited, std::string_view field,
                         bool preview = false);
+/// Uses an applied session mark for one canonical field when present, otherwise the supplied mark.
+std::optional<ProvenanceMark> inspectorAppliedMark(const InspectorPanelContext& context,
+                                                   std::string_view field,
+                                                   std::optional<ProvenanceMark> fallback = {});
 void beginFieldRow(const char* label);
 void valueRow(const char* label, const std::string& value,
               const std::optional<ProvenanceMark>& mark = {});

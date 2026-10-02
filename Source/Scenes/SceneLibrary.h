@@ -66,9 +66,11 @@ public:
     /// Builds before touching the old snapshot. On success waits for GPU retirement, invokes
     /// beforeReplace with the still-live old value so the caller invalidates session defaults and
     /// selection, then publishes the new scene/binding/document/path/hash together. Failure invokes
-    /// no callback and preserves the cached/active scene. The callback must not throw.
-    asset::AssetResult<engine::LoadedScene*>
-    reload(const SceneId& id, const std::function<void(const engine::LoadedScene&)>& beforeReplace);
+    /// no callback and preserves the cached/active scene. A validator may reject the complete
+    /// replacement before GPU retirement or invalidation. Callbacks must not throw.
+    asset::AssetResult<engine::LoadedScene*> reload(
+        const SceneId& id, const std::function<void(const engine::LoadedScene&)>& beforeReplace,
+        const std::function<asset::AssetResult<void>(const engine::LoadedScene&)>& validate = {});
 
     /// Retires and removes a cached scene after a replacement was successfully constructed.
     /// The callback invalidates its session state while the old scene is still alive.

@@ -17,6 +17,7 @@
 #include "App/Panels/Performance/PerformancePanel.h"
 #include "App/Panels/Rendering/RenderingPanel.h"
 #include "App/Panels/Scene/ScenePanel.h"
+#include "App/Panels/Session/SessionPanel.h"
 #include "App/Panels/Shared/ActionFeedback.h"
 #include "App/Panels/Shared/EditorStyle.h"
 #include "App/Panels/Viewport/ViewportPanel.h"
@@ -48,7 +49,7 @@ constexpr uint32_t kResizeDebounceFrames = 10;
 // reached through the same text writeWorkspaceSettings emits.
 constexpr std::string_view kNoSchemaReason = "no matching workspace schema in imgui.ini";
 constexpr std::string_view kMigrationReason =
-    "migrating workspace schema 3 to 5; keeping panel visibility, UI scale and detached window "
+    "migrating workspace schema 3 to 6; keeping panel visibility, UI scale and detached window "
     "bounds";
 constexpr std::string_view kResetReason = "layout reset requested";
 
@@ -57,7 +58,8 @@ constexpr std::string_view kResetReason = "layout reset requested";
 //======================================================================================================================
 EditorShell::EditorShell(SDL_Window* window, scenes::SceneLibrary& library,
                          std::shared_ptr<ConsoleLog> consoleLog)
-    : m_window(window), m_library(library), m_consoleModel(std::move(consoleLog)) {}
+    : m_window(window), m_library(library), m_consoleModel(consoleLog),
+      m_sessionLog(std::move(consoleLog)) {}
 
 //======================================================================================================================
 std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::Device& device,
@@ -141,6 +143,8 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
     if (io.IniFilename != nullptr) {
         ImGui::LoadIniSettingsFromDisk(io.IniFilename);
     }
+    self->m_sessionDockPlacement.setSavedPlacement(
+        ImGui::FindWindowSettingsByID(ImHashStr(kSessionWindowName)) != nullptr);
 
     const std::optional<ParsedWorkspaceSettings> parsed =
         self->m_workspace.sectionSeen ? std::optional<ParsedWorkspaceSettings>(
@@ -163,7 +167,7 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
     std::string_view startup =
         "workspace schema matches -- restoring the docked layout from imgui.ini";
     if (migrating) {
-        startup = "workspace schema 3 found -- migrating to schema 5 and building the default "
+        startup = "workspace schema 3 found -- migrating to schema 6 and building the default "
                   "layout";
     } else if (self->m_buildDefaultLayout) {
         startup = "no matching workspace schema -- the default layout will be built";
@@ -178,6 +182,9 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
 
 //======================================================================================================================
 EditorShell::~EditorShell() {
+    stopSessionWork();
+    m_sessionListener.reset();
+    m_sessionMailbox.reset();
 #ifdef __APPLE__
     m_nativeMenu.reset();
 #endif
@@ -308,6 +315,8 @@ void EditorShell::prepareUIFrame() {
 //======================================================================================================================
 void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, float deltaSeconds,
                           const FrameRecordRing& frameRecords) {
+    m_sessionHzbLevels = viewportHzbLevels(renderer);
+    m_sessionEffectiveReconstruction = effectiveReconstruction(renderer, device);
     refreshDocumentDirty();
     const RetainedFrame* newestTimed = frameRecords.newestTimedFrame();
     observeRetiredTemporal(m_temporalState, newestTimed);
@@ -420,6 +429,18 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
 //======================================================================================================================
 void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& renderer,
                               const FrameRecordRing& frameRecords) {
+    const auto priorRigOverride = m_session.localLightRigOverride();
+    if (m_pendingSessionMeasurementStart) {
+        const auto approval = *m_pendingSessionMeasurementStart;
+        m_pendingSessionMeasurementStart.reset();
+        if (m_documentWorkflow.step() != WorkflowStep::Idle)
+            finishSessionStep(approval, false, SessionError::Unavailable,
+                              "Finish the current document operation first.");
+        else if (startMeasurement(device, renderer, true))
+            m_sessionMeasurementApproval = approval;
+        else
+            finishSessionStep(approval, false, SessionError::Unavailable, m_measurementFeedback);
+    }
     m_visibilityDisplay.publishReadings(ImGui::GetTime());
     m_lightingDisplay.publishReadings(ImGui::GetTime());
     ImGui::BeginDisabled(m_measurement.active());
@@ -441,6 +462,7 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
                                     .loadedScene = m_session.loadedScene(),
                                     .session = &m_session,
                                     .dirty = m_documentDirty,
+                                    .proposal = m_sessionProposals.pendingFile(),
                                     .treeState = m_sceneTree});
         if (frameSelectionRequested)
             frameSelected(renderer);
@@ -524,6 +546,8 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
                               .viewportHeight = m_viewportHeight,
                               .viewportVisible = viewportUsable,
                               .documentDirty = m_documentDirty,
+                              .attribution = &m_sessionAttribution,
+                              .settingAttribution = &m_settingAttribution,
                               .selectionHiddenByFilter = selectionHidden,
                               .visibilityDisplay = &m_visibilityDisplay,
                               .sceneFilter = &m_sceneFilter,
@@ -546,6 +570,8 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
     }
 
     ImGui::EndDisabled();
+    if (priorRigOverride != m_session.localLightRigOverride())
+        m_settingAttribution.erase("setting/local-light-rig");
     if (m_workspace.visibility.isVisible(EditorPanel::Performance)) {
         bool open = true;
         m_performanceModel.setContextEpoch(metricsContextEpoch());
@@ -589,6 +615,41 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
         setPanelVisible(EditorPanel::Console, open);
     }
 
+    if (m_workspace.visibility.isVisible(EditorPanel::Session)) {
+        bool open = true;
+        if (!m_sessionDockPlacement.initialized()) {
+            const auto* savedConsole =
+                ImGui::FindWindowSettingsByID(ImHashStr(kConsolePanelWindowName));
+            const auto* liveConsole = ImGui::FindWindowByName(kConsolePanelWindowName);
+            const auto target = m_sessionDockPlacement.onFirstOpen(
+                liveConsole ? std::optional<uint32_t>(liveConsole->DockId) : std::nullopt,
+                savedConsole ? savedConsole->DockId : 0);
+            if (target)
+                ImGui::SetNextWindowDockID(*target, ImGuiCond_Always);
+        }
+        SessionPanelContext context{
+            .proposals = m_sessionProposals,
+            .log = m_sessionLog,
+            .approvals = m_sessionApprovals,
+            .approvalGuard = m_sessionApprovalGuard,
+            .proposalGuard = m_sessionProposalGuard,
+            .expandedId = m_sessionExpandedProposal,
+            .evidenceDirectory = m_session.loadedScene()
+                                     ? sidecarPath(m_session.loadedScene()->path).parent_path()
+                                     : std::filesystem::path{},
+            .outputDirectory = m_sessionOutputName,
+            .pathFeedback = m_sessionPathFeedback};
+        context.listening = m_sessionListener != nullptr;
+        context.socketPath =
+            m_sessionListener ? m_sessionListener->path() : std::filesystem::path{};
+        context.client = m_sessionHello ? std::string_view(m_sessionClient) : std::string_view{};
+        context.tier = m_sessionTier;
+        const auto action = drawSessionPanel(open, context);
+        if (action.action != SessionPanelAction::None)
+            m_sessionPanelAction = action;
+        setPanelVisible(EditorPanel::Session, open);
+    }
+
     if (m_workspace.visibility.isVisible(EditorPanel::RenderGraph)) {
         bool open = true;
         drawRenderGraphPanel(open, m_renderGraphPanel, frameRecords, m_notices);
@@ -610,6 +671,7 @@ rojoRHI::Result<void> EditorShell::primeTemporal(const AppOptions& options) {
     m_labLightPile = options.labLightPile;
     m_labInstances = options.labInstances;
     m_labOccluders = options.labOccluders;
+    m_sessionGeneratorOverrides = options.generatorOverrides;
     m_settings.visibilityEnabled = options.visibilityEnabled;
     m_settings.submission = options.submission;
     m_settings.classifyMode = options.classifyMode;
@@ -697,8 +759,10 @@ void EditorShell::controllerDeclared(uint64_t frame) {
 //======================================================================================================================
 void EditorShell::advanceFrameAnimation() {
     if (m_measurement.active()) {
-        if (const auto frame = m_measurement.nextFrame())
-            m_session.prepareSequenceFrame(frame->sequenceFrame);
+        if (!m_sessionMeasurementApproval && !m_pendingSessionMeasurementStart) {
+            if (const auto frame = m_measurement.nextFrame())
+                m_session.prepareSequenceFrame(frame->sequenceFrame);
+        }
         return;
     }
     m_session.advanceEditorFrame(m_playback.playing(),

@@ -23,7 +23,7 @@ unsigned char foldAscii(unsigned char value) {
 
 //======================================================================================================================
 bool consoleEntryMatches(const ConsoleEntry& entry, const ConsoleFilter& filter) {
-    if (entry.severity < filter.minimumSeverity)
+    if (!filter.actors[static_cast<size_t>(entry.actor)] || entry.severity < filter.minimumSeverity)
         return false;
     return std::search(entry.message.begin(), entry.message.end(), filter.search.begin(),
                        filter.search.end(),
@@ -38,9 +38,12 @@ std::string consoleVisibleText(const ConsoleSnapshot& snapshot, const ConsoleFil
     std::string result;
     for (const auto& entry : snapshot.entries) {
         if (consoleEntryMatches(entry, filter)) {
+            const std::string_view actor = entry.actor == Actor::Operator ? "Operator" : "Agent";
+            const std::string actorTag =
+                entry.actor == Actor::System ? "" : std::format("[{}] ", actor);
             result +=
-                std::format("[{} UTC] [{}] {}{}\n", consoleTimestamp(entry.timestampMilliseconds),
-                            consoleSeverityName(entry.severity), entry.message,
+                std::format("[{} UTC] [{}] {}{}{}\n", consoleTimestamp(entry.timestampMilliseconds),
+                            consoleSeverityName(entry.severity), actorTag, entry.message,
                             entry.truncated ? " [truncated]" : "");
         }
     }

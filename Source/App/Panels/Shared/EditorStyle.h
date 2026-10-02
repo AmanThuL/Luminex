@@ -6,6 +6,7 @@
 #pragma once
 
 #include "App/Model/Capture/NoticeQueue.h"
+#include "App/Model/Session/SessionProposal.h"
 #include "App/Model/Workspace/ActivityModel.h"
 #include "App/Model/Workspace/EditorIcon.h"
 #include "App/Model/Workspace/EditorTheme.h"
@@ -15,6 +16,7 @@
 #include <imgui.h>
 
 #include <cfloat>
+#include <string_view>
 
 namespace lmx::app::editor_style {
 
@@ -51,6 +53,35 @@ inline constexpr float kActorMarkSize = 8.0f;
 /// Draws a filled operator dot, system ring or software diamond in the actor's semantic role.
 /// size is a positive diameter in base UI points; this UI-thread item borrows no state.
 void actorMark(Actor actor, float size = kActorMarkSize);
+/// Draws a compact actor-labelled chip using the actor's semantic ink and symbol.
+void actorChip(Actor actor, std::string_view label);
+/// Outlines a screen-space item rectangle with the 2 pt software attention stroke.
+void attentionRing(ImVec2 min, ImVec2 max);
+/// Draws a non-editable before/after row; an empty field omits the inline field name.
+void proposedValue(std::string_view field, std::string_view before, std::string_view after);
+
+/// Action selected from a proposal card in the current UI frame.
+enum class CardAction {
+    None,   ///< No action was selected.
+    Show,   ///< Reveal the proposal's change details.
+    Accept, ///< Request operator acceptance.
+    Reject  ///< Request operator rejection.
+};
+
+/// Visible action labels and optional card details supplied by the caller.
+struct CardLabels {
+    const char* accept = "Accept";        ///< Primary action label.
+    const char* reject = "Reject";        ///< Secondary action label.
+    bool show = true;                     ///< Whether the Show action is available.
+    std::string acceptDisabledReason;     ///< Explanation when acceptance is unavailable.
+    bool showDetails = false;             ///< Include change rows and evidence links in the card.
+    const char* appliedMessage = nullptr; ///< Optional status text for an applied card.
+    const char* appliedAction = nullptr;  ///< Optional action label for an applied card.
+    const char* footer = nullptr;         ///< Optional explanatory text after the controls.
+};
+
+/// Draws a proposal card and reports only a clicked action; it never changes proposal state.
+CardAction proposalCard(const SessionProposal& proposal, const CardLabels& labels = {});
 /// Draws the provenance symbol with a source tooltip; authored values emit no item.
 /// Session-only marks underline the preceding item's label and retain its source text unchanged.
 /// overlay places the symbol inside the preceding row without changing its hit target or layout;

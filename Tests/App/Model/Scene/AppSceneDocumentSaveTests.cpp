@@ -2,9 +2,11 @@
 #include "App/Model/Scene/DocumentWorkflow.h"
 #include "App/Model/Scene/EditorSelection.h"
 #include "App/Model/Scene/SceneDocumentSave.h"
+#include "App/Model/Session/DocumentWatch.h"
 #include "Core/IO/File.h"
 #include "Core/Util/Sha256.h"
 #include "Engine/Asset/Document/Orientation.h"
+#include "Engine/Asset/Document/SceneDocumentDiff.h"
 #include "Scenes/SceneDocumentExport.h"
 #include "Support/EngineTestSupport.h"
 #include "Support/GraphTestSupport.h"
@@ -400,6 +402,61 @@ TEST_CASE("replacement builds before invalidation and discard cannot return thro
         CHECK(id == previousId);
         CHECK(session.look() == saveFixture().look);
         CHECK_FALSE(dirty(session));
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("session reload preserves the operator view only when its subject survives",
+          "[app][document-save][session]") {
+    FakeDevice device;
+    scenes::SceneLibrary library(device);
+    auto id = scenes::sceneIdFromPath(savePath("session-view"));
+    REQUIRE(library.get(id));
+    app::SceneSession session;
+    session.activate(*library.loaded(id), app::SceneActivationMotion::Reset);
+    session.camera().position = {12.0f, 4.0f, -3.0f};
+    session.camera().yaw = 0.4f;
+    const auto camera = session.camera();
+    app::EditorSelection selection{.sceneId = id, .subject = app::EditorSubject::Camera};
+    auto changed = library.loaded(id)->document;
+    CHECK(app::canPreserveSessionSelection(selection, *library.loaded(id), changed));
+    REQUIRE(app::replaceSessionDocumentPreservingView(library, session, id, selection));
+    CHECK(selection.subject == app::EditorSubject::Camera);
+    CHECK(session.camera().position == camera.position);
+    CHECK(session.camera().yaw == camera.yaw);
+
+    const auto active = session.activeScene();
+    const auto unchanged = library.loaded(id)->document;
+    CHECK_FALSE(app::replaceSessionDocumentPreservingView(
+        library, session, id, selection, unchanged, library.loaded(id)->hash,
+        [](const fs::path&) -> asset::AssetResult<std::string> {
+            return std::string("late-disk-hash");
+        }));
+    CHECK(session.activeScene() == active);
+    CHECK(selection.subject == app::EditorSubject::Camera);
+    CHECK(session.camera().position == camera.position);
+    CHECK_FALSE(app::replaceSessionDocumentPreservingView(
+        library, session, id, selection, library.loaded(id)->document, "wrong-hash"));
+    CHECK(session.activeScene() == active);
+    CHECK(selection.subject == app::EditorSubject::Camera);
+    CHECK(session.camera().position == camera.position);
+
+    selection.subject = app::EditorSubject::Group;
+    selection.node = 0;
+    changed.nodes.clear();
+    CHECK_FALSE(app::canPreserveSessionSelection(selection, *library.loaded(id), changed));
+    const auto retained = session.activeScene();
+    CHECK_FALSE(
+        app::replaceSessionDocumentPreservingView(library, session, id, selection, changed));
+    CHECK(session.activeScene() == retained);
+    CHECK(selection.subject == app::EditorSubject::Group);
+    CHECK(session.camera().position == camera.position);
+
+    if (!session.scene().objects.empty()) {
+        selection.subject = app::EditorSubject::Object;
+        selection.index = 0;
+        selection.node = library.loaded(id)->binding.objectNode[0];
+        CHECK_FALSE(app::canPreserveSessionSelection(selection, *library.loaded(id), changed));
     }
 }
 
@@ -821,4 +878,220 @@ TEST_CASE("confirmed Save persists exposure before Open chooser cancellation",
             }
         }
     }
+}
+
+//======================================================================================================================
+TEST_CASE("save watcher adopts only the verified editor write of the watched pair",
+          "[app][document-save][save-watch]") {
+    FakeDevice device;
+    scenes::SceneLibrary library(device);
+    const auto path = savePath("watch-write");
+    auto id = scenes::sceneIdFromPath(path);
+    REQUIRE(library.get(id));
+    app::SceneSession session;
+    session.activate(*library.loaded(id), app::SceneActivationMotion::Reset);
+    app::DocumentWatch watch;
+    const app::FileStamp baseline{100, 200, 1, 1, false};
+    const app::FileStamp changed{101, 201, 2, 2, false};
+    watch.reset(baseline);
+    auto external = session.loadedScene()->document;
+    external.look.bloom.intensity += 2;
+    REQUIRE(asset::saveSceneDocument(external, path));
+    REQUIRE(watch.poll(changed, 0.5) == app::WatchDecision::Wait);
+    REQUIRE(watch.poll(changed, 1.0) == app::WatchDecision::Hash);
+    watch.hashed(*asset::sceneDocumentHash(path), false, 1.0);
+    app::SceneDocumentWrite write{.path = path, .hash = "old receipt must be cleared"};
+    bool expectedOwned = false;
+    bool expectedWritten = false;
+    app::SceneDocumentSaveIO io;
+    bool saveAs = false;
+    fs::path destination = path;
+    SECTION("prewrite Save As alias preserves attribution grace and external proposal") {
+        saveAs = true;
+    }
+    SECTION("transactional writer failure preserves external proposal") {
+        io.write = [](const auto&, const auto&) -> asset::AssetResult<void> {
+            return std::unexpected(asset::AssetError{asset::AssetErrorCode::Io, "write failed"});
+        };
+    }
+    SECTION("completed write followed by read failure suppresses its own notification") {
+        expectedOwned = true;
+        expectedWritten = true;
+        io.read = [](const auto&) -> asset::AssetResult<asset::SceneDocument> {
+            return std::unexpected(asset::AssetError{asset::AssetErrorCode::Io, "read failed"});
+        };
+    }
+    SECTION("completed write followed by hash failure suppresses its own notification") {
+        expectedOwned = true;
+        expectedWritten = true;
+        io.hash = [](const auto&) -> asset::AssetResult<std::string> {
+            return std::unexpected(asset::AssetError{asset::AssetErrorCode::Io, "hash failed"});
+        };
+    }
+    SECTION("external rewrite after editor write is never adopted as self-save") {
+        expectedWritten = true;
+        io.read = [&](const auto& target) -> asset::AssetResult<asset::SceneDocument> {
+            REQUIRE(asset::saveSceneDocument(external, target));
+            return std::unexpected(asset::AssetError{asset::AssetErrorCode::Io, "read failed"});
+        };
+    }
+    SECTION("failed Save As writes a different pair without suppressing the active change") {
+        expectedWritten = true;
+        destination = savePath("watch-destination");
+        saveAs = true;
+        io.read = [](const auto&) -> asset::AssetResult<asset::SceneDocument> {
+            return std::unexpected(asset::AssetError{asset::AssetErrorCode::Io, "read failed"});
+        };
+    }
+    const auto result =
+        app::saveSessionDocument(library, session, id, destination, saveAs, io, &write);
+    REQUIRE_FALSE(result);
+    const auto currentHash = asset::sceneDocumentHash(path);
+    REQUIRE(currentHash);
+    const bool owned =
+        watch.adoptSave(changed, changed, path, write.path, write.hash, *currentHash);
+    CHECK(write.hash.empty() == !expectedWritten);
+    CHECK(owned == expectedOwned);
+    if (expectedOwned) {
+        CHECK(owned);
+        CHECK(watch.poll(changed, 1.5) == app::WatchDecision::Wait);
+        CHECK_FALSE(watch.ready());
+    } else {
+        CHECK_FALSE(owned);
+        CHECK(watch.poll(changed, 1.5) == app::WatchDecision::Sidecar);
+        CHECK_FALSE(watch.ready());
+        CHECK(watch.poll(changed, 5.0) == app::WatchDecision::Sidecar);
+        CHECK(watch.ready());
+    }
+    CHECK((session.loadedScene()->hash != *currentHash || owned));
+}
+
+//======================================================================================================================
+TEST_CASE("successful Save and Save As retain a later external pair for review",
+          "[app][document-save][saved-pair-watch]") {
+    FakeDevice device;
+    scenes::SceneLibrary library(device);
+    const auto originalPath = savePath("success-watch-original");
+    auto id = scenes::sceneIdFromPath(originalPath);
+    REQUIRE(library.get(id));
+    app::SceneSession session;
+    session.activate(*library.loaded(id), app::SceneActivationMotion::Reset);
+    auto look = session.look();
+    look.bloom.intensity += 1;
+    session.editLook(look);
+    auto external = session.loadedScene()->document;
+    external.look.bloom.intensity += 2;
+    bool saveAs = false;
+    bool externalReplacement = false;
+    SECTION("Save of the verified editor pair remains quiet") {}
+    SECTION("Save As of the verified editor pair remains quiet") {
+        saveAs = true;
+    }
+    SECTION("external revision after successful Save remains proposed") {
+        externalReplacement = true;
+    }
+    SECTION("external revision after successful Save As remains proposed") {
+        saveAs = true;
+        externalReplacement = true;
+    }
+    const auto destination = saveAs ? savePath("success-watch-destination") : originalPath;
+    app::SceneDocumentSaveIO io;
+    io.hash = [&](const auto& path) -> asset::AssetResult<std::string> {
+        auto verified = asset::sceneDocumentHash(path);
+        REQUIRE(verified);
+        if (externalReplacement)
+            REQUIRE(asset::saveSceneDocument(external, path));
+        return verified;
+    };
+    app::SceneDocumentWrite receipt;
+    REQUIRE(app::saveSessionDocument(library, session, id, destination, saveAs, io, &receipt));
+    CHECK(session.loadedScene()->path == destination);
+    CHECK(session.loadedScene()->hash == receipt.hash);
+    const auto currentHash = asset::sceneDocumentHash(destination);
+    REQUIRE(currentHash);
+    CHECK((*currentHash == receipt.hash) == !externalReplacement);
+    app::DocumentWatch watch;
+    // Different pairs can have equal observations; adopting a document changes the hash baseline.
+    const app::FileStamp observed{100, 200, 1, 1, false};
+    watch.reset(observed);
+    const bool owned = watch.adoptSave(observed, observed, destination, receipt.path, receipt.hash,
+                                       *currentHash, true);
+    CHECK(owned == !externalReplacement);
+    CHECK(watch.poll(observed, 0.5) == app::WatchDecision::Wait);
+    if (externalReplacement) {
+        CHECK(watch.poll(observed, 1.0) == app::WatchDecision::Hash);
+        watch.hashed(*currentHash, true, 1.0);
+        CHECK(watch.ready());
+        const auto disk = asset::readSceneDocument(destination);
+        REQUIRE(disk);
+        CHECK_FALSE(asset::diffSceneDocuments(session.loadedScene()->document, *disk).empty());
+    } else {
+        CHECK(watch.poll(observed, 1.0) == app::WatchDecision::Wait);
+        CHECK_FALSE(watch.ready());
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("save refuses a pair replaced between canonical read and hash",
+          "[app][document-save][save-pair-verification]") {
+    FakeDevice device;
+    scenes::SceneLibrary library(device);
+    const auto originalPath = savePath("verification-race-original");
+    auto id = scenes::sceneIdFromPath(originalPath);
+    REQUIRE(library.get(id));
+    app::SceneSession session;
+    session.activate(*library.loaded(id), app::SceneActivationMotion::Reset);
+    const auto originalHash = session.loadedScene()->hash;
+    const auto originalId = id;
+    auto look = session.look();
+    look.bloom.intensity += 1;
+    session.editLook(look);
+    auto external = session.loadedScene()->document;
+    external.look.bloom.intensity += 2;
+    bool saveAs = false;
+    SECTION("Save preserves the live loaded baseline") {}
+    SECTION("Save As preserves the active path and identity") {
+        saveAs = true;
+    }
+    const auto destination = saveAs ? savePath("verification-race-destination") : originalPath;
+    app::SceneDocumentSaveIO io;
+    io.read = [&](const auto& path) -> asset::AssetResult<asset::SceneDocument> {
+        auto canonical = asset::readSceneDocument(path);
+        REQUIRE(canonical);
+        REQUIRE(asset::saveSceneDocument(external, path));
+        return canonical;
+    };
+    const auto result = app::saveSessionDocument(library, session, id, destination, saveAs, io);
+    REQUIRE_FALSE(result);
+    CHECK(result.error().message.find("changed") != std::string::npos);
+    CHECK(id == originalId);
+    CHECK(session.loadedScene()->path == originalPath);
+    CHECK(session.loadedScene()->hash == originalHash);
+    CHECK(dirty(session));
+    const auto disk = asset::readSceneDocument(destination);
+    REQUIRE(disk);
+    CHECK(disk->look.bloom.intensity == external.look.bloom.intensity);
+}
+
+//======================================================================================================================
+TEST_CASE("a formatting-only disk change adopts its hash and a real change does not",
+          "[app][document-save]") {
+    engine::LoadedScene loaded{.scene = std::make_unique<engine::Scene>()};
+    loaded.document = saveFixture();
+    loaded.document.sourceBufferUri = "old.bin";
+    loaded.hash = "loaded";
+    auto onDisk = saveFixture();
+    onDisk.sourceBufferUri = "renamed.bin";
+    onDisk.warnings = {"read diagnostics take no part"};
+    auto changed = onDisk;
+    changed.nodes[0].translation = {0, 2, 4};
+
+    CHECK_FALSE(app::adoptEquivalentDocument(loaded, changed, "changed"));
+    CHECK(loaded.hash == "loaded");
+    CHECK(loaded.document.sourceBufferUri == "old.bin");
+
+    CHECK(app::adoptEquivalentDocument(loaded, onDisk, "reformatted"));
+    CHECK(loaded.hash == "reformatted");
+    CHECK(loaded.document.sourceBufferUri == "renamed.bin");
+    CHECK(asset::diffSceneDocuments(loaded.document, saveFixture()).empty());
 }

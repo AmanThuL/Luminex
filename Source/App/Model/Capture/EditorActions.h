@@ -43,6 +43,12 @@ public:
     /// performs the capture attempt and logs failure itself -- one attempt consumes the request
     /// regardless of whether it succeeds.
     bool consumeCapture();
+    /// Reserves the shared capture result until the approved session step consumes completion.
+    void reserveSessionCapture() { m_sessionCaptureOwned = true; }
+    /// Releases the capture result after the owning session step finishes or is cancelled.
+    void releaseSessionCapture() { m_sessionCaptureOwned = false; }
+    /// Whether a session step still owns the shared capture result.
+    bool sessionCaptureOwned() const { return m_sessionCaptureOwned; }
 
     /// Records a request to reset the default dock layout, coalescing with any request already
     /// pending.
@@ -69,6 +75,7 @@ private:
     ActionResult m_captureResult;
     bool m_quitPending = false;
     bool m_capturePending = false;
+    bool m_sessionCaptureOwned = false;
     bool m_resetLayoutPending = false;
 };
 

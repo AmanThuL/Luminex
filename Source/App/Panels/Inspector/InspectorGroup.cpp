@@ -42,8 +42,9 @@ void drawGroupSection(const InspectorPanelContext& context) {
         state->own != state->baseline, &enabled,
         inspectorProvenance(context.session, context.selection, state->own != state->baseline, {},
                             true),
-        inspectorProvenance(context.session, context.selection, state->own != state->baseline,
-                            "Enabled", true));
+        inspectorAppliedMark(context, "enabled",
+                             inspectorProvenance(context.session, context.selection,
+                                                 state->own != state->baseline, "Enabled", true)));
     if (reset) {
         if (const auto result = resetInspectorEnabled(context.session, context.selection); !result)
             editor_style::message(result.error().message.c_str(), true);

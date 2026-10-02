@@ -43,7 +43,7 @@ struct PendingDocumentWork {
 class DocumentWorkflow {
 public:
     /// Refreshes current canonical dirty and transport state. Does not clear pending user work.
-    void setContext(bool dirty, bool stopped, bool measuring);
+    void setContext(bool dirty, bool stopped, bool measuring, bool proposalPending = false);
     /// Queues a request when idle. Quit coalesces while a path dialog or operation is outstanding
     /// and is reconsidered after that response, including behind Ready work not yet taken; other
     /// overlapping requests return false.
@@ -72,7 +72,8 @@ public:
     static bool offersSave(DocumentAction action);
     /// Save, Save As and Revert require stopped transport and no active measurement.
     static std::optional<std::string> unavailableReason(DocumentAction action, bool stopped,
-                                                        bool measuring);
+                                                        bool measuring,
+                                                        bool proposalPending = false);
 
 private:
     bool savingBeforeOpen() const;
@@ -84,6 +85,7 @@ private:
     bool m_dirty = false;
     bool m_stopped = true;
     bool m_measuring = false;
+    bool m_proposalPending = false;
     bool m_issued = false;
     bool m_quitQueued = false;
 };
