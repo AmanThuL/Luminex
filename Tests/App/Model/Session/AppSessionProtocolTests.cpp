@@ -201,6 +201,10 @@ TEST_CASE("session arguments reject unknown, repeated and unbounded members",
                                          node(R"({"afterSequence":4,"limit":1})")));
     CHECK_FALSE(validateSessionArguments(SessionCommand::QueryConsole,
                                          node(R"({"afterSequence":4,"afterSequence":9})")));
+    CHECK(validateSessionArguments(SessionCommand::QueryLog, node("{}")));
+    CHECK(validateSessionArguments(SessionCommand::QueryLog, node(R"({"afterSequence":4})")));
+    CHECK_FALSE(validateSessionArguments(SessionCommand::QueryLog,
+                                         node(R"({"afterSequence":4,"limit":1})")));
     CHECK(validateSessionArguments(SessionCommand::ProposeWithdraw, node(R"({"proposal":4})")));
     CHECK_FALSE(validateSessionArguments(SessionCommand::ProposeWithdraw,
                                          node(R"({"proposal":4,"client":"other"})")));

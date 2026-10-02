@@ -42,18 +42,52 @@ std::string_view sessionStateLabel(SessionState state) {
 }
 
 //======================================================================================================================
+std::string_view sessionActorName(Actor actor) {
+    switch (actor) {
+    case Actor::Operator:
+        return "Operator";
+    case Actor::System:
+        return "System";
+    case Actor::Agent:
+        return "Agent";
+    }
+    LMX_ASSERT(false, "Unknown session actor");
+    return "System";
+}
+
+//======================================================================================================================
 SessionLog::SessionLog(std::shared_ptr<ConsoleLog> console) : m_console(std::move(console)) {
     LMX_ASSERT(m_console != nullptr, "SessionLog requires a Console store");
+}
+
+//======================================================================================================================
+std::string truncateSessionText(std::string text, size_t limit) {
+    if (text.size() <= limit)
+        return text;
+    size_t kept = limit;
+    while (kept > 0 && (static_cast<unsigned char>(text[kept]) & 0xc0) == 0x80)
+        --kept;
+    const size_t removed = text.size() - kept;
+    text.resize(kept);
+    text += std::format("…[truncated {} bytes]", removed);
+    return text;
 }
 
 //======================================================================================================================
 uint64_t SessionLog::record(SessionAction action) {
     action.sequence = m_nextSequence++;
     const uint64_t sequence = action.sequence;
+    // Both fields can carry a client's bytes verbatim, so neither is retained whole.
+    action.command = truncateSessionText(std::move(action.command), kMaxActionCommandBytes);
+    action.arguments = truncateSessionText(std::move(action.arguments), kMaxActionArgumentBytes);
     m_console->append(log::Level::Info, action.timestampMilliseconds,
                       std::format("{} {} -> {}", action.command, action.arguments, action.outcome),
                       action.actor);
     m_actions.push_back(std::move(action));
+    if (m_actions.size() > kMaxSessionActions) {
+        m_actions.pop_front();
+        ++m_dropped;
+    }
     return sequence;
 }
 
@@ -63,13 +97,28 @@ void SessionLog::attach(uint64_t sequence, SessionEvidence evidence) {
         std::find_if(m_actions.begin(), m_actions.end(), [sequence](const SessionAction& action) {
             return action.sequence == sequence;
         });
-    LMX_ASSERT(it != m_actions.end(), "Unknown session action sequence");
+    if (it == m_actions.end()) {
+        LMX_ASSERT(sequence != 0 && sequence < m_nextSequence && !m_actions.empty() &&
+                       sequence < m_actions.front().sequence,
+                   "Unknown session action sequence");
+        return;
+    }
     it->evidence.push_back(std::move(evidence));
 }
 
 //======================================================================================================================
-std::span<const SessionAction> SessionLog::actions() const {
+const std::deque<SessionAction>& SessionLog::actions() const {
     return m_actions;
+}
+
+//======================================================================================================================
+uint64_t SessionLog::dropped() const {
+    return m_dropped;
+}
+
+//======================================================================================================================
+uint64_t SessionLog::nextSequence() const {
+    return m_nextSequence;
 }
 
 //======================================================================================================================
@@ -167,6 +216,8 @@ std::string sessionRecordJson(const SessionLog& log, const ConsoleSnapshot& cons
     writer.endObject();
     writer.key("client");
     writer.string(client);
+    writer.key("dropped");
+    writer.integer(log.dropped());
     writer.key("actions");
     writer.beginArray();
     for (const auto& action : log.actions()) {
@@ -176,9 +227,7 @@ std::string sessionRecordJson(const SessionLog& log, const ConsoleSnapshot& cons
         writer.key("timestampMilliseconds");
         writer.integer(action.timestampMilliseconds);
         writer.key("actor");
-        writer.string(action.actor == Actor::Operator ? "operator"
-                      : action.actor == Actor::Agent  ? "Agent"
-                                                      : "system");
+        writer.string(sessionActorName(action.actor));
         writer.key("client");
         writer.string(action.client);
         writer.key("command");

@@ -173,7 +173,7 @@ std::expected<void, std::string> knownMemberNames(const asset::JsonNode& object,
 // member is named by the setting itself.
 std::optional<std::span<const std::string_view>> argumentNames(SessionCommand command) {
     static constexpr std::array<std::string_view, 2> hello{"name", "protocol"};
-    static constexpr std::array<std::string_view, 1> console{"afterSequence"};
+    static constexpr std::array<std::string_view, 1> cursor{"afterSequence"};
     static constexpr std::array<std::string_view, 3> edits{"summary", "evidence", "edits"};
     static constexpr std::array<std::string_view, 1> withdraw{"proposal"};
     static constexpr std::array<std::string_view, 2> debugView{"topic", "value"};
@@ -187,7 +187,8 @@ std::optional<std::span<const std::string_view>> argumentNames(SessionCommand co
     case SessionCommand::Hello:
         return hello;
     case SessionCommand::QueryConsole:
-        return console;
+    case SessionCommand::QueryLog:
+        return cursor;
     case SessionCommand::ProposeEdits:
         return edits;
     case SessionCommand::ProposeWithdraw:

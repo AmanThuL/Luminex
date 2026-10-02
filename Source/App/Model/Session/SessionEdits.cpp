@@ -54,9 +54,9 @@ struct PreparedBatch {
 std::string jsonVector(glm::vec3 value) {
     JsonWriter writer;
     writer.beginArray(true);
-    writer.number(value.x);
-    writer.number(value.y);
-    writer.number(value.z);
+    writeSessionNumber(writer, value.x);
+    writeSessionNumber(writer, value.y);
+    writeSessionNumber(writer, value.z);
     writer.endArray();
     return writer.take();
 }
@@ -64,7 +64,7 @@ std::string jsonVector(glm::vec3 value) {
 //======================================================================================================================
 std::string jsonFloat(float value) {
     JsonWriter writer;
-    writer.number(value);
+    writeSessionNumber(writer, value);
     return writer.take();
 }
 
@@ -87,25 +87,25 @@ std::string jsonExposure(const asset::SceneLook::Exposure& e) {
     JsonWriter writer;
     writer.beginObject();
     writer.key("ev");
-    writer.number(e.ev);
+    writeSessionNumber(writer, e.ev);
     writer.key("autoEnabled");
     writer.boolean(e.autoEnabled);
     writer.key("lowPercentile");
-    writer.number(e.lowPercentile);
+    writeSessionNumber(writer, e.lowPercentile);
     writer.key("highPercentile");
-    writer.number(e.highPercentile);
+    writeSessionNumber(writer, e.highPercentile);
     writer.key("targetGrey");
-    writer.number(e.targetGrey);
+    writeSessionNumber(writer, e.targetGrey);
     writer.key("evMin");
-    writer.number(e.evMin);
+    writeSessionNumber(writer, e.evMin);
     writer.key("evMax");
-    writer.number(e.evMax);
+    writeSessionNumber(writer, e.evMax);
     writer.key("compensationEv");
-    writer.number(e.compensationEv);
+    writeSessionNumber(writer, e.compensationEv);
     writer.key("adaptUpStopsPerSecond");
-    writer.number(e.adaptUpStopsPerSecond);
+    writeSessionNumber(writer, e.adaptUpStopsPerSecond);
     writer.key("adaptDownStopsPerSecond");
-    writer.number(e.adaptDownStopsPerSecond);
+    writeSessionNumber(writer, e.adaptDownStopsPerSecond);
     writer.endObject();
     return writer.take();
 }
@@ -117,9 +117,9 @@ std::string jsonBloom(const asset::SceneLook::Bloom& bloom) {
     writer.key("enabled");
     writer.boolean(bloom.enabled);
     writer.key("threshold");
-    writer.number(bloom.threshold);
+    writeSessionNumber(writer, bloom.threshold);
     writer.key("intensity");
-    writer.number(bloom.intensity);
+    writeSessionNumber(writer, bloom.intensity);
     writer.endObject();
     return writer.take();
 }

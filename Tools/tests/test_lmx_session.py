@@ -174,6 +174,18 @@ class BridgeClientTests(unittest.TestCase):
                 {"id": 2, "command": "query.console", "args": {"afterSequence": 17}},
             ])
 
+    def test_log_query_sends_its_sequence_cursor(self):
+        for words, cursor in ((("query", "log"), 0),
+                              (("query", "log", "--after-sequence", "41"), 41)):
+            with self.subTest(words=words), tempfile.TemporaryDirectory() as temp:
+                path = Path(temp) / "session.sock"
+                thread, requests = self.serve(path)
+                result = self.run_client("--socket", path, *words)
+                thread.join(2)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(requests[1], {"id": 2, "command": "query.log",
+                                               "args": {"afterSequence": cursor}})
+
     def test_error_response_and_transport_failure(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "session.sock"

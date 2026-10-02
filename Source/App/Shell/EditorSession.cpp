@@ -515,30 +515,23 @@ void EditorShell::drainSessionBridge() {
             if (const auto* frame = m_renderGraphPanel.snapshot.displayed())
                 result = jsonString(render::dumpCompiledFrame(frame->record));
             break;
-        case SessionCommand::QueryConsole: {
+        case SessionCommand::QueryConsole:
+        case SessionCommand::QueryLog: {
             const auto after = request->args.find("afterSequence");
             const auto sequence = after ? after->asUInt() : std::expected<uint64_t, std::string>{0};
             if (!sequence) {
                 answerError(SessionError::Invalid, "afterSequence must be uint64");
                 outcome = "invalid";
-                m_sessionLog.record(
-                    SessionAction{.timestampMilliseconds = utcMilliseconds(),
-                                  .actor = Actor::Agent,
-                                  .client = m_sessionClient,
-                                  .command = request->command,
-                                  .arguments = std::string(request->args.sourceJson()),
-                                  .tier = m_sessionTier,
-                                  .outcome = outcome});
-                continue;
+                responseSent = true;
+                break;
             }
-            result = consoleJson(m_consoleModel.retainedSnapshot(), *sequence);
+            result = spec->command == SessionCommand::QueryLog
+                         ? logJson(m_sessionLog, *sequence)
+                         : consoleJson(m_consoleModel.retainedSnapshot(), *sequence);
             break;
         }
         case SessionCommand::QueryProposals:
             result = proposalsJson(m_sessionProposals);
-            break;
-        case SessionCommand::QueryLog:
-            result = logJson(m_sessionLog);
             break;
         default:
             answerError(SessionError::Unavailable, "Command is not available yet");

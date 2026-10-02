@@ -72,6 +72,67 @@ TEST_CASE("session log assigns sequences and attributes a Console row", "[app][s
 }
 
 //======================================================================================================================
+TEST_CASE("session log bounds recorded command and argument bytes", "[app][session]") {
+    CHECK(truncateSessionText("short", 5) == "short");
+    CHECK(truncateSessionText("longer", 4) == "long…[truncated 2 bytes]");
+    // The cut backs up to the start of a UTF-8 sequence, so no scalar is split.
+    CHECK(truncateSessionText("ab\xe2\x82\xacz", 3) == "ab…[truncated 4 bytes]");
+    CHECK(truncateSessionText("ab\xe2\x82\xacz", 5) == "ab\xe2\x82\xac…[truncated 1 bytes]");
+
+    auto console = std::make_shared<ConsoleLog>();
+    SessionLog log(console);
+    log.record({.command = std::string(kMaxActionCommandBytes + 7, 'c'),
+                .arguments = std::string(kMaxActionArgumentBytes + 1000, 'a'),
+                .outcome = "invalid"});
+    log.record({.command = std::string(kMaxActionCommandBytes, 'c'),
+                .arguments = std::string(kMaxActionArgumentBytes, 'a'),
+                .outcome = "answered"});
+    const auto& actions = log.actions();
+    REQUIRE(actions.size() == 2);
+    CHECK(actions[0].command == std::string(kMaxActionCommandBytes, 'c') + "…[truncated 7 bytes]");
+    CHECK(actions[0].arguments ==
+          std::string(kMaxActionArgumentBytes, 'a') + "…[truncated 1000 bytes]");
+    CHECK(actions[1].command == std::string(kMaxActionCommandBytes, 'c'));
+    CHECK(actions[1].arguments == std::string(kMaxActionArgumentBytes, 'a'));
+    const auto entries = console->snapshot().entries;
+    REQUIRE(entries.size() == 2);
+    CHECK(entries[0].message.size() < kMaxActionCommandBytes + kMaxActionArgumentBytes + 128);
+}
+
+//======================================================================================================================
+TEST_CASE("session log drops its oldest actions beyond the retained limit", "[app][session]") {
+    SessionLog log(std::make_shared<ConsoleLog>());
+    for (size_t index = 0; index < kMaxSessionActions; ++index)
+        log.record({.command = "query.status", .outcome = "answered"});
+    CHECK(log.dropped() == 0);
+    CHECK(log.actions().size() == kMaxSessionActions);
+    CHECK(log.actions().front().sequence == 1);
+    for (int index = 0; index < 3; ++index)
+        log.record({.command = "query.status", .outcome = "answered"});
+    CHECK(log.dropped() == 3);
+    CHECK(log.actions().size() == kMaxSessionActions);
+    CHECK(log.actions().front().sequence == 4);
+    CHECK(log.actions().back().sequence == kMaxSessionActions + 3);
+    CHECK(log.nextSequence() == kMaxSessionActions + 4);
+    // Evidence for an action already dropped has nowhere to go and is ignored.
+    log.attach(2, SessionEvidence{"session/old.png", "a1"});
+    log.attach(4, SessionEvidence{"session/kept.png", "b2"});
+    CHECK(log.actions().front().evidence.size() == 1);
+    const auto parsed =
+        lmx::asset::JsonTokens::parse(sessionRecordJson(log, ConsoleSnapshot{}, "", "", ""));
+    REQUIRE(parsed);
+    CHECK(parsed->root().find("dropped")->asUInt() == 3);
+    CHECK(parsed->root().find("actions")->size() == kMaxSessionActions);
+}
+
+//======================================================================================================================
+TEST_CASE("session actors have one capitalized spelling", "[app][session]") {
+    CHECK(sessionActorName(Actor::Operator) == "Operator");
+    CHECK(sessionActorName(Actor::System) == "System");
+    CHECK(sessionActorName(Actor::Agent) == "Agent");
+}
+
+//======================================================================================================================
 TEST_CASE("session evidence requires a recorded action", "[app][session]") {
     auto console = std::make_shared<ConsoleLog>();
     SessionLog log(console);
@@ -123,8 +184,11 @@ TEST_CASE("session export keeps filtered frozen Console entries intact", "[app][
     const auto actions = *root.find("actions");
     REQUIRE(actions.size() == 2);
     CHECK(actions.at(0).find("sequence")->asUInt() == 1);
+    CHECK(actions.at(0).find("actor")->asString() == "Agent");
     CHECK(actions.at(1).find("sequence")->asUInt() == 2);
+    CHECK(actions.at(1).find("actor")->asString() == "Operator");
     CHECK(actions.at(1).find("plan")->asUInt() == 9);
+    CHECK(root.find("dropped")->asUInt() == 0);
     const auto console = *root.find("console");
     REQUIRE(console.size() == 1);
     const auto entry = console.at(0).asString();

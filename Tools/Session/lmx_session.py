@@ -360,7 +360,7 @@ def _arguments(options: argparse.Namespace) -> tuple[str, dict]:
     group, action = options.command, options.action
     if group == "query":
         return f"query.{action}", ({"afterSequence": options.after_sequence}
-                                   if action == "console" else {})
+                                   if action in ("console", "log") else {})
     if group == "propose" and action == "edits":
         edits = []
         for subject, field, raw in options.edit:
@@ -405,7 +405,7 @@ def _bridge_parsers(commands: argparse._SubParsersAction) -> None:
     queries = query.add_subparsers(dest="action", required=True)
     for name in _QUERIES:
         item = queries.add_parser(name)
-        if name == "console":
+        if name in ("console", "log"):
             item.add_argument("--after-sequence", type=int, default=0)
 
     propose = commands.add_parser("propose", help="submit or withdraw scene edits")

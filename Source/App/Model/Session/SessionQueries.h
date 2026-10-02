@@ -11,16 +11,28 @@
 #include "App/Model/Scene/SceneTree.h"
 #include "App/Model/Session/SessionLog.h"
 #include "App/Model/Session/SessionProposal.h"
+#include "App/Model/Session/SessionProtocol.h"
+#include "Core/IO/JsonWriter.h"
 #include "Engine/View/Camera.h"
 #include "Render/Passes/LocalLights/LightingStatus.h"
 #include "Render/Passes/Visibility/Visibility.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
 
 namespace lmx::app {
+
+/// Largest query.log result, leaving room for the response envelope within one line.
+inline constexpr size_t kMaxLogReplyBytes = kMaxLineBytes - 4096;
+
+/// Writes a finite value as a JSON number, and "infinite", "-infinite" or "nan" as a string, so
+/// a non-finite editor value reaches the client instead of failing the writer's finite contract.
+void writeSessionNumber(JsonWriter& writer, float value);
+/// Double overload of writeSessionNumber, with the same non-finite strings.
+void writeSessionNumber(JsonWriter& writer, double value);
 
 /// Immutable values observed at the editor safe point for a status reply.
 struct SessionStatus {
@@ -54,8 +66,11 @@ std::string performanceJson(const PerformanceSnapshot& snapshot);
 std::string consoleJson(const ConsoleSnapshot& snapshot, uint64_t afterSequence);
 /// Serializes retained proposals and their lifecycle states.
 std::string proposalsJson(const ProposalQueue& proposals);
-/// Serializes ordered session actions.
-std::string logJson(const SessionLog& log);
+/// Serializes retained session actions whose sequence exceeds afterSequence, oldest first, with
+/// nextSequence and the log's dropped count. When the rows exceed maxBytes the newest that fit are
+/// kept and omitted counts the older matching rows left out.
+std::string logJson(const SessionLog& log, uint64_t afterSequence = 0,
+                    size_t maxBytes = kMaxLogReplyBytes);
 /// Serializes the current editor and connection state without reading mutable owners.
 std::string statusJson(const SessionStatus& status);
 /// Composes the existing visibility and lighting diagnostics in one query result.

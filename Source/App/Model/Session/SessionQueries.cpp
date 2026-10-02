@@ -15,6 +15,7 @@
 #include <format>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace lmx::app {
 namespace {
@@ -64,28 +65,36 @@ std::string_view subjectKind(EditorSubject subject) {
 }
 
 //======================================================================================================================
-std::string_view actorName(Actor actor) {
-    switch (actor) {
-    case Actor::Operator:
-        return "operator";
-    case Actor::System:
-        return "system";
-    case Actor::Agent:
-        return "Agent";
-    }
-    return "system";
+template <typename T>
+void writeNumber(JsonWriter& writer, T value) {
+    if (std::isfinite(value))
+        writer.number(value);
+    else if (std::isnan(value))
+        writer.string("nan");
+    else
+        writer.string(value > 0 ? "infinite" : "-infinite");
 }
 
 //======================================================================================================================
 void writeVector(JsonWriter& writer, const glm::vec3& vector) {
     writer.beginArray(true);
-    writer.number(vector.x);
-    writer.number(vector.y);
-    writer.number(vector.z);
+    writeSessionNumber(writer, vector.x);
+    writeSessionNumber(writer, vector.y);
+    writeSessionNumber(writer, vector.z);
     writer.endArray();
 }
 
 } // namespace
+
+//======================================================================================================================
+void writeSessionNumber(JsonWriter& writer, float value) {
+    writeNumber(writer, value);
+}
+
+//======================================================================================================================
+void writeSessionNumber(JsonWriter& writer, double value) {
+    writeNumber(writer, value);
+}
 
 //======================================================================================================================
 std::string sceneTreeSubjectId(const SceneTreeRow& row) {
@@ -166,18 +175,15 @@ std::string cameraJson(const engine::Camera& camera) {
     writer.key("position");
     writeVector(writer, camera.position);
     writer.key("yaw");
-    writer.number(camera.yaw);
+    writeSessionNumber(writer, camera.yaw);
     writer.key("pitch");
-    writer.number(camera.pitch);
+    writeSessionNumber(writer, camera.pitch);
     writer.key("fovY");
-    writer.number(camera.fovY);
+    writeSessionNumber(writer, camera.fovY);
     writer.key("nearZ");
-    writer.number(camera.nearZ);
+    writeSessionNumber(writer, camera.nearZ);
     writer.key("farZ");
-    if (std::isinf(camera.farZ) && camera.farZ > 0)
-        writer.string("infinite");
-    else
-        writer.number(camera.farZ);
+    writeSessionNumber(writer, camera.farZ);
     writer.endObject();
     return writer.take();
 }
@@ -212,7 +218,7 @@ std::string performanceJson(const PerformanceSnapshot& snapshot) {
     writer.key("draws");
     writer.integer(snapshot.drawCount);
     writer.key("timedPassSumMilliseconds");
-    writer.number(snapshot.timedPassSumMilliseconds);
+    writeSessionNumber(writer, snapshot.timedPassSumMilliseconds);
     writer.key("passes");
     writer.beginArray();
     for (const auto& pass : snapshot.passRows) {
@@ -220,13 +226,13 @@ std::string performanceJson(const PerformanceSnapshot& snapshot) {
         writer.key("label");
         writer.string(pass.label);
         writer.key("averageMilliseconds");
-        writer.number(pass.averageGpuMilliseconds);
+        writeSessionNumber(writer, pass.averageGpuMilliseconds);
         writer.key("latestMilliseconds");
-        writer.number(pass.latestGpuMilliseconds);
+        writeSessionNumber(writer, pass.latestGpuMilliseconds);
         writer.key("minimumMilliseconds");
-        writer.number(pass.minimumGpuMilliseconds);
+        writeSessionNumber(writer, pass.minimumGpuMilliseconds);
         writer.key("maximumMilliseconds");
-        writer.number(pass.maximumGpuMilliseconds);
+        writeSessionNumber(writer, pass.maximumGpuMilliseconds);
         writer.key("samples");
         writer.integer(pass.sampleCount);
         writer.endObject();
@@ -257,7 +263,7 @@ std::string consoleJson(const ConsoleSnapshot& snapshot, uint64_t afterSequence)
         writer.key("severity");
         writer.string(consoleSeverityName(entry.severity));
         writer.key("actor");
-        writer.string(actorName(entry.actor));
+        writer.string(sessionActorName(entry.actor));
         writer.key("message");
         writer.string(entry.message);
         writer.key("truncated");
@@ -299,34 +305,55 @@ std::string proposalsJson(const ProposalQueue& proposals) {
 }
 
 //======================================================================================================================
-std::string logJson(const SessionLog& log) {
-    JsonWriter writer;
-    writer.beginObject();
-    writer.key("actions");
-    writer.beginArray();
-    for (const auto& action : log.actions()) {
+std::string logJson(const SessionLog& log, uint64_t afterSequence, size_t maxBytes) {
+    // Rows are encoded newest first until the budget is spent, then emitted oldest first.
+    std::vector<std::string> rows;
+    size_t bytes = 0;
+    uint64_t omitted = 0;
+    const auto& actions = log.actions();
+    for (auto action = actions.rbegin(); action != actions.rend(); ++action) {
+        if (action->sequence <= afterSequence)
+            break;
+        if (omitted > 0) {
+            ++omitted;
+            continue;
+        }
+        JsonWriter writer;
         writer.beginObject();
         writer.key("sequence");
-        writer.integer(action.sequence);
+        writer.integer(action->sequence);
         writer.key("timestampMilliseconds");
-        writer.integer(action.timestampMilliseconds);
+        writer.integer(action->timestampMilliseconds);
         writer.key("actor");
-        writer.string(actorName(action.actor));
+        writer.string(sessionActorName(action->actor));
         writer.key("client");
-        writer.string(action.client);
+        writer.string(action->client);
         writer.key("command");
-        writer.string(action.command);
+        writer.string(action->command);
         writer.key("arguments");
-        writer.string(action.arguments);
+        writer.string(action->arguments);
         writer.key("tier");
-        writer.integer(static_cast<uint8_t>(action.tier));
+        writer.integer(static_cast<uint8_t>(action->tier));
         writer.key("outcome");
-        writer.string(action.outcome);
+        writer.string(action->outcome);
         writer.endObject();
+        auto row = writer.take();
+        if (bytes + row.size() + 1 > maxBytes) {
+            ++omitted;
+            continue;
+        }
+        bytes += row.size() + 1;
+        rows.push_back(std::move(row));
     }
-    writer.endArray();
-    writer.endObject();
-    return writer.take();
+    auto result = std::format("{{\"nextSequence\":{},\"dropped\":{},\"omitted\":{},\"actions\":[",
+                              log.nextSequence(), log.dropped(), omitted);
+    for (auto row = rows.rbegin(); row != rows.rend(); ++row) {
+        if (row != rows.rbegin())
+            result += ',';
+        result += *row;
+    }
+    result += "]}";
+    return result;
 }
 
 //======================================================================================================================
