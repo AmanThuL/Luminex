@@ -21,8 +21,8 @@ inline constexpr uint32_t kGeneratedNode = UINT32_MAX;
 
 /// Runtime subjects directly owned by one document node.
 struct NodeBinding {
-    std::vector<size_t> objects;         ///< All instances beneath this asset or generator root.
-    std::optional<LightId> light;        ///< Local light identity, including an authored-off light.
+    std::vector<size_t> objects;  ///< Instances owned by this mesh node, asset or generator root.
+    std::optional<LightId> light; ///< Local light identity, including an authored-off light.
     std::optional<uint32_t> directional; ///< Fixed key/fill/rim slot.
     bool camera = false;                 ///< Whether this is the document's selected camera.
 };
@@ -50,8 +50,8 @@ struct BoundAssetAnimation {
 
 /// Document and imported identities retained independently of scene row slots.
 struct SceneBinding {
-    std::vector<NodeBinding> nodes;            ///< One entry per document node.
-    std::vector<uint32_t> objectNode;          ///< Document asset root, or kGeneratedNode.
+    std::vector<NodeBinding> nodes;   ///< One entry per document node.
+    std::vector<uint32_t> objectNode; ///< Document mesh node or asset root, or kGeneratedNode.
     std::vector<uint32_t> objectImportedNode;  ///< Imported-node binding index, or sentinel.
     std::vector<uint32_t> objectGeneratorNode; ///< Generator root for generated objects only.
     std::unordered_map<uint64_t, uint32_t> lightNode; ///< Packed LightId to document node.
@@ -116,8 +116,10 @@ asset::AssetResult<void> validateIndependentAssetClips(const asset::GltfScene& s
 /// Resolves decoded relative paths beneath assetsRoot, checks hashes, source overrides and light
 /// conversions, and decodes required content without creating any GPU object. The input hierarchy
 /// and array indices must already have passed readSceneDocument. Runtime accepts LINEAR selected-
-/// camera translation/rotation rails; other document animation and transformed generator roots
-/// fail with Unsupported and a field pointer instead of being silently ignored.
+/// camera rails, root mesh TRS tracks with one grid/interpolation mode, and emissive tracks.
+/// Mesh ancestors must be identity groups; ambiguous image roles, rigid scale collapse and
+/// animated scale components outside [-100, 100] fail with a field pointer. Decoded mesh content
+/// is required but is not re-read or re-hashed.
 asset::AssetResult<PreparedSceneDocument>
 prepareSceneDocument(const asset::SceneDocument& document, const std::filesystem::path& assetsRoot);
 /// Appends decoded asset content with asset-local mesh handles and rebased tracks, accumulating

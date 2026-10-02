@@ -60,6 +60,217 @@ std::vector<int32_t> parents(const asset::SceneDocument& document) {
     return result;
 }
 //======================================================================================================================
+std::optional<std::pair<double, double>> nearZeroInterval(double start, double end) {
+    constexpr double kTolerance = 1e-4; // decomposeTransform's degenerate-axis threshold.
+    if (start == end) {
+        if (std::abs(start) <= kTolerance)
+            return std::pair{0.0, 1.0};
+        return std::nullopt;
+    }
+    const double a = (-kTolerance - start) / (end - start);
+    const double b = (kTolerance - start) / (end - start);
+    const double low = std::max(0.0, std::min(a, b));
+    const double high = std::min(1.0, std::max(a, b));
+    if (low <= high)
+        return std::pair{low, high};
+    return std::nullopt;
+}
+//======================================================================================================================
+bool supportedAnimatedScale(glm::vec3 scale) {
+    // Document rigid playback uses the Inspector/gizmo authoring domain. Preserve signed and
+    // zero scales; the separate collapse check handles degeneracy. LINEAR interpolation stays
+    // inside its endpoint magnitudes, without clamping or rewriting authored keys.
+    for (int k = 0; k < 3; ++k)
+        if (!(std::abs(scale[k]) <= 100.0f))
+            return false;
+    return true;
+}
+//======================================================================================================================
+bool collapsedScale(glm::vec3 start, glm::vec3 end) {
+    for (int first = 0; first < 3; ++first) {
+        const auto a = nearZeroInterval(start[first], end[first]);
+        if (!a)
+            continue;
+        for (int second = first + 1; second < 3; ++second) {
+            const auto b = nearZeroInterval(start[second], end[second]);
+            if (b && std::max(a->first, b->first) <= std::min(a->second, b->second))
+                return true;
+        }
+    }
+    return false;
+}
+//======================================================================================================================
+asset::AssetResult<void> prepareMeshContent(const asset::SceneDocument& doc,
+                                            const std::vector<int32_t>& parent) {
+    const auto unsupported = [](std::string pointer,
+                                std::string reason) -> asset::AssetResult<void> {
+        return std::unexpected(asset::AssetError{asset::AssetErrorCode::Unsupported,
+                                                 std::move(pointer) + ": " + std::move(reason)});
+    };
+    if (!doc.meshes.empty() && !doc.content)
+        return std::unexpected(malformed("/meshes", "meshes require decoded document content"));
+    for (size_t i = 0; i < doc.nodes.size(); ++i) {
+        const auto& meshNode = doc.nodes[i];
+        if (!meshNode.mesh)
+            continue;
+        const std::string pointer = "/nodes/" + std::to_string(i);
+        if (meshNode.asset || meshNode.generator || meshNode.camera || meshNode.light)
+            return unsupported(pointer + "/mesh",
+                               "a mesh node cannot also own an asset, generator, camera or light");
+        for (int32_t p = parent[i]; p >= 0; p = parent[static_cast<size_t>(p)]) {
+            const auto& ancestor = doc.nodes[static_cast<size_t>(p)];
+            const std::string at = "/nodes/" + std::to_string(p);
+            if (ancestor.mesh || ancestor.asset || ancestor.generator || ancestor.camera ||
+                ancestor.light)
+                return unsupported(at, "mesh ancestors must be identity group nodes");
+            if (ancestor.translation != glm::vec3(0))
+                return unsupported(at + "/translation",
+                                   "mesh ancestors must have identity transforms");
+            if (ancestor.rotation != glm::quat(1, 0, 0, 0))
+                return unsupported(at + "/rotation",
+                                   "mesh ancestors must have identity transforms");
+            if (ancestor.scale != glm::vec3(1))
+                return unsupported(at + "/scale", "mesh ancestors must have identity transforms");
+        }
+    }
+    if (!doc.content)
+        return {};
+    std::vector<std::optional<bool>> colorUse(doc.content->images.size());
+    for (size_t i = 0; i < doc.materials.size(); ++i) {
+        const auto& values = doc.materials[i].values;
+        const std::string path = "/materials/" + std::to_string(i);
+        const auto use = [&](int index, bool color,
+                             std::string_view slot) -> asset::AssetResult<void> {
+            if (index < 0)
+                return {};
+            auto& previous = colorUse[static_cast<size_t>(index)];
+            if (previous && *previous != color)
+                return unsupported(
+                    path + std::string(slot),
+                    "one document image cannot serve both color and data texture slots");
+            previous = color;
+            return {};
+        };
+        if (auto r = use(values.baseColorImage, true, "/pbrMetallicRoughness/baseColorTexture"); !r)
+            return r;
+        if (auto r = use(values.emissiveImage, true, "/emissiveTexture"); !r)
+            return r;
+        if (auto r = use(values.normalImage, false, "/normalTexture"); !r)
+            return r;
+        if (auto r = use(values.metallicRoughnessImage, false,
+                         "/pbrMetallicRoughness/metallicRoughnessTexture");
+            !r)
+            return r;
+        if (auto r = use(values.occlusionImage, false, "/occlusionTexture"); !r)
+            return r;
+    }
+    return {};
+}
+//======================================================================================================================
+asset::AssetResult<void> prepareDocumentAnimations(const asset::SceneDocument& doc,
+                                                   const std::vector<int32_t>& parent) {
+    struct MeshClock {
+        double sampleRate;
+        uint32_t keyCount;
+        bool step;
+        const asset::DocChannel* scale = nullptr;
+        std::string pointer;
+        uint32_t paths = 0;
+    };
+    std::vector<std::optional<MeshClock>> clocks(doc.nodes.size());
+    std::vector<bool> emissive(doc.materials.size(), false);
+    for (size_t a = 0; a < doc.animations.size(); ++a) {
+        const auto& animation = doc.animations[a];
+        for (size_t c = 0; c < animation.channels.size(); ++c) {
+            const auto& channel = animation.channels[c];
+            const std::string pointer =
+                "/animations/" + std::to_string(a) + "/channels/" + std::to_string(c);
+            if (channel.path == asset::DocChannelPath::EmissiveStrength) {
+                if (emissive[*channel.material])
+                    return std::unexpected(
+                        asset::AssetError{asset::AssetErrorCode::Unsupported,
+                                          pointer + "/target: a material can have only one "
+                                                    "emissive channel across document animations"});
+                emissive[*channel.material] = true;
+                continue;
+            }
+            if (doc.nodes[channel.node].mesh) {
+                if (parent[channel.node] >= 0)
+                    return std::unexpected(asset::AssetError{
+                        asset::AssetErrorCode::Unsupported,
+                        pointer + "/target/node: animated mesh nodes must be scene roots"});
+                auto& clock = clocks[channel.node];
+                if (clock && (clock->sampleRate != animation.sampleRate ||
+                              clock->keyCount != animation.keyCount || clock->step != channel.step))
+                    return std::unexpected(
+                        asset::AssetError{asset::AssetErrorCode::Unsupported,
+                                          pointer + "/sampler: a mesh node's TRS channels require "
+                                                    "one key grid and interpolation mode"});
+                if (!clock)
+                    clock = MeshClock{animation.sampleRate, animation.keyCount, channel.step,
+                                      nullptr, pointer};
+                const uint32_t pathBit = 1u << static_cast<uint32_t>(channel.path);
+                if (clock->paths & pathBit)
+                    return std::unexpected(
+                        asset::AssetError{asset::AssetErrorCode::Unsupported,
+                                          pointer + "/target/path: a mesh TRS path can appear only "
+                                                    "once across document animations"});
+                clock->paths |= pathBit;
+                if (channel.path == asset::DocChannelPath::Scale) {
+                    clock->scale = &channel;
+                    clock->pointer = pointer;
+                }
+                continue;
+            }
+            if (channel.node != doc.camera)
+                return std::unexpected(
+                    asset::AssetError{asset::AssetErrorCode::Unsupported,
+                                      pointer + "/target/node: runtime document animation supports "
+                                                "only the selected camera or mesh nodes"});
+            if (channel.path == asset::DocChannelPath::Scale)
+                return std::unexpected(asset::AssetError{
+                    asset::AssetErrorCode::Unsupported,
+                    pointer + "/target/path: camera scale animation is not supported"});
+            if (channel.step)
+                return std::unexpected(
+                    asset::AssetError{asset::AssetErrorCode::Unsupported,
+                                      pointer + "/sampler: camera rails require LINEAR translation "
+                                                "and yaw/pitch interpolation"});
+        }
+    }
+    for (size_t n = 0; n < clocks.size(); ++n) {
+        const auto& clock = clocks[n];
+        if (!clock)
+            continue;
+        bool collapsed = false;
+        if (!clock->scale) {
+            if (!supportedAnimatedScale(doc.nodes[n].scale))
+                return std::unexpected(asset::AssetError{
+                    asset::AssetErrorCode::Unsupported,
+                    "/nodes/" + std::to_string(n) +
+                        "/scale: animated scale components must be in [-100, 100]"});
+            collapsed = collapsedScale(doc.nodes[n].scale, doc.nodes[n].scale);
+        } else {
+            const auto& keys = clock->scale->values;
+            for (size_t k = 0; k < keys.size(); ++k) {
+                const auto start = glm::vec3(keys[k]);
+                if (!supportedAnimatedScale(start))
+                    return std::unexpected(asset::AssetError{
+                        asset::AssetErrorCode::Unsupported,
+                        clock->pointer +
+                            "/sampler: animated scale key components must be in [-100, 100]"});
+                const auto end = glm::vec3(keys[clock->step || k + 1 == keys.size() ? k : k + 1]);
+                collapsed = collapsed || collapsedScale(start, end);
+            }
+        }
+        if (collapsed)
+            return std::unexpected(asset::AssetError{
+                asset::AssetErrorCode::Unsupported,
+                clock->pointer + ": rigid scale keys or interpolation can collapse two axes"});
+    }
+    return {};
+}
+//======================================================================================================================
 asset::AssetResult<void> prepareLights(const asset::SceneDocument& document,
                                        PreparedSceneDocument& prepared) {
     for (size_t i = 0; i < document.nodes.size(); ++i) {
@@ -192,22 +403,6 @@ asset::AssetResult<void> validateIndependentAssetClips(const asset::GltfScene& s
         return name.empty() ? std::to_string(node)
                             : "'" + name + "' (" + std::to_string(node) + ")";
     };
-    const auto nearZeroInterval = [](double start,
-                                     double end) -> std::optional<std::pair<double, double>> {
-        constexpr double kTolerance = 1e-4; // decomposeTransform's degenerate-axis threshold.
-        if (start == end) {
-            if (std::abs(start) <= kTolerance)
-                return std::pair{0.0, 1.0};
-            return std::nullopt;
-        }
-        const double a = (-kTolerance - start) / (end - start);
-        const double b = (kTolerance - start) / (end - start);
-        const double low = std::max(0.0, std::min(a, b));
-        const double high = std::min(1.0, std::max(a, b));
-        if (low <= high)
-            return std::pair{low, high};
-        return std::nullopt;
-    };
     for (const auto& clip : source.clips) {
         for (const auto& channel : clip.channels) {
             if (channel.path != asset::GltfAnimationPath::Scale || !affectsInstance(channel.node))
@@ -281,31 +476,13 @@ prepareSceneDocument(const asset::SceneDocument& document,
     for (const auto& node : document.nodes)
         own.push_back(node.enabled);
     prepared.enabled = effectiveDocumentEnabled(document, own);
+    const auto parent = parents(document);
+    if (auto content = prepareMeshContent(document, parent); !content)
+        return std::unexpected(content.error());
+    if (auto animations = prepareDocumentAnimations(document, parent); !animations)
+        return std::unexpected(animations.error());
     if (auto lights = prepareLights(document, prepared); !lights)
         return std::unexpected(lights.error());
-    const auto parent = parents(document);
-    for (size_t a = 0; a < document.animations.size(); ++a) {
-        const auto& animation = document.animations[a];
-        for (size_t c = 0; c < animation.channels.size(); ++c) {
-            const auto& channel = animation.channels[c];
-            const std::string pointer =
-                "/animations/" + std::to_string(a) + "/channels/" + std::to_string(c);
-            if (channel.node != document.camera)
-                return std::unexpected(asset::AssetError{
-                    asset::AssetErrorCode::Unsupported,
-                    pointer + "/target/node: runtime document animation supports only the selected "
-                              "camera; asset clips and generator animation remain independent"});
-            if (channel.path == asset::DocChannelPath::Scale)
-                return std::unexpected(asset::AssetError{
-                    asset::AssetErrorCode::Unsupported,
-                    pointer + "/target/path: camera scale animation is not supported"});
-            if (channel.step)
-                return std::unexpected(
-                    asset::AssetError{asset::AssetErrorCode::Unsupported,
-                                      pointer + "/sampler: camera rails require LINEAR translation "
-                                                "and yaw/pitch interpolation"});
-        }
-    }
     for (size_t i = 0; i < count; ++i) {
         if (!document.nodes[i].generator)
             continue;

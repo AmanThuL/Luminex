@@ -80,3 +80,15 @@ TEST_CASE("unsuccessful neighbourhood searches never substitute approximate resu
     }
     REQUIRE(misses > 0);
 }
+
+//======================================================================================================================
+TEST_CASE("object orientation decodes the editor YXZ convention without scale decomposition",
+          "[asset][scene-document][orientation][ux6-content]") {
+    const auto compound = eulerDegreesForRotation(glm::quat(.5f, .5f, .5f, .5f));
+    const glm::vec3 expected{0, 90, 90};
+    for (int k = 0; k < 3; ++k)
+        REQUIRE(std::bit_cast<uint32_t>(compound[k]) == std::bit_cast<uint32_t>(expected[k]));
+    REQUIRE(eulerDegreesForRotation(glm::quat(1, 0, 0, 0)) == glm::vec3(0));
+    REQUIRE(eulerDegreesForRotation(glm::quat(0, 0, 1, 0)) == glm::vec3(0, 180, 0));
+    REQUIRE(eulerDegreesForRotation(glm::quat(0, 0, 0, 1)) == glm::vec3(0, 0, 180));
+}

@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Scene/SceneInstantiate.h"
+#include "Engine/Scene/SceneDocumentContent.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"
@@ -91,7 +92,7 @@ void bindAsset(SceneBinding& binding, uint32_t root, size_t objectBase,
 std::optional<uint32_t> localLightGroup(const asset::SceneDocument& doc) {
     const auto onlyLocal = [&](auto&& self, uint32_t node) -> bool {
         const auto& value = doc.nodes[node];
-        if (value.asset || value.generator || value.camera)
+        if (value.asset || value.generator || value.camera || value.mesh)
             return false;
         if (value.light)
             return doc.lights[*value.light].type != asset::DocLightType::Directional;
@@ -124,7 +125,8 @@ void applyDocumentCamera(Scene& scene, const asset::SceneDocument& doc) {
             scene.animation.duration = std::max(
                 scene.animation.duration, double(animation.keyCount - 1) / animation.sampleRate);
         for (const auto& channel : animation.channels) {
-            if (channel.node != doc.camera || channel.path == asset::DocChannelPath::Scale)
+            if (channel.material || channel.path == asset::DocChannelPath::EmissiveStrength ||
+                channel.node != doc.camera || channel.path == asset::DocChannelPath::Scale)
                 continue;
             auto& values =
                 channel.path == asset::DocChannelPath::Translation ? positions : rotations;
@@ -219,8 +221,24 @@ asset::AssetResult<LoadedScene> instantiateSceneDocument(rojoRHI::Device& device
             attached = true;
         return result;
     };
+    DocumentContentBinding contentBinding;
     for (uint32_t n = 0; n < doc.nodes.size(); ++n) {
         const auto& node = doc.nodes[n];
+        if (node.mesh) {
+            if (auto result =
+                    appendDocumentContent(device, scene, doc, std::span(&n, 1), contentBinding);
+                !result)
+                return std::unexpected(result.error());
+            const uint32_t object = contentBinding.objectOfNode[n];
+            binding.nodes[n].objects.push_back(object);
+            binding.objectNode.push_back(n);
+            binding.objectImportedNode.push_back(kGeneratedNode);
+            binding.objectGeneratorNode.push_back(kGeneratedNode);
+            binding.generatedObjectEnabled.push_back(true);
+            binding.objectEffective.push_back(prepared->enabled[n]);
+            if (auto result = environment(scene); !result)
+                return std::unexpected(result.error());
+        }
         if (auto& imported = prepared->assets[n]) {
             const size_t objectBase = scene.objects.size();
             const Aabb boundsBefore = scene.authoredBounds;

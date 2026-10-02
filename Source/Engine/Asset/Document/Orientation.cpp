@@ -8,6 +8,8 @@
 #include "Core/Diagnostics/Assert.h"
 
 #include <glm/gtc/constants.hpp>
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/euler_angles.hpp>
 
 #include <algorithm>
 #include <array>
@@ -75,6 +77,17 @@ glm::quat rotationForDirection(glm::vec3 direction) {
 glm::quat rotationForCamera(float yaw, float pitch) {
     return glm::angleAxis(-yaw, glm::vec3(0.0f, 1.0f, 0.0f)) *
            glm::angleAxis(pitch, glm::vec3(1.0f, 0.0f, 0.0f));
+}
+
+//======================================================================================================================
+glm::vec3 eulerDegreesForRotation(glm::quat rotation) {
+    float yaw, pitch, roll;
+    glm::extractEulerAngleYXZ(glm::mat4_cast(rotation), yaw, pitch, roll);
+    auto degrees = glm::degrees(glm::vec3(pitch, yaw, roll));
+    for (int k = 0; k < 3; ++k)
+        if (degrees[k] == 0.0f)
+            degrees[k] = 0.0f;
+    return degrees;
 }
 
 //======================================================================================================================
