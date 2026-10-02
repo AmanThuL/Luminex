@@ -2,20 +2,21 @@
 
 **Status**: Implemented — pending owner review; failed and incomplete gates retained as measured
 
-An independent stronger review examined the UX5 branch on 2026-10-02. Six fix commits followed.
-This page records what the review verified, the gates it re-ran, each defect with its fix, and what
-remains unverified. It changes no gate result: every failure in the
-[validation record](ux5-validation.md) stays recorded as measured,
-[ADR 0030](../../decisions/0030-session-protocol-and-trust.md) stays Proposed, the executor plan
-stays In progress and no owner acceptance is claimed.
+An independent stronger review examined the UX5 branch on 2026-10-02 in two rounds. Six fix commits
+followed the first round and two the second. This page records what the review verified, the gates
+it re-ran, each defect with its fix, and what remains unverified. It changes no gate result: every
+failure in the [validation record](ux5-validation.md) stays recorded as measured, [ADR
+0030](../../decisions/0030-session-protocol-and-trust.md) stays Proposed, the executor plan stays In
+progress and no owner acceptance is claimed.
 
 ## Scope and identity
 
 | Item | Value |
 |---|---|
 | Reviewed revision | `09485e5` on `feat/ux5-session` |
-| Fix range | `09485e5..6df16f7`, six commits |
-| Final revision | `6df16f7` |
+| First fix range | `09485e5..6df16f7`, six commits |
+| Second fix range | `a27b970..7f5d832`, two commits |
+| Final code revision | `7f5d832` |
 | Parent | main at `3259457` |
 
 ## What the review verified
@@ -34,18 +35,25 @@ One finding, that two subjects could share one imported node, was examined and d
 
 ## Gate re-runs
 
-The review re-ran the recorded gates on the reviewed revision, and the unit and Python suites
-again after the fixes. No tolerance, threshold or default changed.
+The review re-ran the recorded gates on the reviewed revision, and every gate below on the final
+code revision. After the first round, at `6df16f7`, the unit group passed 1,096 cases / 1,683,434
+assertions and the Python suite 331 tests. No tolerance, threshold or default changed.
 
-| Gate | Reviewed revision `09485e5` | After the fixes `6df16f7` |
+| Gate | Reviewed revision `09485e5` | After the fixes `7f5d832` |
 |---|---|---|
-| Unit group | PASS, 1,071 cases | PASS, 1,096 cases / 1,683,434 assertions |
-| GPU group, Metal debug layer | PASS, 215 cases | Not recorded |
-| Format check | PASS | Not recorded |
-| Project checkers | PASS | Not recorded |
+| Build, all default targets and Tests | Not recorded | PASS |
+| Unit group | PASS, 1,071 cases | PASS, 1,105 cases / 1,683,695 assertions |
+| GPU group, Metal debug layer | PASS, 215 cases | PASS, 215 cases / 1,167,008 assertions |
+| Format check | PASS | PASS |
+| Project checkers | PASS | PASS: project policy, module dependencies with and without `--link`, 210 standalone headers, comments in 424 files, layout of 3,200 definitions in 389 files, submodule pin, literal colors, theme tokens |
 | Python suite | PASS, 325 tests | PASS, 331 tests |
-| Pinned document validator | PASS, 93 documents | Not recorded |
+| Pinned document validator | PASS, 93 documents | PASS, 93 documents |
+| Client self-test | Not recorded | PASS |
 | Read-only check against a windowed editor | Not recorded | PASS, 11 queries / 11 tier refusals |
+| Offscreen MaterialLab screenshot | Not recorded | PASS, 1280×720 PNG written |
+
+One run of the unit group before `7f5d832` ended with SIGPIPE in the listener's stale-socket test;
+F30 records the cause, and the same test order passes three times with the fix.
 
 These re-runs do not replace the failed and incomplete gates listed under
 [Unchanged status](#unchanged-status).
@@ -77,17 +85,30 @@ These re-runs do not replace the failed and incomplete gates listed under
 | F18 | A socket file left by a crashed editor blocked Listen | `e269f19`: Listen replaces a socket the same user owns whose connection is refused | Unit with a real socket |
 | F19 | Every request built the complete scene tree | `6df16f7`: at most one tree per drain, built only when a command reads it | Compiled only |
 | F20 | An approved `measure.run` overwrote the Performance panel's Warmup, Frames and export path and ended mouse look | `6df16f7`: the run carries its own values and leaves camera input alone | Compiled only |
+| F21 | An approved, running plan survived the operator's Open, catalog open or Revert, and its remaining steps ran against the new scene | `a9ba4e6`: the three actions, and with Revert a file Accept, are refused with a notice while a plan is Working; the toolbar Stop ends the plan | Unit for `runningPlanRefusal`; shell wiring and notice compiled only |
+| F22 | Accepting a file proposal reloaded the scene without cancelling awaiting approvals | `a9ba4e6`: it cancels them with `cancelled: scene replaced`, like Open, catalog, Revert and `scene.open` | Compiled only |
+| F23 | `propose.withdraw` matched only the submitting connection, so a reconnected client could not withdraw its own proposals, which still counted against the 64 pending | `a9ba4e6`: it also accepts the same client name once the submitting connection is no longer the live one | Unit for `proposalWithdrawable`; dispatch compiled only |
+| F24 | Rejecting a proposal card moved the next card's Accept and Reject under the pointer | `a9ba4e6`: both are ignored on every proposal card for 0.5 s after the list of drawn cards, led by the awaiting approval, changes | Unit for the guard; panel compiled only |
+| F25 | A cancelled approval answered only "Approval cancelled", and a disconnect cancelled without `approval.cancel` rows | `a9ba4e6`: the reply carries the cancellation reason; a disconnect records the rows with `cancelled: client disconnected` | Unit for the retained reason; reply and log wiring compiled only |
+| F26 | Save refused with "review its proposal first" before any card existed and when the pair was unreadable | `a9ba4e6`: separate messages for a pending card, a card not yet shown and an unreadable pair | Unit |
+| F27 | The staging-directory scan was cached on the directory's modification time, so a directory created and removed within one tick stayed reported and raised the 5 s warning | `a9ba4e6`: a positive answer is rescanned on every poll | Unit with a restored directory time |
+| F28 | A bridge proposal made during playback that set an orbiting light's position could never be accepted: its before value was the sampled orbit position and Stop restores the captured one | `a9ba4e6`: `propose.edits` answers `unavailable` for that edit while playback is not Stopped; other edits stay proposable | Unit for `animationOwnedEditRefusal`; dispatch compiled only |
+| F29 | No test walked every command's argument names, or placed a symlink at the socket path | `a9ba4e6`, `7f5d832`: one test checks each command's documented names and an unknown one; another refuses a regular file, a dangling symlink and a symlink to a stale socket and leaves each intact | Unit |
+| F30 | Found while running the unit group: answering a second client that had already left raised SIGPIPE and ended the process, because macOS refuses `SO_NOSIGPIPE` on a socket whose peer closed; the stale-socket probe of another Listen is such a client | `7f5d832`: an arrival whose option cannot be set is closed unanswered | Unit with a real socket; fails without the fix |
 
 ## Limits
 
 - **Shell and panel fixes.** The changes under `Source/App/Shell` and in the Session panel are
   compiled and covered only by model-level unit tests. No test drives `EditorShell`.
-- **No native re-run.** No native gesture was exercised after the fixes. The approval click guard,
-  the Save refusal notice, tier-drop cancellation, stale-socket recovery in the real App and an
-  approved capture child run are unverified natively. The read-only check above is the only run
-  against a windowed editor.
-- **File Accept.** Accepting a file proposal reloads the document and stales bridge proposals; it
-  does not cancel awaiting approvals. Open, catalog, Revert and `scene.open` do.
+- **No native re-run.** No native gesture was exercised after the fixes. The approval and
+  proposal-card click guards, the Save refusal notices, the running-plan refusal of Open and
+  Revert, tier-drop, disconnect and file-Accept cancellation, withdrawal after a reconnect, the
+  orbiting-light refusal, stale-socket recovery in the real App and an approved capture child run
+  are unverified natively. The read-only check above is the only run against a windowed editor.
+- **Withdraw by name.** Once the submitting connection is gone, any later client that reports the
+  same name can withdraw its pending proposals. A withdrawal only stales a card.
+- **Playback proposals.** The refusal covers the position of a light an orbit track drives.
+  Animated object transforms were already refused; no other proposable field is animation-owned.
 - **`query.log` window.** A reply holds the newest rows that fit. `omitted` counts older matching
   rows, and no cursor fetches them; a client that needs every row polls before the reply fills.
 - **Stale-socket test.** Any same-user socket whose connection is refused is reclaimed, including

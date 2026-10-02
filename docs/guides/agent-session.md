@@ -123,19 +123,21 @@ python3 Tools/Session/lmx_session.py --wait-tier propose withdraw 1
 `propose.edits` accepts repeatable `--edit SUBJECT FIELD JSON` and `--evidence PATH`. Show displays
 before/after rows. Accept needs Stopped and no measurement, re-runs the preview and stales the card
 when its rows differ from the ones shown; otherwise it applies the validated batch and marks the
-document dirty. Reject leaves the scene untouched. Withdraw stales the proposal, works only from the
-connection that submitted it and cannot undo an accepted edit. A pending proposal is never evicted:
-`propose.edits` answers `busy` while 64 bridge proposals await review. Save and Save As keep pending
-bridge cards; scene replacement, an accepted file proposal and a ceiling lowered to ReadOnly stale
-them. There are no client Accept or Reject commands.
+document dirty. Reject leaves the scene untouched; both ignore clicks for 0.5 s after the card list
+changes. Withdraw stales a pending proposal from its submitting connection or, once that has closed,
+from a client of the same name. While playing or paused, an edit to an orbiting light's `position`
+answers `unavailable`. A pending proposal is never evicted: `propose.edits` answers `busy` while 64
+bridge proposals await review. Save and Save As keep pending bridge cards; scene replacement, an
+accepted file proposal and a ceiling lowered to ReadOnly stale them. No client command accepts or
+rejects.
 
-Apply commands each show their arguments/output in an approval card. The operator chooses
-Approve or Deny; execution rechecks availability at the safe point. Approve and Deny are ignored
-for 0.5 s after the shown approval changes. At most 8 approvals may await or run; the ninth answers
-`busy`. Lowering the ceiling cancels awaiting approvals: the client gets `cancelled` and the log
-gains an `approval.cancel` row with outcome `cancelled: ceiling lowered`. Open, the catalog, Revert
-and `scene.open` cancel them with `cancelled: scene replaced`; the plan running `scene.open`
-continues.
+Apply commands each show their arguments/output in an approval card. The operator chooses Approve or
+Deny; execution rechecks availability at the safe point. Approve and Deny are ignored for 0.5 s
+after the shown approval changes. At most 8 approvals may await or run; the ninth answers `busy`. A
+lowered ceiling cancels awaiting approvals: the client gets `cancelled` with the message `cancelled:
+ceiling lowered`, also the `approval.cancel` log outcome. Open, the catalog, Revert, file Accept and
+`scene.open` cancel them with `cancelled: scene replaced`; the plan running `scene.open` continues.
+A running plan refuses Open, the catalog, Revert and file Accept until toolbar Stop ends it.
 
 ```sh
 python3 Tools/Session/lmx_session.py --wait-tier settings set temporal off
@@ -191,7 +193,8 @@ Save a plan as `plan.json`, then use the command above:
 
 A plan has a summary and 1–32 Apply steps with object `args`. Queries, Propose and nested plans are
 refused. One approval covers the immutable steps in order; the first failed step ends the plan.
-Disconnect cancels pending approvals; a running job finishes. Listen off or quit cancels work.
+Disconnect cancels pending approvals (`cancelled: client disconnected`); a running job finishes.
+Listen off or quit cancels work.
 
 ## Proposal subjects and units
 
@@ -215,10 +218,9 @@ Exposure keys are `autoEnabled`, `ev`, `lowPercentile`, `highPercentile`, `targe
 `enabled`, `threshold`, `intensity`. Numeric values must be finite and within the document reader's
 ranges: 0 ≤ `lowPercentile` < `highPercentile` ≤ 100, `targetGrey` > 0, `evMin` ≤ `evMax`,
 nonnegative adaptation speeds and nonnegative bloom threshold and intensity. One value out of range
-answers `invalid` and refuses the whole batch. Camera edits change the saved scene camera, never
-the editor camera.
-Generated subjects and unsavable animated transforms are refused. Directional lights, structural
-create/delete/duplicate/reparent, selection and playback have no proposal edit operation.
+answers `invalid` and refuses the whole batch. Camera edits change the saved scene camera, never the
+editor camera. Generated subjects and unsavable animated transforms are refused. Directional lights,
+structural create/delete/duplicate/reparent, selection and playback have no proposal edit operation.
 
 ## External file proposals and sidecars
 
@@ -235,18 +237,17 @@ glTF bytes followed by its referenced external buffer bytes. `x.scene.gltf` maps
 
 The editor polls the pair twice a second, except during Measure. A stamp holds size, modification
 time, inode and device for both files, so an idle poll is three `stat` calls. After a change it
-waits for one identical poll, hashes the pair and waits up to four seconds for a matching sidecar.
-A `.lmx-save-*.tmp` directory defers the watch for 5 s; a leftover one then logs one Console
-warning and the watch proceeds. A formatting-only change adopts the new hash with one Console
-info line and no card. Without a matching sidecar it attributes Unknown external change to System.
-Show lists property
-rows and rings affected Hierarchy nodes. Missing evidence is flagged. File Accept uses Revert,
-needs Stopped/no measurement and offers Discard/Cancel for unsaved edits. Reject remembers the
-current hash; a later Save can overwrite that file. Pending file proposals block Save/Save As with
-“Review the pending proposal first”. Save, but not Save As, also hashes the pair on disk before
-writing and refuses with “The scene file changed on disk; review its proposal first” unless that
-hash equals the loaded hash or one the operator rejected. A newer file or scene replacement stales
-the proposal.
+waits for one identical poll, hashes the pair and waits up to four seconds for a matching sidecar. A
+`.lmx-save-*.tmp` directory defers the watch for 5 s; a leftover one then logs one Console warning
+and the watch proceeds. A formatting-only change adopts the new hash with one Console info line and
+no card. Without a matching sidecar it attributes Unknown external change to System. Show lists
+property rows and rings affected Hierarchy nodes. Missing evidence is flagged. File Accept uses
+Revert, needs Stopped/no measurement and offers Discard/Cancel for unsaved edits. Reject remembers
+the current hash; a later Save can overwrite that file. Pending file proposals block Save/Save As
+with “Review the pending proposal first”. Save, but not Save As, also hashes the pair on disk and
+refuses unless that hash is the loaded one or one the operator rejected: “The scene file changed on
+disk; its proposal will appear in the Session panel shortly” before the card exists, or “The scene
+file or its buffer cannot be read on disk”. A newer file or scene replacement stales the proposal.
 Reader failures show an Error card with Reject only. Invalid UTF-8 sidecars are rejected before
 metadata is retained. Own saves reset the watch only with verified writer bytes, path and coherent
 stamps; an uncertified successful adoption invalidates the baseline to review external changes.

@@ -167,14 +167,14 @@ connection. A command above it is refused with `tier` and logged; nothing is que
 
 **Edits.** `propose.edits` takes a summary, evidence and edits to what the Inspector edits and the
 exporter saves: node enabled, object transform, local-light fields, the look (exposure, bloom,
-shadows) and the scene camera. Subjects are named by the identifiers `query.hierarchy` returns.
-Look values use the reader's ranges. Pending proposals are never evicted; the 65th answers `busy`.
+shadows) and the scene camera. Subjects use `query.hierarchy` identifiers; look values the reader's
+ranges. Playback refuses an orbiting light's position. A 65th pending proposal answers `busy`.
 
-**Approval.** Every apply command shows an approval card with the command, its arguments and its
-output location, and Approve and Deny. `plan.submit` carries a summary and an ordered list of apply
-commands; one approval runs them in order inside the editor and stops at the first failure. A plan
-cannot grow after approval. Disconnecting, lowering the ceiling or replacing the scene cancels
-pending approvals; a running job finishes. At most 8 await or run; a new card ignores clicks for 0.5 s.
+**Approval.** Every apply command shows an approval card with its arguments, output location,
+Approve and Deny. `plan.submit` carries a summary and an ordered list of apply commands; one
+approval runs them in order and stops at the first failure. A plan cannot grow after approval.
+Disconnect, a lowered ceiling or a replaced scene cancels pending approvals with that reason; a
+running plan refuses Open and Revert. At most 8 await or run; changed cards ignore clicks for 0.5 s.
 
 **Settings.** `settings.set` uses the CLI's flag names (`temporal`, `render-scale`, `visibility`,
 `classify`, `classify-check`, `occlusion`, `occlusion-check`, `submission`, `local-lights`,
@@ -282,10 +282,10 @@ format or manifest change; no Windows support; nothing UX1–UX4 already defer.
 All three slices are implemented; [validation](ux5-validation.md) retains every failed attempt,
 scoped exception and unverified gesture. The frozen final App of the original chain passed 215 GPU
 cases / 1,167,008 assertions and the pinned validator 93 documents. An independent
-[review](ux5-review-validation.md) on 2026-10-02 found defects that six fix commits corrected.
-Afterwards the unit group passes 1,096 cases and the Python suite 331 tests. Fixes under
-`Source/App/Shell` and the Session panel have model-level unit tests only, and no native gesture
-was repeated. The owner has not accepted integration; the executor plan remains In progress.
+[review](ux5-review-validation.md) on 2026-10-02 found defects that eight fix commits corrected.
+Afterwards the unit group passes 1,105 cases, the GPU group 215 and the Python suite 331 tests.
+Fixes under `Source/App/Shell` and the Session panel have model-level unit tests only, and no native
+gesture was repeated. The owner has not accepted integration; the executor plan remains In progress.
 
 Failed and incomplete gates, as measured, with no tolerance or default changed:
 

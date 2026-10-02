@@ -16,7 +16,7 @@ exercised. The [guide](../guides/agent-session.md) owns command syntax and recov
 | AppModel `Session/SessionProposal`, `DocumentWatch` | Sidecar schema, bounded lifecycle queue, rejected hashes, `DocumentProbe` stamps, stable-poll and Save-overwrite decisions |
 | AppModel `Session/SessionProtocol`, `SessionCommands` | Protocol 1 envelopes, error encoding, argument-member validation, 22 command names and tiers, child environment filter |
 | AppModel `Session/SessionQueries`, `SessionEdits` | Pure query encoders, subject identity, validated persistent edit previews/application, the `SessionAttribution` field-mark class |
-| AppModel `Session/SessionApply`, `SessionApprovals` | Apply argument validation, immutable plans, approval/step state, the approval click guard |
+| AppModel `Session/SessionApply`, `SessionApprovals` | Apply argument validation, immutable plans, approval/step state and cancellation reasons, the approval and card-list click guards, the running-plan refusal |
 | AppModel `Session/SessionLog` | Bounded ordered attributed records, evidence certification and export |
 | AppModel `Session/SessionMailbox`, `SessionListener` | Bounded thread exchange and Unix socket lifetime |
 | AppModel `Rendering/Settings/RenderSettingCommands` | Shared panel/session setting cascades and effective headless arguments |
@@ -35,7 +35,8 @@ Renderer passes, shaders, capture formats and existing manifests keep their cont
 
 The listener `poll`s the listening socket, one client and a wake pipe. `start` refuses an existing
 path, except that it replaces a socket the same user owns whose connection is refused. An accepted
-client is marked close-on-exec first. The listener checks the peer effective
+client is marked close-on-exec first; one whose `SO_NOSIGPIPE` cannot be set, which macOS reports
+for a peer that already closed, is closed unanswered. The listener checks the peer effective
 UID, frames lines and moves them through the mailbox. It never reads editor state, calls editor
 functions or logs through spdlog. The mutex protects only inbox/outbox exchange; connection IDs
 prevent queued lines from a departed client reaching the next connection.
@@ -54,12 +55,16 @@ rule to each step and its `args`. Non-finite floats in query replies and change 
 the strings `"infinite"`, `"-infinite"` or `"nan"`.
 
 Each connection resets hello/client/tier to ReadOnly. Hello records the last client for later Export.
-Disconnect cancels awaiting approvals while a running step finishes. Lowering the ceiling cancels
-awaiting approvals with an `approval.cancel` row (`cancelled: ceiling lowered`), and a ceiling of
-ReadOnly also stales pending bridge proposals. Open, the catalog, Revert and `scene.open` cancel
-awaiting approvals (`cancelled: scene replaced`); an approved plan, including the one running
-`scene.open`, continues. At most 8 approvals await or run and the ninth submit answers `busy`. The
-panel ignores Approve and Deny for 0.5 s after the shown approval changes. Listen off and shell shutdown
+Disconnect cancels awaiting approvals (`cancelled: client disconnected`) while a running step
+finishes. Lowering the ceiling cancels them (`cancelled: ceiling lowered`), and a ceiling of
+ReadOnly also stales pending bridge proposals. Open, the catalog, Revert, an accepted file proposal
+and `scene.open` cancel them (`cancelled: scene replaced`). Each cancellation writes an
+`approval.cancel` row and its reason is the message of the client's `cancelled` reply. While an
+approved plan is Working, `runningPlanRefusal` refuses the operator's Open, catalog open and Revert,
+and with Revert a file Accept, until the toolbar Stop ends the plan; the plan running `scene.open`
+continues. At most 8 approvals await or run and the ninth submit answers `busy`. The panel ignores
+Approve and Deny for 0.5 s after the shown approval changes, and Accept and Reject on every proposal
+card for 0.5 s after the list of drawn cards changes. Listen off and shell shutdown
 cancel work, release capture/measurement reservations, kill/reap children, wake/join the listener
 and remove the socket. The panel's visibility persists; listening, ceiling and connection do not.
 
@@ -68,7 +73,8 @@ and remove the socket. The panel's visibility persists; listening, ceiling and c
 Polling runs at most twice a second and is skipped during a measurement. `DocumentProbe` stamps
 size, modification time, inode and device for the glTF and its buffer; it re-reads the glTF for its
 buffer URI and re-scans the directory only when their own stamps change, so an idle poll is three
-`stat` calls. The watch waits for two equal changed stamps. A writer `.lmx-save-*.tmp` directory
+`stat` calls; while the last scan found a staging directory it re-scans on every poll. The watch
+waits for two equal changed stamps. A writer `.lmx-save-*.tmp` directory
 defers it for ten polls (5 s); a leftover one then logs one Console warning and is ignored. The
 shell hashes the glTF/buffer pair. A pair whose canonical document equals the loaded one adopts the
 new hash with one Console info line and no card. Otherwise the watch waits up to four seconds for a
@@ -81,13 +87,15 @@ hashes are remembered until document replacement.
 
 Pending file proposals block Save/Save As. Save, not Save As, also hashes the pair on disk before
 writing: `saveOverwriteReason` refuses unless that hash is the loaded hash or one the operator
-rejected, or, for an unhashable pair, unless its stamp is still the loaded baseline. File Accept
+rejected, or, for an unhashable pair, unless its stamp is still the loaded baseline. Its message
+tells an unreadable pair from a change whose card is pending or has not appeared yet. File Accept
 rechecks the hash and uses Revert's Stopped/no-measurement and Discard/Cancel workflow. Bridge
 edits are range-checked with the reader's `sceneLookRangeError`. Bridge Accept re-runs the preview
 (`reviewedEditsCurrent`) and stales the card when its rows differ from the ones shown, then
 validates the whole batch before applying persistent edits and marking fields; Save/Revert clears
 document attribution. Bridge staleness does not follow the file hash, so Save and Save As keep
-pending bridge cards. `propose.withdraw` works only from the submitting connection. Replacement
+pending bridge cards. `proposalWithdrawable` lets `propose.withdraw` act from the submitting
+connection or, once that connection is gone, from a client with the same name. Replacement
 stales both sources and resets the watch. Save adoption first verifies the observed pair hash
 against canonical writer bytes. Watch suppression requires that completed-write receipt, matching
 path/hash and coherent stamps around hashing on both successful and failed save outcomes. Pre-write
@@ -97,7 +105,9 @@ failures preserve pending revisions; uncertified successful adoption invalidates
 stopped, idle document, no measurement or pending file proposal, and selection None, Camera or
 Environment. It preserves that semantic selection and the current stopped editor view. Failure
 keeps the old scene. Generated/unsavable subjects and animated object transforms are refused in
-bridge proposals. Saved scene camera edits never move the editor camera.
+bridge proposals. While playback is not Stopped, `animationOwnedEditRefusal` answers `unavailable`
+for an orbiting light's position, whose reviewed row could never be current at Accept. Saved scene
+camera edits never move the editor camera.
 
 ## Settings, jobs and records
 
