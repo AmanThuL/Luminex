@@ -5,7 +5,7 @@
 Part IV of the [rendering roadmap](../roadmap.md) owns editor usability and the presentation of
 rendering evidence: UX1 before M7.1, then [UX2](#ux2--editor-surfaces),
 [UX3](#ux3--scene-documents-and-hierarchy) and [UX4](#ux4--design-system-and-themes) between R4
-and N1, ending with [UX5](#ux5--agent-session). The [2026-09-14 audit](../research/2026-09-14-editor-uiux-audit.md) found that
+and N1, ending with [UX5](#ux5--agent-session); [UX6](#ux6--scene-authoring) is proposed. The [2026-09-14 audit](../research/2026-09-14-editor-uiux-audit.md) found that
 the shipped controls expose substantial capability, but clipped data, ambiguous states and an
 unstable graph make that capability difficult to inspect. This part owns the accepted boundary; the milestone record distinguishes implementation
 from completed acceptance.
@@ -241,35 +241,29 @@ icon set; everything UX1–UX3 already defer.
 
 ## UX5 — Agent session
 
-**Placement:** [UX4](#ux4--design-system-and-themes) → UX5 → N1. On 2026-10-01 the owner placed
-all three slices before N1, so N1's studies can be the first work run through the bridge; the
-[record](../milestones/ux/ux5.md) is implemented; the owner authorized integration (see below).
-Agents keep working as they do today, through documents, the CLI and pull requests; UX5 makes
-that work visible and reviewable in the editor without an agent runtime inside it.
+**Placement:** [UX4](#ux4--design-system-and-themes) → UX5 → N1. On 2026-10-01 the owner placed all three slices before N1, so N1's studies can be the first work run through the bridge; the [record](../milestones/ux/ux5.md) is implemented; the owner authorized integration (see below). Agents keep working as they do today, through documents, the CLI and pull requests; UX5 makes that work visible and reviewable in the editor without an agent runtime inside it.
 
-**Outcome:** an agent's change to a scene reaches the operator as a proposal with an actor, a
-summary and evidence links, reviewed before it applies; a live session issues the same commands
-the CLI offers, with attribution, permission tiers and plan-level approval; every agent action is
-logged and exportable with its evidence.
+**Outcome:** an agent's change to a scene reaches the operator as a proposal with an actor, a summary and evidence links, reviewed before it applies; a live session issues the same commands the CLI offers, with attribution, permission tiers and plan-level approval; every agent action is logged and exportable with its evidence.
 
-**Deliver:** file-based proposals (UX5.1): an external change to the open document plus a sidecar
-naming the actor, summary and evidence paths appears as a proposal with Show (the changed nodes and
-fields), Accept (reload) and Reject, through UX4's proposal card, attention ring and Console actor
-row; a local command bridge (UX5.2): a socket carrying the CLI's commands and editor queries with
-actor attribution, tiers (read-only, propose, apply with approval), plan-level approval for
-multi-step jobs, headless capture runs and the activity strip; session log and evidence export
-(UX5.3): the Console's actor filter and an exportable session record joining actions to evidence.
+**Deliver:** file-based proposals (UX5.1): an external change to the open document plus a sidecar naming the actor, summary and evidence paths appears as a proposal with Show (the changed nodes and fields), Accept (reload) and Reject, through UX4's proposal card, attention ring and Console actor row; a local command bridge (UX5.2): a socket carrying the CLI's commands and editor queries with actor attribution, tiers (read-only, propose, apply with approval), plan-level approval for multi-step jobs, headless capture runs and the activity strip; session log and evidence export (UX5.3): the Console's actor filter and an exportable session record joining actions to evidence.
 
-Implemented; on 2026-10-02 the owner authorized integration by squash merge after an independent review, without re-running native gestures, and the executor plan is closed. Gallery exact comparison (Light and Dark 0/16), four of the five original CLI rejection pairs, the initial standing matrix (14/15) and native GPU capture certification (0/4) fail as measured, and the original five-case Off gate is incomplete; no tolerance or default changed and ADR 0030 stays Proposed.
-The [review validation](../milestones/ux/ux5-review-validation.md#owner-authorization-and-integration) lists the retained failures and unverified native checks, and does not amend the exit gates.
+Implemented; on 2026-10-02 the owner authorized integration by squash merge after an independent review, without re-running native gestures, and the executor plan is closed. Gallery exact comparison (Light and Dark 0/16), four of the five original CLI rejection pairs, the initial standing matrix (14/15) and native GPU capture certification (0/4) fail as measured, and the original five-case Off gate is incomplete; no tolerance or default changed and ADR 0030 stays Proposed. The [review validation](../milestones/ux/ux5-review-validation.md#owner-authorization-and-integration) lists the retained failures and unverified native checks, and does not amend the exit gates.
 
-**Exit gate:** a proposal from a modified document lists exactly the fields the writer reports as
-changed, Accept yields the same scene as opening the file and Reject leaves the in-memory scene
-untouched; the bridge refuses any command outside its tier and records every action with its
-actor; the exported log reproduces the Console view; scene-only screenshots stay byte-identical.
+**Exit gate:** a proposal from a modified document lists exactly the fields the writer reports as changed, Accept yields the same scene as opening the file and Reject leaves the in-memory scene untouched; the bridge refuses any command outside its tier and records every action with its actor; the exported log reproduces the Console view; scene-only screenshots stay byte-identical.
 
-**Defer:** an in-process agent, autonomous apply without approval, Undo/Redo (deferred since UX1),
-multi-user sessions, a live viewport readback, MCP or network transports.
+**Defer:** an in-process agent, autonomous apply without approval, Undo/Redo (deferred since UX1), multi-user sessions, a live viewport readback, MCP or network transports.
+
+## UX6 — Scene authoring
+
+**Placement (proposed):** [UX5](#ux5--agent-session) → UX6 → N1. The owner asked for the proposal on 2026-10-02; the accepted order still has N1 next, and UX6 has no step until the owner accepts the [proposed record](../milestones/ux/ux6.md) and its placement.
+
+**Outcome:** lab content is saved scene content; each object says whether it may move; an operator moves a movable object with a viewport gizmo and cannot move a static one.
+
+**Deliver:** static lab content as checked-in content assets referenced by the scene documents, with parameter-sized populations and behavior without a glTF form left generated (UX6.1); an authored `static` or `movable` value per object, honored by the Inspector, the gizmo and the session bridge (UX6.2); a vendored transform gizmo in the editor's UI layer, replacing MaterialLab's axis-station geometry (UX6.3).
+
+**Exit gate (proposed):** the standing matrix is compared with the parent as measured and MaterialLab is re-baselined once with the owner's acceptance; edits to former generated objects survive save and relaunch; a static object's pose cannot change through any editor route; a gizmo drag exports the same bytes as the equivalent Inspector edit; scene-only screenshots are identical with the gizmo shown.
+
+**Defer:** create, duplicate, delete and reparent; viewport picking; Undo/Redo; snapping; gizmos and mobility for lights; any renderer use of mobility.
 
 ## Candidate — offline pipeline editing
 

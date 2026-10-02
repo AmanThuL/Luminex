@@ -81,6 +81,7 @@ renumbered scene documents to UX3; records and ADRs dated earlier call scene doc
 record on 2026-09-30 after adding native macOS chrome to it, and proposed UX5, an agent session,
 in three slices. UX4 was owner-accepted for integration on 2026-10-01; the same day the owner placed
 all three UX5 slices before N1. The owner authorized UX5's integration on 2026-10-02; N1 is next in the order.
+The same day the owner asked for a [UX6](roadmap/editor-experience.md#ux6--scene-authoring) scene-authoring proposal; it has no step until the owner accepts its record and placement.
 On 2026-10-01 the owner retired M9 after the
 [geometry direction review](research/2026-10-01-geometry-direction-review.md): its scope became
 G1–G3 in Part VI, with G1 and G2 before M8 and G3 after it. M8, M10 and M11 keep their identifiers,
