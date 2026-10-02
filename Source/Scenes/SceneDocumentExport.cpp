@@ -120,6 +120,41 @@ asset::AssetResult<void> exportImported(asset::SceneDocument& doc,
 }
 
 //======================================================================================================================
+asset::AssetResult<void> exportMeshes(asset::SceneDocument& doc,
+                                      const engine::SceneBinding& binding,
+                                      const engine::Scene& scene) {
+    for (uint32_t n = 0; n < doc.nodes.size(); ++n) {
+        auto& node = doc.nodes[n];
+        if (!node.mesh)
+            continue;
+        const auto& objects = binding.nodes[n].objects;
+        LMX_ASSERT(objects.size() == 1, "a document mesh node binds exactly one object");
+        const size_t index = objects.front();
+        if (std::ranges::any_of(scene.animation.tracks,
+                                [=](const auto& track) { return track.objectIndex == index; }))
+            continue;
+        const auto pose = objectPose(scene.objects.at(index));
+        const std::string pointer = "/nodes/" + std::to_string(n);
+        if (!isFinite(pose.translation) || !isFinite(pose.scale))
+            return std::unexpected(
+                asset::AssetError{asset::AssetErrorCode::Malformed,
+                                  pointer + "/pose: translation and scale must be finite"});
+        if (!same(asset::eulerDegreesForRotation(node.rotation), pose.eulerDegrees)) {
+            const auto exact = asset::exactRotationForEulerDegrees(pose.eulerDegrees);
+            if (!exact)
+                return std::unexpected(asset::AssetError{
+                    asset::AssetErrorCode::Unsupported,
+                    pointer + "/rotation: object Euler degrees have no exact glTF quaternion "
+                              "in the bounded search"});
+            node.rotation = *exact;
+        }
+        node.translation = pose.translation;
+        node.scale = pose.scale;
+    }
+    return {};
+}
+
+//======================================================================================================================
 asset::AssetResult<bool> exportDirectional(asset::DocNode& node, asset::DocLight& saved,
                                            const engine::DirectionalLight& light, uint32_t index,
                                            ExportReport* report) {
@@ -280,6 +315,8 @@ asset::AssetResult<asset::SceneDocument> exportSceneDocument(const engine::Loade
         doc.nodes[n].enabled = state.nodeEnabled[n];
     if (auto imported = exportImported(doc, loaded.binding, scene, state); !imported)
         return std::unexpected(imported.error());
+    if (auto meshes = exportMeshes(doc, loaded.binding, scene); !meshes)
+        return std::unexpected(meshes.error());
     if (auto lights = exportLights(doc, loaded.binding, scene, report); !lights)
         return std::unexpected(lights.error());
     if (state.sceneCamera)

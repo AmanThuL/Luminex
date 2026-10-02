@@ -76,6 +76,9 @@ bool SceneSession::objectEnabled(size_t index) const {
         const auto imported = m_loaded->binding.objectImportedNode.at(index);
         if (imported != engine::kGeneratedNode)
             return importedNodeEnabled(imported);
+        const auto node = m_loaded->binding.objectNode.at(index);
+        if (node != engine::kGeneratedNode && m_loaded->document.nodes.at(node).mesh)
+            return nodeEnabled(node);
     }
     return m_defaults.at(m_scene).objectOwnEnabled.at(index);
 }
@@ -120,6 +123,11 @@ void SceneSession::applyEnabled() {
                 enabled = imported.at(source);
             else if (generator != engine::kGeneratedNode)
                 enabled = enabled && nodes.at(generator);
+            else {
+                const auto node = m_loaded->binding.objectNode.at(i);
+                if (node != engine::kGeneratedNode && m_loaded->document.nodes.at(node).mesh)
+                    enabled = nodes.at(node);
+            }
         }
         scene().setObjectEnabled(i, enabled);
     }
@@ -184,6 +192,9 @@ rojoRHI::Result<void> SceneSession::setObjectEnabled(size_t index, bool enabled)
         const auto imported = m_loaded->binding.objectImportedNode.at(index);
         if (imported != engine::kGeneratedNode)
             return setImportedNodeEnabled(imported, enabled);
+        const auto node = m_loaded->binding.objectNode.at(index);
+        if (node != engine::kGeneratedNode && m_loaded->document.nodes.at(node).mesh)
+            return setNodeEnabled(node, enabled);
     }
     auto& own = m_defaults.at(m_scene).objectOwnEnabled;
     if (own.at(index) == enabled)

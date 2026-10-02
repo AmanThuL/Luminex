@@ -1199,3 +1199,62 @@ TEST_CASE("content save receipt covers JSON and animation only and adopts a clea
     CHECK_FALSE(dirty(session));
     CHECK(doc.sourceBufferUri.has_value() == !animation.empty());
 }
+
+//======================================================================================================================
+TEST_CASE("saved mesh selection survives Save and verified proposal reload",
+          "[gpu][app][document-save][ux6-mesh-export]") {
+    auto device = rojoRHI::createDevice();
+    REQUIRE(device);
+    scenes::SceneLibrary library(**device);
+    const auto path = savePath("mesh-selection", test::contentDocument());
+    auto id = scenes::sceneIdFromPath(path);
+    REQUIRE(library.get(id));
+    app::SceneSession session;
+    session.activate(*library.loaded(id), app::SceneActivationMotion::Reset);
+    const auto index = session.loadedScene()->binding.nodes[1].objects.front();
+    app::EditorSelection selection{.sceneId = id,
+                                   .subject = app::EditorSubject::Object,
+                                   .index = static_cast<uint32_t>(index),
+                                   .node = 1};
+    auto pose = session.objectDefault(index);
+    pose.position.x = 5.f;
+    session.editObject(index, pose);
+    REQUIRE(app::saveSessionDocument(library, session, id, path, false));
+    CHECK_FALSE(dirty(session));
+    CHECK(session.objectDefault(index).position.x == 5.f);
+    auto proposal = session.loadedScene()->document;
+    CHECK(app::canPreserveSessionSelection(selection, *session.loadedScene(), proposal));
+    SECTION("same identity reloads with new saved pose") {
+        proposal.nodes[1].translation.y = 6.f;
+        REQUIRE(asset::saveSceneDocument(proposal, path));
+        const auto expectedHash = asset::sceneDocumentHash(path);
+        REQUIRE(expectedHash);
+        const auto replacement = app::replaceSessionDocumentPreservingView(
+            library, session, id, selection, proposal, *expectedHash);
+        INFO((replacement ? "ok" : replacement.error().message));
+        REQUIRE(replacement);
+        CHECK(selection.subject == app::EditorSubject::Object);
+        CHECK(selection.index == index);
+        CHECK(selection.node == 1);
+        CHECK(selection.importedNode == engine::kGeneratedNode);
+        CHECK(session.scene().objects[index].position.y == 6.f);
+        CHECK_FALSE(dirty(session));
+    }
+    SECTION("mesh replacement is refused") {
+        proposal.nodes[1].mesh = 1;
+        CHECK_FALSE(app::canPreserveSessionSelection(selection, *session.loadedScene(), proposal));
+    }
+    SECTION("group replacement is refused") {
+        proposal.nodes[1].mesh.reset();
+        CHECK_FALSE(app::canPreserveSessionSelection(selection, *session.loadedScene(), proposal));
+    }
+    SECTION("renamed subject is refused") {
+        proposal.nodes[1].name = "Different";
+        CHECK_FALSE(app::canPreserveSessionSelection(selection, *session.loadedScene(), proposal));
+    }
+    SECTION("imported selection cannot be treated as a mesh") {
+        selection.importedNode = 0;
+        CHECK_FALSE(app::canPreserveSessionSelection(selection, *session.loadedScene(), proposal));
+    }
+    (*device)->waitIdle();
+}

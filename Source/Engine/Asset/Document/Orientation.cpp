@@ -81,13 +81,29 @@ glm::quat rotationForCamera(float yaw, float pitch) {
 
 //======================================================================================================================
 glm::vec3 eulerDegreesForRotation(glm::quat rotation) {
-    float yaw, pitch, roll;
-    glm::extractEulerAngleYXZ(glm::mat4_cast(rotation), yaw, pitch, roll);
-    auto degrees = glm::degrees(glm::vec3(pitch, yaw, roll));
+    double yaw, pitch, roll;
+    glm::extractEulerAngleYXZ(glm::mat4_cast(glm::dquat(rotation)), yaw, pitch, roll);
+    auto degrees = glm::vec3(glm::degrees(glm::dvec3(pitch, yaw, roll)));
     for (int k = 0; k < 3; ++k)
         if (degrees[k] == 0.0f)
             degrees[k] = 0.0f;
     return degrees;
+}
+
+//======================================================================================================================
+std::optional<glm::quat> exactRotationForEulerDegrees(glm::vec3 eulerDegrees) {
+    for (int k = 0; k < 3; ++k)
+        if (!std::isfinite(eulerDegrees[k]))
+            return std::nullopt;
+    const auto angles = glm::radians(eulerDegrees);
+    const auto seed = glm::angleAxis(angles.y, glm::vec3(0, 1, 0)) *
+                      glm::angleAxis(angles.x, glm::vec3(1, 0, 0)) *
+                      glm::angleAxis(angles.z, glm::vec3(0, 0, 1));
+    return search(seed, [=](glm::quat candidate) {
+        const auto decoded = eulerDegreesForRotation(candidate);
+        return sameBits(decoded.x, eulerDegrees.x) && sameBits(decoded.y, eulerDegrees.y) &&
+               sameBits(decoded.z, eulerDegrees.z);
+    });
 }
 
 //======================================================================================================================

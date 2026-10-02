@@ -1,5 +1,6 @@
 #include "App/Model/Scene/SceneSession.h"
 #include "Support/GraphTestSupport.h"
+#include "Support/SceneDocumentFixtures.h"
 #include "Support/SceneDocumentTestSupport.h"
 
 #include <catch2/catch_approx.hpp>
@@ -470,4 +471,63 @@ TEST_CASE("CLI rig override preserves an authored-off child and off group state"
     REQUIRE_FALSE(loaded.scene->light(id)->enabled);
     REQUIRE_FALSE(session.documentState().nodeEnabled[group]);
     REQUIRE_FALSE(session.documentState().nodeEnabled[child]);
+}
+
+//======================================================================================================================
+TEST_CASE("saved mesh enabled edits share document own flags and ancestor effective flags",
+          "[app][scene-session][ux6-mesh-export]") {
+    engine::LoadedScene loaded{.scene = std::make_unique<engine::Scene>()};
+    loaded.document = lmx::test::contentDocument();
+    loaded.document.nodes.push_back({.name = "Disabled parent", .children = {1}, .enabled = false});
+    loaded.document.rootNodes = {0, 2, 3};
+    loaded.binding.nodes.resize(4);
+    loaded.binding.objectNode = {1, 2};
+    loaded.binding.objectImportedNode.assign(2, engine::kGeneratedNode);
+    loaded.binding.objectGeneratorNode.assign(2, engine::kGeneratedNode);
+    const auto mesh = loaded.scene->addMesh(engine::makeCube(), "lmx.test.mesh.enabled");
+    const auto material = loaded.scene->addMaterial({});
+    for (uint32_t n = 1; n <= 2; ++n) {
+        loaded.binding.nodes[n].objects = {n - 1};
+        const auto& node = loaded.document.nodes[n];
+        loaded.scene->addObject({.name = node.name,
+                                 .position = node.translation,
+                                 .scale = node.scale,
+                                 .mesh = mesh,
+                                 .material = material,
+                                 .enabled = false});
+    }
+    SceneSession session;
+    session.activate(loaded, SceneActivationMotion::Reset);
+    CHECK(session.objectEnabled(0));
+    CHECK_FALSE(session.nodeEffectiveEnabled(1));
+    CHECK_FALSE(session.scene().objects[0].enabled);
+    auto generation = session.editGeneration();
+    REQUIRE(session.setObjectEnabled(0, true));
+    CHECK(session.editGeneration() == generation);
+    REQUIRE(session.setObjectEnabled(0, false));
+    CHECK_FALSE(session.nodeEnabled(1));
+    CHECK_FALSE(session.objectEnabled(0));
+    CHECK_FALSE(session.scene().objects[0].enabled);
+    CHECK(session.editGeneration() == ++generation);
+    REQUIRE(session.setObjectEnabled(0, true));
+    CHECK(session.nodeEnabled(1));
+    CHECK(session.objectEnabled(0));
+    CHECK_FALSE(session.scene().objects[0].enabled);
+    CHECK(session.editGeneration() == ++generation);
+    REQUIRE(session.setNodeEnabled(3, true));
+    CHECK(session.nodeEffectiveEnabled(1));
+    CHECK(session.scene().objects[0].enabled);
+    CHECK_FALSE(session.scene().objects[1].enabled);
+    REQUIRE(session.setNodeEnabled(1, false));
+    CHECK_FALSE(session.objectEnabled(0));
+    CHECK_FALSE(session.scene().objects[0].enabled);
+    generation = session.editGeneration();
+    REQUIRE(session.setObjectEnabled(0, false));
+    CHECK(session.editGeneration() == generation);
+    session.setMeasurementActive(true);
+    CHECK_FALSE(session.setObjectEnabled(0, true));
+    CHECK_FALSE(session.setNodeEnabled(1, true));
+    CHECK_FALSE(session.objectEnabled(0));
+    CHECK_FALSE(session.scene().objects[0].enabled);
+    CHECK(session.editGeneration() == generation);
 }

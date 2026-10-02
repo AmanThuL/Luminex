@@ -264,7 +264,9 @@ bool canPreserveSessionSelection(const EditorSelection& selection,
     case EditorSubject::Object:
         return selection.index < loaded.binding.objectNode.size() &&
                loaded.binding.objectNode[selection.index] == node &&
-               selection.index < loaded.scene->objects.size() && after.asset.has_value();
+               selection.index < loaded.scene->objects.size() &&
+               (after.asset.has_value() || (before.mesh && after.mesh == before.mesh &&
+                                            selection.importedNode == engine::kGeneratedNode));
     case EditorSubject::DirectionalLight:
         return before.light && after.light && *after.light < proposed.lights.size() &&
                proposed.lights[*after.light].type == asset::DocLightType::Directional;

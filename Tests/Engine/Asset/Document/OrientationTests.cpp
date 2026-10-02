@@ -92,3 +92,22 @@ TEST_CASE("object orientation decodes the editor YXZ convention without scale de
     REQUIRE(eulerDegreesForRotation(glm::quat(0, 0, 1, 0)) == glm::vec3(0, 180, 0));
     REQUIRE(eulerDegreesForRotation(glm::quat(0, 0, 0, 1)) == glm::vec3(0, 0, 180));
 }
+
+//======================================================================================================================
+TEST_CASE("object quaternion encoding returns only bitwise exact Euler preimages",
+          "[asset][scene-document][orientation][ux6-mesh-export]") {
+    for (const auto angles : {glm::vec3(0), glm::vec3(0, 30, 0), glm::vec3(15, 25, 35)}) {
+        const auto rotation = exactRotationForEulerDegrees(angles);
+        INFO(angles.x << "," << angles.y << "," << angles.z);
+        CHECK(rotation);
+        if (!rotation)
+            continue;
+        const auto decoded = eulerDegreesForRotation(*rotation);
+        for (int k = 0; k < 3; ++k)
+            CHECK(std::bit_cast<uint32_t>(decoded[k]) == std::bit_cast<uint32_t>(angles[k]));
+    }
+    CHECK_FALSE(exactRotationForEulerDegrees({0, 360, 0}));
+    CHECK_FALSE(exactRotationForEulerDegrees({100, 0, 0}));
+    CHECK_FALSE(exactRotationForEulerDegrees({0, std::numeric_limits<float>::infinity(), 0}));
+    CHECK_FALSE(exactRotationForEulerDegrees({-0.f, 0, 0}));
+}

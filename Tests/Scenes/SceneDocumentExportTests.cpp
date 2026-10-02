@@ -12,11 +12,13 @@
 #include "Engine/Asset/Document/Orientation.h"
 #include "Support/EngineTestSupport.h"
 #include "Support/GraphTestSupport.h"
+#include "Support/SceneDocumentFixtures.h"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
 #include <bit>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -691,4 +693,171 @@ TEST_CASE("successful save adoption uses the new override before the immutable p
     CHECK(dirty(loaded, session));
     REQUIRE(session.setObjectEnabled(object, false));
     CHECK_FALSE(dirty(loaded, session));
+}
+
+//======================================================================================================================
+TEST_CASE("saved mesh export preserves loaded bits and independently persists edits",
+          "[gpu][scene-export][ux6-mesh-export]") {
+    auto device = rojoRHI::createDevice();
+    REQUIRE(device);
+    auto doc = test::contentDocument();
+    doc.nodes[1].rotation = glm::quat(-.5f, -.5f, -.5f, -.5f);
+    doc.nodes[1].translation.x = -0.f;
+    const auto path = fixtureRoot() / "mesh-export.scene.gltf";
+    REQUIRE(asset::saveSceneDocument(doc, path));
+    auto read = asset::readSceneDocument(path);
+    REQUIRE(read);
+    auto loaded = engine::instantiateSceneDocument(**device, *read, path, {});
+    REQUIRE(loaded);
+    app::SceneSession session;
+    session.activate(*loaded, app::SceneActivationMotion::Reset);
+    auto result = exported(*loaded, session);
+    CHECK_FALSE(scenes::documentDirty(loaded->document, result));
+    CHECK(result.content == loaded->document.content);
+    CHECK(asset::sceneDocumentJson(result, "same.bin") ==
+          asset::sceneDocumentJson(loaded->document, "same.bin"));
+    const auto object = loaded->binding.nodes[1].objects.front();
+    SECTION("position and signed nonuniform scale retain the loaded quaternion") {
+        auto pose = session.objectDefault(object);
+        pose.position = {5.f, -0.f, 7.f};
+        pose.scale = {-2.f, .125f, 3.f};
+        session.editObject(object, pose);
+        result = exported(*loaded, session);
+        CHECK(std::memcmp(&result.nodes[1].rotation, &loaded->document.nodes[1].rotation,
+                          sizeof(glm::quat)) == 0);
+    }
+    SECTION("rotation and pose export exactly") {
+        auto pose = session.objectDefault(object);
+        pose.position = {5.f, -0.f, 7.f};
+        pose.eulerDegrees = {0.f, 30.f, 0.f};
+        pose.scale = {-2.f, .125f, 3.f};
+        session.editObject(object, pose);
+        result = exported(*loaded, session);
+        const auto decoded = asset::eulerDegreesForRotation(result.nodes[1].rotation);
+        for (int k = 0; k < 3; ++k)
+            CHECK(std::bit_cast<uint32_t>(decoded[k]) ==
+                  std::bit_cast<uint32_t>(pose.eulerDegrees[k]));
+    }
+    SECTION("enabled exports the own node flag") {
+        REQUIRE(session.setObjectEnabled(object, false));
+        CHECK_FALSE(session.nodeEnabled(1));
+        CHECK_FALSE(session.scene().objects[object].enabled);
+        result = exported(*loaded, session);
+        CHECK_FALSE(result.nodes[1].enabled);
+    }
+    CHECK(scenes::documentDirty(loaded->document, result));
+    auto onlyEditedNode = loaded->document;
+    onlyEditedNode.nodes[1] = result.nodes[1];
+    CHECK_FALSE(scenes::documentDirty(onlyEditedNode, result));
+    CHECK(result.content == loaded->document.content);
+    REQUIRE(asset::saveSceneDocument(result, path));
+    read = asset::readSceneDocument(path);
+    REQUIRE(read);
+    auto reloaded = engine::instantiateSceneDocument(**device, *read, path, {});
+    REQUIRE(reloaded);
+    const auto& before = session.scene().objects[object];
+    const auto& after = reloaded->scene->objects[reloaded->binding.nodes[1].objects.front()];
+    for (int k = 0; k < 3; ++k) {
+        CHECK(std::bit_cast<uint32_t>(before.position[k]) ==
+              std::bit_cast<uint32_t>(after.position[k]));
+        CHECK(std::bit_cast<uint32_t>(before.eulerDegrees[k]) ==
+              std::bit_cast<uint32_t>(after.eulerDegrees[k]));
+        CHECK(std::bit_cast<uint32_t>(before.scale[k]) == std::bit_cast<uint32_t>(after.scale[k]));
+    }
+    CHECK(after.enabled == before.enabled);
+    device->get()->waitIdle();
+}
+
+//======================================================================================================================
+TEST_CASE("mesh TRS animation excludes pose export but emissive animation does not",
+          "[gpu][scene-export][ux6-mesh-export]") {
+    auto device = rojoRHI::createDevice();
+    REQUIRE(device);
+    auto doc = test::contentDocument();
+    bool rigid = false;
+    SECTION("rigid track owns pose") {
+        rigid = true;
+        doc.animations = {{.keyCount = 2,
+                           .channels = {{.node = 1,
+                                         .path = asset::DocChannelPath::Translation,
+                                         .values = {{1, 2, 3, 0}, {4, 5, 6, 0}}}}}};
+    }
+    SECTION("emissive track leaves pose editable") {
+        doc.animations = {{.keyCount = 2,
+                           .channels = {{.node = 0,
+                                         .path = asset::DocChannelPath::EmissiveStrength,
+                                         .material = 0,
+                                         .step = true,
+                                         .values = {{1, 0, 0, 0}, {2, 0, 0, 0}}}}}};
+    }
+    const auto path = fixtureRoot() / "animated-mesh-export.scene.gltf";
+    REQUIRE(asset::saveSceneDocument(doc, path));
+    auto loaded = engine::instantiateSceneDocument(**device, doc, path, {});
+    INFO((loaded ? "ok" : loaded.error().message));
+    REQUIRE(loaded);
+    app::SceneSession session;
+    session.activate(*loaded, app::SceneActivationMotion::Reset);
+    const auto object = loaded->binding.nodes[1].objects.front();
+    auto pose = session.objectDefault(object);
+    pose.position.x = 9.f;
+    session.editObject(object, pose);
+    auto result = exported(*loaded, session);
+    if (rigid)
+        CHECK_FALSE(scenes::documentDirty(loaded->document, result));
+    else {
+        CHECK(scenes::documentDirty(loaded->document, result));
+        CHECK(result.nodes[1].translation.x == 9.f);
+    }
+    REQUIRE(session.setNodeEnabled(1, false));
+    result = exported(*loaded, session);
+    CHECK_FALSE(result.nodes[1].enabled);
+    CHECK(result.nodes[1].translation.x == (rigid ? doc.nodes[1].translation.x : 9.f));
+    device->get()->waitIdle();
+}
+
+//======================================================================================================================
+TEST_CASE("mesh export refuses unrepresentable Euler edits without approximation",
+          "[scene-export][ux6-mesh-export]") {
+    engine::LoadedScene loaded{.scene = std::make_unique<engine::Scene>()};
+    loaded.document = test::contentDocument();
+    loaded.binding.nodes.resize(3);
+    loaded.binding.nodes[1].objects = {0};
+    loaded.scene->objects.push_back({.position = loaded.document.nodes[1].translation});
+    loaded.binding.nodes[2].objects = {1};
+    loaded.scene->objects.push_back({.scale = loaded.document.nodes[2].scale});
+    auto state = scenes::initialDocumentState(loaded);
+    for (const auto angles : {glm::vec3(0, 360, 0), glm::vec3(100, 0, 0),
+                              glm::vec3(0, std::numeric_limits<float>::quiet_NaN(), 0)}) {
+        loaded.scene->objects[0].eulerDegrees = angles;
+        scenes::ExportReport report;
+        auto result = scenes::exportSceneDocument(loaded, *loaded.scene, state, &report);
+        REQUIRE_FALSE(result);
+        CHECK(result.error().message.contains("/nodes/1/rotation"));
+        CHECK(report.approximations.empty());
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("mesh export keeps own enabled state under a disabled ancestor",
+          "[scene-export][ux6-mesh-export]") {
+    engine::LoadedScene loaded{.scene = std::make_unique<engine::Scene>()};
+    loaded.document = test::contentDocument();
+    loaded.document.nodes.push_back({.name = "Disabled parent", .children = {1}, .enabled = false});
+    loaded.document.rootNodes = {0, 2, 3};
+    loaded.binding.nodes.resize(4);
+    for (uint32_t n = 1; n <= 2; ++n) {
+        loaded.binding.nodes[n].objects = {n - 1};
+        const auto& node = loaded.document.nodes[n];
+        loaded.scene->objects.push_back(
+            {.position = node.translation,
+             .eulerDegrees = asset::eulerDegreesForRotation(node.rotation),
+             .scale = node.scale,
+             .enabled = false});
+    }
+    const auto state = scenes::initialDocumentState(loaded);
+    const auto result = scenes::exportSceneDocument(loaded, *loaded.scene, state);
+    REQUIRE(result);
+    CHECK(result->nodes[1].enabled);
+    CHECK_FALSE(result->nodes[3].enabled);
+    CHECK_FALSE(scenes::documentDirty(loaded.document, *result));
 }
