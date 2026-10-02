@@ -20,15 +20,28 @@ struct SceneDocumentSaveIO {
     std::function<asset::AssetResult<std::string>(const std::filesystem::path&)>
         hash; ///< Hashes the completed glTF and companion before adoption.
 };
+/// Receipt published only after the writer reports a completed pair replacement.
+/// The hash names the exported writer bytes, not an unverified observation of the current disk.
+struct SceneDocumentWrite {
+    std::filesystem::path path; ///< Destination pair; empty before a completed write.
+    std::string hash; ///< Expected SHA-256 over canonical glTF followed by its companion bytes.
+};
+
 /// Exports, writes, reads and hashes before publishing any new metadata or reset baseline.
-/// Failure preserves all live/session/library state; read/hash failures can follow a completed disk
-/// save and report that error without adoption. Save As rejects aliases of the active file or bin.
-/// The caller requires stopped playback and no Measure. Active identity changes only on success;
-/// same-scene authored flags, immutable imported baselines, live IDs and generation are preserved.
+/// Before adoption the observed pair hash must match the exact exported writer bytes, even when
+/// no completedWrite output is requested. Failure preserves all live/session/library state;
+/// read/hash failures can follow a completed disk save and report that error without adoption. Save
+/// As rejects aliases of the active file or bin. The caller requires stopped playback and no
+/// Measure. Active identity changes only on success; completedWrite, when supplied, is cleared
+/// first and remains empty on pre-write failure. A completed write receipt permits watcher
+/// suppression only when the active path and current pair hash still match it; verification failure
+/// alone never establishes ownership. Same-scene authored flags, immutable imported baselines, live
+/// IDs and generation are preserved.
 asset::AssetResult<void> saveSessionDocument(scenes::SceneLibrary& library, SceneSession& session,
                                              scenes::SceneId& activeId,
                                              const std::filesystem::path& path, bool saveAs,
-                                             const SceneDocumentSaveIO& io = {});
+                                             const SceneDocumentSaveIO& io = {},
+                                             SceneDocumentWrite* completedWrite = nullptr);
 /// Constructs a fresh target before discarding any current edits, even for cached paths or Revert.
 /// Failure retains the active scene/session/id. On success beforeDeactivate stops any playback
 /// against the still-live old scene, then old defaults/bindings are invalidated and the target is

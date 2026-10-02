@@ -1,6 +1,10 @@
 #include "App/Model/Session/SessionQueries.h"
 
+#include "Core/IO/File.h"
 #include "Engine/Asset/Model/JsonTokens.h"
+#include "Support/SceneDocumentTestSupport.h"
+#include <cmath>
+#include <filesystem>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -151,4 +155,31 @@ TEST_CASE("tier audit action retains the authenticated client and resulting ceil
     CHECK(action.command == "session.tier");
     CHECK(action.outcome == "changed");
     CHECK(action.timestampMilliseconds == 123);
+}
+
+//======================================================================================================================
+TEST_CASE("camera query represents a document perspective camera without zfar",
+          "[app][session][camera-query]") {
+    auto document = lmx::scenes::readCatalogDocument("light-lab");
+    REQUIRE(document);
+    const auto& cameraNode = document->nodes.at(document->camera);
+    document->cameras.at(*cameraNode.camera).farZ.reset();
+    const auto path = std::filesystem::path("SessionQueryFixtures/infinite.scene.gltf");
+    std::filesystem::create_directories(path.parent_path());
+    REQUIRE(lmx::asset::saveSceneDocument(*document, path));
+    const auto bytes = lmx::readWholeFile(path);
+    REQUIRE(bytes);
+    const std::string json(reinterpret_cast<const char*>(bytes->data()), bytes->size());
+    CHECK(json.find("zfar") == std::string::npos);
+    const auto read = lmx::asset::readSceneDocument(path);
+    REQUIRE(read);
+    lmx::engine::Scene scene;
+    lmx::engine::applyDocumentCamera(scene, *read);
+    const auto camera = lmx::engine::cameraFromScene(scene.initialCamera);
+    REQUIRE(std::isinf(camera.farZ));
+    const auto encoded = lmx::asset::JsonTokens::parse(cameraJson(camera));
+    REQUIRE(encoded);
+    CHECK(encoded->root().find("farZ")->asString() == "infinite");
+    CHECK(encoded->root().find("nearZ")->asFloat() == camera.nearZ);
+    std::filesystem::remove_all(path.parent_path());
 }

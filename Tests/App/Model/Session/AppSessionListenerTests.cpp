@@ -1,5 +1,6 @@
 #include "App/Model/Session/SessionListener.h"
 #include "App/Model/Session/SessionProtocol.h"
+#include "App/Model/Session/SessionQueries.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -425,5 +426,53 @@ TEST_CASE("session outbound closure saturation still terminates the active peer"
     (*listener)->wake();
     char byte = 0;
     CHECK(recv(client, &byte, 1, 0) == 0);
+    close(client);
+}
+
+//======================================================================================================================
+TEST_CASE("session listener continues read-only service after an invalid response value",
+          "[app][session-listener][response-continuation]") {
+    SocketFixture fixture;
+    auto mailbox = std::make_shared<SessionMailbox>();
+    auto listener = SessionListener::start(fixture.path(), mailbox);
+    REQUIRE(listener);
+    const int client = connectTo(fixture.path());
+    REQUIRE(client >= 0);
+    const auto opened = awaitInbound(mailbox);
+    REQUIRE(opened.size() == 1);
+    ProposalQueue proposals;
+    SessionProposal proposal;
+    proposal.source = ProposalSource::File;
+    proposal.state = SessionState::Proposed;
+    proposal.client = std::string("bad path ") + char(0xff);
+    proposals.add(proposal);
+    SessionLog log(std::make_shared<ConsoleLog>());
+    log.record({.client = proposal.client, .command = "proposal.arrived", .outcome = "proposed"});
+    const std::array<std::string, 4> commands{"hello", "query.proposals", "query.log",
+                                              "query.status"};
+    for (size_t index = 0; index < commands.size(); ++index) {
+        const uint64_t id = index + 1;
+        const std::string request =
+            "{\"id\":" + std::to_string(id) + ",\"command\":\"" + commands[index] +
+            (index == 0 ? "\",\"args\":{\"name\":\"Writer\",\"protocol\":1}}\n" : "\"}\n");
+        REQUIRE(sendAll(client, request));
+        const auto incoming = awaitInbound(mailbox);
+        REQUIRE(incoming.size() == 1);
+        const auto decoded = decodeRequest(incoming[0].text);
+        REQUIRE(decoded);
+        std::string value = "{}";
+        if (decoded->command == "query.proposals")
+            value = proposalsJson(proposals);
+        if (decoded->command == "query.log")
+            value = logJson(log);
+        if (decoded->command == "query.status")
+            value = statusJson({});
+        mailbox->pushOutbound(incoming[0].connection, encodeResult(decoded->id, value));
+        (*listener)->wake();
+        const auto response = lmx::asset::JsonTokens::parse(readLine(client));
+        REQUIRE(response);
+        CHECK(response->root().find("id")->asUInt() == id);
+        CHECK(response->root().find("ok")->asBool() == (index == 0 || index == 3));
+    }
     close(client);
 }

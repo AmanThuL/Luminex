@@ -1,4 +1,9 @@
 #include "App/Model/Session/SessionProposal.h"
+#include "App/Model/Session/SessionProtocol.h"
+#include "App/Model/Session/SessionQueries.h"
+#include "Engine/Asset/Document/SceneDocument.h"
+#include <fstream>
+#include <memory>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -251,4 +256,81 @@ TEST_CASE("a stale proposal cannot be applied", "[app][session]") {
     REQUIRE(waitpid(child, &status, 0) == child);
     CHECK(WIFSIGNALED(status));
     CHECK(WTERMSIG(status) == SIGABRT);
+}
+
+//======================================================================================================================
+TEST_CASE("disk sidecar rejects invalid UTF-8 before proposal and log queries",
+          "[app][session][sidecar-utf8]") {
+    const auto directory = std::filesystem::path("SessionSidecarUtf8");
+    std::filesystem::create_directories(directory);
+    struct Cleanup {
+        std::filesystem::path path;
+        ~Cleanup() {
+            std::error_code ignored;
+            std::filesystem::remove_all(path, ignored);
+        }
+    } cleanup{directory};
+    const auto documentPath = directory / "changed.scene.gltf";
+    lmx::asset::SceneDocument document;
+    document.name = "External change";
+    document.nodes = {{.name = "Camera", .camera = 0}};
+    document.rootNodes = {0};
+    document.cameras = {{.name = "Lens"}};
+    const auto before = document;
+    document.look.bloom.intensity += 1;
+    REQUIRE(lmx::asset::saveSceneDocument(document, documentPath));
+    const auto pairHash = lmx::asset::sceneDocumentHash(documentPath);
+    REQUIRE(pairHash);
+    const auto path = sidecarPath(documentPath);
+    for (const std::string field : {"actor", "summary", "evidence"}) {
+        INFO(field);
+        const std::string bad(1, static_cast<char>(0xff));
+        const std::string actor = field == "actor" ? bad : "Writer";
+        const std::string summary = field == "summary" ? bad : "Move lamp";
+        const std::string evidence = field == "evidence" ? bad : "frame.png";
+        const auto text = "{\"schema\":1,\"actor\":\"" + actor + "\",\"summary\":\"" + summary +
+                          "\",\"documentSha256\":\"" + *pairHash + "\",\"evidence\":[\"" +
+                          evidence + "\"]}";
+        {
+            std::ofstream file(path, std::ios::binary);
+            REQUIRE(file.good());
+            file << text;
+        }
+        std::ifstream file(path, std::ios::binary);
+        const std::string disk(std::istreambuf_iterator<char>{file}, {});
+        const auto sidecar = parseSidecar(disk);
+        CHECK_FALSE(sidecar);
+        if (!sidecar)
+            CHECK(sidecar.error().find("UTF-8") != std::string::npos);
+        ProposalQueue queue;
+        SessionProposal proposal;
+        proposal.source = ProposalSource::File;
+        proposal.actor = sidecar ? Actor::Agent : Actor::System;
+        proposal.client = sidecar ? sidecar->actor : "Unknown external change";
+        proposal.summary = sidecar ? sidecar->summary : "External scene change";
+        proposal.hash = *pairHash;
+        proposal.changes = lmx::asset::diffSceneDocuments(before, document);
+        proposal.state = SessionState::Proposed;
+        if (sidecar)
+            proposal.evidence = sidecar->evidence;
+        queue.add(proposal);
+        SessionLog log(std::make_shared<ConsoleLog>());
+        log.record({.actor = proposal.actor,
+                    .client = proposal.client,
+                    .command = "proposal.arrived",
+                    .arguments = proposal.summary,
+                    .outcome = "proposed"});
+        const auto proposals = lmx::asset::JsonTokens::parse(encodeResult(1, proposalsJson(queue)));
+        REQUIRE(proposals);
+        CHECK(proposals->root().find("ok")->asBool() == true);
+        const auto history = lmx::asset::JsonTokens::parse(encodeResult(2, logJson(log)));
+        REQUIRE(history);
+        CHECK(history->root().find("ok")->asBool() == true);
+        const auto next = decodeRequest(R"({"id":3,"command":"query.status"})");
+        REQUIRE(next);
+        const auto continued =
+            lmx::asset::JsonTokens::parse(encodeResult(next->id, statusJson({})));
+        REQUIRE(continued);
+        CHECK(continued->root().find("ok")->asBool() == true);
+    }
 }

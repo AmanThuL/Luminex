@@ -40,7 +40,8 @@ prevent queued lines from a departed client reaching the next connection.
 The windowed loop consumes native menu commands, calls `pumpSession`, then `pumpDocuments` before
 drawable acquisition. Neither an ImGui frame nor a device frame is active. Session drains requests,
 executes approved steps and polls file/job state there. Panel actions become intents for this pump;
-queries serialize main-thread state. A missing drawable therefore cannot skip session work.
+queries serialize main-thread state. Invalid result JSON/UTF-8 and invalid error UTF-8 produce safe
+protocol failures rather than assertions. A missing drawable therefore cannot skip session work.
 
 Each connection resets hello/client/tier to ReadOnly. Hello records the last client for later Export.
 Disconnect cancels awaiting approvals while a running step finishes. Listen off and shell shutdown
@@ -51,7 +52,8 @@ and remove the socket. The panel's visibility persists; listening, ceiling and c
 
 Polling runs at most twice a second, waits for two equal changed stamps and excludes writer
 `.lmx-save-*.tmp` directories. It hashes the glTF/buffer pair and waits up to four seconds for a
-matching sidecar. A matching sidecar attributes Agent; otherwise the card says Unknown external
+matching sidecar. Invalid UTF-8 sidecars are rejected before metadata retention. A matching sidecar attributes Agent;
+otherwise the card says Unknown external
 change with System attribution. Reader errors produce an Error card; later changes stale it.
 The diff compares canonical writer JSON and animation bytes. Resolved proposals are retained in
 a queue capped at 64, with rejected file hashes remembered until document replacement.
@@ -59,7 +61,10 @@ a queue capped at 64, with rejected file hashes remembered until document replac
 Pending file proposals block Save/Save As. File Accept rechecks the hash and uses Revert's
 Stopped/no-measurement and Discard/Cancel workflow. Bridge Accept validates the whole batch before
 applying persistent edits and marking fields; Save/Revert clears document attribution. Replacement
-stales both sources and resets the watch. The editor adopts its own writes before watching again.
+stales both sources and resets the watch. Save adoption first verifies the observed pair hash
+against canonical writer bytes. Watch suppression requires that completed-write receipt, matching
+path/hash and coherent stamps around hashing on both successful and failed save outcomes. Pre-write
+failures preserve pending revisions; uncertified successful adoption invalidates the watch baseline.
 
 `scene.open` shares `replaceSessionDocument` with the operator workflow, but requires a clean,
 stopped, idle document, no measurement or pending file proposal, and selection None, Camera or

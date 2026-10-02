@@ -20,6 +20,22 @@ void DocumentWatch::reset(const FileStamp& loaded) {
 }
 
 //======================================================================================================================
+bool DocumentWatch::adoptSave(const FileStamp& beforeHash, const FileStamp& afterHash,
+                              const std::filesystem::path& watchedPath,
+                              const std::filesystem::path& writtenPath,
+                              std::string_view writtenHash, std::string_view currentHash,
+                              bool documentAdopted) {
+    if (writtenHash.empty() || writtenHash != currentHash || beforeHash != afterHash ||
+        afterHash.saving || watchedPath.lexically_normal() != writtenPath.lexically_normal()) {
+        if (documentAdopted)
+            reset(FileStamp{});
+        return false;
+    }
+    reset(afterHash);
+    return true;
+}
+
+//======================================================================================================================
 bool DocumentWatch::due(double seconds) const {
     return m_lastPoll < 0.0 || seconds - m_lastPoll >= 0.5;
 }

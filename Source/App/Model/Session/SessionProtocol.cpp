@@ -15,10 +15,9 @@
 #include <utility>
 
 namespace lmx::app {
-namespace {
 
 //======================================================================================================================
-bool validUtf8(std::string_view text) {
+bool validSessionUtf8(std::string_view text) {
     for (size_t i = 0; i < text.size();) {
         const auto first = static_cast<unsigned char>(text[i]);
         if (first < 0x80) {
@@ -57,6 +56,8 @@ bool validUtf8(std::string_view text) {
     }
     return true;
 }
+
+namespace {
 
 //======================================================================================================================
 std::string quoted(std::string_view value) {
@@ -130,7 +131,7 @@ std::expected<SessionRequest, std::string> decodeRequestEnvelope(std::string lin
         return std::unexpected("Session line exceeds 1 MiB");
     if (line.find_first_of("\r\n") != std::string::npos)
         return std::unexpected("Session line contains an embedded line ending");
-    if (!validUtf8(line))
+    if (!validSessionUtf8(line))
         return std::unexpected("Invalid UTF-8 in session line");
     const auto parsed = asset::JsonTokens::parse(std::move(line));
     if (!parsed)
@@ -183,14 +184,17 @@ std::expected<SessionRequest, std::string> decodeRequest(std::string line) {
 
 //======================================================================================================================
 std::string encodeResult(uint64_t id, std::string_view resultJson) {
-    LMX_ASSERT(validUtf8(resultJson), "Session result must be UTF-8");
-    LMX_ASSERT(asset::JsonTokens::parse(std::string(resultJson)), "Session result must be JSON");
+    if (!validSessionUtf8(resultJson))
+        return encodeError(id, SessionError::Failed, "Session result contains invalid UTF-8.");
+    if (!asset::JsonTokens::parse(std::string(resultJson)))
+        return encodeError(id, SessionError::Failed, "Session result is not valid JSON.");
     return std::format("{{\"id\":{},\"ok\":true,\"result\":{}}}\n", id, compactJson(resultJson));
 }
 
 //======================================================================================================================
 std::string encodeError(uint64_t id, SessionError code, std::string_view message) {
-    LMX_ASSERT(validUtf8(message), "Session error message must be UTF-8");
+    if (!validSessionUtf8(message))
+        message = "Session error message contains invalid UTF-8.";
     return std::format("{{\"id\":{},\"ok\":false,\"error\":{{\"code\":\"{}\",\"message\":{}}}}}\n",
                        id, errorCode(code), quoted(message));
 }

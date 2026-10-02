@@ -5,6 +5,8 @@
 
 #include "App/Model/Session/SessionProposal.h"
 
+#include "App/Model/Session/SessionProtocol.h"
+
 #include "Core/Diagnostics/Assert.h"
 #include "Engine/Asset/Model/JsonTokens.h"
 
@@ -37,6 +39,8 @@ bool isPending(SessionState state) {
 
 //======================================================================================================================
 std::expected<Sidecar, std::string> parseSidecar(std::string text) {
+    if (!validSessionUtf8(text))
+        return std::unexpected("Invalid sidecar UTF-8");
     const auto parsed = asset::JsonTokens::parse(std::move(text));
     if (!parsed)
         return std::unexpected("Invalid JSON: " + parsed.error().message);

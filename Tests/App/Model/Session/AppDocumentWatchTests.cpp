@@ -131,3 +131,27 @@ TEST_CASE("document watch observes encoded buffer-only and late pair changes", "
     CHECK(watch.poll(arrived, 2.5) == WatchDecision::Hash);
     fs::remove_all(directory);
 }
+
+//======================================================================================================================
+TEST_CASE("save hash observations cannot adopt a different stamp or an active writer",
+          "[unit][session][save-watch]") {
+    DocumentWatch watch;
+    const FileStamp loaded{100, 200, 1, 1, false};
+    const FileStamp written{101, 201, 2, 2, false};
+    FileStamp afterHash = written;
+    SECTION("external revision completes while the editor hashes") {
+        afterHash.gltfTime = 3;
+    }
+    SECTION("another writer starts before the hash completes") {
+        afterHash.saving = true;
+    }
+    watch.reset(loaded);
+    REQUIRE(watch.poll(written, 0.5) == WatchDecision::Wait);
+    REQUIRE(watch.poll(written, 1.0) == WatchDecision::Hash);
+    watch.hashed("external", false, 1.0);
+    CHECK_FALSE(watch.adoptSave(written, afterHash, "loaded.scene.gltf", "loaded.scene.gltf",
+                                "editor", "editor"));
+    CHECK(watch.poll(written, 1.5) == WatchDecision::Sidecar);
+    CHECK(watch.poll(written, 5.0) == WatchDecision::Sidecar);
+    CHECK(watch.ready());
+}

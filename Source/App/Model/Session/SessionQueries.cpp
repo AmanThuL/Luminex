@@ -11,6 +11,7 @@
 #include "Core/IO/JsonWriter.h"
 
 #include <array>
+#include <cmath>
 #include <format>
 #include <string>
 #include <utility>
@@ -173,7 +174,10 @@ std::string cameraJson(const engine::Camera& camera) {
     writer.key("nearZ");
     writer.number(camera.nearZ);
     writer.key("farZ");
-    writer.number(camera.farZ);
+    if (std::isinf(camera.farZ) && camera.farZ > 0)
+        writer.string("infinite");
+    else
+        writer.number(camera.farZ);
     writer.endObject();
     return writer.take();
 }

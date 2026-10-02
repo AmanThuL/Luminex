@@ -234,37 +234,36 @@ void proposedValue(std::string_view field, std::string_view before, std::string_
     const auto start = ImGui::GetCursorScreenPos();
     const float width = ImGui::GetContentRegionAvail().x;
     const float padding = scaled(8.0f);
-    const auto fieldSize = field.empty() ? ImVec2{} : ImGui::CalcTextSize(fieldText.c_str());
-    const auto oldSize = ImGui::CalcTextSize(oldText.c_str());
-    const auto newSize = ImGui::CalcTextSize(newText.c_str());
-    const float valuesWidth = oldSize.x + newSize.x + padding * 4;
-    const bool stacked = width < valuesWidth;
-    const bool fieldInline = field.empty() || width >= fieldSize.x + padding + valuesWidth;
-    const float lines = (stacked ? 2.0f : 1.0f) + (fieldInline ? 0.0f : 1.0f);
-    const float height = ImGui::GetFontSize() * lines + padding * 2;
-    const ImVec2 end{start.x + width, start.y + height};
+    const float markerWidth = scaled(kActorMarkSize);
+    const auto widths = layoutProposedValue(width, padding, markerWidth, 0, 0, 0);
+    const auto measure = [&](const std::string& text) {
+        return text.empty() ? ImVec2{}
+                            : ImGui::CalcTextSize(text.c_str(), nullptr, false, widths.textWidth);
+    };
+    const auto fieldSize = measure(fieldText);
+    const auto oldSize = measure(oldText);
+    const auto newSize = measure(newText);
+    const auto layout =
+        layoutProposedValue(width, padding, markerWidth, fieldSize.y, oldSize.y, newSize.y);
+    const ImVec2 end{start.x + width, start.y + layout.height};
     auto* draw = ImGui::GetWindowDrawList();
     draw->AddRectFilled(start, end, colorU32(ThemeRole::SurfaceSunken), scaled(kShape.control));
     draw->AddRect(start, end, colorU32(ThemeRole::AccentAgent), scaled(kShape.control), 0,
                   scaled(kShape.border));
     draw->PushClipRect(start, end, true);
-    const ImVec2 fieldPosition{start.x + padding, start.y + padding};
-    if (!field.empty())
-        draw->AddText(fieldPosition, colorU32(ThemeRole::TextSecondary), fieldText.c_str());
-    const ImVec2 oldPosition{!field.empty() && fieldInline ? fieldPosition.x + fieldSize.x + padding
-                                                           : fieldPosition.x,
-                             fieldInline ? fieldPosition.y : fieldPosition.y + fieldSize.y};
-    draw->AddText(oldPosition, colorU32(ThemeRole::TextDisabled), oldText.c_str());
-    draw->AddLine({oldPosition.x, oldPosition.y + oldSize.y * 0.5f},
-                  {oldPosition.x + oldSize.x, oldPosition.y + oldSize.y * 0.5f},
-                  colorU32(ThemeRole::TextDisabled), scaled(kShape.border));
-    const ImVec2 newPosition{stacked ? oldPosition.x : oldPosition.x + oldSize.x + padding,
-                             stacked ? oldPosition.y + oldSize.y : oldPosition.y};
-    draw->AddText(newPosition, colorU32(ThemeRole::AccentAgentText), newText.c_str());
-    drawActor({end.x - padding, end.y - padding - newSize.y * 0.5f}, Actor::Agent, kActorMarkSize,
-              true);
+    const auto text = [&](const std::string& value, float top, ThemeRole role) {
+        if (!value.empty())
+            draw->AddText(ImGui::GetFont(), ImGui::GetFontSize(),
+                          {start.x + padding, start.y + top}, colorU32(role), value.c_str(),
+                          nullptr, layout.textWidth);
+    };
+    text(fieldText, layout.fieldTop, ThemeRole::TextSecondary);
+    text(oldText, layout.beforeTop, ThemeRole::TextDisabled);
+    text(newText, layout.afterTop, ThemeRole::AccentAgentText);
+    drawActor({end.x - padding, start.y + layout.afterTop + ImGui::GetFontSize() * 0.5f},
+              Actor::Agent, kActorMarkSize, true);
     draw->PopClipRect();
-    ImGui::Dummy({width, height});
+    ImGui::Dummy({width, layout.height});
     editorTooltip("Proposed value; the current value is unchanged.");
 }
 

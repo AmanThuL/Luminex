@@ -6,6 +6,7 @@
 #pragma once
 
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -34,6 +35,16 @@ class DocumentWatch {
 public:
     /// Adopts the current pair observation after load or an editor save.
     void reset(const FileStamp& loaded);
+    /// Adopts an editor write only when its destination is the watched pair and its expected hash
+    /// matches the current disk hash with equal non-saving stamps observed around that hash.
+    /// Empty receipts and mismatches preserve all pending polling
+    /// and sidecar attribution state unless documentAdopted is true. An uncertified adopted
+    /// document invalidates the stamp baseline so the current pair is reviewed on stable polls.
+    /// Callers must supply a fresh hash of the watched pair.
+    bool adoptSave(const FileStamp& beforeHash, const FileStamp& afterHash,
+                   const std::filesystem::path& watchedPath,
+                   const std::filesystem::path& writtenPath, std::string_view writtenHash,
+                   std::string_view currentHash, bool documentAdopted = false);
     /// Whether a filesystem observation is due on this clock; does not update the poll cursor.
     bool due(double seconds) const;
     /// Returns Hash after two equal non-saving changed observations, never more often than 0.5 s.

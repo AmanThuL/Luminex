@@ -7,6 +7,7 @@
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"
+#include "Core/Util/Sha256.h"
 #include "Engine/Asset/Document/Orientation.h"
 #include "Scenes/SceneDocumentExport.h"
 
@@ -75,7 +76,10 @@ std::optional<EditorSelection> selectionInReplacement(const EditorSelection& sel
 asset::AssetResult<void> saveSessionDocument(scenes::SceneLibrary& library, SceneSession& session,
                                              scenes::SceneId& activeId,
                                              const std::filesystem::path& path, bool saveAs,
-                                             const SceneDocumentSaveIO& io) {
+                                             const SceneDocumentSaveIO& io,
+                                             SceneDocumentWrite* completedWrite) {
+    if (completedWrite)
+        *completedWrite = {};
     auto* loaded = session.loadedScene();
     LMX_ASSERT(loaded && library.loaded(activeId) == loaded,
                "save requires the active library snapshot");
@@ -103,6 +107,14 @@ asset::AssetResult<void> saveSessionDocument(scenes::SceneLibrary& library, Scen
     auto written = io.write ? io.write(*exported, path) : asset::saveSceneDocument(*exported, path);
     if (!written)
         return std::unexpected(written.error());
+    const auto json = asset::sceneDocumentJson(*exported, targetBin.filename().string());
+    const auto buffer = asset::sceneDocumentBuffer(*exported);
+    std::vector<std::byte> bytes(reinterpret_cast<const std::byte*>(json.data()),
+                                 reinterpret_cast<const std::byte*>(json.data() + json.size()));
+    bytes.insert(bytes.end(), buffer.begin(), buffer.end());
+    const SceneDocumentWrite receipt{.path = path, .hash = sha256Hex(bytes)};
+    if (completedWrite)
+        *completedWrite = receipt;
     auto canonical = io.read ? io.read(path) : asset::readSceneDocument(path);
     if (!canonical)
         return std::unexpected(canonical.error());
@@ -113,6 +125,10 @@ asset::AssetResult<void> saveSessionDocument(scenes::SceneLibrary& library, Scen
     auto hash = io.hash ? io.hash(path) : asset::sceneDocumentHash(path);
     if (!hash)
         return std::unexpected(hash.error());
+    if (*hash != receipt.hash)
+        return std::unexpected(asset::AssetError{
+            asset::AssetErrorCode::Io,
+            "The saved document changed during verification; the live document was not adopted."});
     const auto destination = saveAs ? scenes::sceneIdFromPath(path) : activeId;
     const auto& cameraNode = canonical->nodes.at(canonical->camera);
     const auto& lens = canonical->cameras.at(*cameraNode.camera);

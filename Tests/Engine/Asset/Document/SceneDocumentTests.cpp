@@ -245,11 +245,21 @@ TEST_CASE("scene document hash covers JSON then referenced buffer bytes",
 //======================================================================================================================
 TEST_CASE("candidate buffer path decodes the glTF URI before its file exists",
           "[asset][scene-document][session]") {
-    const fs::path document = "SceneDocuments/candidate.scene.gltf";
+    const fs::path directory = "SceneDocumentNegativeFixtures";
+    fs::create_directories(directory);
+    struct Cleanup {
+        fs::path path;
+        ~Cleanup() {
+            std::error_code ignored;
+            fs::remove_all(path, ignored);
+        }
+    } cleanup{directory};
+    const fs::path document = directory / "candidate.scene.gltf";
     for (const auto& [uri, expected] : std::vector<std::pair<std::string, fs::path>>{
-             {"new%20pair.bin", "SceneDocuments/new pair.bin"},
-             {"percent%25.bin", "SceneDocuments/percent%.bin"},
-             {"nested/%E4%B8%AD.bin", fs::path("SceneDocuments/nested/\xE4\xB8\xAD.bin")}}) {
+             {"new%20pair.bin", "SceneDocumentNegativeFixtures/new pair.bin"},
+             {"percent%25.bin", "SceneDocumentNegativeFixtures/percent%.bin"},
+             {"nested/%E4%B8%AD.bin",
+              fs::path("SceneDocumentNegativeFixtures/nested/\xE4\xB8\xAD.bin")}}) {
         INFO(uri);
         const auto candidate = sceneDocumentBufferPath(
             R"({"buffers":[{"uri":")" + uri + R"(","byteLength":2}]})", document);
@@ -269,6 +279,9 @@ TEST_CASE("candidate buffer path decodes the glTF URI before its file exists",
         writeText(document, json);
         CHECK_FALSE(sceneDocumentHash(document));
     }
+    fs::remove_all(directory);
+    CHECK_FALSE(fs::exists(directory));
+    CHECK_FALSE(fs::exists("SceneDocuments/candidate.scene.gltf"));
 }
 
 //======================================================================================================================

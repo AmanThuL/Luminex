@@ -146,3 +146,37 @@ TEST_CASE("session responses are one valid JSON line with exact identity and esc
         CHECK(response->root().find("error")->find("code")->asString() == name);
     }
 }
+
+//======================================================================================================================
+TEST_CASE("session result encoding returns a safe error for external invalid text",
+          "[app][session-protocol][response-utf8]") {
+    for (const std::string& result :
+         {std::string("{\"path\":\"") + char(0xff) + "\"}", std::string("{broken")}) {
+        const auto response = lmx::asset::JsonTokens::parse(encodeResult(4, result));
+        REQUIRE(response);
+        CHECK(response->root().find("id")->asUInt() == 4);
+        CHECK(response->root().find("ok")->asBool() == false);
+        CHECK(response->root().find("error")->find("code")->asString() == "failed");
+        CHECK_FALSE(response->root().find("error")->find("message")->asString()->empty());
+    }
+    const auto continued = lmx::asset::JsonTokens::parse(encodeResult(5, R"({"ready":true})"));
+    REQUIRE(continued);
+    CHECK(continued->root().find("ok")->asBool() == true);
+}
+
+//======================================================================================================================
+TEST_CASE("session error encoding replaces externally invalid UTF-8 safely",
+          "[app][session-protocol][error-utf8]") {
+    const auto response = lmx::asset::JsonTokens::parse(
+        encodeError(6, SessionError::Unavailable, std::string("bad path ") + char(0xff)));
+    REQUIRE(response);
+    CHECK(response->root().find("id")->asUInt() == 6);
+    CHECK(response->root().find("ok")->asBool() == false);
+    CHECK(response->root().find("error")->find("code")->asString() == "unavailable");
+    CHECK(response->root().find("error")->find("message")->asString()->find("UTF-8") !=
+          std::string::npos);
+    const auto continued =
+        lmx::asset::JsonTokens::parse(encodeError(7, SessionError::Busy, "busy"));
+    REQUIRE(continued);
+    CHECK(continued->root().find("error")->find("message")->asString() == "busy");
+}

@@ -85,6 +85,9 @@ python3 Tools/Session/lmx_session.py query proposals
 python3 Tools/Session/lmx_session.py query log
 ```
 
+`query.camera` reports `farZ` as a JSON number for a finite far plane, or the string `"infinite"`
+when the authored perspective camera omits `zfar`. Querying either lens leaves the view unchanged.
+
 Propose commands create or withdraw review cards. Replace example IDs with current hierarchy or
 proposal IDs; the sample environment edit applies to a saved look:
 
@@ -198,7 +201,9 @@ rows and rings affected Hierarchy nodes. Missing evidence is flagged. File Accep
 needs Stopped/no measurement and offers Discard/Cancel for unsaved edits. Reject remembers the
 current hash; a later Save can overwrite that file. Pending file proposals block Save/Save As with
 “Review the pending proposal first”. A newer file or scene replacement stales the proposal.
-Reader failures show an Error card with Reject only. The editor's own saves reset the watch.
+Reader failures show an Error card with Reject only. Invalid UTF-8 sidecars are rejected before
+metadata is retained. Own saves reset the watch only with verified writer bytes, path and coherent
+stamps; an uncertified successful adoption invalidates the baseline to review external changes.
 
 ## Evidence, Export and recovery
 
@@ -211,6 +216,9 @@ Screenshot/log/measurement/graph files get SHA-256 hashes. A sequence records it
 hash and child log; this does not certify each PNG independently. GPU evidence hashes every regular
 payload in the trace directory plus its `.schema.json` sidecar. Failed spawn logs are retained;
 missing/unreadable/unsafe outputs yield explicit evidence-certification failures, not empty hashes.
+Native Metal traces in validation contained internal relative symlinks; all four approved captures
+failed certification as unsafe GPU entries. Those traces are not certified session evidence. A
+failed step ends its plan; inspect the failure before approving a separate remaining job.
 One session job runs at a time. The activity strip shows its state/progress; Stop cancels active
 session work. Measurement cannot overlap a headless child. Shutdown kills/reaps the child and
 joins the listener; the socket is removed when Listen stops.

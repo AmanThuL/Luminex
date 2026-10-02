@@ -1,6 +1,6 @@
 # UX5 — Agent Session
 
-**Status**: Accepted
+**Status**: Implemented — pending owner review; failed and incomplete gates retained
 
 Written on 2026-10-01 from the merged UX4 editor and a survey of its document, settings, console
 and menu code. UX5 lets work done by an external agent reach the operator inside the editor: a
@@ -76,7 +76,8 @@ approval between an agent and every change.
 | `SessionMailbox` | `App/Model/Session` | Mutex-guarded inbox and outbox; the only state both threads touch |
 | `RenderSettingCommands` | `App/Model/Rendering/Settings` | `applyRenderSetting` with cascades and reasons; `settingsToArguments` for a headless run |
 | `SessionListener` | `App/Model/Session` | The socket, its thread, peer check and line limits |
-| `DocumentWatch`, `ChildRun` | `App/Shell` | Polling the open pair; spawning and reaping a headless run |
+| `DocumentWatch` | `App/Model/Session` | Stable-poll decisions and verified save ownership |
+| `ChildRun` | `App/Shell` | Spawning and reaping a headless run |
 | `EditorSession` | `App/Shell` | Draining the mailbox at the frame's safe point and executing commands |
 | `SessionPanel` | `App/Panels/Session` | Connection, tier ceiling, cards, log and Export |
 | `EditorStyle` growth | `App/Panels/Shared` | Proposal card, attention ring, proposed-value row and actor chip, which the Gallery then reuses |
@@ -107,7 +108,7 @@ node shows as many rows; the result is still complete. The diff is empty exactly
 **Detection.** The shell polls the open pair's sizes and modification times twice a second. After
 a change, it waits for one further identical poll and for the writer's `.lmx-save-*.tmp` directory
 to be absent, then hashes the pair. A hash other than the loaded one produces a file proposal. The
-editor's own Save adopts its hash before the next poll.
+editor's own Save suppresses a proposal only for its verified writer bytes and coherent stamps.
 
 **Sidecar.** `<name>.scene.proposal.json` beside `<name>.scene.gltf` holds `schema` (1), `actor`,
 `summary`, `evidence` (paths relative to the sidecar) and `documentSha256` (the pair's hash, as
@@ -268,3 +269,22 @@ format or manifest change; no Windows support; nothing UX1–UX4 already defer.
 - **Output confinement.** Evidence names are checked against path separators and `..`.
 - **Gestures.** Operator approval cannot be automated without contradicting the first principle,
   so part of the gate depends on manual or input-helper runs.
+
+## Implementation and review limits
+
+All three slices are implemented; [validation](ux5-validation.md) retains every failed attempt,
+scoped exception and unverified gesture. The final source review passes; final full code gates pass 11/11,
+focused regressions pass 314 assertions in 11 cases and pinned validation passes 93 documents.
+The frozen final App passes 215 GPU cases / 1,167,008 assertions. These are implementation
+results; the owner has not accepted integration and the executor plan remains In progress.
+
+The initial final-App standing matrix is complete but fails 14/15; all three additional eight-round attempts pass
+15/15 each. The literal five-case Off gate lacks case definitions and is incomplete;
+the separately defined supplemental Off matrix passes 120/120 strict same-round pairs. No tolerance or default changed.
+Native approved GPU capture certification failed in all four attempts (0/4 passed); the traces contain
+internal symlinks that the evidence checks refuse. The owner authorized continuation after three
+additional failures; checks and RojoRHI remain unchanged. Separate screenshot/sequence and Export
+checks pass; native schema 6 relaunch, Copy path and Reveal pass. Console Copy visible byte equality
+and remaining gestures stay unverified.
+Fresh publication documentation/evidence review passes. Root retains publication-policy/tag/push/PR
+command outcomes in the external publication ledger. Owner review remains pending; no acceptance is claimed.

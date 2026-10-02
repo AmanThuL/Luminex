@@ -39,6 +39,10 @@ enum class SessionError {
     Cancelled    ///< Pending or active work was cancelled.
 };
 
+/// Validates complete UTF-8 scalar sequences, rejecting overlong, surrogate and truncated bytes.
+/// Shared by disk-sidecar admission and both directions of the session protocol.
+bool validSessionUtf8(std::string_view text);
+
 /// Parses one complete UTF-8 JSON request line. A final LF or CRLF is accepted; embedded line
 /// endings, oversized lines, invalid UTF-8, unknown commands and ambiguous root keys fail with
 /// a named reason. The returned request owns all argument storage.
@@ -47,9 +51,11 @@ std::expected<SessionRequest, std::string> decodeRequest(std::string line);
 /// dispatcher can answer a well-formed unknown command with `invalid` and its exact request id.
 std::expected<SessionRequest, std::string> decodeRequestEnvelope(std::string line);
 /// Encodes one successful response with an exact unsigned id and a valid JSON result value.
-/// The returned wire message ends with exactly one LF.
+/// The returned wire message ends with exactly one LF. Invalid external UTF-8 or JSON returns
+/// an explicit failed response with the same id instead of terminating the process.
 std::string encodeResult(uint64_t id, std::string_view resultJson);
 /// Encodes one failed response, escaping the message into a single UTF-8 JSON line.
+/// Invalid UTF-8 message bytes are replaced by an explicit safe diagnostic, preserving the code.
 std::string encodeError(uint64_t id, SessionError code, std::string_view message);
 
 } // namespace lmx::app

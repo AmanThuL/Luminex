@@ -112,27 +112,40 @@ bool EditorShell::saveDocument(const std::filesystem::path& path, bool saveAs) {
         return false;
     }
     const auto previousSceneId = m_activeSceneId;
-    const auto result = saveSessionDocument(m_library, m_session, m_activeSceneId, path, saveAs);
+    SceneDocumentWrite completedWrite;
+    const auto result = saveSessionDocument(m_library, m_session, m_activeSceneId, path, saveAs, {},
+                                            &completedWrite);
+    if (result) {
+        // Rekeying changes only the selection's document identity, never its subject.
+        m_selection.sceneId = m_activeSceneId;
+        m_sceneTree.rekey(previousSceneId.key, m_activeSceneId.key);
+        m_exposureContext.sceneId = m_activeSceneId;
+        m_watchedPath = m_session.loadedScene()->path;
+    }
+    // Pre-write failures retain attribution. Both save outcomes suppress only certified editor
+    // bytes; an adopted document with a later external pair invalidates the stamp baseline.
+    if (result || !completedWrite.hash.empty()) {
+        const auto beforeHash = currentDocumentStamp();
+        const auto currentHash = asset::sceneDocumentHash(m_watchedPath);
+        const auto currentStamp = currentDocumentStamp();
+        if (m_documentWatch.adoptSave(
+                beforeHash, currentStamp, m_watchedPath, completedWrite.path, completedWrite.hash,
+                currentHash ? std::string_view(*currentHash) : std::string_view{},
+                result.has_value())) {
+            m_watchedStamp = currentStamp;
+            m_loadedStamp = currentStamp;
+        } else if (result) {
+            m_watchedStamp = {};
+            m_loadedStamp = {};
+        }
+    }
     if (!result) {
         m_notices.post(
             {ActionStatus::Failed, "Scene save failed: " + result.error().message, path.string()},
             ImGui::GetTime());
-        // A failed verification can follow a completed editor write; that write is never an
-        // external proposal, even though the live document could not adopt its hash.
-        m_watchedStamp = currentDocumentStamp();
-        m_loadedStamp = m_watchedStamp;
-        m_documentWatch.reset(m_watchedStamp);
         refreshDocumentDirty(true);
         return false;
     }
-    // Rekeying a live scene changes only the selection's document identity, never its subject.
-    m_selection.sceneId = m_activeSceneId;
-    m_sceneTree.rekey(previousSceneId.key, m_activeSceneId.key);
-    m_exposureContext.sceneId = m_activeSceneId;
-    m_watchedPath = m_session.loadedScene()->path;
-    m_watchedStamp = currentDocumentStamp();
-    m_loadedStamp = m_watchedStamp;
-    m_documentWatch.reset(m_watchedStamp);
     refreshDocumentDirty(true);
     m_sessionAttribution.clear();
     m_notices.post({ActionStatus::Succeeded, "Scene saved.", path.string()}, ImGui::GetTime());

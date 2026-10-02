@@ -155,4 +155,22 @@ void AppearanceState::choose(Appearance appearance) {
     override.reset();
 }
 
+//======================================================================================================================
+ProposedValueLayout layoutProposedValue(float width, float padding, float markerWidth,
+                                        float fieldHeight, float beforeHeight, float afterHeight) {
+    ProposedValueLayout layout{.textWidth = std::max(1.0f, width - padding * 3 - markerWidth)};
+    float top = padding;
+    const auto place = [&](float height) {
+        const float offset = top;
+        if (height > 0)
+            top += height + padding;
+        return offset;
+    };
+    layout.fieldTop = place(fieldHeight);
+    layout.beforeTop = place(beforeHeight);
+    layout.afterTop = place(afterHeight);
+    layout.height = top;
+    return layout;
+}
+
 } // namespace lmx::app

@@ -103,3 +103,21 @@ TEST_CASE("editor type roles keep their face and unscaled size", "[app][theme][t
     REQUIRE(kDigitAdvanceEm == Catch::Approx(0.6f));
     REQUIRE(kDigitAdvanceEm * typeSpec(TypeRole::Body).size == Catch::Approx(9.6f));
 }
+
+//======================================================================================================================
+TEST_CASE("proposed value layout contains every measured wrapped line",
+          "[app][theme][proposal-layout]") {
+    const float line = 16;
+    const auto multiline = layoutProposedValue(220, 8, 8, line, line * 5, line * 8);
+    CHECK(multiline.textWidth == 188);
+    CHECK(multiline.beforeTop >= multiline.fieldTop + line);
+    CHECK(multiline.afterTop >= multiline.beforeTop + line * 5);
+    CHECK(multiline.height >= multiline.afterTop + line * 8 + 8);
+    const auto argument = layoutProposedValue(140, 8, 8, line * 2, 0, line * 25);
+    CHECK(argument.textWidth == 108);
+    CHECK(argument.height >= argument.afterTop + line * 25 + 8);
+    CHECK(argument.afterTop >= argument.fieldTop + line * 2);
+    const auto tiny = layoutProposedValue(10, 8, 8, 0, 0, line * 50);
+    CHECK(tiny.textWidth > 0);
+    CHECK(tiny.height >= tiny.afterTop + line * 50 + 8);
+}
