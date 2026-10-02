@@ -37,6 +37,8 @@ struct SessionStatus {
 /// Serializes every supplied subject row, excluding the structural root. Call with a tree built
 /// using empty search and no collapsed groups for a complete scene view.
 std::string hierarchyJson(const SceneTreeView& tree);
+/// Returns the exact identifier exposed by query.hierarchy for a row, or empty for its root.
+std::string sceneTreeSubjectId(const SceneTreeRow& row);
 /// Finds an exact subject identifier in the supplied complete tree, retaining full light identity.
 /// Missing and stale identifiers return no selection; the caller supplies the active scene id.
 std::optional<EditorSelection> parseSubjectId(std::string_view id, const SceneTreeView& tree);

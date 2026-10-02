@@ -14,6 +14,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace lmx::asset {
 
@@ -65,6 +66,9 @@ public:
     JsonNode memberValue(size_t index) const;
     /// Returns an array element; asserts unless this is an array and index is smaller than size().
     JsonNode at(size_t index) const;
+    /// Returns array children in source order with owned storage and JSON pointer paths.
+    /// Traverses tokens once; useful when processing large arrays without repeated indexed scans.
+    std::vector<JsonNode> elements() const;
     /// Reads a finite float with complete-token from_chars conversion; overflow/underflow fails.
     std::expected<float, std::string> asFloat() const;
     /// Reads a finite double with complete-token from_chars conversion; overflow/underflow fails.

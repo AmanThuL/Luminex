@@ -77,6 +77,8 @@ public:
     rojoRHI::Result<void> setLocalLightEnabled(engine::LightId id, bool enabled);
     /// Locks authored and generated enablement while a measurement warms up, renders or drains.
     void setMeasurementActive(bool active) { m_measurementActive = active; }
+    /// Reports whether persistent edits are blocked by an active measurement.
+    bool measurementActive() const { return m_measurementActive; }
     /// Consumes the one-shot reset requested by changed effective content, independently of dirty.
     bool consumeTemporalReset();
     /// Adopts current persistent subject values as reset baselines after the caller atomically
@@ -112,6 +114,11 @@ public:
     /// a changed request increments persistent generation. The owner requires stopped playback.
     /// The requested yaw is wrapped into [-pi, pi], on the live camera too.
     rojoRHI::Result<void> setSceneCamera();
+    /// Edits only the authored document camera; the viewport camera and playback stay unchanged.
+    /// Pose uses world metres and radians; invalid or unavailable requests change nothing.
+    rojoRHI::Result<void> setSceneCamera(const engine::SceneCamera& camera);
+    /// Returns the current authored document camera, including an unsaved explicit request.
+    engine::SceneCamera authoredSceneCamera() const;
     /// Replaces an explicitly saved camera with its value decoded from the saved document, so an
     /// approximated orientation compares clean afterwards. No-op without a saved camera request.
     void adoptDocumentCamera(const engine::SceneCamera& camera);
@@ -174,6 +181,8 @@ public:
     /// Playing tracks replace the edit at the next sample; every primitive of a bound source node
     /// receives the same world pose. Animated and generated edits never notify persistent dirty.
     void editObject(size_t index, const DecomposedTransform& transform);
+    /// Whether an object's transform is saved by the document exporter.
+    bool objectTransformPersistable(size_t index) const;
 
     /// Restores one object's authored/current-track transform, preserving other objects and time.
     void resetObject(size_t index);

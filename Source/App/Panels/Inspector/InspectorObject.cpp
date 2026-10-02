@@ -31,8 +31,10 @@ void drawObjectSection(const InspectorPanelContext& context, size_t index) {
     const auto headerMark = inspectorProvenance(session, context.selection,
                                                 inspectorSubjectEdited(session, context.selection),
                                                 {}, true, animated && session.objectChanged(index));
-    const auto enabledMark = inspectorProvenance(
-        session, context.selection, enabledState->own != enabledState->baseline, "Enabled", true);
+    const auto enabledMark = inspectorAppliedMark(
+        context, "enabled",
+        inspectorProvenance(session, context.selection, enabledState->own != enabledState->baseline,
+                            "Enabled", true));
     bool enabled = enabledState->own;
     if (drawInspectorHeader(enabledState->label.c_str(), enabledState->kind.c_str(),
                             "Restore this object's authored transform and own enabled state. "

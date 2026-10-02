@@ -34,6 +34,12 @@ ProvenanceMark proposedProvenance(std::string_view client) {
 }
 
 //======================================================================================================================
+ProvenanceMark sessionAppliedProvenance(std::string_view client) {
+    return {Provenance::AgentApplied, Actor::Agent,
+            std::format("Applied by {}", client.empty() ? "Agent" : client)};
+}
+
+//======================================================================================================================
 std::optional<ProvenanceMark> subjectProvenance(std::optional<std::string_view> generatedBy,
                                                 std::optional<std::string_view> cliFlag,
                                                 bool edited) {

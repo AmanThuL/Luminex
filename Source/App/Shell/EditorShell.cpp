@@ -529,6 +529,7 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
                               .viewportHeight = m_viewportHeight,
                               .viewportVisible = viewportUsable,
                               .documentDirty = m_documentDirty,
+                              .attribution = &m_sessionAttribution,
                               .selectionHiddenByFilter = selectionHidden,
                               .visibilityDisplay = &m_visibilityDisplay,
                               .sceneFilter = &m_sceneFilter,

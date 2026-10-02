@@ -41,6 +41,9 @@ std::optional<ProvenanceMark> documentProvenance(bool dirty, std::string_view pa
 /// Marks an unapplied file proposal, using System for an unattributed external change.
 ProvenanceMark proposedProvenance(std::string_view client);
 
+/// Marks an applied field with the submitting client's name until document adoption.
+ProvenanceMark sessionAppliedProvenance(std::string_view client);
+
 /// Classifies a subject without changing it or its saved state; strings are borrowed for the call.
 /// Generated and CLI-masked subjects stay SessionOnly even when edited; both sources are retained
 /// when present. Edits or CLI masks attribute the mark to the operator, otherwise generation is

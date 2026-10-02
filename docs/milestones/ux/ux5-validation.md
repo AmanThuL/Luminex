@@ -26,8 +26,9 @@ Evidence is retained in `../Luminex-evidence/ux5/`; the executor plan stays in p
 | 12 | `0a7f2c0` | Final code gates PASS, 10/10; focused 311 assertions | Bounded-envelope P2 corrected; no final findings |
 | 13 | `003e342` | Final code gates PASS, 10/10; focused 69 assertions | Retried stronger review completed; no actionable findings |
 | 14 | `9c2a4c6` | Final code gates PASS, 10/10; focused 713 assertions | No final source findings; reviewed hashes retained |
-| 15 | Pending commit | Final code gates PASS, 10/10; focused 373 assertions | Both P2 findings corrected; no final source findings |
-| 16–22 | Not started | Not run | Not run |
+| 15 | `3bed162` | Final code gates PASS, 10/10; focused 373 assertions | Both P2 findings corrected; no final source findings |
+| 16 | Pending commit | Final code gates PASS, 10/10; final guards pass | Three P2 findings corrected; final 25 reviewed hashes match |
+| 17–22 | Not started | Not run | Not run |
 
 The gate JSON files retain every command, exit and log. Test-first red results and failed
 correction attempts are retained in each task's evidence ledger; a deliberate red test is
@@ -45,6 +46,7 @@ CPU IBL generation; full Release gates passed. That Debug run remains incomplete
 | 6 | Probe include/link/viewport failures and an App null-pointer compile failure; final layout run interrupted with exit 130 | Corrected probe and all code gates pass; native failure remains below |
 | 7 | Initial project policy exited 1; two docking implementations failed review/tests | Third docking implementation passed review and gates |
 | 8 | Buffer URI expected/optional mismatch; unqualified test namespace each failed to compile | Each corrected on attempt 2; final gates pass |
+| 16 | Span fixture compile error; 19 initially-dirty fixture assertions; exact input cone-angle assertion | Fixture baseline corrected; exact stored-value readback used without tolerance; final gates PASS, 10/10 |
 | 15 | Fixture accessor/compiler errors; tier log omitted client/resulting ceiling; hidden Console query stayed stale | Red-to-green corrections; final gates PASS, 10/10 |
 | 14 | SIGPIPE; comment/layout failures; bounded queues, close retention, closure saturation, weak EOF assertion and drain race | All corrected; final gates PASS, 10/10 |
 | 13 | Initial stronger-review attempt failed at model capacity before reviewing | Retried on the same stronger model; completed with no actionable findings |
@@ -194,3 +196,11 @@ hello-first, unknown-command and tier errors, reconnect at ReadOnly and socket r
 not query Graph or demonstrate a raised ceiling resetting on reconnect. Those native checks
 remain unverified until an operator raises the ceiling. Large query replies return an explicit
 `unavailable` error; retained Console rows are read without altering the frozen Console view.
+
+Task 16 adds authored-camera and persistence helpers, Inspector units for field attribution and
+read-only saved-camera values, shared subject IDs, and linear JSON array traversal in Asset.
+Exposure/bloom values are partial objects using document key names; review shows full resulting
+objects. Color and cone inputs follow Inspector sRGB/degrees, camera yaw/pitch use radians.
+Generated and animation-owned unsavable edits are refused. Empty change sets are refused and
+only changed keys are attributed. Stronger review required the existing exposure-feedback and
+temporal-reset side effects plus normalized yaw previews; these corrections are being gated.

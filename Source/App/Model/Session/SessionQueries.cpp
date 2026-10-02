@@ -87,6 +87,11 @@ void writeVector(JsonWriter& writer, const glm::vec3& vector) {
 } // namespace
 
 //======================================================================================================================
+std::string sceneTreeSubjectId(const SceneTreeRow& row) {
+    return subjectId(row);
+}
+
+//======================================================================================================================
 std::string hierarchyJson(const SceneTreeView& tree) {
     JsonWriter writer;
     writer.beginObject();

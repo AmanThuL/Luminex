@@ -472,6 +472,19 @@ JsonNode JsonNode::at(size_t index) const {
 }
 
 //======================================================================================================================
+std::vector<JsonNode> JsonNode::elements() const {
+    LMX_ASSERT(isArray(), "JSON elements require an array");
+    std::vector<JsonNode> result;
+    result.reserve(size());
+    size_t token = m_index + 1;
+    for (size_t index = 0; index < size(); ++index) {
+        result.push_back(JsonNode(m_storage, token, m_path + '/' + std::to_string(index)));
+        token = m_storage->next[token];
+    }
+    return result;
+}
+
+//======================================================================================================================
 std::string JsonNode::error(std::string_view reason) const {
     return "JSON pointer '" + m_path + "': " + std::string(reason);
 }

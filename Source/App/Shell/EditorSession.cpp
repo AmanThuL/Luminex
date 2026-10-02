@@ -7,6 +7,7 @@
 
 #include "App/Model/Scene/SceneDocumentSave.h"
 #include "App/Model/Session/SessionCommands.h"
+#include "App/Model/Session/SessionEdits.h"
 #include "App/Model/Session/SessionProtocol.h"
 #include "App/Model/Session/SessionQueries.h"
 #include "Core/Diagnostics/Log.h"
@@ -22,7 +23,9 @@
 #include <format>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <string>
+#include <unordered_set>
 
 namespace lmx::app {
 namespace {
@@ -113,9 +116,10 @@ FileStamp EditorShell::currentDocumentStamp() const {
 
 //======================================================================================================================
 void EditorShell::recordSessionReview(std::string command, std::string arguments,
-                                      std::string outcome) {
+                                      std::string outcome, std::string client) {
     m_sessionLog.record(SessionAction{.timestampMilliseconds = utcMilliseconds(),
                                       .actor = Actor::Operator,
+                                      .client = std::move(client),
                                       .command = std::move(command),
                                       .arguments = std::move(arguments),
                                       .outcome = std::move(outcome)});
@@ -124,6 +128,54 @@ void EditorShell::recordSessionReview(std::string command, std::string arguments
 //======================================================================================================================
 bool EditorShell::acceptFileProposal(uint64_t id) {
     const auto* proposal = m_sessionProposals.find(id);
+    if (proposal && proposal->source == ProposalSource::Bridge &&
+        proposal->state == SessionState::Proposed) {
+        if (m_playback.state() != PlaybackState::Stopped || m_measurement.active()) {
+            m_notices.post(
+                {ActionStatus::Unavailable, "Stop playback and measurement before Accept.", {}},
+                ImGui::GetTime());
+            recordSessionReview("proposal.accept", std::to_string(id), "unavailable",
+                                proposal->client);
+            return false;
+        }
+        const auto* loaded = m_session.loadedScene();
+        if (!loaded || proposal->hash != loaded->hash) {
+            m_sessionProposals.resolve(id, SessionState::Stale);
+            recordSessionReview("proposal.accept", std::to_string(id), "stale document",
+                                proposal->client);
+            return false;
+        }
+        const auto tree =
+            buildSceneTreeView(*loaded, m_session.documentState(), "", {}, &m_session);
+        const auto changed = changedEditKeys(m_session, tree, proposal->edits);
+        if (!changed) {
+            m_sessionProposals.resolve(id, SessionState::Stale);
+            recordSessionReview("proposal.accept", std::to_string(id), changed.error(),
+                                proposal->client);
+            return false;
+        }
+        auto result = applyEdits(m_session, tree, proposal->edits);
+        if (!result) {
+            m_sessionProposals.resolve(id, SessionState::Stale);
+            recordSessionReview("proposal.accept", std::to_string(id), result.error().message,
+                                proposal->client);
+            return false;
+        }
+        for (const auto& key : *changed)
+            m_sessionAttribution.mark(key, proposal->client);
+        reconcileExposureLook(m_session.look(), m_exposureContext, m_exposureResetPending);
+        const std::unordered_set<std::string> changedSet(changed->begin(), changed->end());
+        std::vector<ProposalEdit> changedEdits;
+        for (const auto& edit : proposal->edits)
+            if (changedSet.contains(edit.subject + "/" + edit.field))
+                changedEdits.push_back(edit);
+        if (sessionEditNeedsCameraCut(tree, changedEdits))
+            requestCameraCut(m_temporalState);
+        m_sessionProposals.resolve(id, SessionState::Applied);
+        recordSessionReview("proposal.accept", std::to_string(id), "applied", proposal->client);
+        refreshDocumentDirty(true);
+        return true;
+    }
     if (!proposal || proposal->source != ProposalSource::File ||
         proposal->state != SessionState::Proposed ||
         m_documentWorkflow.step() != WorkflowStep::Idle)
@@ -280,12 +332,89 @@ void EditorShell::drainSessionBridge() {
         }
         std::string result;
         std::string outcome = "answered";
+        bool responseSent = false;
         const auto* loaded = m_session.loadedScene();
         const auto completeTree =
             loaded ? std::optional<SceneTreeView>(
                          buildSceneTreeView(*loaded, m_session.documentState(), "", {}, &m_session))
                    : std::nullopt;
         switch (spec->command) {
+        case SessionCommand::ProposeEdits: {
+            const auto summaryNode = request->args.find("summary");
+            const auto summary =
+                summaryNode
+                    ? summaryNode->asString()
+                    : std::expected<std::string, std::string>{std::unexpected("Missing summary")};
+            auto edits = parseEdits(request->args);
+            std::vector<std::string> evidence;
+            std::string refusal;
+            if (!summary || summary->empty() || summary->size() > 1024)
+                refusal = "summary must be a nonempty string of at most 1024 bytes";
+            else if (!edits)
+                refusal = edits.error();
+            if (const auto names = request->args.find("evidence")) {
+                if (!names->isArray())
+                    refusal = "evidence must be an array";
+                else
+                    for (const auto& item : names->elements()) {
+                        const auto name = item.asString();
+                        if (!name || name->empty() || name->size() > 4096) {
+                            refusal = "evidence entries must be nonempty strings";
+                            break;
+                        }
+                        evidence.push_back(*name);
+                    }
+            }
+            if (refusal.empty() && !completeTree)
+                refusal = "No loaded scene is available";
+            std::expected<std::vector<asset::DocumentChange>, std::string> preview =
+                std::unexpected("No edits");
+            if (refusal.empty()) {
+                preview = previewEdits(m_session, *completeTree, *edits);
+                if (!preview)
+                    refusal = preview.error();
+                else if (preview->empty())
+                    refusal = "Edits make no document changes";
+            }
+            if (!refusal.empty()) {
+                answerError(SessionError::Invalid, refusal);
+                outcome = "invalid";
+                responseSent = true;
+                break;
+            }
+            SessionProposal proposal;
+            proposal.source = ProposalSource::Bridge;
+            proposal.actor = Actor::Agent;
+            proposal.client = m_sessionClient;
+            proposal.summary = *summary;
+            proposal.hash = loaded->hash;
+            proposal.evidence = std::move(evidence);
+            proposal.changes = std::move(*preview);
+            proposal.edits = std::move(*edits);
+            proposal.state = SessionState::Proposed;
+            const auto id = m_sessionProposals.add(std::move(proposal));
+            result = std::format("{{\"proposal\":{}}}", id);
+            outcome = "proposed";
+            break;
+        }
+        case SessionCommand::ProposeWithdraw: {
+            const auto idNode = request->args.find("proposal");
+            const auto id =
+                idNode ? idNode->asUInt()
+                       : std::expected<uint64_t, std::string>{std::unexpected("Missing proposal")};
+            const auto* proposal = id ? m_sessionProposals.find(*id) : nullptr;
+            if (!proposal || proposal->source != ProposalSource::Bridge ||
+                proposal->state != SessionState::Proposed || proposal->client != m_sessionClient) {
+                answerError(SessionError::Invalid, "No matching bridge proposal to withdraw");
+                outcome = "invalid";
+                responseSent = true;
+                break;
+            }
+            m_sessionProposals.resolve(*id, SessionState::Stale);
+            result = std::format("{{\"proposal\":{}}}", *id);
+            outcome = "withdrawn";
+            break;
+        }
         case SessionCommand::QueryStatus: {
             result = statusJson({.documentPath = loaded ? loaded->path.string() : "",
                                  .documentHash = loaded ? loaded->hash : "",
@@ -358,13 +487,13 @@ void EditorShell::drainSessionBridge() {
                                               .outcome = "unavailable"});
             continue;
         }
-        if (result.empty()) {
+        if (!responseSent && result.empty()) {
             answerError(SessionError::Unavailable, "No scene or published frame is available");
             outcome = "unavailable";
-        } else if (result.size() + 96 > kMaxLineBytes) {
+        } else if (!responseSent && result.size() + 96 > kMaxLineBytes) {
             answerError(SessionError::Unavailable, "Query response exceeds 1 MiB");
             outcome = "unavailable";
-        } else {
+        } else if (!responseSent) {
             m_sessionMailbox->pushOutbound(inbound.connection, encodeResult(request->id, result));
         }
         m_sessionLog.record(SessionAction{.timestampMilliseconds = utcMilliseconds(),
@@ -421,6 +550,13 @@ void EditorShell::pumpSession(double now) {
         if (action.action == SessionPanelAction::Accept)
             acceptFileProposal(action.id);
         else if (action.action == SessionPanelAction::Reject) {
+            if (const auto* proposal = m_sessionProposals.find(action.id);
+                proposal && proposal->source == ProposalSource::Bridge &&
+                proposal->state == SessionState::Proposed) {
+                m_sessionProposals.reject(action.id);
+                recordSessionReview("proposal.reject", std::to_string(action.id), "rejected",
+                                    proposal->client);
+            }
             if (const auto* proposal = m_sessionProposals.find(action.id);
                 proposal && proposal->source == ProposalSource::File &&
                 (proposal->state == SessionState::Proposed ||

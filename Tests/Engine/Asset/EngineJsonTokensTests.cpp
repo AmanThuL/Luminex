@@ -24,6 +24,18 @@ TEST_CASE("JSON object iteration preserves decoded keys and source order", "[ass
 }
 
 //======================================================================================================================
+TEST_CASE("JSON array iteration preserves order and nested pointer paths", "[asset][json-tokens]") {
+    const auto parsed = JsonTokens::parse(R"({"edits":[{"value":[1,2]},true,null]})");
+    REQUIRE(parsed);
+    const auto nodes = parsed->root().find("edits")->elements();
+    REQUIRE(nodes.size() == 3);
+    CHECK(nodes[0].path() == "/edits/0");
+    CHECK(nodes[0].find("value")->at(1).asUInt() == 2);
+    CHECK(nodes[1].asBool() == true);
+    CHECK(nodes[2].isNull());
+}
+
+//======================================================================================================================
 TEST_CASE("padded JSON tokenizer errors stay inside the original text", "[asset][json-tokens]") {
     for (const std::string source : {"[", "{", "{\"a\":", "[1"}) {
         const auto parsed = JsonTokens::parse(source);

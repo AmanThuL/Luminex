@@ -133,6 +133,7 @@ bool EditorShell::saveDocument(const std::filesystem::path& path, bool saveAs) {
     m_loadedStamp = m_watchedStamp;
     m_documentWatch.reset(m_watchedStamp);
     refreshDocumentDirty(true);
+    m_sessionAttribution.clear();
     m_notices.post({ActionStatus::Succeeded, "Scene saved.", path.string()}, ImGui::GetTime());
     return true;
 }
@@ -159,6 +160,8 @@ bool EditorShell::selectScene(scenes::SceneId id) {
     onSceneSelected(m_temporalState, m_settings, id);
     activateExposureLook(m_exposureContext, m_exposureResetPending, id, m_session.look());
     m_sessionProposals.markStale(ProposalSource::File);
+    m_sessionProposals.markStale(ProposalSource::Bridge);
+    m_sessionAttribution.clear();
     m_watchedPath = m_session.loadedScene()->path;
     m_watchedStamp = currentDocumentStamp();
     m_loadedStamp = m_watchedStamp;
@@ -248,6 +251,8 @@ bool EditorShell::executeDocumentWork(const PendingDocumentWork& work) {
             activateExposureLook(m_exposureContext, m_exposureResetPending, m_activeSceneId,
                                  m_session.look());
             m_sessionProposals.resolve(id, SessionState::Applied);
+            m_sessionProposals.markStale(ProposalSource::Bridge);
+            m_sessionAttribution.clear();
             m_watchedStamp = reviewedStamp;
             m_loadedStamp = m_watchedStamp;
             m_documentWatch.reset(m_watchedStamp);

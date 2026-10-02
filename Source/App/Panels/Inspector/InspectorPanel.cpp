@@ -145,8 +145,47 @@ std::optional<ProvenanceMark> inspectorProvenance(const SceneSession& session,
 //======================================================================================================================
 void markInspectorField(const InspectorPanelContext& context, bool edited, std::string_view field,
                         bool preview) {
-    editor_style::setNextFieldProvenance(
-        inspectorProvenance(context.session, context.selection, edited, field, false, preview));
+    std::string_view key = field;
+    if (field.starts_with("Position"))
+        key = "position";
+    else if (field.starts_with("Rotation"))
+        key = "eulerDegrees";
+    else if (field == "Scale")
+        key = "scale";
+    else if (field.starts_with("Color"))
+        key = "color";
+    else if (context.selection.subject == EditorSubject::Environment &&
+             (field == "Bloom" || field == "Threshold (linear)" || field == "Intensity"))
+        key = "bloom";
+    else if (field.starts_with("Intensity"))
+        key = "intensity";
+    else if (field.starts_with("Range"))
+        key = "range";
+    else if (field.starts_with("Direction"))
+        key = "direction";
+    else if (field.starts_with("Inner cone"))
+        key = "innerCone";
+    else if (field.starts_with("Outer cone"))
+        key = "outerCone";
+    else if (field == "Shadow filter")
+        key = "shadowFilter";
+    else if (context.selection.subject == EditorSubject::Environment)
+        key = "exposure";
+    editor_style::setNextFieldProvenance(inspectorAppliedMark(
+        context, key,
+        inspectorProvenance(context.session, context.selection, edited, field, false, preview)));
+}
+
+//======================================================================================================================
+std::optional<ProvenanceMark> inspectorAppliedMark(const InspectorPanelContext& context,
+                                                   std::string_view field,
+                                                   std::optional<ProvenanceMark> fallback) {
+    if (!context.attribution)
+        return fallback;
+    const auto key = sessionSubjectId(context.selection) + "/" + std::string(field);
+    if (!context.attribution->has(key))
+        return fallback;
+    return sessionAppliedProvenance(context.attribution->client(key));
 }
 
 //======================================================================================================================

@@ -26,6 +26,7 @@
 #include "App/Model/Scene/SceneSession.h"
 #include "App/Model/Scene/SceneTreeState.h"
 #include "App/Model/Session/DocumentWatch.h"
+#include "App/Model/Session/SessionEdits.h"
 #include "App/Model/Session/SessionListener.h"
 #include "App/Model/Session/SessionLog.h"
 #include "App/Model/Session/SessionMailbox.h"
@@ -326,7 +327,8 @@ private:
     bool selectScene(scenes::SceneId id);
     bool acceptFileProposal(uint64_t id);
     FileStamp currentDocumentStamp() const;
-    void recordSessionReview(std::string command, std::string arguments, std::string outcome);
+    void recordSessionReview(std::string command, std::string arguments, std::string outcome,
+                             std::string client = {});
     void drainSessionBridge();
     void updateCameraInput(float deltaSeconds);
     uint64_t metricsContextEpoch();
@@ -453,6 +455,7 @@ private:
     PerformanceModel m_performanceModel;
     ConsoleModel m_consoleModel;
     ProposalQueue m_sessionProposals;
+    SessionAttribution m_sessionAttribution;
     DocumentWatch m_documentWatch;
     std::filesystem::path m_watchedPath;
     FileStamp m_loadedStamp;
