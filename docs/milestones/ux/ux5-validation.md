@@ -29,8 +29,9 @@ Evidence is retained in `../Luminex-evidence/ux5/`; the executor plan stays in p
 | 15 | `3bed162` | Final code gates PASS, 10/10; focused 373 assertions | Both P2 findings corrected; no final source findings |
 | 16 | `b99446b` | Final code gates PASS, 10/10; final guards pass | Three P2 findings corrected; final 25 reviewed hashes match |
 | 17 | `3ded3aa` | Final code gates PASS, 10/10; focused 56 assertions | Seven findings and root companion collision corrected; final hashes match |
-| 18 | This task commit | Final code gates PASS, 11/11; final App child/direct PNG exact | Status P2 corrected; eight reviewed hashes match |
-| 19–22 | Not started | Not run | Not run |
+| 18 | `1b99fd3` | Final code gates PASS, 11/11; final App child/direct PNG exact | Status P2 corrected; eight reviewed hashes match |
+| 19 | This task commit | Final code gates PASS, 11/11; seven required native gestures PASS | Five findings corrected; final review PASS and three Tools hashes match |
+| 20–22 | Not started | Not run | Not run |
 
 The gate JSON files retain every command, exit and log. Test-first red results and failed
 correction attempts are retained in each task's evidence ledger; a deliberate red test is
@@ -129,11 +130,10 @@ no rendering pass, shader, RojoRHI, capture format, manifest or dependency chang
 Task 9 resumed code gates pass (11/11), including the Inspector hash pin. Its required
 real-App checkpoint passes as described above. Task 9 is committed;
 Task 10 code gates and final source review now pass under the recorded exception.
-Tasks 16–22, GPU validation, whole-branch review, final image matrix, evidence audit, integration
+Tasks 20–22, GPU validation, whole-branch review, final image matrix, evidence audit, integration
 tag, push and pull request remain incomplete. The milestone record remains Accepted.
 
-All Task 19 gestures remain unverified: ceiling change, settings approval, three-step plan,
-denial, bridge proposal Accept, child Stop and disconnect mid-approval. Task 22 native
+Task 19 completed all seven required native gestures as recorded below. Task 22 native
 checks, GPU suite, image matrix and evidence audit were not run. No integration tag, push
 or pull request was created. Both worktrees and all evidence are retained.
 
@@ -236,3 +236,34 @@ arguments and output path as the direct run. Both complete PNGs have SHA-256
 `c841052ba9c058444bfc5f8185ec75cde0d7532b1e09559e5970c308ab799bd1`.
 The output checks reject existing/symlink leaves; unchanged headless pathname writers do not
 provide isolation from concurrent path replacement by another process with the same privileges.
+
+## UX5.2 checkpoint
+
+Task 19's real App passed ceiling raise, settings approval, approved three-step plan, denial,
+bridge proposal Accept, child Stop and disconnect mid-approval. `task19/native/validation.json`
+retains observations, requests/responses, screenshot hashes and failed interactions. Accept
+changed only the saved scene camera, showing attribution and dirty state; editor camera,
+selection and Stopped time 0 stayed unchanged. Operator Revert > Discard removed the test edit.
+The long capture child PID 2802 existed before toolbar Stop and was absent afterward; its
+request returned `cancelled`, status returned idle. Disconnect cancelled the waiting settings
+request without applying it; the next connection reset to ReadOnly. A real Window > Render
+Graph action made its query available. Native Cmd+Q exited 0 and removed the socket.
+
+The initial checkpoint run reached its configured 100000-frame limit before Accept and was
+relaunched without that limit. A stale-window screenshot failed, then the current window
+captured successfully. Three optional dock-resize attempts failed; resize and floating-tab
+undock remain unverified. The checkpoint bundle logged missing Fonts/Icons and used fallback
+typography/system icon; no typography or icon parity is claimed. A measure request during the
+child was queued and then cancelled, so its unavailable execution remains unverified.
+Listen-off/Quit with an active child, evidence navigation, dirty file-proposal confirmation,
+missing-evidence/Error gestures, floating Console and schema 6 relaunch remain unverified.
+
+Fresh Task 19 review found an unusable higher-tier CLI connection, client-name collision,
+per-receive timeout, stale live-PID socket discovery and hello-error exit classification.
+Test-first corrections add optional `--wait-tier` read-only polling on the same connection;
+the operator still raises the ceiling and approves. Default immediate tier refusal remains.
+All original red probes and the intermediate fake-server fixture failure are retained.
+
+The final CLI `--wait-tier` workflow also passed in the real App: its named connection waited
+for the operator ceiling choice, then awaited real Approve; JSON returned `ok` with exit 0,
+and a fresh query read temporal off (`task19/native/cli-wait-tier.json`).

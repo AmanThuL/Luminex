@@ -2,10 +2,15 @@
 
 import hashlib
 import json
+import os
 from pathlib import Path
+import socket
+import stat
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from urllib.parse import unquote
 
@@ -118,6 +123,301 @@ class SidecarTests(unittest.TestCase):
     def test_selftest(self):
         result = self.run_client("--selftest")
         self.assertEqual(result.returncode, 0, result.stderr)
+
+
+class BridgeClientTests(unittest.TestCase):
+    def run_client(self, *args, env=None):
+        return subprocess.run([sys.executable, str(CLIENT), *map(str, args)],
+                              text=True, capture_output=True, check=False, env=env, timeout=8)
+
+    def serve(self, path, response=None, stall=False):
+        ready = threading.Event()
+        requests = []
+
+        def worker():
+            with socket.socket(socket.AF_UNIX) as server:
+                server.bind(str(path))
+                server.listen(1)
+                ready.set()
+                client, _ = server.accept()
+                with client, client.makefile("rb") as stream:
+                    for index in range(2):
+                        request = json.loads(stream.readline())
+                        requests.append(request)
+                        if stall and index == 1:
+                            time.sleep(0.3)
+                            return
+                        payload = ({"id": request["id"], "ok": True,
+                                    "result": {"protocol": 1} if index == 0 else {"value": 7}}
+                                   if response is None or index == 0 else
+                                   {"id": request["id"], "ok": False,
+                                    "error": {"code": "tier", "message": "ReadOnly"}})
+                        client.sendall((json.dumps(payload) + "\n").encode())
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+        self.assertTrue(ready.wait(2))
+        return thread, requests
+
+    def test_framing_and_json_success(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "session.sock"
+            thread, requests = self.serve(path)
+            result = self.run_client("--socket", path, "--name", "Test client", "query", "console",
+                                     "--after-sequence", "17")
+            thread.join(2)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout)["result"], {"value": 7})
+            self.assertEqual(requests, [
+                {"id": 1, "command": "hello", "args": {"name": "Test client", "protocol": 1}},
+                {"id": 2, "command": "query.console", "args": {"afterSequence": 17}},
+            ])
+
+    def test_error_response_and_transport_failure(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "session.sock"
+            thread, _ = self.serve(path, response="tier")
+            refused = self.run_client("--socket", path, "propose", "withdraw", "12")
+            thread.join(2)
+            self.assertEqual(refused.returncode, 2, refused.stderr)
+            self.assertEqual(json.loads(refused.stdout)["error"]["code"], "tier")
+            missing = self.run_client("--socket", path, "query", "status")
+            self.assertEqual(missing.returncode, 3)
+            self.assertEqual(json.loads(missing.stdout)["error"]["code"], "transport")
+
+    def test_timeout(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "session.sock"
+            thread, _ = self.serve(path, stall=True)
+            result = self.run_client("--socket", path, "--timeout", "0.05", "query", "status")
+            thread.join(2)
+            self.assertEqual(result.returncode, 3)
+            self.assertEqual(json.loads(result.stdout)["error"]["code"], "transport")
+
+    def test_wait_tier_polls_same_connection_until_operator_raises_ceiling(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "session.sock"
+            ready = threading.Event()
+            requests = []
+
+            def worker():
+                with socket.socket(socket.AF_UNIX) as server:
+                    server.bind(str(path))
+                    server.listen(1)
+                    ready.set()
+                    client, _ = server.accept()
+                    with client, client.makefile("rb") as stream:
+                        hello = json.loads(stream.readline())
+                        requests.append(hello)
+                        client.sendall((json.dumps({"id": hello["id"], "ok": True,
+                                                    "result": {"protocol": 1}}) + "\n").encode())
+                        for ceiling in (0, 0, 2):
+                            request = json.loads(stream.readline())
+                            requests.append(request)
+                            client.sendall((json.dumps({"id": request["id"], "ok": True,
+                                                        "result": {"tier": ceiling}}) + "\n").encode())
+                        command = json.loads(stream.readline())
+                        requests.append(command)
+                        client.sendall((json.dumps({"id": command["id"], "ok": True,
+                                                    "result": {"applied": True}}) + "\n").encode())
+
+            thread = threading.Thread(target=worker, daemon=True)
+            thread.start()
+            self.assertTrue(ready.wait(2))
+            result = self.run_client("--socket", path, "--wait-tier", "--timeout", "2",
+                                     "settings", "set", "temporal", "off")
+            thread.join(2)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout)["result"], {"applied": True})
+            self.assertEqual([request["command"] for request in requests],
+                             ["hello", "query.status", "query.status", "query.status",
+                              "settings.set"])
+            self.assertEqual(requests[-1]["args"], {"temporal": "off"})
+
+    def test_wait_tier_times_out_without_sending_apply_command(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "session.sock"
+            ready = threading.Event()
+            requests = []
+
+            def worker():
+                with socket.socket(socket.AF_UNIX) as server:
+                    server.bind(str(path))
+                    server.listen(1)
+                    ready.set()
+                    client, _ = server.accept()
+                    with client, client.makefile("rb") as stream:
+                        while line := stream.readline():
+                            request = json.loads(line)
+                            requests.append(request)
+                            result = {"protocol": 1} if request["command"] == "hello" else {"tier": 0}
+                            client.sendall((json.dumps({"id": request["id"], "ok": True,
+                                                        "result": result}) + "\n").encode())
+
+            thread = threading.Thread(target=worker, daemon=True)
+            thread.start()
+            self.assertTrue(ready.wait(2))
+            result = self.run_client("--socket", path, "--wait-tier", "--timeout", "0.35",
+                                     "propose", "withdraw", "1")
+            thread.join(2)
+            self.assertEqual(result.returncode, 3)
+            self.assertEqual(json.loads(result.stdout)["error"]["code"], "transport")
+            self.assertTrue(all(request["command"] in ("hello", "query.status")
+                                for request in requests))
+
+    def test_client_name_is_not_overwritten_by_setting_name(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "session.sock"
+            thread, requests = self.serve(path)
+            result = self.run_client("--socket", path, "--name", "Lighting tool",
+                                     "settings", "set", "temporal", "off")
+            thread.join(2)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(requests[0]["args"]["name"], "Lighting tool")
+
+    def test_slow_response_chunks_cannot_extend_whole_request_timeout(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "session.sock"
+            ready = threading.Event()
+
+            def worker():
+                with socket.socket(socket.AF_UNIX) as server:
+                    server.bind(str(path))
+                    server.listen(1)
+                    ready.set()
+                    client, _ = server.accept()
+                    with client, client.makefile("rb") as stream:
+                        hello = json.loads(stream.readline())
+                        client.sendall((json.dumps({"id": hello["id"], "ok": True,
+                                                    "result": {"protocol": 1}}) + "\n").encode())
+                        request = json.loads(stream.readline())
+                        line = (json.dumps({"id": request["id"], "ok": True,
+                                            "result": {"value": 7}}) + "\n").encode()
+                        for byte in line:
+                            try:
+                                client.sendall(bytes((byte,)))
+                            except BrokenPipeError:
+                                break
+                            time.sleep(0.02)
+
+            thread = threading.Thread(target=worker, daemon=True)
+            thread.start()
+            self.assertTrue(ready.wait(2))
+            started = time.monotonic()
+            result = self.run_client("--socket", path, "--timeout", "0.15", "query", "status")
+            elapsed = time.monotonic() - started
+            thread.join(2)
+            self.assertEqual(result.returncode, 3)
+            self.assertLess(elapsed, 0.65)
+
+    def test_discovery_skips_newer_stale_socket_with_live_pid(self):
+        with tempfile.TemporaryDirectory() as temp:
+            live = Path(temp) / f"luminex-session-{os.getpid()}.sock"
+            thread, _ = self.serve(live)
+            sleeper = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(5)"])
+            try:
+                stale = Path(temp) / f"luminex-session-{sleeper.pid}.sock"
+                with socket.socket(socket.AF_UNIX) as closed:
+                    closed.bind(str(stale))
+                future = time.time() + 10
+                os.utime(stale, (future, future))
+                env = dict(os.environ, TMPDIR=temp)
+                env.pop("LMX_SESSION_SOCKET", None)
+                result = self.run_client("query", "status", env=env)
+                thread.join(2)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout)["result"], {"value": 7})
+            finally:
+                sleeper.terminate()
+                sleeper.wait(timeout=2)
+
+    def test_hello_error_response_is_reported_as_protocol_error(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "session.sock"
+            ready = threading.Event()
+
+            def worker():
+                with socket.socket(socket.AF_UNIX) as server:
+                    server.bind(str(path))
+                    server.listen(1)
+                    ready.set()
+                    client, _ = server.accept()
+                    with client, client.makefile("rb") as stream:
+                        request = json.loads(stream.readline())
+                        client.sendall((json.dumps({"id": request["id"], "ok": False,
+                                                    "error": {"code": "protocol",
+                                                              "message": "Wrong version"}}) + "\n").encode())
+
+            thread = threading.Thread(target=worker, daemon=True)
+            thread.start()
+            self.assertTrue(ready.wait(2))
+            result = self.run_client("--socket", path, "query", "status")
+            thread.join(2)
+            self.assertEqual(result.returncode, 2)
+            self.assertEqual(json.loads(result.stdout), {"id": 1, "ok": False,
+                                                         "error": {"code": "protocol",
+                                                                   "message": "Wrong version"}})
+
+    def test_environment_and_discovery_skip_dead_pid(self):
+        with tempfile.TemporaryDirectory() as temp:
+            live = Path(temp) / f"luminex-session-{os.getpid()}.sock"
+            dead = Path(temp) / "luminex-session-99999999.sock"
+            dead.touch()
+            os.utime(dead, (time.time() + 10, time.time() + 10))
+            thread, _ = self.serve(live)
+            env = dict(os.environ, TMPDIR=temp)
+            env.pop("LMX_SESSION_SOCKET", None)
+            discovered = self.run_client("query", "status", env=env)
+            thread.join(2)
+            self.assertEqual(discovered.returncode, 0, discovered.stderr)
+            self.assertTrue(stat.S_ISSOCK(live.stat().st_mode))
+            live.unlink()
+            thread, _ = self.serve(live)
+            env["LMX_SESSION_SOCKET"] = str(live)
+            configured = self.run_client("query", "status", env=env)
+            thread.join(2)
+            self.assertEqual(configured.returncode, 0, configured.stderr)
+
+    def test_every_bridge_command_maps_to_wire_name(self):
+        samples = {
+            "query.status": ("query", "status"),
+            "query.hierarchy": ("query", "hierarchy"),
+            "query.selection": ("query", "selection"),
+            "query.camera": ("query", "camera"),
+            "query.settings": ("query", "settings"),
+            "query.readings": ("query", "readings"),
+            "query.performance": ("query", "performance"),
+            "query.graph": ("query", "graph"),
+            "query.console": ("query", "console"),
+            "query.proposals": ("query", "proposals"),
+            "query.log": ("query", "log"),
+            "propose.edits": ("propose", "edits", "--summary", "Move", "--edit", "object:0",
+                              "position", "[1,2,3]"),
+            "propose.withdraw": ("propose", "withdraw", "1"),
+            "settings.set": ("settings", "set", "temporal", "off"),
+            "debugview.set": ("debugview", "set", "final"),
+            "scene.open": ("scene", "open", "sponza"),
+            "measure.run": ("measure", "run", "0", "1", "measure.json"),
+            "capture.gpu": ("capture", "gpu"),
+            "capture.screenshot": ("capture", "screenshot", "frame", "1"),
+            "capture.sequence": ("capture", "sequence", "frames", "1", "0"),
+            "graph.dump": ("graph", "dump", "graph.txt"),
+            "plan.submit": ("plan", "submit"),
+        }
+        for command, words in samples.items():
+            with self.subTest(command=command), tempfile.TemporaryDirectory() as temp:
+                path = Path(temp) / "session.sock"
+                thread, requests = self.serve(path)
+                if command == "plan.submit":
+                    plan = Path(temp) / "plan.json"
+                    plan.write_text('{"summary":"Check","steps":[{"command":"settings.set",'
+                                    '"args":{"temporal":"off"}}]}')
+                    words = (*words, str(plan))
+                result = self.run_client("--socket", path, *words)
+                thread.join(2)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(requests[1]["command"], command)
+                self.assertIsInstance(requests[1]["args"], dict)
 
 
 if __name__ == "__main__":
