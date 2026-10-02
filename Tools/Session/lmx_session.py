@@ -27,9 +27,24 @@ class TransportError(Exception):
     """A socket connection or protocol response failed."""
 
 
+class _BusyEditor(Exception):
+    """The editor already serves another client and answered with its busy error."""
+
+    def __init__(self, response: dict):
+        super().__init__("Session editor is busy")
+        self.response = response
+
+
+def _is_unsolicited_error(response: dict) -> bool:
+    """Match the server's id-0 error sent without reading a request (for example busy)."""
+    error = response.get("error")
+    return (response.get("id") == 0 and response.get("ok") is False and isinstance(error, dict)
+            and isinstance(error.get("code"), str) and isinstance(error.get("message"), str))
+
+
 def discover_sockets() -> list[Path]:
     """List live-PID editor sockets newest first; connect before trusting a candidate."""
-    directory = Path(os.environ.get("TMPDIR") or tempfile.gettempdir())
+    directory = Path(os.environ.get("TMPDIR") or "/tmp")
     candidates = []
     for path in directory.glob("luminex-session-*.sock"):
         match = re.fullmatch(r"luminex-session-(\d+)\.sock", path.name)
@@ -73,9 +88,9 @@ def _receive_line(connection: socket.socket, deadline: float) -> dict:
     raise TransportError("Response exceeds 1 MiB")
 
 
-def _connect(paths: list[Path], deadline: float) -> socket.socket:
+def _connect(paths: list[Path], deadline: float) -> tuple[socket.socket, int]:
     last_error = None
-    for path in paths:
+    for index, path in enumerate(paths):
         connection = socket.socket(socket.AF_UNIX)
         try:
             remaining = deadline - time.monotonic()
@@ -84,7 +99,7 @@ def _connect(paths: list[Path], deadline: float) -> socket.socket:
                 raise TransportError("Session request timed out")
             connection.settimeout(remaining)
             connection.connect(str(path))
-            return connection
+            return connection, index
         except OSError as error:
             last_error = error
             connection.close()
@@ -93,57 +108,84 @@ def _connect(paths: list[Path], deadline: float) -> socket.socket:
 
 def send_command(paths: list[Path], timeout: float, name: str, command: str, args: dict,
                  wait_tier: bool = False) -> dict:
-    """Exchange hello and one command; tier polling never changes editor state."""
-    if timeout <= 0:
-        raise TransportError("Timeout must be positive")
+    """Exchange hello and one command; tier polling never changes editor state.
+
+    A candidate that answers busy is skipped when another candidate remains; otherwise its busy
+    error is returned like any server error.
+    """
+    if not timeout > 0 or timeout == float("inf"):
+        raise ValueError("Timeout must be a positive finite number of seconds")
     deadline = time.monotonic() + timeout
-    try:
-        with _connect(paths, deadline) as connection:
-            request_id = 0
+    remaining_paths = list(paths)
+    while True:
+        try:
+            connection, index = _connect(remaining_paths, deadline)
+            with connection:
+                return _converse(connection, deadline, name, command, args, wait_tier)
+        except _BusyEditor as busy:
+            remaining_paths = remaining_paths[index + 1:]
+            if not remaining_paths:
+                return busy.response
+        except (OSError, socket.timeout) as error:
+            raise TransportError(str(error)) from error
 
-            def exchange(wire_command: str, wire_args: dict) -> dict:
-                nonlocal request_id
-                request_id += 1
-                request = {"id": request_id, "command": wire_command, "args": wire_args}
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise TransportError("Session request timed out")
-                connection.settimeout(remaining)
-                line = (json.dumps(request, ensure_ascii=False, separators=(",", ":")) + "\n").encode()
-                if len(line) > _MAX_LINE_BYTES:
-                    raise TransportError("Request exceeds 1 MiB")
-                connection.sendall(line)
-                response = _receive_line(connection, deadline)
-                if response.get("id") != request["id"] or not isinstance(response.get("ok"), bool):
-                    raise TransportError("Response id or shape does not match request")
-                return response
 
-            hello = exchange("hello", {"name": name, "protocol": 1})
-            if not hello["ok"]:
-                return hello
-            if not isinstance(hello.get("result"), dict) or hello["result"].get("protocol") != 1:
-                raise TransportError("Session protocol 1 was not acknowledged")
+def _converse(connection: socket.socket, deadline: float, name: str, command: str, args: dict,
+              wait_tier: bool) -> dict:
+    request_id = 0
 
-            required_tier = (0 if command.startswith("query.") else
-                             1 if command.startswith("propose.") else 2)
-            if wait_tier and required_tier:
-                while True:
-                    status = exchange("query.status", {})
-                    if not status["ok"]:
-                        return status
-                    result = status.get("result")
-                    tier = result.get("tier") if isinstance(result, dict) else None
-                    if type(tier) is not int or tier not in (0, 1, 2):
-                        raise TransportError("query.status returned an invalid tier")
-                    if tier >= required_tier:
-                        break
-                    remaining = deadline - time.monotonic()
-                    if remaining <= 0:
-                        raise TransportError("Session request timed out waiting for operator tier")
-                    time.sleep(min(0.1, remaining))
-            return exchange(command, args)
-    except (OSError, socket.timeout) as error:
-        raise TransportError(str(error)) from error
+    def exchange(wire_command: str, wire_args: dict) -> dict:
+        nonlocal request_id
+        request_id += 1
+        request = {"id": request_id, "command": wire_command, "args": wire_args}
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TransportError("Session request timed out")
+        connection.settimeout(remaining)
+        line = (json.dumps(request, ensure_ascii=False, separators=(",", ":")) + "\n").encode()
+        if len(line) > _MAX_LINE_BYTES:
+            raise TransportError("Request exceeds 1 MiB")
+        try:
+            connection.sendall(line)
+        except OSError:
+            # A busy server answers and closes without reading; prefer its answer.
+            response = _receive_line(connection, deadline)
+            if request_id == 1 and _is_unsolicited_error(response):
+                raise _BusyEditor(response) from None
+            raise
+        response = _receive_line(connection, deadline)
+        if _is_unsolicited_error(response):
+            if request_id == 1 and response["error"]["code"] == "busy":
+                raise _BusyEditor(response)
+            return response
+        if response.get("id") != request["id"] or not isinstance(response.get("ok"), bool):
+            raise TransportError("Response id or shape does not match request")
+        return response
+
+    hello = exchange("hello", {"name": name, "protocol": 1})
+    if not hello["ok"]:
+        return hello
+    if not isinstance(hello.get("result"), dict) or hello["result"].get("protocol") != 1:
+        raise TransportError("Session protocol 1 was not acknowledged")
+
+    required_tier = (0 if command.startswith("query.") else
+                     1 if command.startswith("propose.") else 2)
+    if wait_tier and required_tier:
+        while True:
+            status = exchange("query.status", {})
+            if not status["ok"]:
+                return status
+            result = status.get("result")
+            tier = result.get("tier") if isinstance(result, dict) else None
+            if type(tier) is not int or tier not in (0, 1, 2):
+                raise TransportError("query.status returned an invalid tier")
+            if tier >= required_tier:
+                break
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TransportError("Session request timed out waiting for operator tier")
+            time.sleep(min(0.1, remaining))
+    return exchange(command, args)
 
 
 def _reject_constant(value: str):
@@ -417,7 +459,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="client name shown in the editor")
     parser.add_argument("--wait-tier", action="store_true",
                         help="poll query.status until the operator raises this connection's tier")
-    parser.add_argument("--timeout", type=float, default=600.0, help="whole request timeout in seconds")
+    parser.add_argument("--timeout", default="600", help="whole request timeout in seconds")
     commands = parser.add_subparsers(dest="command")
     sidecar = commands.add_parser("sidecar", help="write a scene proposal sidecar")
     sidecar.add_argument("document", type=Path)
@@ -440,11 +482,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.command is None:
         parser.error("choose a command or --selftest")
     try:
+        try:
+            timeout = float(args.timeout)
+        except ValueError:
+            raise ValueError(f"Timeout must be a number of seconds, got {args.timeout!r}") from None
+        if not 0 < timeout < float("inf"):
+            raise ValueError("Timeout must be a positive finite number of seconds")
         command, command_args = _arguments(args)
         explicit = args.socket or (Path(os.environ["LMX_SESSION_SOCKET"])
                                    if os.environ.get("LMX_SESSION_SOCKET") else None)
         paths = [explicit] if explicit else discover_sockets()
-        response = send_command(paths, args.timeout, args.client_name, command, command_args,
+        response = send_command(paths, timeout, args.client_name, command, command_args,
                                 args.wait_tier)
     except (ValueError, OSError, json.JSONDecodeError) as error:
         response = {"id": 2, "ok": False,

@@ -1,6 +1,7 @@
 """Checks proposal sidecars against the scene document pair on disk."""
 
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -418,6 +419,104 @@ class BridgeClientTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(requests[1]["command"], command)
                 self.assertIsInstance(requests[1]["args"], dict)
+    def serve_busy(self, path):
+        ready = threading.Event()
+
+        def worker():
+            with socket.socket(socket.AF_UNIX) as server:
+                server.bind(str(path))
+                server.listen(1)
+                ready.set()
+                client, _ = server.accept()
+                with client:
+                    client.sendall((json.dumps({"id": 0, "ok": False, "error": {
+                        "code": "busy", "message": "A session client is connected"}}) + "\n").encode())
+                    time.sleep(0.3)
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+        self.assertTrue(ready.wait(2))
+        return thread
+
+    def test_busy_response_with_id_zero_is_a_server_error(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "session.sock"
+            thread = self.serve_busy(path)
+            result = self.run_client("--socket", path, "query", "status")
+            thread.join(2)
+            self.assertEqual(result.returncode, 2, result.stdout)
+            self.assertEqual(json.loads(result.stdout), {"id": 0, "ok": False, "error": {
+                "code": "busy", "message": "A session client is connected"}})
+
+    def test_id_zero_without_error_object_is_still_a_transport_failure(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "session.sock"
+            ready = threading.Event()
+
+            def worker():
+                with socket.socket(socket.AF_UNIX) as server:
+                    server.bind(str(path))
+                    server.listen(1)
+                    ready.set()
+                    client, _ = server.accept()
+                    with client:
+                        client.sendall(b'{"id":0,"ok":false}\n')
+                        time.sleep(0.3)
+
+            thread = threading.Thread(target=worker, daemon=True)
+            thread.start()
+            self.assertTrue(ready.wait(2))
+            result = self.run_client("--socket", path, "query", "status")
+            thread.join(2)
+            self.assertEqual(result.returncode, 3)
+
+    def test_discovery_moves_past_busy_editor_to_next_candidate(self):
+        with tempfile.TemporaryDirectory() as temp:
+            busy = Path(temp) / f"luminex-session-{os.getpid()}.sock"
+            sleeper = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(5)"])
+            try:
+                free = Path(temp) / f"luminex-session-{sleeper.pid}.sock"
+                thread, _ = self.serve(free)
+                busy_thread = self.serve_busy(busy)
+                future = time.time() + 10
+                os.utime(busy, (future, future))
+                env = dict(os.environ, TMPDIR=temp)
+                env.pop("LMX_SESSION_SOCKET", None)
+                result = self.run_client("query", "status", env=env)
+                thread.join(2)
+                busy_thread.join(2)
+                self.assertEqual(result.returncode, 0, result.stdout)
+                self.assertEqual(json.loads(result.stdout)["result"], {"value": 7})
+            finally:
+                sleeper.terminate()
+                sleeper.wait(timeout=2)
+
+    def test_invalid_timeout_is_invalid_input_before_connecting(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "never.sock"
+            for value in ("0", "-1", "abc", "nan"):
+                result = self.run_client("--socket", path, "--timeout", value, "query", "status")
+                self.assertEqual(result.returncode, 2, (value, result.stdout, result.stderr))
+                self.assertEqual(json.loads(result.stdout)["error"]["code"], "invalid")
+
+    def test_unset_tmpdir_falls_back_to_slash_tmp(self):
+        spec = importlib.util.spec_from_file_location("lmx_session_under_test", CLIENT)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as other:
+            saved = {key: os.environ.get(key) for key in ("TMPDIR", "TEMP", "TMP")}
+            try:
+                os.environ.pop("TMPDIR", None)
+                os.environ["TEMP"] = os.environ["TMP"] = other
+                with self.assertRaises(module.TransportError) as caught:
+                    module.discover_sockets()
+                self.assertIn("in /tmp", str(caught.exception))
+            finally:
+                for key, value in saved.items():
+                    if value is None:
+                        os.environ.pop(key, None)
+                    else:
+                        os.environ[key] = value
 
 
 if __name__ == "__main__":
