@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <charconv>
 #include <cmath>
 #include <cstring>
 #include <functional>
@@ -127,6 +128,9 @@ private:
 
     //==================================================================================================================
     void animations(SceneDocument& doc, const std::vector<std::byte>& bytes);
+
+    //==================================================================================================================
+    DocChannel channelTarget(const JsonNode& target, const SceneDocument& doc);
 
     //==================================================================================================================
     AssetResult<std::vector<std::byte>> contentFile(const JsonNode& uri,
@@ -755,11 +759,67 @@ std::vector<glm::vec4> Reader::accessor(const JsonNode& index, uint32_t componen
         if (components == 4 && std::abs(glm::dot(values[k], values[k]) - 1.0f) > 1e-4f)
             fail(a.path(), "key " + std::to_string(k) + " is not a unit quaternion");
     }
-    if (components == 1 && !m_error) {
-        vector<float, 1>(required(a, "min"));
-        vector<float, 1>(required(a, "max"));
-    }
     return values;
+}
+
+//======================================================================================================================
+DocChannel Reader::channelTarget(const JsonNode& target, const SceneDocument& doc) {
+    DocChannel channel;
+    const auto path = string(required(target, "path"));
+    if (path == "pointer") {
+        channel.path = DocChannelPath::EmissiveStrength;
+        const auto used = required(m_root, "extensionsUsed");
+        bool hasPointer = false;
+        bool hasStrength = false;
+        for (size_t i = 0, count = array(used); i < count; ++i) {
+            const auto name = string(used.at(i));
+            hasPointer |= name == "KHR_animation_pointer";
+            hasStrength |= name == "KHR_materials_emissive_strength";
+        }
+        if (!hasPointer || !hasStrength)
+            fail(used.path(), "emissive channels must list KHR_animation_pointer and "
+                              "KHR_materials_emissive_strength");
+        const auto pointer = required(extension(target, "KHR_animation_pointer"), "pointer");
+        const auto text = string(pointer);
+        constexpr std::string_view prefix = "/materials/";
+        constexpr std::string_view suffix =
+            "/extensions/KHR_materials_emissive_strength/emissiveStrength";
+        uint32_t material = 0;
+        bool valid = text.starts_with(prefix) && text.ends_with(suffix) &&
+                     text.size() > prefix.size() + suffix.size();
+        if (valid) {
+            const auto index = std::string_view(text).substr(
+                prefix.size(), text.size() - prefix.size() - suffix.size());
+            const auto parsed =
+                std::from_chars(index.data(), index.data() + index.size(), material);
+            valid = parsed.ec == std::errc{} && parsed.ptr == index.data() + index.size() &&
+                    (index.size() == 1 || index.front() != '0');
+        }
+        if (!valid)
+            fail(pointer.path(), "expected an exact emissive-strength material pointer");
+        else if (material >= doc.materials.size())
+            fail(pointer.path(), "material index is out of range");
+        channel.material = material;
+        if (optional(target, "node"))
+            fail(target.path() + "/node", "pointer channels must not target a node");
+    } else {
+        if (const auto extensions = optional(target, "extensions"))
+            if (optional(*extensions, "KHR_animation_pointer"))
+                fail(target.path() + "/extensions/KHR_animation_pointer/pointer",
+                     "KHR_animation_pointer requires target.path pointer");
+        channel.node = integer(required(target, "node"));
+        if (channel.node >= doc.nodes.size())
+            fail(target.path() + "/node", "node index is out of range");
+        if (path == "translation")
+            channel.path = DocChannelPath::Translation;
+        else if (path == "rotation")
+            channel.path = DocChannelPath::Rotation;
+        else if (path == "scale")
+            channel.path = DocChannelPath::Scale;
+        else
+            fail(target.path() + "/path", "expected translation, rotation, scale or pointer");
+    }
+    return channel;
 }
 
 //======================================================================================================================
@@ -784,22 +844,12 @@ void Reader::animations(SceneDocument& doc, const std::vector<std::byte>& bytes)
         std::set<std::pair<uint32_t, DocChannelPath>> targets;
         for (size_t j = 0; j < channelCount && !m_error; ++j) {
             const auto c = channels.at(j);
-            DocChannel channel;
             const auto target = required(c, "target");
-            channel.node = integer(required(target, "node"));
-            if (channel.node >= doc.nodes.size())
-                fail(target.path() + "/node", "node index is out of range");
-            const auto path = string(required(target, "path"));
-            if (path == "translation")
-                channel.path = DocChannelPath::Translation;
-            else if (path == "rotation")
-                channel.path = DocChannelPath::Rotation;
-            else if (path == "scale")
-                channel.path = DocChannelPath::Scale;
-            else
-                fail(target.path() + "/path", "expected translation, rotation or scale");
-            if (!targets.emplace(channel.node, channel.path).second)
-                fail(target.path(), "duplicate node/path target within one animation");
+            DocChannel channel = channelTarget(target, doc);
+            if (!targets.emplace(channel.material.value_or(channel.node), channel.path).second)
+                fail(target.path(), "duplicate animation target within one animation");
+            if (channel.material && result.sampleRate != 60.0)
+                fail(rate.path(), "emissive channels require the shared 60 Hz key grid");
             if (m_error)
                 break;
             const auto samplerIndex = required(c, "sampler");
@@ -815,6 +865,9 @@ void Reader::animations(SceneDocument& doc, const std::vector<std::byte>& bytes)
                 if (method != "STEP" && method != "LINEAR")
                     fail(interpolation->path(), "document animations support LINEAR or STEP");
             }
+            if (channel.material && !channel.step)
+                fail(sampler.path() + "/interpolation",
+                     "emissive channels require STEP interpolation");
             const auto times = accessor(required(sampler, "input"), 1, bytes);
             if (m_error)
                 break;
@@ -837,11 +890,18 @@ void Reader::animations(SceneDocument& doc, const std::vector<std::byte>& bytes)
             if (vector<float, 1>(required(input, "max"))[0] != times.back().x)
                 fail(input.path() + "/max", "does not match the last time");
             channel.values = accessor(required(sampler, "output"),
-                                      channel.path == DocChannelPath::Rotation ? 4 : 3, bytes);
+                                      channel.material                           ? 1
+                                      : channel.path == DocChannelPath::Rotation ? 4
+                                                                                 : 3,
+                                      bytes);
             if (channel.values.size() != result.keyCount)
                 fail(sampler.path() + "/output",
                      "channel values and times have different key counts");
-            if (m_placementAncestors.contains(channel.node)) {
+            if (channel.material)
+                for (const auto& value : channel.values)
+                    if (value.x < 0.0f)
+                        fail(sampler.path() + "/output", "emissive strength must be nonnegative");
+            if (!channel.material && m_placementAncestors.contains(channel.node)) {
                 for (size_t k = 0; k < channel.values.size(); ++k) {
                     const auto value = channel.values[k];
                     const bool identity =

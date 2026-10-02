@@ -159,7 +159,9 @@ void compareExtensions(std::vector<DocumentChange>& rows, const Node& before, co
 //======================================================================================================================
 std::vector<std::byte> channelBytes(const DocChannel& channel) {
     std::vector<std::byte> bytes;
-    const int width = channel.path == DocChannelPath::Rotation ? 4 : 3;
+    const int width = channel.path == DocChannelPath::EmissiveStrength ? 1
+                      : channel.path == DocChannelPath::Rotation       ? 4
+                                                                       : 3;
     bytes.reserve(channel.values.size() * static_cast<size_t>(width) * sizeof(float));
     for (const auto& sample : channel.values) {
         for (int component = 0; component < width; ++component) {
@@ -179,7 +181,10 @@ std::string samplesJson(const DocChannel* channel) {
     writer.beginArray(true);
     for (const auto& sample : channel->values) {
         writer.beginArray(true);
-        for (int i = 0; i < (channel->path == DocChannelPath::Rotation ? 4 : 3); ++i)
+        for (int i = 0; i < (channel->path == DocChannelPath::EmissiveStrength ? 1
+                             : channel->path == DocChannelPath::Rotation       ? 4
+                                                                               : 3);
+             ++i)
             writer.number(sample[i]);
         writer.endArray();
     }

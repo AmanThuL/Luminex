@@ -14,7 +14,9 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <limits>
+#include <ranges>
 #include <string>
 
 using namespace lmx::asset;
@@ -773,4 +775,148 @@ TEST_CASE("Save As refuses to overwrite a companion the target document does not
     fs::remove(binPath);
     REQUIRE(saveSceneDocument(doc, path));
     REQUIRE(saveSceneDocument(doc, path));
+}
+
+//======================================================================================================================
+TEST_CASE("emissive animation pointer reads beside a mesh rotation channel",
+          "[asset][scene-document][ux6-emissive]") {
+    auto doc = lmx::test::contentDocument();
+    doc.animations = {
+        {.name = "Object and sign",
+         .keyCount = 2,
+         .channels = {
+             {.node = 1, .path = DocChannelPath::Rotation, .values = {{0, 0, 0, 1}, {0, 1, 0, 0}}},
+             {.node = 2, .step = true, .values = {{1, 0, 0, 0}, {3, 0, 0, 0}}}}}};
+    const auto path = outputPath("emissive-pointer.scene.gltf");
+    REQUIRE(saveSceneDocument(doc, path));
+    auto json = readText(path);
+    const auto replace = [&](std::string_view pointer, std::string_view replacement) {
+        const auto parsed = JsonTokens::parse(json);
+        REQUIRE(parsed);
+        const auto root = parsed->root();
+        std::function<std::optional<JsonNode>(const JsonNode&)> find;
+        find = [&](const JsonNode& node) -> std::optional<JsonNode> {
+            if (node.path() == pointer)
+                return node;
+            if (node.isObject() || node.isArray())
+                for (size_t i = 0; i < node.size(); ++i)
+                    if (auto found = find(node.isObject() ? node.memberValue(i) : node.at(i)))
+                        return found;
+            return std::nullopt;
+        };
+        const auto value = find(root);
+        REQUIRE(value);
+        const auto old = value->sourceJson();
+        json.replace(size_t(old.data() - root.sourceJson().data()), old.size(), replacement);
+    };
+    replace(
+        "/animations/0/channels/1/target",
+        R"({"path":"pointer","extensions":{"KHR_animation_pointer":{"pointer":"/materials/0/extensions/KHR_materials_emissive_strength/emissiveStrength"}}})");
+    replace("/buffers/0/byteLength", "48");
+    replace("/bufferViews/2/byteLength", "8");
+    replace("/accessors/2/type", R"("SCALAR")");
+    replace("/extensionsUsed",
+            R"(["LMX_scene","KHR_materials_emissive_strength","KHR_animation_pointer"])");
+    writeText(path, json);
+    auto bytes = sceneDocumentBuffer(doc);
+    std::copy_n(bytes.begin() + 52, 4, bytes.begin() + 44);
+    bytes.resize(48);
+    {
+        std::ofstream file(outputPath("emissive-pointer.scene.bin"),
+                           std::ios::binary | std::ios::trunc);
+        file.write(reinterpret_cast<const char*>(bytes.data()), std::streamsize(bytes.size()));
+        REQUIRE(file.good());
+    }
+    const auto read = readSceneDocument(path);
+    REQUIRE(read);
+    REQUIRE(read->animations[0].channels.size() == 2);
+    CHECK(read->animations[0].channels[1].path == DocChannelPath::EmissiveStrength);
+    CHECK(read->animations[0].channels[1].material == 0);
+    CHECK(read->animations[0].channels[1].step);
+    CHECK_FALSE(read->animations[0].channels[0].material);
+    CHECK(read->animations[0].channels[0].values == doc.animations[0].channels[0].values);
+    CHECK(read->animations[0].channels[1].values == doc.animations[0].channels[1].values);
+    REQUIRE(saveSceneDocument(*read, outputPath("emissive-roundtrip.scene.gltf")));
+    const auto roundtrip = readSceneDocument(outputPath("emissive-roundtrip.scene.gltf"));
+    REQUIRE(roundtrip);
+    CHECK(sceneDocumentBuffer(*roundtrip) == bytes);
+    CHECK(sceneDocumentJson(*roundtrip, "emissive-roundtrip.scene.bin") ==
+          readText(outputPath("emissive-roundtrip.scene.gltf")));
+    const auto originalJson = json;
+    const std::pair<std::string, std::string> failures[]{
+        {"/animations/0/channels/1/target/extensions/KHR_animation_pointer/pointer",
+         R"("/materials/0/emissiveFactor")"},
+        {"/animations/0/channels/1/target/extensions/KHR_animation_pointer/pointer",
+         R"("/materials/2/extensions/KHR_materials_emissive_strength/emissiveStrength")"},
+        {"/animations/0/channels/1/target/extensions/KHR_animation_pointer/pointer",
+         R"("/materials/00/extensions/KHR_materials_emissive_strength/emissiveStrength")"},
+        {"/animations/0/samplers/1/interpolation", R"("LINEAR")"},
+        {"/animations/0/extensions/LMX_scene/sampleRate", "30"},
+        {"/accessors/2/type", R"("VEC3")"},
+        {"/extensionsUsed", R"(["LMX_scene","KHR_materials_emissive_strength"])"},
+        {"/extensionsUsed", R"(["LMX_scene","KHR_animation_pointer"])"},
+        {"/animations/0/channels/1/target",
+         R"({"node":2,"path":"translation","extensions":{"KHR_animation_pointer":{"pointer":"/materials/0/emissiveFactor"}}})"}};
+    for (const auto& [pointer, replacement] : std::views::reverse(failures)) {
+        INFO(pointer);
+        json = originalJson;
+        replace(pointer, replacement);
+        writeText(path, json);
+        const auto invalid = readSceneDocument(path);
+        REQUIRE_FALSE(invalid);
+        CHECK(invalid.error().message.contains(
+            pointer.ends_with("/sampleRate") ? "/animations/0"
+            : pointer.ends_with("/target")   ? pointer + "/extensions/KHR_animation_pointer/pointer"
+                                             : pointer));
+    }
+    writeText(path, originalJson);
+}
+
+//======================================================================================================================
+TEST_CASE("emissive material targets remain independent of unused node identities",
+          "[asset][scene-document][ux6-emissive]") {
+    auto doc = lmx::test::contentDocument();
+    doc.animations = {{.name = "Two signs",
+                       .keyCount = 2,
+                       .channels = {{.path = DocChannelPath::EmissiveStrength,
+                                     .material = 0,
+                                     .step = true,
+                                     .values = {{1, 0, 0, 0}, {3, 0, 0, 0}}},
+                                    {.path = DocChannelPath::EmissiveStrength,
+                                     .material = 1,
+                                     .step = true,
+                                     .values = {{2, 0, 0, 0}, {4, 0, 0, 0}}}}}};
+    const auto path = outputPath("emissive-materials.scene.gltf");
+    REQUIRE(saveSceneDocument(doc, path));
+    const auto read = readSceneDocument(path);
+    REQUIRE(read);
+    CHECK(read->animations[0].channels[0].material == 0);
+    CHECK(read->animations[0].channels[1].material == 1);
+    doc.animations[0].channels[1].material = 0;
+    writeText(path, sceneDocumentJson(doc, "emissive-materials.scene.bin"));
+    const auto duplicate = readSceneDocument(path);
+    REQUIRE_FALSE(duplicate);
+    CHECK(duplicate.error().message.contains("/animations/0/channels/1/target"));
+    CHECK(duplicate.error().message.contains("duplicate"));
+    doc.animations[0].channels[1].material = 1;
+    writeText(path, sceneDocumentJson(doc, "emissive-materials.scene.bin"));
+    SECTION("missing material") {
+        doc.animations[0].channels[0].material.reset();
+    }
+    SECTION("out of range material") {
+        doc.animations[0].channels[0].material = 2;
+    }
+    SECTION("LINEAR material") {
+        doc.animations[0].channels[0].step = false;
+    }
+    SECTION("non 60 Hz material") {
+        doc.animations[0].sampleRate = 30;
+    }
+    SECTION("negative strength") {
+        doc.animations[0].channels[0].values[0].x = -1;
+    }
+    SECTION("material on transform") {
+        doc.animations[0].channels[0].path = DocChannelPath::Translation;
+    }
+    REQUIRE_FALSE(validateSceneDocumentModel(doc));
 }

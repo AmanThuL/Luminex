@@ -807,3 +807,29 @@ TEST_CASE("scene diff owner set matches independent recursive canonical comparis
                sceneDocumentBuffer(base) == sceneDocumentBuffer(edited)));
     }
 }
+
+//======================================================================================================================
+TEST_CASE("scene diff reports emissive samples and material target as animation rows",
+          "[asset][scene-document-diff][ux6-emissive]") {
+    auto base = lmx::test::contentDocument();
+    base.animations = {{.name = "Sign",
+                        .keyCount = 2,
+                        .channels = {{.path = DocChannelPath::EmissiveStrength,
+                                      .material = 0,
+                                      .step = true,
+                                      .values = {{1, 0, 0, 0}, {3, 0, 0, 0}}}}}};
+    auto edited = base;
+    edited.animations[0].channels[0].values[1].x = 5;
+    const auto rows = diffSceneDocuments(base, edited);
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].owner == DocumentChangeOwner::Animation);
+    CHECK(rows[0].property == "channels/0/samples");
+    CHECK(rows[0].before == "[[1], [3]]");
+    CHECK(rows[0].after == "[[1], [5]]");
+    edited = base;
+    edited.animations[0].channels[0].material = 1;
+    const auto targetRows = diffSceneDocuments(base, edited);
+    REQUIRE(targetRows.size() == 1);
+    CHECK(targetRows[0].owner == DocumentChangeOwner::Animation);
+    CHECK(targetRows[0].property == "channels");
+}

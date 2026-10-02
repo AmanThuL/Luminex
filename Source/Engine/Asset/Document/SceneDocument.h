@@ -100,19 +100,22 @@ struct DocNode {
     bool castsShadow = false;              ///< Selects the one directional shadow caster.
 };
 
-/// Standard glTF transform target of a uniformly sampled document channel.
+/// Supported glTF target of a uniformly sampled document channel.
 enum class DocChannelPath {
-    Translation, ///< XYZ node-local position; fourth sample component is zero.
-    Rotation,    ///< XYZW quaternion components, retained exactly.
-    Scale,       ///< XYZ node-local scale; fourth sample component is zero.
+    Translation,      ///< XYZ node-local position; fourth sample component is zero.
+    Rotation,         ///< XYZW quaternion components, retained exactly.
+    Scale,            ///< XYZ node-local scale; fourth sample component is zero.
+    EmissiveStrength, ///< Scalar material emission multiplier; other sample components are zero.
 };
 
 /// One standard animation channel with samples in source order.
 struct DocChannel {
     uint32_t node = 0;                                 ///< Target document node.
     DocChannelPath path = DocChannelPath::Translation; ///< Target transform component.
-    bool step = false;                                 ///< STEP interpolation; otherwise LINEAR.
-    std::vector<glm::vec4> values;                     ///< Exactly DocAnimation::keyCount samples.
+    /// Material index for EmissiveStrength only; node is unused for that path.
+    std::optional<uint32_t> material;
+    bool step = false;             ///< STEP interpolation; otherwise LINEAR.
+    std::vector<glm::vec4> values; ///< Exactly DocAnimation::keyCount samples.
 };
 
 /// Uniform animation clock; time of key k is exactly double(k)/sampleRate.
@@ -120,7 +123,7 @@ struct DocAnimation {
     std::string name;         ///< Authored clip name used in diagnostics.
     double sampleRate = 60.0; ///< Positive samples per second.
     uint32_t keyCount = 0;    ///< Shared number of samples in all channels.
-    /// Source order; each node/path pair occurs at most once within this animation.
+    /// Source order; each node/path or emissive-material target occurs at most once in this clip.
     std::vector<DocChannel> channels;
 };
 

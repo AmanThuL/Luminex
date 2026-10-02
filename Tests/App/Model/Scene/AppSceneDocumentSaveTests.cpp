@@ -1152,7 +1152,7 @@ TEST_CASE("content Save As rejects geometry and texture aliases before invoking 
 //======================================================================================================================
 TEST_CASE("document probe ignores geometry and an unrelated bin beside geometry-only JSON",
           "[app][document-save][ux6-write]") {
-    const auto root = fs::current_path() / "SceneDocuments/probe-content";
+    const auto root = fs::current_path() / "DocumentProbeFixtures/content";
     fs::remove_all(root);
     fs::create_directories(root);
     const auto path = root / "cube.scene.gltf";

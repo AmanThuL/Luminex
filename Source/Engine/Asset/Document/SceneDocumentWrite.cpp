@@ -187,6 +187,8 @@ const char* channelName(DocChannelPath path) {
         return "rotation";
     case DocChannelPath::Scale:
         return "scale";
+    case DocChannelPath::EmissiveStrength:
+        return "pointer";
     }
     return "";
 }
@@ -196,6 +198,7 @@ struct AccessorLayout {
     uint32_t count;
     uint32_t components;
     float lastTime;
+    bool time = false;
 };
 
 //======================================================================================================================
@@ -204,10 +207,12 @@ std::vector<AccessorLayout> accessorLayout(const SceneDocument& doc) {
     uint64_t offset = 0;
     for (const auto& animation : doc.animations) {
         result.push_back({offset, animation.keyCount, 1,
-                          float(double(animation.keyCount - 1) / animation.sampleRate)});
+                          float(double(animation.keyCount - 1) / animation.sampleRate), true});
         offset += uint64_t(animation.keyCount) * sizeof(float);
         for (const auto& channel : animation.channels) {
-            const uint32_t width = channel.path == DocChannelPath::Rotation ? 4 : 3;
+            const uint32_t width = channel.path == DocChannelPath::EmissiveStrength ? 1
+                                   : channel.path == DocChannelPath::Rotation       ? 4
+                                                                                    : 3;
             result.push_back({offset, animation.keyCount, width, 0.0f});
             offset += uint64_t(animation.keyCount) * width * sizeof(float);
         }
@@ -231,8 +236,20 @@ void animationsJson(JsonWriter& w, const SceneDocument& doc) {
             scalar(w, "sampler", i);
             w.key("target");
             w.beginObject();
-            scalar(w, "node", c.node);
+            if (c.path != DocChannelPath::EmissiveStrength)
+                scalar(w, "node", c.node);
             scalar(w, "path", channelName(c.path));
+            if (c.path == DocChannelPath::EmissiveStrength) {
+                w.key("extensions");
+                w.beginObject();
+                w.key("KHR_animation_pointer");
+                w.beginObject();
+                scalar(w, "pointer",
+                       "/materials/" + std::to_string(*c.material) +
+                           "/extensions/KHR_materials_emissive_strength/emissiveStrength");
+                w.endObject();
+                w.endObject();
+            }
             w.endObject();
             w.endObject();
         }
@@ -300,7 +317,7 @@ void buffersJson(JsonWriter& w, const SceneDocument& doc, std::string_view buffe
         scalar(w, "componentType", 5126);
         scalar(w, "count", a.count);
         scalar(w, "type", a.components == 1 ? "SCALAR" : a.components == 3 ? "VEC3" : "VEC4");
-        if (a.components == 1) {
+        if (a.time) {
             vector(w, "min", std::array<float, 1>{0.0f}, 1);
             vector(w, "max", std::array<float, 1>{a.lastTime}, 1);
         }
@@ -391,6 +408,27 @@ AssetResult<void> finiteModel(const SceneDocument& doc) {
                 AssetError{AssetErrorCode::Malformed, "/animations/" + std::to_string(i) +
                                                           ": invalid rate, key count or channels"});
         for (const auto& c : a.channels) {
+            const auto target = "/animations/" + std::to_string(i) + "/channels/" +
+                                std::to_string(&c - a.channels.data()) + "/target";
+            if (c.path == DocChannelPath::EmissiveStrength) {
+                if (!c.material || *c.material >= doc.materials.size())
+                    return std::unexpected(
+                        AssetError{AssetErrorCode::Malformed,
+                                   target + "/extensions/KHR_animation_pointer/pointer: material "
+                                            "index is out of range"});
+                if (!c.step || a.sampleRate != 60.0)
+                    return std::unexpected(
+                        AssetError{AssetErrorCode::Malformed,
+                                   target + ": emissive channels require STEP at 60 Hz"});
+                for (const auto& value : c.values)
+                    if (value.x < 0.0f)
+                        return std::unexpected(
+                            AssetError{AssetErrorCode::Malformed,
+                                       target + ": emissive strength must be nonnegative"});
+            } else if (c.material)
+                return std::unexpected(
+                    AssetError{AssetErrorCode::Malformed,
+                               target + ": material is only valid for emissive strength"});
             if (c.values.size() != a.keyCount)
                 return std::unexpected(
                     AssetError{AssetErrorCode::Malformed, "/animations/" + std::to_string(i) +
@@ -421,6 +459,12 @@ std::string sceneDocumentJson(const SceneDocument& doc, std::string_view bufferU
         w.string("KHR_lights_punctual");
     if (!doc.materials.empty())
         w.string("KHR_materials_emissive_strength");
+    if (std::ranges::any_of(doc.animations, [](const DocAnimation& animation) {
+            return std::ranges::any_of(animation.channels, [](const DocChannel& channel) {
+                return channel.path == DocChannelPath::EmissiveStrength;
+            });
+        }))
+        w.string("KHR_animation_pointer");
     w.endArray();
     scalar(w, "scene", 0);
     w.key("scenes");
@@ -522,7 +566,10 @@ std::vector<std::byte> sceneDocumentBuffer(const SceneDocument& doc) {
         for (const auto& channel : animation.channels)
             for (const auto& value : channel.values)
                 for (int component = 0;
-                     component < (channel.path == DocChannelPath::Rotation ? 4 : 3); ++component)
+                     component < (channel.path == DocChannelPath::EmissiveStrength ? 1
+                                  : channel.path == DocChannelPath::Rotation       ? 4
+                                                                                   : 3);
+                     ++component)
                     append(value[component]);
     }
     return bytes;
