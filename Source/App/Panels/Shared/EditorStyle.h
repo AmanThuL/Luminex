@@ -226,14 +226,17 @@ inline bool checkbox(const char* label, const char* id, bool* value) {
     return changed;
 }
 
-/// Draws explicitly labeled XYZ or RGB components with enough width for each scalar value.
+/// Draws a label and its explicitly labeled XYZ or RGB components on one row when the grid has
+/// room for three fields; otherwise the components stack beside or below the label so no value
+/// clips. An optional tooltip explains the label and every component. True when edited.
 bool vector3(const char* label, const char* id, float* values, float speed, float minimum = 0.0f,
              float maximum = 0.0f, const char* format = "%.3f", ImGuiSliderFlags flags = 0,
-             bool rgb = false);
+             bool rgb = false, const char* tooltip = nullptr);
 /// Draws an encoded color as labeled R, G and B components in [0, 1] followed by a swatch that
 /// opens the picker. values holds three floats, or four when alpha is set; alpha is edited in
 /// the picker. Returns whether any component changed this frame.
-bool colorRgb(const char* label, const char* id, float* values, bool alpha = false);
+bool colorRgb(const char* label, const char* id, float* values, bool alpha = false,
+              const char* tooltip = nullptr);
 
 } // namespace lmx::app::editor_style
 

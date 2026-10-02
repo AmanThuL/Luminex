@@ -159,6 +159,7 @@ std::string commandName(const std::vector<MenuItem>& items,
 - (void)choose:(NSMenuItem*)sender;
 - (void)chooseShortcut:(id)sender;
 - (void)chooseQuit:(id)sender;
+- (void)about:(id)sender;
 - (void)observeShortcut;
 - (void)edit:(NSMenuItem*)sender;
 - (NSMenuItem*)row:(const MenuItem&)item path:(const std::vector<size_t>&)path;
@@ -231,10 +232,8 @@ std::string commandName(const std::vector<MenuItem>& items,
         [menu removeAllItems];
     }
     if (submenu->kind == 1) {
-        [menu addItemWithTitle:@"About Luminex"
-                        action:@selector(orderFrontStandardAboutPanel:)
-                 keyEquivalent:@""]
-            .target = NSApp;
+        [menu addItemWithTitle:@"About Luminex" action:@selector(about:) keyEquivalent:@""].target =
+            self;
         [menu addItem:NSMenuItem.separatorItem];
         [menu addItemWithTitle:@"Hide Luminex" action:@selector(hide:) keyEquivalent:@"h"].target =
             NSApp;
@@ -343,6 +342,29 @@ std::string commandName(const std::vector<MenuItem>& items,
         return;
     commands.push_back({.command = {MenuCommand::Quit, 0}});
     lastShortcutEvent = shortcutEvent;
+}
+
+- (void)about:(id)sender {
+    (void)sender;
+    // The unbundled binary has no Info.plist: name the application and pass the icon AppIcon
+    // applied, and blank both version fields rather than show values nothing defines. The
+    // credits restate the README's opening description, one sentence per panel line.
+    NSMutableParagraphStyle* centered = [[NSMutableParagraphStyle alloc] init];
+    centered.alignment = NSTextAlignmentCenter;
+    NSAttributedString* description = [[NSAttributedString alloc]
+        initWithString:@"Physically based rendering on Apple Silicon.\nBuilt directly on Metal 4."
+            attributes:@{
+                NSFontAttributeName : [NSFont systemFontOfSize:NSFont.smallSystemFontSize],
+                NSForegroundColorAttributeName : NSColor.labelColor,
+                NSParagraphStyleAttributeName : centered,
+            }];
+    [NSApp orderFrontStandardAboutPanelWithOptions:@{
+        NSAboutPanelOptionApplicationName : @"Luminex",
+        NSAboutPanelOptionApplicationIcon : NSApp.applicationIconImage,
+        NSAboutPanelOptionApplicationVersion : @"",
+        NSAboutPanelOptionVersion : @"",
+        NSAboutPanelOptionCredits : description,
+    }];
 }
 
 - (void)observeShortcut {

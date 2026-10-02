@@ -1,6 +1,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file AppIcon.mm
-/// @brief Loads the editor icon into the native macOS application.
+/// @brief Names the native macOS application and loads the editor icon into it.
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "App/Shell/AppIcon.h"
@@ -10,6 +10,16 @@
 #import <AppKit/AppKit.h>
 
 namespace lmx::app {
+
+//======================================================================================================================
+void applyApplicationName() {
+    @autoreleasepool {
+        CFMutableDictionaryRef info =
+            (CFMutableDictionaryRef)CFBundleGetInfoDictionary(CFBundleGetMainBundle());
+        if (info != nullptr)
+            CFDictionarySetValue(info, kCFBundleNameKey, CFSTR("Luminex"));
+    }
+}
 
 //======================================================================================================================
 void applyApplicationIcon(const std::filesystem::path& png) {

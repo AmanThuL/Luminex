@@ -247,7 +247,10 @@ frozen comparison evidence is covered in [screenshot-comparison.md](../guides/sc
 ## Application icon, fonts and UI scale
 
 `Shell/AppIcon.mm` loads the staged `Icons/luminex-icon-1024.png` and sets the AppKit application
-icon after window creation. Only `runWindowed` calls it; headless paths skip it. A missing PNG logs
+icon after window creation. Before SDL video initialization it also sets the process name to
+"Luminex", which titles the application menu of the unbundled `App` binary; About Luminex passes
+the same name, the applied icon and the README's opening description to the standard panel, with
+no version. Only `runWindowed` calls either; headless paths skip them. A missing PNG logs
 one warning and keeps the system icon. The supplied FACET B2.2 artwork remains provisional, with
 owner approval pending; [validation](../milestones/ux/ux3-editor-validation.md#application-icon)
 records the unverified Dock/switcher appearance. The product remains a bare executable.

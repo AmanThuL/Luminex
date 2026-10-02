@@ -68,11 +68,12 @@ void drawLocalLightSection(const InspectorPanelContext& context, engine::LightId
     if (editor_style::beginPropertyGrid("localLightFields")) {
         markInspectorField(context, light.position != baseline.position, "Position (world meters)",
                            animated);
-        edited |=
-            editor_style::vector3("Position (world meters)", "position", &light.position.x, 0.05f);
-        if (animated)
-            editorTooltip("Orbit playback replaces position on its next sample. Pause to edit "
-                          "position; other light edits survive Play and Stop.");
+        edited |= editor_style::vector3(
+            "Position (world meters)", "position", &light.position.x, 0.05f, 0.0f, 0.0f, "%.3f", 0,
+            false,
+            animated ? "Orbit playback replaces position on its next sample. Pause to edit "
+                       "position; other light edits survive Play and Stop."
+                     : nullptr);
         glm::vec3 colour(linearToSrgb(light.colour.r), linearToSrgb(light.colour.g),
                          linearToSrgb(light.colour.b));
         markInspectorField(context, light.colour != baseline.colour, "Color (sRGB)");

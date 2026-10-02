@@ -71,20 +71,22 @@ void drawObjectSection(const InspectorPanelContext& context, size_t index) {
     };
     if (editor_style::beginPropertyGrid("objectFields")) {
         DecomposedTransform transform{object.position, object.eulerDegrees, object.scale};
-        markInspectorField(context, object.position != baseline.position, "Position (world)",
+        markInspectorField(context, object.position != baseline.position, "Position", animated);
+        bool edited = editor_style::vector3(
+            "Position", "position", &transform.position.x, 0.05f, 0.0f, 0.0f, "%.3f", 0, false,
+            animated ? "World-space position. Pause playback to edit. Reset samples the authored "
+                       "track at the current time; playback replaces transform edits on its next "
+                       "sample."
+                     : "World-space position.");
+        markInspectorField(context, object.eulerDegrees != baseline.eulerDegrees, "Rotation",
                            animated);
-        bool edited =
-            editor_style::vector3("Position (world)", "position", &transform.position.x, 0.05f);
-        if (animated)
-            editorTooltip("Pause playback to edit. Reset samples the authored track at the current "
-                          "time; playback replaces transform edits on its next sample.");
-        markInspectorField(context, object.eulerDegrees != baseline.eulerDegrees,
-                           "Rotation (XYZ degrees)", animated);
-        edited |= editor_style::vector3("Rotation (XYZ degrees)", "rotation",
-                                        &transform.eulerDegrees.x, 1.0f);
+        edited |= editor_style::vector3("Rotation", "rotation", &transform.eulerDegrees.x, 1.0f,
+                                        0.0f, 0.0f, "%.3f", 0, false,
+                                        "Euler rotation about X, Y and Z, in degrees.");
         markInspectorField(context, object.scale != baseline.scale, "Scale", animated);
         edited |= editor_style::vector3("Scale", "scale", &transform.scale.x, 0.01f, 0.01f, 100.0f,
-                                        "%.3f", ImGuiSliderFlags_AlwaysClamp);
+                                        "%.3f", ImGuiSliderFlags_AlwaysClamp, false,
+                                        "Scale factor per axis, from 0.01 to 100.");
         if (edited) {
             session.editObject(index, transform);
             requestCameraCut(context.temporalState);
