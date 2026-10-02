@@ -516,3 +516,89 @@ TEST_CASE("session listener continues read-only service after an invalid respons
     }
     close(client);
 }
+
+//======================================================================================================================
+TEST_CASE("session listener refuses a symlink or a regular file at the socket path",
+          "[app][session-listener]") {
+    SocketFixture fixture;
+    auto mailbox = std::make_shared<SessionMailbox>();
+    const auto refused = [&] {
+        const auto listener = SessionListener::start(fixture.path(), mailbox);
+        REQUIRE_FALSE(listener);
+        CHECK(listener.error() == "Session socket path already exists");
+        CHECK(mailbox->takeInbound().empty());
+    };
+
+    SECTION("a regular file keeps its identity and bytes") {
+        {
+            std::ofstream file(fixture.path());
+            file << "owner";
+        }
+        struct stat before{};
+        REQUIRE(lstat(fixture.path().c_str(), &before) == 0);
+        refused();
+        struct stat after{};
+        REQUIRE(lstat(fixture.path().c_str(), &after) == 0);
+        CHECK(S_ISREG(after.st_mode));
+        CHECK(after.st_ino == before.st_ino);
+        CHECK(after.st_size == 5);
+    }
+    SECTION("a dangling symlink stays and its target is not created") {
+        const auto target = fixture.directory / "elsewhere.sock";
+        std::filesystem::create_symlink(target, fixture.path());
+        refused();
+        CHECK(std::filesystem::is_symlink(fixture.path()));
+        CHECK(std::filesystem::read_symlink(fixture.path()) == target);
+        CHECK_FALSE(std::filesystem::exists(target));
+    }
+    SECTION("a symlink to a stale socket stays and the stale socket is not reclaimed") {
+        const auto target = fixture.directory / "stale.sock";
+        const int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+        REQUIRE(fd >= 0);
+        sockaddr_un address{};
+        address.sun_family = AF_UNIX;
+        const auto name = target.string();
+        std::copy(name.begin(), name.end(), address.sun_path);
+        REQUIRE(bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == 0);
+        close(fd);
+        struct stat before{};
+        REQUIRE(lstat(target.c_str(), &before) == 0);
+        std::filesystem::create_symlink(target, fixture.path());
+        refused();
+        CHECK(std::filesystem::is_symlink(fixture.path()));
+        struct stat after{};
+        REQUIRE(lstat(target.c_str(), &after) == 0);
+        CHECK(S_ISSOCK(after.st_mode));
+        CHECK(after.st_ino == before.st_ino);
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("a second client that leaves before its busy answer does not end the process",
+          "[app][session-listener]") {
+    SocketFixture fixture;
+    auto mailbox = std::make_shared<SessionMailbox>();
+    auto listener = SessionListener::start(fixture.path(), mailbox);
+    REQUIRE(listener);
+    const int client = connectTo(fixture.path());
+    REQUIRE(client >= 0);
+    const auto opened = awaitInbound(mailbox);
+    REQUIRE(opened.size() == 1);
+    // Each arrival is closed before the listener can answer it; an unguarded send to it would
+    // raise SIGPIPE here. A full accept queue refuses some of them, which is not under test.
+    int arrived = 0;
+    for (int arrival = 0; arrival < 200; ++arrival) {
+        const int second = connectTo(fixture.path());
+        if (second < 0)
+            continue;
+        ++arrived;
+        close(second);
+    }
+    CHECK(arrived > 0);
+    REQUIRE(sendAll(client, "still served\n"));
+    const auto incoming = awaitInbound(mailbox);
+    REQUIRE(incoming.size() == 1);
+    CHECK(incoming[0].text == "still served");
+    CHECK(incoming[0].connection == opened[0].connection);
+    close(client);
+}

@@ -34,9 +34,11 @@ void nonblocking(int fd) {
 }
 
 //======================================================================================================================
-void noSigpipe(int fd) {
+// Returns false when the option cannot be set, which macOS reports for a peer that has already
+// closed; a later send to that socket would raise SIGPIPE and end the editor.
+bool noSigpipe(int fd) {
     int yes = 1;
-    setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &yes, sizeof(yes));
+    return setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &yes, sizeof(yes)) == 0;
 }
 
 //======================================================================================================================
@@ -241,7 +243,10 @@ void SessionListener::run() {
                 // Close-on-exec comes first so no child started meanwhile inherits the client.
                 fcntl(arriving, F_SETFD, FD_CLOEXEC);
                 nonblocking(arriving);
-                noSigpipe(arriving);
+                if (!noSigpipe(arriving)) {
+                    close(arriving);
+                    continue;
+                }
                 uid_t peer = 0;
                 gid_t group = 0;
                 if (getpeereid(arriving, &peer, &group) != 0 || peer != geteuid()) {
