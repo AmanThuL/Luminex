@@ -35,7 +35,7 @@ Waves: W1 Tasks 1–12 (UX6.1), W2 13–16 (UX6.2), W3 17–22 (UX6.3). Tasks 2 
 
 ### Task 2: Parity tool reads two buffers
 **Files:** `Tools/Screenshots/parity.py`; create `Tools/tests/test_parity.py` (beside the existing `test_parity_rounds.py`); `Tools/Screenshots/reference.json` (hashes only at Task 12).
-- [ ] Tests first: `document_hash` of a document with buffers `x.scene.bin` and `x.scene.geometry.bin` hashes the JSON bytes then the `.scene.bin` bytes only; a document with only a geometry buffer hashes the JSON alone; a third buffer or any other URI is refused; a schema 1 document hashes as today. Commit `tool: hash documents with a geometry buffer (UX6)`.
+- [x] Tests first: `document_hash` of a document with buffers `x.scene.bin` and `x.scene.geometry.bin` hashes the JSON bytes then the `.scene.bin` bytes only; a document with only a geometry buffer hashes the JSON alone; a third buffer or any other URI is refused; a schema 1 document hashes as today. Commit `tool: hash documents with a geometry buffer (UX6)`.
 
 ### Task 3: Document content model and schema 2 reader (UX6.1)
 **Files:** `Source/Engine/Asset/Document/{SceneDocument.h,SceneDocumentRead.cpp}`; create `SceneDocumentContent.h`; `Tests/Engine/Asset/Document/SceneDocumentTests.cpp`; create `Tests/Engine/Asset/Document/SceneDocumentContentTests.cpp`, `Tests/Support/SceneDocumentFixtures.h` (move `animatedDocument()` and `completeDocument()` there from both test files; add `contentDocument()`: two nodes sharing one cube geometry with two materials, one mipmapped sRGB 4×4 image, one single-level linear image).

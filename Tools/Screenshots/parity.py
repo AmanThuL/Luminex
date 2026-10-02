@@ -56,19 +56,24 @@ def load_reference(path: Path) -> dict:
 
 
 def document_hash(path: Path) -> str:
-    """Match sceneDocumentHash: SHA-256 of JSON bytes followed by referenced buffer bytes."""
+    """Match sceneDocumentHash: JSON bytes, then animation bytes; geometry is covered by JSON."""
     data = path.read_bytes()
     parsed = json.loads(data)
     if not isinstance(parsed, dict):
         raise ValueError(f"{path.name}: expected a JSON object")
     buffers = parsed.get("buffers", [])
-    if not isinstance(buffers, list) or len(buffers) > 1 or (
-            buffers and (not isinstance(buffers[0], dict)
-                         or buffers[0].get("uri") != path.with_suffix(".bin").name)):
-        raise ValueError(f"{path.name}: expected at most one matching .bin companion")
+    animation = path.with_suffix(".bin")
+    geometry = path.with_suffix(".geometry.bin")
+    if not isinstance(buffers, list) or len(buffers) > 2 or any(
+            not isinstance(buffer, dict) or buffer.get("uri") not in (animation.name, geometry.name)
+            for buffer in buffers):
+        raise ValueError(f"{path.name}: expected matching animation and/or geometry .bin companions")
+    uris = [buffer["uri"] for buffer in buffers]
+    if len(set(uris)) != len(uris):
+        raise ValueError(f"{path.name}: duplicate .bin companion")
     digest = hashlib.sha256(data)
-    if buffers:
-        digest.update(path.with_suffix(".bin").read_bytes())
+    if animation.name in uris:
+        digest.update(animation.read_bytes())
     return digest.hexdigest()
 
 
