@@ -243,7 +243,7 @@ icon set; everything UX1–UX3 already defer.
 
 **Placement:** [UX4](#ux4--design-system-and-themes) → UX5 → N1. On 2026-10-01 the owner placed
 all three slices before N1, so N1's studies can be the first work run through the bridge; the
-[record](../milestones/ux/ux5.md) is proposed and no plan opens until the owner accepts it.
+[record](../milestones/ux/ux5.md) is implemented and pending owner review, with its plan in progress.
 Agents keep working as they do today, through documents, the CLI and pull requests; UX5 makes
 that work visible and reviewable in the editor without an agent runtime inside it.
 

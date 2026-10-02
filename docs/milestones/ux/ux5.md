@@ -105,10 +105,11 @@ is one property. Animation sample data is one row per channel. Nodes match by in
 node shows as many rows; the result is still complete. The diff is empty exactly when
 `documentDirty` is false.
 
-**Detection.** The shell polls the open pair's sizes and modification times twice a second. After
-a change, it waits for one further identical poll and for the writer's `.lmx-save-*.tmp` directory
-to be absent, then hashes the pair. A hash other than the loaded one produces a file proposal. The
-editor's own Save suppresses a proposal only for its verified writer bytes and coherent stamps.
+**Detection.** The shell polls the open pair's size, modification time, inode and device twice a
+second, except during Measure. After a change, it waits for one further identical poll, and up to
+5 s for a writer's `.lmx-save-*.tmp` directory to clear, then hashes the pair. A hash other than the
+loaded one produces a file proposal, unless no canonical value changed: then the hash is adopted.
+The editor's own Save suppresses a proposal only for its verified writer bytes and coherent stamps.
 
 **Sidecar.** `<name>.scene.proposal.json` beside `<name>.scene.gltf` holds `schema` (1), `actor`,
 `summary`, `evidence` (paths relative to the sidecar) and `documentSha256` (the pair's hash, as
@@ -122,16 +123,17 @@ path and Reveal, missing evidence flagged, then Show, Accept and Reject.
 - Show lists the rows as old and new values and rings the changed nodes in Hierarchy.
 - Accept on a file proposal reloads through the Revert path. It needs Stopped and no measurement,
   and asks Discard or Cancel when the operator has unsaved edits.
-- Accept on a bridge proposal applies its edits to the live scene, which becomes dirty. The edited
-  fields carry the agent-applied mark until Save or Revert.
+- Accept on a bridge proposal re-runs the preview, stales the card when its rows differ, and
+  otherwise applies its edits to the live scene, which becomes dirty. The edited fields carry the
+  agent-applied mark until Save or Revert.
 - Reject leaves the scene untouched. For a file proposal the editor remembers the rejected hash so
   the card does not return; a later Save overwrites the file.
 - While a file proposal is pending, Save and Save As are disabled with the reason "Review the
-  pending proposal first".
+  pending proposal first". Save also hashes the pair on disk and refuses an unreviewed change.
 - A file the reader rejects becomes a card in the error state showing the reader's message, with
   Reject only.
-- A proposal goes stale when its file changes again, the scene is replaced, or a subject it names
-  no longer exists. A stale proposal cannot be accepted.
+- A file proposal goes stale when its file changes again or the scene is replaced; a bridge one
+  when the scene is replaced, its rows change or the ceiling drops to read-only. Stale is final.
 
 **Surfacing.** The activity strip shows the agent mark with the state and opens the panel on click;
 the Hierarchy root carries the proposed mark. The panel never opens itself. It is a persisted
@@ -144,13 +146,15 @@ schema 5 restores unchanged with the panel hidden.
 panel's Listen toggle opens `$TMPDIR/luminex-session-<pid>.sock` with mode 0600 and logs the path.
 One client connects at a time, and its user must be the editor's. A line is at most 1 MiB and the
 inbox holds 64 requests; beyond either the client gets an error. The socket file is removed on
-close. The client finds it by `--socket`, `LMX_SESSION_SOCKET`, or the newest live match.
+close; Listen replaces a stale one the same user owns (`/tmp` when TMPDIR is unset). The client
+finds it by `--socket`, `LMX_SESSION_SOCKET`, or the newest live match.
 
 **Protocol.** A request is `{"id", "command", "args"}`. Each request gets exactly one response,
 `{"id", "ok": true, "result"}` or `{"id", "ok": false, "error": {"code", "message"}}`, sent when
 the command finishes; a command waiting for approval or for a job answers later. The first request
 is `hello` with a client name and `protocol` 1. Error codes are `protocol`, `tier`, `denied`,
-`unavailable`, `invalid`, `busy`, `failed` and `cancelled`.
+`unavailable`, `invalid`, `busy`, `failed` and `cancelled`. Unknown or repeated argument members,
+objects over 64 members and nesting over 32 answer `invalid`.
 
 | Tier | Commands |
 |---|---|
@@ -164,11 +168,13 @@ connection. A command above it is refused with `tier` and logged; nothing is que
 **Edits.** `propose.edits` takes a summary, evidence and edits to what the Inspector edits and the
 exporter saves: node enabled, object transform, local-light fields, the look (exposure, bloom,
 shadows) and the scene camera. Subjects are named by the identifiers `query.hierarchy` returns.
+Look values use the reader's ranges. Pending proposals are never evicted; the 65th answers `busy`.
 
 **Approval.** Every apply command shows an approval card with the command, its arguments and its
 output location, and Approve and Deny. `plan.submit` carries a summary and an ordered list of apply
 commands; one approval runs them in order inside the editor and stops at the first failure. A plan
-cannot grow after approval. Disconnecting cancels pending approvals; a running job finishes.
+cannot grow after approval. Disconnecting, lowering the ceiling or replacing the scene cancels
+pending approvals; a running job finishes. At most 8 await or run; a new card ignores clicks for 0.5 s.
 
 **Settings.** `settings.set` uses the CLI's flag names (`temporal`, `render-scale`, `visibility`,
 `classify`, `classify-check`, `occlusion`, `occlusion-check`, `submission`, `local-lights`,
@@ -189,7 +195,8 @@ time. It shows on the activity strip with the agent mark, and the operator's Sto
   results are agent; Accept, Reject, Approve, Deny and tier changes are operator. The Console gains
   the actor chip and an actor filter beside severity.
 - `SessionLog` records each action: sequence, UTC time, actor, client name, command, arguments,
-  tier, approval (time and plan), result, and evidence paths with SHA-256.
+  tier, approval (time and plan), result, and evidence paths with SHA-256; command, arguments
+  and history are bounded at 128 bytes, 4,096 bytes and 10,000 actions, with a dropped count.
 - Export writes `session.json` into the session directory: document path and hash, client,
   protocol, the actions, and a `console` array equal to the Console's Copy visible text under the
   agent and operator filter.
@@ -273,18 +280,21 @@ format or manifest change; no Windows support; nothing UX1–UX4 already defer.
 ## Implementation and review limits
 
 All three slices are implemented; [validation](ux5-validation.md) retains every failed attempt,
-scoped exception and unverified gesture. The final source review passes; final full code gates pass 11/11,
-focused regressions pass 314 assertions in 11 cases and pinned validation passes 93 documents.
-The frozen final App passes 215 GPU cases / 1,167,008 assertions. These are implementation
-results; the owner has not accepted integration and the executor plan remains In progress.
+scoped exception and unverified gesture. The frozen final App of the original chain passed 215 GPU
+cases / 1,167,008 assertions and the pinned validator 93 documents. An independent
+[review](ux5-review-validation.md) on 2026-10-02 found defects that six fix commits corrected.
+Afterwards the unit group passes 1,096 cases and the Python suite 331 tests. Fixes under
+`Source/App/Shell` and the Session panel have model-level unit tests only, and no native gesture
+was repeated. The owner has not accepted integration; the executor plan remains In progress.
 
-The initial final-App standing matrix is complete but fails 14/15; all three additional eight-round attempts pass
-15/15 each. The literal five-case Off gate lacks case definitions and is incomplete;
-the separately defined supplemental Off matrix passes 120/120 strict same-round pairs. No tolerance or default changed.
-Native approved GPU capture certification failed in all four attempts (0/4 passed); the traces contain
-internal symlinks that the evidence checks refuse. The owner authorized continuation after three
-additional failures; checks and RojoRHI remain unchanged. Separate screenshot/sequence and Export
-checks pass; native schema 6 relaunch, Copy path and Reveal pass. Console Copy visible byte equality
-and remaining gestures stay unverified.
-Fresh publication documentation/evidence review passes. Root retains publication-policy/tag/push/PR
-command outcomes in the external publication ledger. Owner review remains pending; no acceptance is claimed.
+Failed and incomplete gates, as measured, with no tolerance or default changed:
+
+- Gallery exact comparison fails in both themes: Light 0/16 and Dark 0/16.
+- Four of the five original CLI rejection pairs fail under the scoped cascade exception.
+- The initial final-App standing matrix fails 14/15; three additional eight-round attempts each
+  pass 15/15.
+- Native approved GPU capture certification failed in all four attempts (0/4 passed): the traces
+  contain internal symlinks that the evidence checks refuse. Checks and RojoRHI remain unchanged.
+- The literal five-case Off gate lacks case definitions and is incomplete; the separately defined
+  supplemental Off matrix passes 120/120 strict same-round pairs.
+- Console Copy visible byte equality and the remaining gestures stay unverified.

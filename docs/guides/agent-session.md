@@ -7,7 +7,8 @@ and approve evidence jobs. The panel stays closed until opened and never opens i
 proposal. Session visibility persists in workspace schema 6; Listen, connection and tier do not.
 [App Session](../architecture/app-session.md) explains ownership;
 [ADR 0030](../decisions/0030-session-protocol-and-trust.md) remains Proposed. The
-[validation record](../milestones/ux/ux5-validation.md) retains failed gates and unverified gestures.
+[validation record](../milestones/ux/ux5-validation.md) retains failed gates and unverified gestures;
+the [review record](../milestones/ux/ux5-review-validation.md) lists what no native run has exercised.
 
 ## Enable and connect
 
@@ -19,12 +20,15 @@ python3 Tools/Session/lmx_session.py --name RendererReview query status
 ```
 
 `--session` is rejected with screenshot, capture-sequence or measure modes. Listen logs and displays
-`$TMPDIR/luminex-session-<pid>.sock` (temporary-directory fallback when TMPDIR is absent). The
-socket has mode 0600 and accepts one same-user client. Copy path in the panel gives an explicit
+`$TMPDIR/luminex-session-<pid>.sock`, or `/tmp/luminex-session-<pid>.sock` when TMPDIR is unset;
+the client looks in the same directory. The socket has mode 0600 and accepts one same-user client.
+Listen refuses an existing path, except that it replaces a stale socket owned by the same user that
+refuses connections, the file a crashed editor leaves. Copy path in the panel gives an explicit
 socket location. Client precedence is `--socket`, then `LMX_SESSION_SOCKET`, then newest live-PID
-socket discovery; discovery tries candidates until one connects. An explicit socket never falls
-back to discovery. Global client options precede the subcommand; `--timeout` defaults to 600 seconds
-for the whole hello/wait/command exchange, and `--name` identifies the client in cards and logs.
+socket discovery; discovery tries candidates until one connects and skips a busy editor when
+another candidate exists. An explicit socket never falls back to discovery. Global client options
+precede the subcommand; `--timeout` defaults to 600 seconds for the whole hello/wait/command
+exchange and must be a positive finite number, and `--name` identifies the client in cards and logs.
 
 Every invocation opens a fresh connection and starts at **ReadOnly**. For Propose or Apply work:
 
@@ -37,8 +41,10 @@ that connection's ceiling in the panel. It never raises a tier or approves anyth
 an above-ceiling request immediately returns `tier` and is logged. Propose requires the operator
 ceiling Propose or Apply; Apply also requires a separate Approve click. No automatic approval,
 Accept, ceiling flag or environment bypass exists. The client exits 0 for success, 2 for an error
-response or invalid input and 3 for transport failure, printing JSON on stdout. Sidecar failures
-exit 1. A timeout closes the connection; inspect logs before retrying a possibly completed job.
+response or invalid input and 3 for transport failure, printing JSON on stdout. A `busy` answer
+from an editor that already serves a client is an error response (exit 2); an invalid `--timeout`
+exits 2 before connecting. Sidecar failures exit 1. A timeout closes the connection; inspect logs
+before retrying a possibly completed job.
 
 ## Wire protocol and commands
 
@@ -55,6 +61,16 @@ or `{"id":2,"ok":false,"error":{"code":"tier","message":"..."}}`. Approval/jobs 
 finished, not when queued. Malformed envelopes use response ID 0. Hello is separate from the 22
 commands below; the Python client sends it automatically.
 
+Arguments are checked before any member is read. An unknown member, a member repeated in any
+object at any depth, more than 64 members in one object and nesting deeper than 32 levels each
+answer `invalid`; an above-ceiling command answers `tier` first. Allowed members: `hello` takes
+`name`, `protocol`; `query.console` and `query.log` take `afterSequence`; other queries and
+`capture.gpu` take none; `propose.edits` takes `summary`, `evidence`, `edits`; `propose.withdraw`
+takes `proposal`; `settings.set` takes exactly one setting; `debugview.set` takes `topic`, `value`;
+`scene.open` takes `scene`; `measure.run` takes `name`, `warmup`, `frames`; `graph.dump` takes
+`name`; `capture.screenshot` takes `name`, `frames`; `capture.sequence` takes `name`, `frames`,
+`warmup`; `plan.submit` takes `summary`, `steps`, and each step `command`, `args`.
+
 ReadOnly commands need no operator approval. Each example below is a complete client invocation:
 
 | Command | Example | Result |
@@ -69,7 +85,7 @@ ReadOnly commands need no operator approval. Each example below is a complete cl
 | `query.graph` | See command block below | Displayed graph text, including Freeze, or unavailable |
 | `query.console` | See command block below | Held Console entries after a sequence cursor |
 | `query.proposals` | See command block below | Proposal lifecycle and rows |
-| `query.log` | See command block below | Ordered session actions |
+| `query.log` | See command block below | Retained session actions after a sequence cursor |
 
 ```sh
 python3 Tools/Session/lmx_session.py query status
@@ -82,11 +98,19 @@ python3 Tools/Session/lmx_session.py query performance
 python3 Tools/Session/lmx_session.py query graph
 python3 Tools/Session/lmx_session.py query console --after-sequence 0
 python3 Tools/Session/lmx_session.py query proposals
-python3 Tools/Session/lmx_session.py query log
+python3 Tools/Session/lmx_session.py query log --after-sequence 0
 ```
 
 `query.camera` reports `farZ` as a JSON number for a finite far plane, or the string `"infinite"`
 when the authored perspective camera omits `zfar`. Querying either lens leaves the view unchanged.
+Any non-finite float in `query.camera`, `query.performance` or a proposal change row is one of the
+strings `"infinite"`, `"-infinite"` or `"nan"`. Actor values are `"Operator"`, `"System"` and
+`"Agent"`.
+
+`query.log` takes an optional `afterSequence` and returns `nextSequence`, `dropped`, `omitted` and
+`actions`. The reply is capped just under 1 MiB and holds the newest rows that fit; `omitted`
+counts older matching rows left out, which no later query returns. `dropped` counts actions the
+editor no longer retains.
 
 Propose commands create or withdraw review cards. Replace example IDs with current hierarchy or
 proposal IDs; the sample environment edit applies to a saved look:
@@ -97,12 +121,21 @@ python3 Tools/Session/lmx_session.py --wait-tier propose withdraw 1
 ```
 
 `propose.edits` accepts repeatable `--edit SUBJECT FIELD JSON` and `--evidence PATH`. Show displays
-before/after rows. Accept needs Stopped and no measurement, applies the validated batch and marks
-the document dirty; Reject leaves it untouched. Withdraw stales the proposal; it cannot undo an
-accepted edit. There are no client Accept or Reject commands.
+before/after rows. Accept needs Stopped and no measurement, re-runs the preview and stales the card
+when its rows differ from the ones shown; otherwise it applies the validated batch and marks the
+document dirty. Reject leaves the scene untouched. Withdraw stales the proposal, works only from the
+connection that submitted it and cannot undo an accepted edit. A pending proposal is never evicted:
+`propose.edits` answers `busy` while 64 bridge proposals await review. Save and Save As keep pending
+bridge cards; scene replacement, an accepted file proposal and a ceiling lowered to ReadOnly stale
+them. There are no client Accept or Reject commands.
 
 Apply commands each show their arguments/output in an approval card. The operator chooses
-Approve or Deny; execution rechecks availability at the safe point:
+Approve or Deny; execution rechecks availability at the safe point. Approve and Deny are ignored
+for 0.5 s after the shown approval changes. At most 8 approvals may await or run; the ninth answers
+`busy`. Lowering the ceiling cancels awaiting approvals: the client gets `cancelled` and the log
+gains an `approval.cancel` row with outcome `cancelled: ceiling lowered`. Open, the catalog, Revert
+and `scene.open` cancel them with `cancelled: scene replaced`; the plan running `scene.open`
+continues.
 
 ```sh
 python3 Tools/Session/lmx_session.py --wait-tier settings set temporal off
@@ -134,12 +167,15 @@ it shares replacement guards and preserves the semantic selection and current st
 Object/light selection is refused because it cannot survive replacement without changing meaning.
 
 `measure.run` uses nonnegative warmup and positive frames (32-bit total), stopped playback and
-dynamic resolution off. It uses the interactive unscored measurement path. `capture.gpu` needs
+dynamic resolution off. It uses the interactive unscored measurement path with its own warmup,
+frames and output; the Performance panel's Warmup, Frames and export path and an active mouse look
+stay as the operator left them. `capture.gpu` needs
 `MTL_CAPTURE_ENABLED=1` at startup; its trace name is generated. Graph dump exports the displayed
 frame, including Freeze. Screenshot names receive `.png`; sequence names denote new directories.
 Frames are positive 32-bit counts; sequence warmup is nonnegative. A capture refuses dirty documents,
 pending file proposals, a disk hash different from the loaded pair, measurement or another job.
-It spawns headless App with the clean loaded document, effective settings and lab overrides:
+It spawns headless App with the clean loaded document, effective settings and lab overrides, no
+`LMX_*` environment variable and no editor descriptor beyond its own log:
 temporal off emits scale 1, rather than a dormant retained scale. Diagnostic views and dynamic
 resolution are not replayed as dormant settings. The live viewport is not read back.
 
@@ -176,8 +212,11 @@ Authored cameras use their document-node ID (`node:1` in the six checked-in scen
 
 Exposure keys are `autoEnabled`, `ev`, `lowPercentile`, `highPercentile`, `targetGrey`, `evMin`,
 `evMax`, `compensationEv`, `adaptUpStopsPerSecond`, `adaptDownStopsPerSecond`; bloom keys are
-`enabled`, `threshold`, `intensity`. Numeric values must be finite and the combined look must pass
-document validation. Camera edits change the saved scene camera, never the editor camera.
+`enabled`, `threshold`, `intensity`. Numeric values must be finite and within the document reader's
+ranges: 0 ≤ `lowPercentile` < `highPercentile` ≤ 100, `targetGrey` > 0, `evMin` ≤ `evMax`,
+nonnegative adaptation speeds and nonnegative bloom threshold and intensity. One value out of range
+answers `invalid` and refuses the whole batch. Camera edits change the saved scene camera, never
+the editor camera.
 Generated subjects and unsavable animated transforms are refused. Directional lights, structural
 create/delete/duplicate/reparent, selection and playback have no proposal edit operation.
 
@@ -194,13 +233,20 @@ This example writes beside the named document; use the copy you intend to edit. 
 glTF bytes followed by its referenced external buffer bytes. `x.scene.gltf` maps to
 `x.scene.proposal.json`. The client atomically publishes the sidecar after validating the pair.
 
-The editor polls sizes/times twice a second, waits for one identical changed poll and no
-`.lmx-save-*.tmp` directory, hashes the pair and waits up to four seconds for a matching sidecar.
-Without a matching sidecar it attributes Unknown external change to System. Show lists property
+The editor polls the pair twice a second, except during Measure. A stamp holds size, modification
+time, inode and device for both files, so an idle poll is three `stat` calls. After a change it
+waits for one identical poll, hashes the pair and waits up to four seconds for a matching sidecar.
+A `.lmx-save-*.tmp` directory defers the watch for 5 s; a leftover one then logs one Console
+warning and the watch proceeds. A formatting-only change adopts the new hash with one Console
+info line and no card. Without a matching sidecar it attributes Unknown external change to System.
+Show lists property
 rows and rings affected Hierarchy nodes. Missing evidence is flagged. File Accept uses Revert,
 needs Stopped/no measurement and offers Discard/Cancel for unsaved edits. Reject remembers the
 current hash; a later Save can overwrite that file. Pending file proposals block Save/Save As with
-“Review the pending proposal first”. A newer file or scene replacement stales the proposal.
+“Review the pending proposal first”. Save, but not Save As, also hashes the pair on disk before
+writing and refuses with “The scene file changed on disk; review its proposal first” unless that
+hash equals the loaded hash or one the operator rejected. A newer file or scene replacement stales
+the proposal.
 Reader failures show an Error card with Reject only. Invalid UTF-8 sidecars are rejected before
 metadata is retained. Own saves reset the watch only with verified writer bytes, path and coherent
 stamps; an uncertified successful adoption invalidates the baseline to review external changes.
@@ -224,7 +270,9 @@ session work. Measurement cannot overlap a headless child. Shutdown kills/reaps 
 joins the listener; the socket is removed when Listen stops.
 
 Export writes schema 1/protocol 1 `session.json`, with loaded path/hash, last connected client,
-ordered actions and Console entries. It works after Listen off and retains the last client.
+a top-level `dropped` count, ordered actions and Console entries. The log retains 10,000 actions,
+each command kept to 128 bytes and its arguments to 4,096 bytes with a `…[truncated N bytes]`
+suffix. Export works after Listen off and retains the last client.
 It uses the held Console snapshot with current search/minimum severity and Operator+Agent actors;
 select those actors in Console to compare Copy visible. Each array item is one formatted entry,
 including multiline text. A frozen Console may omit newly recorded actions from its held rows.
@@ -238,12 +286,13 @@ write afterward and appears in the next Export. Copy path/Reveal notices locate 
 | `denied` | Review the operator's decision before submitting new work |
 | `unavailable` | Read the shared disabled reason; stop playback/measurement, save/review the document or enable capture capability |
 | `invalid` | Correct names, IDs, fields, JSON values, counts or plan structure |
-| `busy` | Wait for the current client/job/approval queue to finish |
+| `busy` | Wait for the current client, job, 8 approvals or 64 pending proposals to clear |
 | `failed` | Inspect action outcome and retained child log/evidence certification message |
 | `cancelled` | Inspect Stop/shutdown outcome before retrying |
 
-Lines are limited to 1 MiB, the inbox to 64 requests, hello names to 128 bytes, plan summaries to
-1,024 bytes and retained proposals to 64. A second client gets busy and closes. Oversized lines
+Lines are limited to 1 MiB, the inbox to 64 requests, hello names to 128 bytes and plan summaries
+to 1,024 bytes. Resolved proposals beyond 64 retained are evicted oldest first. A second client
+gets busy and closes. Oversized lines
 close the connection after a protocol error; a full inbox gets busy. Console remains bounded at
 2,000 entries/2 MiB with 16 KiB messages. Restarting does not restore connection, tier, proposals or
 session jobs. Export retained evidence before ending a run. For controlled GPU evidence, see

@@ -2,7 +2,7 @@
 
 **Status**: Implemented — pending owner review
 
-No owner acceptance or integration claim.
+No owner acceptance or integration claim. The [independent review record](ux5-review-validation.md) covers the 2026-10-02 review, its fixes and their limits.
 
 Execution uses `feat/ux5-session` in `../Luminex-ux5`, based on `docs/ux5-session`. The frozen parent is main at `3259457` in `../Luminex-ux5-parent`. Evidence is retained in
 `../Luminex-evidence/ux5/`; the executor plan stays in place.
@@ -16,7 +16,7 @@ Execution uses `feat/ux5-session` in `../Luminex-ux5`, based on `docs/ux5-sessio
 | 3 | `b434e3d` | PASS | Independent diff oracle corrected |
 | 4 | `8b82ddb` | PASS | No actionable findings |
 | 5 | `1527f4b` | PASS | Queue overflow correction verified |
-| 6 | `5f076ee` | PASS | Error-card detail correction verified |
+| 6 | `5f076ee` | Code gates PASS; native Gallery exact comparison FAIL (Light 0/16, Dark 0/16) | Error-card detail correction verified |
 | 7 | `71b78a7` | PASS, 11/11 | Docking and review-detail corrections verified |
 | 8 | `f33c3de` | PASS, 10/10 | Six findings corrected; no final findings |
 | 9 | `7f48945` | Final code gates PASS, 11/11; required native checkpoint PASS | Parser and watcher corrections verified; no final findings |
@@ -53,7 +53,7 @@ not reported as a failed final gate. Initial Debug unit execution was interrupte
 | 16 | Span fixture compile error; 19 initially-dirty fixture assertions; exact input cone-angle assertion | Fixture baseline corrected; exact stored-value readback used without tolerance; final gates PASS, 10/10 |
 | 15 | Fixture accessor/compiler errors; tier log omitted client/resulting ceiling; hidden Console query stayed stale | Red-to-green corrections; final gates PASS, 10/10 |
 | 14 | SIGPIPE; comment/layout failures; bounded queues, close retention, closure saturation, weak EOF assertion and drain race | All corrected; final gates PASS, 10/10 |
-| 13 | Initial stronger-review attempt failed at model capacity before reviewing | Retried on the same stronger model; completed with no actionable findings |
+| 13 | Initial stronger-review attempt failed at capacity before reviewing | Retried as the same stronger review; completed with no actionable findings |
 | 12 | Comment gate reported 24 undocumented enum values; review found quadratic root-key validation | Corrected; final gates PASS, 10/10; no timing measurement claimed |
 | 11 | Exact usage-text assertion failed after adding the session flag | Expected usage updated for the new flag; final gates PASS, 10/10 |
 | 10 | Initial layout check exited 1 on two missing test function separators; review found typed-scale rounding | Both corrected; final gates PASS, 10/10; original rejection failures retained below |
@@ -206,13 +206,13 @@ an explicit certification error. Production-linked ENOENT/ENOEXEC probes verify 
 duplicate cancellation records observed in Task 19. These supporting APIs extend the task's file list to approvals and output validation. Native Export/Console/evidence gestures
 were deferred to Task 22; its results follow below. No GPU payload production was claimed at Task 20.
 
-Task 21 documentation passes the external link/anchor/budget/CLI checker and ten code gates. Fresh Astra review corrected authored-camera IDs and rejected-hash lifetime, then
-verified all twelve corrected document hashes. Built-in role dispatch reached its thread limit; fresh ephemeral CLI roles preserved model separation. The installed CLI rejected
-Astra as too old; the already bundled CLI completed both stronger reviews. No environment upgrade was performed.
+Task 21 documentation passes the external link/anchor/budget/CLI checker and ten code gates. An independent stronger review corrected authored-camera IDs and rejected-hash lifetime, then
+verified all twelve corrected document hashes. The first review dispatch failed at a tooling limit and a second tooling attempt was rejected; a retried dispatch completed both stronger
+reviews. No environment upgrade was performed.
 
 ## Task 22 integration corrections and final evidence
 
-The final source is frozen in `task22/fixes2/`; App SHA-256 is `8fdfd9ea902fcf1b8f5c2771f3d0ec61dbc6bf6bf5ee87826b2f97c58a1f4eee`. Fresh Astra whole-branch source review
+The final source is frozen in `task22/fixes2/`; App SHA-256 is `8fdfd9ea902fcf1b8f5c2771f3d0ec61dbc6bf6bf5ee87826b2f97c58a1f4eee`. An independent stronger whole-branch source review
 `task22/whole-review-final2.md` passes with no actionable findings. Its source-target inventory preceding this final documentation update independently matches 797/797 hashes, 643/643 Source/Tests and 120/120 changed hashes (90 Source,
 24 Tests, 6 earlier branch Tools changes), with exact membership and diffs. Whole source diff SHA-256 is `8b06aae3737d144de5695e8077fb699867c8e8cabc088a5cb32f943471faa367`;
 acceptance fixes are `1c48916db8fbd5188ac51277cef5a90c6d27e13a2ded29b35c723a3a70cdf12e`. The reviewer inspected implementer results without rerunning tests/UI/GPU.
@@ -242,7 +242,7 @@ These supporting model/save/layout APIs extend the task file lists for integrati
 
 Final source gates cover build, full unit (9.063 s), format, compile commands, project policy, modules, headers, API comments, layout (3,135 definitions / 389 files) and submodule
 pin. These fixes2 results precede this documentation update. Final `task22-final-gates.json` (evidence root) passes all 11 code gates, including Python 325 (6.368 s) and full unit (9.707 s).
-The post-unit `task22/validator-publication.json` passes 93 documents (6 catalog + 87 writers), exit 0, 5.647 s. Fresh Astra publication review `task22/publication-review.md` passes; exact reports/logs remain retained. Root records publication-policy/tag/push/PR outcomes in the external `task22/` publication ledger. Root preflight commit policy passes over 1,036 files; root reruns it after this commit so the final subject/body are covered before push.
+The post-unit `task22/validator-publication.json` passes 93 documents (6 catalog + 87 writers), exit 0, 5.647 s. An independent stronger publication review `task22/publication-review.md` passes; exact reports/logs remain retained. Root records publication-policy/tag/push/PR outcomes in the external `task22/` publication ledger. Root preflight commit policy passes over 1,036 files; root reruns it after this commit so the final subject/body are covered before push.
 
 Sandbox attempts were stopped and retained, then repeated on the real host (`root-sandbox-correction.md`): GPU invocation and verbose retry both xmake 255/Catch2 42, no Metal,
 0/215 cases and 108/323 assertions passed; read-only exit 1, SDL no displays/no socket/zero queries. Python exit 1: 325 tests, 33 failures with Unix socket bind denied. Pinned validator
@@ -272,7 +272,7 @@ Real Export clicks wrote schema 1/protocol 1 `session.json`. Initial audit passe
 passes 8/8 actual-byte hashes, 47 ordered actions / 47 Console entries, including the cancelled child's log and existing manifest. Exactly one request 21 cancelled approval.result
 occurs at sequence 46; `review\nmultiline` remains one Console entry 33. Native Info/Operator+Agent/System-off Copy visible reported 39 matching and preserved multiline display.
 Clipboard bytes remain UNVERIFIED (`consoleExact:null`): three TextEdit attempts failed in total: New Document/plain-text/paste/save returned `noWindowsAvailable`, then one
-bundle GetApp and one name GetApp returned `timeoutReached` (two timeout calls). Initial Open-panel GetApp succeeded; unsupported `listWindows` was separate. A CUA App-changed guard required refreshing the binding before action. Desktop accessibility/screenshots worked; this was not a locked Mac. Initial Reveal was clicked but Finder showed Desktop only; that failed observation is retained and superseded only by the successful relaunch navigation below.
+bundle GetApp and one name GetApp returned `timeoutReached` (two timeout calls). Initial Open-panel GetApp succeeded; unsupported `listWindows` was separate. An input-helper App-changed guard required refreshing the binding before action. Desktop accessibility/screenshots worked; this was not a locked Mac. Initial Reveal was clicked but Finder showed Desktop only; that failed observation is retained and superseded only by the successful relaunch navigation below.
 
 Actual child 70901 was live before real Stop Listening and absent afterward (ps exit 1); socket absent and client disconnected. Real Listen reopened and the next client was ReadOnly.
 `native/malformed-native.json` passes all four actual cases: omitted hello, invalid JSON and invalid UTF-8 each one error line; 2 MiB BrokenPipe clean close; next hello succeeds
@@ -293,8 +293,8 @@ Task 22 was published as `b31baf2`, pushed with `ux5-integration-chain`, and ope
 Main advanced to docs-only `bbb108d`, replacing M9 with G1–G3. Root's no-commit merge exited 1 with five documentation conflicts: AGENTS, UX5 record/plan, roadmap and neural roadmap.
 Reconciliation keeps every upstream geometry decision and UX5's reviewed implementation, exceptions, validation and In progress plan. The published tag stays at `b31baf2`;
 it is not force-moved. Its original 11/11 gates (full unit 9.707 s), 93-document validator and frozen source/runtime evidence remain historical exact results.
-This documentation reconciliation syncs main. Root retains actual follow-up `task22-main-sync-gates.json`, distinct validator, fresh Astra review and merge-commit/publication
+This documentation reconciliation syncs main. Root retains actual follow-up `task22-main-sync-gates.json`, distinct validator, an independent stronger review and merge-commit/publication
 command outcomes in the external `task22/merge-main/` ledger. Source/runtime bytes remain unchanged; no new source, runtime, owner-acceptance or scored-gate claim follows from the sync.
 Closing measured metadata after fresh content review: initial main-sync gates passed 10/11, exit 1, because the unmerged index listed the single active plan twice (`task22-main-sync-04-python3.log`, evidence root). Root staged the five resolved conflicts; `task22/merge-main/policy-staged-retry.json` passes 1,050 files without checker/status changes.
 Auxiliary diff check against published HEAD exited 2 on 13 upstream Frozen research Markdown hard-break lines; against incoming `origin/main` it exited 0 (`task22/merge-main/review.md` and retained logs). Research bytes and tolerance remain unchanged.
-Fresh Astra content review passes before this closing outcome metadata. Root's `task22/merge-main/final-gates.json` retains the first-run failure and explicit retry provenance, final 11/11 PASS: unit 10.162 s (10.163 total), Python 325/6.636 s, layout 3,135 definitions/389 files. Distinct `merge-main/validator.json` passes 93 = 6+87, 6.402641 s; original Task 22 results remain historical.
+An independent stronger content review passes before this closing outcome metadata. Root's `task22/merge-main/final-gates.json` retains the first-run failure and explicit retry provenance, final 11/11 PASS: unit 10.162 s (10.163 total), Python 325/6.636 s, layout 3,135 definitions/389 files. Distinct `merge-main/validator.json` passes 93 = 6+87, 6.402641 s; original Task 22 results remain historical.
