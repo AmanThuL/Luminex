@@ -16,7 +16,8 @@ namespace lmx::app {
 /// A move-only headless App process. The owner always reaps it, including on cancellation.
 class ChildRun {
 public:
-    /// Spawns this executable in the current working directory with an exclusive sibling log.
+    /// Spawns this executable in the current working directory with an exclusive sibling log,
+    /// no inherited descriptor beyond that log and an environment without LMX_ variables.
     /// Arguments include one screenshot or sequence output flag and its absolute destination.
     static std::expected<ChildRun, std::string> spawn(std::vector<std::string> argv);
     /// Polls without blocking; returns an exit code, or 128 plus the terminating signal.

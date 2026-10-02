@@ -52,6 +52,23 @@ void removeOwnedSocket(const std::filesystem::path& path, uint64_t device, uint6
         unlink(path.c_str());
 }
 
+//======================================================================================================================
+// A socket file outlives a crashed editor. It is stale only when this user owns it and nothing
+// accepts on it; any other entry, or any other connect result, stays untouched.
+bool staleSocket(const sockaddr_un& address, const struct stat& entry) {
+    if (!S_ISSOCK(entry.st_mode) || entry.st_uid != geteuid())
+        return false;
+    const int probe = ::socket(AF_UNIX, SOCK_STREAM, 0);
+    if (probe < 0)
+        return false;
+    nonblocking(probe);
+    const bool refused =
+        connect(probe, reinterpret_cast<const sockaddr*>(&address), sizeof(address)) != 0 &&
+        errno == ECONNREFUSED;
+    close(probe);
+    return refused;
+}
+
 std::atomic_uint64_t nextConnection = 0;
 
 } // namespace
@@ -82,8 +99,13 @@ SessionListener::start(std::filesystem::path socket, std::shared_ptr<SessionMail
     address.sun_family = AF_UNIX;
     std::memcpy(address.sun_path, name.c_str(), name.size() + 1);
     struct stat prior{};
-    if (lstat(name.c_str(), &prior) == 0)
-        return std::unexpected("Session socket path already exists");
+    if (lstat(name.c_str(), &prior) == 0) {
+        if (!staleSocket(address, prior))
+            return std::unexpected("Session socket path already exists");
+        removeOwnedSocket(socket, prior.st_dev, prior.st_ino);
+        if (lstat(name.c_str(), &prior) == 0)
+            return std::unexpected("Session socket path already exists");
+    }
     if (errno != ENOENT)
         return std::unexpected(ioError("path check failed"));
     const int listenFd = ::socket(AF_UNIX, SOCK_STREAM, 0);
@@ -216,6 +238,8 @@ void SessionListener::run() {
                 int arriving = accept(m_listenFd, nullptr, nullptr);
                 if (arriving < 0)
                     break;
+                // Close-on-exec comes first so no child started meanwhile inherits the client.
+                fcntl(arriving, F_SETFD, FD_CLOEXEC);
                 nonblocking(arriving);
                 noSigpipe(arriving);
                 uid_t peer = 0;

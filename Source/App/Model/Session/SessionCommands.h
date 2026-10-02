@@ -12,6 +12,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace lmx::app {
 
@@ -59,5 +60,8 @@ std::optional<std::string> tierRefusal(const CommandSpec& command, SessionTier c
 /// names over 128 bytes, a leading dot, any two consecutive dots, and bytes outside ASCII
 /// letters, digits, dot, underscore and hyphen.
 std::expected<std::string, std::string> evidenceName(std::string_view name);
+/// Copies a null-terminated NAME=value environment for a headless child run, leaving out every
+/// LMX_ variable so the editor's launch diagnostics cannot redirect or alter the child's output.
+std::vector<std::string> childRunEnvironment(const char* const* environment);
 
 } // namespace lmx::app

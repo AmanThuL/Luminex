@@ -18,6 +18,7 @@
 #include <vector>
 
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
 
@@ -276,9 +277,48 @@ TEST_CASE("session listener refuses existing paths and preserves their contents"
     const auto name = existing.string();
     std::copy(name.begin(), name.end(), address.sun_path);
     REQUIRE(bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == 0);
+    REQUIRE(listen(fd, 1) == 0);
+    struct stat before{};
+    REQUIRE(lstat(existing.c_str(), &before) == 0);
     CHECK_FALSE(SessionListener::start(existing, mailbox));
-    CHECK(std::filesystem::exists(existing));
+    struct stat after{};
+    REQUIRE(lstat(existing.c_str(), &after) == 0);
+    CHECK(after.st_ino == before.st_ino);
     close(fd);
+}
+
+//======================================================================================================================
+TEST_CASE("session listener replaces a stale socket nothing accepts on",
+          "[app][session-listener]") {
+    SocketFixture fixture;
+    // Closing a bound socket leaves its file behind, as a crashed editor does.
+    const int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    REQUIRE(fd >= 0);
+    sockaddr_un address{};
+    address.sun_family = AF_UNIX;
+    const auto name = fixture.path().string();
+    std::copy(name.begin(), name.end(), address.sun_path);
+    REQUIRE(bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == 0);
+    REQUIRE(listen(fd, 1) == 0);
+    close(fd);
+    struct stat stale{};
+    REQUIRE(lstat(fixture.path().c_str(), &stale) == 0);
+    REQUIRE(S_ISSOCK(stale.st_mode));
+    auto mailbox = std::make_shared<SessionMailbox>();
+    {
+        auto listener = SessionListener::start(fixture.path(), mailbox);
+        REQUIRE(listener);
+        const int client = connectTo(fixture.path());
+        REQUIRE(client >= 0);
+        const auto opened = awaitInbound(mailbox);
+        REQUIRE(opened.size() == 1);
+        CHECK(opened[0].opened);
+        // A second start meets a live listener and leaves it alone.
+        CHECK_FALSE(SessionListener::start(fixture.path(), std::make_shared<SessionMailbox>()));
+        CHECK(std::filesystem::exists(fixture.path()));
+        close(client);
+    }
+    CHECK_FALSE(std::filesystem::exists(fixture.path()));
 }
 
 //======================================================================================================================

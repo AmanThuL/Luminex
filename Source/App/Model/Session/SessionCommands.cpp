@@ -75,4 +75,15 @@ std::expected<std::string, std::string> evidenceName(std::string_view name) {
     return std::string(name);
 }
 
+//======================================================================================================================
+std::vector<std::string> childRunEnvironment(const char* const* environment) {
+    std::vector<std::string> kept;
+    for (; environment && *environment; ++environment) {
+        const std::string_view entry(*environment);
+        if (!entry.starts_with("LMX_"))
+            kept.emplace_back(entry);
+    }
+    return kept;
+}
+
 } // namespace lmx::app

@@ -22,7 +22,8 @@ std::filesystem::path defaultSessionSocket();
 /// Owns a Unix socket, one client, and a poll-based transport thread.
 class SessionListener {
 public:
-    /// Binds a new socket without replacing any existing filesystem entry.
+    /// Binds a new socket. An existing entry is replaced only when it is a socket this user owns
+    /// whose connection is refused, the file a crashed editor leaves; anything else is refused.
     static std::expected<std::unique_ptr<SessionListener>, std::string>
     start(std::filesystem::path socket, std::shared_ptr<SessionMailbox> mailbox);
     /// Interrupts poll after the editor queues outbound responses.

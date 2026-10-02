@@ -5,6 +5,8 @@
 
 #include "App/Shell/ChildRun.h"
 
+#include "App/Model/Session/SessionCommands.h"
+
 #include <cerrno>
 #include <csignal>
 #include <cstring>
@@ -69,6 +71,20 @@ std::expected<ChildRun, std::string> ChildRun::spawn(std::vector<std::string> ar
                                                O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600);
     if (error == 0)
         error = ::posix_spawn_file_actions_adddup2(&actions, STDOUT_FILENO, STDERR_FILENO);
+    if (error == 0)
+        error =
+            ::posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
+    // Only the three descriptors opened above reach the child: the session socket, its client and
+    // every other editor descriptor close at exec.
+    posix_spawnattr_t attributes;
+    if (error == 0) {
+        error = ::posix_spawnattr_init(&attributes);
+        if (error == 0) {
+            error = ::posix_spawnattr_setflags(&attributes, POSIX_SPAWN_CLOEXEC_DEFAULT);
+            if (error != 0)
+                ::posix_spawnattr_destroy(&attributes);
+        }
+    }
     if (error != 0) {
         ::posix_spawn_file_actions_destroy(&actions);
         return std::unexpected(std::format("Cannot prepare child log: {}", std::strerror(error)));
@@ -79,8 +95,16 @@ std::expected<ChildRun, std::string> ChildRun::spawn(std::vector<std::string> ar
     for (auto& arg : args)
         argv.push_back(arg.data());
     argv.push_back(nullptr);
+    auto variables = childRunEnvironment(environ);
+    std::vector<char*> envp;
+    envp.reserve(variables.size() + 1);
+    for (auto& variable : variables)
+        envp.push_back(variable.data());
+    envp.push_back(nullptr);
     pid_t pid = -1;
-    error = ::posix_spawn(&pid, executable.c_str(), &actions, nullptr, argv.data(), environ);
+    error =
+        ::posix_spawn(&pid, executable.c_str(), &actions, &attributes, argv.data(), envp.data());
+    ::posix_spawnattr_destroy(&attributes);
     ::posix_spawn_file_actions_destroy(&actions);
     if (error != 0)
         return std::unexpected(std::format("Cannot start headless App: {}", std::strerror(error)));

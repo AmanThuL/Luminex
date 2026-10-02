@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_set>
+#include <vector>
 
 using namespace lmx::app;
 
@@ -75,4 +76,20 @@ TEST_CASE("evidence names are confined to safe single path components", "[app][s
         INFO(name);
         CHECK_FALSE(evidenceName(name));
     }
+}
+
+//======================================================================================================================
+TEST_CASE("child run environment leaves out every editor diagnostic variable", "[app][session]") {
+    const std::array<const char*, 8> environment{"PATH=/usr/bin",
+                                                 "LMX_GRAPH_DUMP=/tmp/graph.txt",
+                                                 "HOME=/var/empty",
+                                                 "LMX_MAX_FRAMES=4",
+                                                 "LMX_CAPTURE_PATH=/tmp/out.gputrace",
+                                                 "MTL_DEBUG_LAYER=1",
+                                                 "NOTE=LMX_INSIDE=1",
+                                                 nullptr};
+    const auto kept = childRunEnvironment(environment.data());
+    CHECK(kept == std::vector<std::string>{"PATH=/usr/bin", "HOME=/var/empty", "MTL_DEBUG_LAYER=1",
+                                           "NOTE=LMX_INSIDE=1"});
+    CHECK(childRunEnvironment(nullptr).empty());
 }
