@@ -1,6 +1,6 @@
 # UX6 — Gizmo validation
 
-**Status:** In progress
+**Status:** Frozen — non-normative; a task-time snapshot. Current results are in [final measurements](ux6-validation-final.md) and the [milestone review](ux6-review-validation.md)
 
 ## Task 18 — Pure model
 

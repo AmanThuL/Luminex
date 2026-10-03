@@ -1,6 +1,6 @@
 # UX6 — Scene Authoring
 
-**Status**: Implemented
+**Status**: Implemented — owner authorized integration on 2026-10-04; failed and incomplete gates retained as measured
 
 Drafted on 2026-10-02 from the owner's review of the editor after [UX5](ux5.md), and revised on
 2026-10-03 with the owner's answers to the seven decisions the draft left open. Three requests
@@ -10,9 +10,11 @@ it may be moved, so an operator cannot rearrange a scene by accident. UX6 saves 
 scene document, gives every object and light an authored mobility, and adds a viewport transform
 gizmo. [Part IV](../../roadmap/editor-experience.md#ux6--scene-authoring) owns the outcome and gates
 with execution authorized by the owner on 2026-10-03. Implementation is recorded in
-[validation](ux6-validation.md); original parent parity is 10/15, accepted-reference parity 15/15
-and LightLab 5/5. Native completion remains incomplete; separate milestone review and owner
-acceptance are pending.
+[validation](ux6-validation.md) and [final measurements](ux6-validation-final.md); original parent
+parity is 10/15, accepted-reference parity 15/15 and LightLab 5/5, and native completion remains
+incomplete. The [milestone review](ux6-review-validation.md) of 2026-10-04 fixed seven defects,
+among them the "not saved" TemporalLab wheel rows; the owner then authorized integration by
+squash merge, and the executor plan is closed.
 
 **Placement:** [UX5](ux5.md) → **UX6** → N1, by the owner's decision on 2026-10-03.
 
@@ -44,7 +46,7 @@ acceptance are pending.
 
 ## Decisions
 
-The owner answered these on 2026-10-03. They bind the accepted implementation plan.
+The owner answered these on 2026-10-03. They bound the implementation plan, now closed.
 
 | Topic | Decision |
 |---|---|

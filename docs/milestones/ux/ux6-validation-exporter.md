@@ -1,6 +1,6 @@
 # UX6 — Exporter validation
 
-**Status:** In progress
+**Status:** Frozen — non-normative; a task-time snapshot. Current results are in [final measurements](ux6-validation-final.md) and the [milestone review](ux6-review-validation.md)
 Snapshot at `ux6-exporter`; later results are in [Execution validation](ux6-validation.md).
 Owner authorized resuming Task 8 after its three-attempt CPU stop.
 **Date:** 2026-10-03. The milestone remains `Accepted`, not `Implemented` or owner-accepted.

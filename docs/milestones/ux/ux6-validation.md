@@ -1,7 +1,7 @@
 # UX6 — Execution validation
 
-**Status:** Implemented — separate milestone review pending
-**Date:** 2026-10-03. No milestone owner acceptance or merge occurred.
+**Status:** Implemented — owner authorized integration on 2026-10-04 after the [milestone review](ux6-review-validation.md); failed and incomplete gates retained as measured
+**Date:** 2026-10-03. The review's fixes and the owner's authorization are recorded on that page.
 
 Tasks 1–22 have implementation and validation records with separate reviews. Task 22 includes
 complete automatic/image runs and partial native verification; the incomplete completion gate

@@ -1,6 +1,6 @@
 # UX6 — Task 22 final measurements
 
-**Status:** Implemented — separate milestone review and owner acceptance pending.
+**Status:** Implemented — owner authorized integration on 2026-10-04 after the [milestone review](ux6-review-validation.md), which fixed the open P2 below; failed and incomplete gates retained as measured.
 All 22 tasks have an implementation/validation record; incomplete native gates remain explicit.
 Measurements cover `afc3bf4` plus the two reviewed source corrections below, retained by Task 22.
 Publication follows final independent review. No owner acceptance or merge is claimed.

@@ -1,6 +1,6 @@
 # UX6 — Mobility validation
 
-**Status:** In progress
+**Status:** Frozen — non-normative; a task-time snapshot. Current results are in [final measurements](ux6-validation-final.md) and the [milestone review](ux6-review-validation.md)
 No milestone owner acceptance or merge.
 
 [Execution validation](ux6-validation.md) holds the parent freeze, image checkpoint and overall gates.
