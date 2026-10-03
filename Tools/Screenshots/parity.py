@@ -27,7 +27,7 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def load_reference(path: Path) -> dict:
+def load_reference(path: Path, light_lab: bool = False) -> dict:
     reference = json.loads(path.read_text())
     schema = reference.get("schemaVersion")
     if schema not in (1, 2):
@@ -38,11 +38,17 @@ def load_reference(path: Path) -> dict:
     images = reference["images"]
     scenes = ("sponza", "damaged-helmet", "material-lab") if schema == 1 else (
         "sponza", "material-lab", "temporal-lab")
+    if light_lab:
+        if schema != 2:
+            raise ValueError("LightLab requires a schema 2 reference")
+        scenes = ("light-lab",)
+    count = len(scenes) * 5
     expected = {(scene, mode, scale) for scene in scenes
                 for mode, scale in (("off", 1), ("taa", 1), ("taa", 0.5), ("metalfx", 1), ("metalfx", 0.5))}
     actual = {(row["scene"], row["temporal"], row["renderScale"]) for row in images}
-    if len(images) != 15 or actual != expected or len({row["name"] for row in images}) != 15:
-        raise ValueError("reference must contain all fifteen distinct scene/mode/scale cases")
+    if len(images) != count or actual != expected or len({row["name"] for row in images}) != count:
+        raise ValueError("reference must contain all five distinct LightLab mode/scale cases" if light_lab
+                         else "reference must contain all fifteen distinct scene/mode/scale cases")
     for row in images:
         if not re.fullmatch(r"[a-z0-9.-]+", row["name"]) or not re.fullmatch(r"[0-9a-f]{64}", row["sha256"]):
             raise ValueError("invalid reference name or SHA-256")
@@ -51,7 +57,8 @@ def load_reference(path: Path) -> dict:
         if not isinstance(documents, dict) or set(documents) != set(scenes) or any(
                 not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value)
                 for value in documents.values()):
-            raise ValueError("reference requires three scene document SHA-256 values")
+            raise ValueError("reference requires the LightLab document SHA-256" if light_lab
+                             else "reference requires three scene document SHA-256 values")
     return reference
 
 
@@ -142,8 +149,9 @@ def shader_hashes(app: Path) -> dict:
     return result
 
 
-def run(app: Path, output: Path, reference_path: Path, documents: Path | None = None) -> bool:
-    reference = load_reference(reference_path)
+def run(app: Path, output: Path, reference_path: Path, documents: Path | None = None,
+        light_lab: bool = False) -> bool:
+    reference = load_reference(reference_path, light_lab=light_lab)
     app, output = app.resolve(), output.resolve()
     if not app.is_file():
         raise ValueError(f"App binary missing: {app}")
@@ -204,7 +212,7 @@ def run(app: Path, output: Path, reference_path: Path, documents: Path | None = 
     report["complete"] = True
     report["allMatched"] = all(row["match"] for row in report["images"])
     report_path.write_text(json.dumps(report, indent=2) + "\n")
-    print(f"{sum(row['match'] for row in report['images'])}/15 byte-identical; report: {report_path}")
+    print(f"{sum(row['match'] for row in report['images'])}/{len(reference['images'])} byte-identical; report: {report_path}")
     return report["allMatched"]
 
 
@@ -466,6 +474,8 @@ def main() -> int:
     parser.add_argument("--app", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--reference", type=Path, default=Path(__file__).with_name("reference.json"))
+    parser.add_argument("--light-lab", action="store_true",
+                        help="validate and capture an explicit five-mode LightLab reference")
     parser.add_argument("--documents", type=Path,
                         help="map reference scene ids to this frozen document directory")
     parser.add_argument("--selftest", action="store_true")
@@ -476,7 +486,7 @@ def main() -> int:
     if args.app is None or args.output is None:
         parser.error("--app and --output are required unless --selftest is used")
     try:
-        return 0 if run(args.app, args.output, args.reference, args.documents) else 1
+        return 0 if run(args.app, args.output, args.reference, args.documents, args.light_lab) else 1
     except (OSError, ValueError, KeyError) as error:
         print(f"parity refused: {error}", file=sys.stderr)
         return 1

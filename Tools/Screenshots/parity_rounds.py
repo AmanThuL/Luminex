@@ -43,9 +43,17 @@ def compare_rounds(parent: list[list[dict]], candidate: list[list[dict]]) -> dic
 
 def run(parent_app: Path, candidate_app: Path, rounds: int, output: Path,
         reference: Path, parent_documents: Path | None = None,
-        candidate_documents: Path | None = None) -> bool:
+        candidate_documents: Path | None = None, parent_reference: Path | None = None,
+        candidate_reference: Path | None = None) -> bool:
     reference = reference.resolve()
     frozen = parity.load_reference(reference)
+    side_references = {"parent": (parent_reference or reference).resolve(),
+                       "candidate": (candidate_reference or reference).resolve()}
+    for path in side_references.values():
+        payload = parity.load_reference(path)
+        if ({key: value for key, value in payload.items() if key != "documents"} !=
+                {key: value for key, value in frozen.items() if key != "documents"}):
+            raise ValueError("side references may change only document pins")
     if rounds < 1:
         raise ValueError("rounds must be positive")
     parent_app, candidate_app = parent_app.resolve(), candidate_app.resolve()
@@ -58,6 +66,7 @@ def run(parent_app: Path, candidate_app: Path, rounds: int, output: Path,
     shader_hashes = {"parent": parity.shader_hashes(parent_app),
                      "candidate": parity.shader_hashes(candidate_app)}
     reference_hash = parity.sha256(reference)
+    side_reference_hashes = {side: parity.sha256(path) for side, path in side_references.items()}
     reference_hashes = {row["name"]: row["sha256"] for row in frozen["images"]}
     reference_names = set(reference_hashes)
     captures: dict[str, list[list[dict]]] = {"parent": [], "candidate": []}
@@ -72,7 +81,7 @@ def run(parent_app: Path, candidate_app: Path, rounds: int, output: Path,
             directory = output / f"round-{round_index + 1:02d}-{side}"
             command = [sys.executable, str(Path(parity.__file__).resolve()),
                        "--app", str(app), "--output", str(directory),
-                       "--reference", str(reference)]
+                       "--reference", str(side_references[side])]
             if documents is not None:
                 command += ["--documents", str(documents)]
             try:
@@ -97,7 +106,7 @@ def run(parent_app: Path, candidate_app: Path, rounds: int, output: Path,
                     for row in rows))
                 historical_match = historical_rows and all(row["match"] for row in rows)
                 attempt["complete"] = (report.get("complete") is True and
-                                       report.get("referenceSha256") == reference_hash and
+                                       report.get("referenceSha256") == side_reference_hashes[side] and
                                        report.get("appSha256") == app_hashes[side] and
                                        report.get("shaderSha256") == shader_hashes[side] and
                                        historical_rows and
@@ -117,13 +126,17 @@ def run(parent_app: Path, candidate_app: Path, rounds: int, output: Path,
             if parity.shader_hashes(app) != shader_hashes[side]:
                 attempt["complete"] = False
                 attempt["failure"] = "runtime shaders changed during capture"
-            if parity.sha256(reference) != reference_hash:
+            if (parity.sha256(reference) != reference_hash or any(
+                    parity.sha256(path) != side_reference_hashes[key]
+                    for key, path in side_references.items())):
                 attempt["complete"] = False
                 attempt["failure"] = "reference changed during capture"
             attempts.append(attempt)
             comparison = compare_rounds(captures["parent"], captures["candidate"])
             summary = {"schemaVersion": 1, "reference": str(reference),
                        "referenceSha256": reference_hash, "rounds": rounds,
+                       "sideReference": {side: str(path) for side, path in side_references.items()},
+                       "sideReferenceSha256": side_reference_hashes,
                        "appSha256": app_hashes, "shaderSha256": shader_hashes,
                        "attempts": attempts, **comparison}
             summary["complete"] = (len(attempts) == 2 * rounds and
@@ -146,6 +159,10 @@ def main() -> int:
                         default=Path(__file__).with_name("reference.json"))
     parser.add_argument("--parent-documents", type=Path)
     parser.add_argument("--candidate-documents", type=Path)
+    parser.add_argument("--parent-reference", type=Path,
+                        help="same image baseline and controls, with frozen parent document pins")
+    parser.add_argument("--candidate-reference", type=Path,
+                        help="same image baseline and controls, with frozen candidate document pins")
     parser.add_argument("--selftest", action="store_true")
     args = parser.parse_args()
     if args.selftest:
@@ -156,7 +173,8 @@ def main() -> int:
         parser.error("--parent-app, --candidate-app and --output are required")
     try:
         return 0 if run(args.parent_app, args.candidate_app, args.rounds, args.output,
-                        args.reference, args.parent_documents, args.candidate_documents) else 1
+                        args.reference, args.parent_documents, args.candidate_documents,
+                        args.parent_reference, args.candidate_reference) else 1
     except (OSError, ValueError, KeyError) as error:
         print(f"parity rounds refused: {error}", file=sys.stderr)
         return 1

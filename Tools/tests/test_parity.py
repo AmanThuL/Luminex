@@ -10,6 +10,30 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "Screenshots"))
 import parity
 
 
+class LightLabReferenceTests(unittest.TestCase):
+    def test_light_lab_requires_explicit_mode_and_exact_five_cases(self):
+        base = json.loads((Path(parity.__file__).with_name("reference.json")).read_text())
+        base["images"] = [{**row, "name": row["name"].replace("material-lab", "light-lab"),
+                           "scene": "light-lab"} for row in base["images"]
+                          if row["scene"] == "material-lab"]
+        base["documents"] = {"light-lab": "a" * 64}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "reference.json"
+            path.write_text(json.dumps(base))
+            with self.assertRaisesRegex(ValueError, "fifteen"):
+                parity.load_reference(path)
+            self.assertEqual(len(parity.load_reference(path, light_lab=True)["images"]), 5)
+            for member in ("images", "documents"):
+                bad = json.loads(json.dumps(base))
+                if member == "images":
+                    bad[member][-1] = bad[member][0]
+                else:
+                    bad[member] = {"sponza": "a" * 64}
+                path.write_text(json.dumps(bad))
+                with self.assertRaises(ValueError):
+                    parity.load_reference(path, light_lab=True)
+
+
 class DocumentHashTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()

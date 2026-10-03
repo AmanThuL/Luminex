@@ -4,8 +4,10 @@
 **Date:** 2026-10-03. The milestone remains `Accepted`; no owner acceptance or merge occurred.
 
 Tasks 1–11 are complete; Task 8 is `c888541` and tag `ux6-exporter`.
-Task 17 is also complete after isolated and combined gates plus separate review. Other remaining
-tasks are unstarted. The owner requested parallel work and explicitly approved reusing the idle
+Task 17 is also complete after isolated and combined gates plus separate review. Task 12 automatic
+checks and images ran. After the required image/native stop, the owner accepted the five
+MaterialLab reference updates and authorized native retries. Sphere edit/Save/relaunch and generic
+glTF import now pass as observed below. Tasks 13–16 and 18–22 are unstarted. The owner requested parallel work and explicitly approved reusing the idle
 Task 1 reviewer as Task 17's implementer after the agent interface refused a fresh thread.
 Task 9 and Task 17 have independent checkouts and reviewers. Other tasks use fresh agents.
 
@@ -43,7 +45,8 @@ commands and assertions are unchanged, with distinct logs and no previous-eviden
 | 9 | `8dd7563` | 13/13 passed; 348 Python tests | `task9-final2-gates.json` |
 | 10 | `6914efb` | 12/12 passed | `task10-final2-gates.json` |
 | 11 | `d66e2fe` | 13/13 passed; 356 Python tests | `task11-integration-gates.json` |
-| 17 | ImGuizmo commit | 13/13 passed; 359 Python tests | `task17-integration-gates.json` |
+| 17 | `6a7a338` | 13/13 passed; 359 Python tests | `task17-integration-gates.json` |
+| 12 | pending commit | 13/13 passed; 363 Python tests | `task12-accepted-gates.json` |
 
 ## Retained failures and resumptions
 
@@ -79,14 +82,14 @@ shader, instance ABI, MotionClass or workspace/capture/measurement schema change
 
 The unchanged pinned glTF validator passed 107 documents after export (six installed catalog
 and 101 writer fixtures). This does not certify full animation-pointer extension semantics.
-Tasks 12, 16 and 22 have not run. The standing eight-round App image matrix, five-mode LightLab
-images, full current GPU suite, completion-gate tasks and gizmo screenshot/GPU capture checks
-remain unverified. No image reference update or image acceptance occurred.
+Task 12's measurements below supersede the formerly unrun image/GPU gate status.
+Tasks 16 and 22, completion-gate tasks and gizmo screenshot/GPU capture checks remain unverified.
+The scoped MaterialLab reference acceptance is recorded below; original failed gates remain failed.
 
-No real App authoring gesture has been exercised: former generated object pose edit, Save,
-relaunch/reload, generic glTF viewer opening, static fields/reasons/Enabled persistence, each
-gizmo tool and space, Inspector synchronization, Escape and drag-state transitions, point/spot
-light operations, shortcuts, RMB flight and final persistence all remain unverified.
+Task 12 exercised a saved sphere pose edit, Save, fresh launch/reload and Blender glTF import.
+Static fields/reasons/Enabled persistence, each gizmo tool and space, Inspector synchronization,
+Escape and drag-state transitions, point/spot light operations, shortcuts, RMB flight and final
+persistence remain unverified.
 Mobility and the gizmo are not implemented yet. No integration tag, push or PR exists.
 
 ## Task 9 — Generator retirement
@@ -155,3 +158,82 @@ review. After integration all 13 combined commands passed, including 359 Python 
 root `--link` dependency check also passed. All seven reviewed file hashes still match.
 Evidence: `task17-dependency.json`, `task17-integration-boundary.json` and integration logs.
 The owner's approved agent reuse is recorded above. Gizmo drawing and gestures remain unverified.
+
+## Task 12 — Checkpoint measurements and required stops
+
+The standing eight-round AB/BA run completed all 240 captures. Exact parent-observed hash
+comparison passed **10/15 cases** and failed all five MaterialLab cases; the gate as a whole
+failed. MaterialLab has one stable hash per side in each mode. TemporalLab passed all five
+modes in all eight paired rounds. Sponza passed the five-case parent-hash comparison, but the
+full-scale MetalFX pair differed in round 4: the parent produced a second hash while the
+candidate stayed stable. Sponza paired equality is **39/40**, TemporalLab **40/40**. The parent
+matched the historical baseline 15/15 in seven rounds and 14/15 in round 4; the candidate
+matched 10/15 in every round. No tolerance or acceptance is inferred from these controls.
+
+| Case | Differing RGB pixels | Pixels >8 | Max channel delta | Mean absolute RGB delta |
+|---|---:|---:|---:|---:|
+| MaterialLab Off | 1,802 | 1,802 | 141 | 0.172081 |
+| MaterialLab Native TAA 1 | 1,885 | 1,847 | 141 | 0.163685 |
+| MaterialLab Native TAA 0.5 | 2,894 | 2,207 | 145 | 0.165203 |
+| MaterialLab MetalFX 1 | 39,552 | 1,910 | 141 | 0.187946 |
+| MaterialLab MetalFX 0.5 | 35,272 | 2,176 | 141 | 0.189113 |
+| Sponza MetalFX 1, round 4 | 235,376 | 0 | 2 | 0.097531 |
+
+Every other standing pair has zero RGB difference and identical BMP bytes. MaterialLab rows
+above repeat identically in all eight pairs. Both sides' MaterialLab logs report the unavailable
+Helmet offline mip chain and load-time fallback; the comparison does not certify the baked path.
+Original parent/candidate BMPs, all paired metrics and six before/after/difference visuals remain
+in `task12-standing-rounds/` and `task12-image-review/metrics.json`. Difference visuals magnify
+absolute RGB deltas eightfold; they do not change the captures or the equality gate.
+
+LightLab direct `parity.py` runs passed **5/5 modes**, **10/10 paired images**, in two AB/BA
+pairs. A separately retained parent pilot establishes only an external measured parent baseline;
+its initial zero-placeholder reference matches 0/5 by construction, and is not a renderer gate.
+The original live standing reference was unchanged during these captures. Full `MTL_DEBUG_LAYER=1 xmake test -P . Tests/gpu`
+passed (48.977 s). The pinned validator passed all **107 documents** after the explicitly recorded
+positive writer fixture refresh (66 assertions). Task 12 tool checks passed **13/13**, including
+363 Python tests; separate review passed 18 targeted tests, 10/9 selftests and four CLI probes.
+All App/runtime-shader/document freeze hashes matched their pins after captures. The old
+reference and side-specific capture references are retained unchanged outside the checkout.
+
+The original shared document-pin preflight passed for the parent and refused the candidate's
+new Sponza JSON hash before rendering. Four reviewed tool files add side-specific frozen document
+pins, with every image hash and other reference field required to match the common anchor, and
+an explicit five-mode LightLab option. Default fifteen-case checks, existing test assertions,
+Khronos validation, comparison rules and capture controls are preserved. These additions expand
+the Task 12 file list. Tests-first API failures and a macOS `/var` versus `/private/var` fixture
+path correction remain in `task12-tool-red.log`, `task12-tool-green.log` and `green2.log`.
+
+**Retained required stop:** native automation failed to attach to the copied candidate QA bundle three
+times: two `timeoutReached` failures, then `AXError.cannotComplete` after correcting its executable
+registration. Execution stopped before further input. At that stop the real App had
+38 MaterialLab objects, but native authoring and Blender import had not been exercised. Evidence:
+`task12-native/attachment-attempts.json`, `native-app.log`, `task12-checkpoint-state.json`.
+
+The owner replied "yes accept" to the five MaterialLab reference updates and native retry request.
+Only those five image hashes and three current document pins changed in `reference.json`, with
+scoped acceptance metadata. Sponza/TemporalLab image hashes, exact comparisons and tolerances
+are unchanged. `task12-owner-reference-acceptance.json` preserves before/after hashes. The original
+10/15 failed gate and Sponza parent-repeat discrepancy remain measured failures/differences.
+Retained candidate captures match the approved reference **15/15 in each of eight rounds**.
+This is hash reconciliation of existing captures, not a new capture run or parent parity pass;
+`task12-accepted-reference-reconciliation.json` preserves that distinction.
+
+After authorization, CUA attached by the QA App's display name. The prior attachment failure's
+cause remains unproven. In a separate document copy, `material-lab sphere r0c0` changed from
+`[-3,-3,0]` to `[-2.5,-3,0]` in Inspector; Cmd+S cleared the dirty title. Only that JSON changed.
+The original process exited; fresh PID 25640 loaded the copy and Inspector showed the saved
+pose with a clean title. `task12-native/saved-pose.json` records file hash, PIDs and observations.
+
+Blender 5.2.1 LTS imported the frozen unedited document through File > Import > glTF 2.0.
+The sphere grid, probe geometry and Lights appeared; the selected first sphere showed Blender's
+converted location `[-3,0,-3]`. An initial empty-filename attempt reported "Please select a file";
+entering the explicit filename succeeded. This verifies generic glTF opening, not external
+LMX asset loading or full rendered material appearance. `task12-native/generic-viewer.json`
+records the route and limits. Original native screenshots are displayed in the conversation;
+no local screenshot file was saved. Later slice/completion gates remain unverified. No milestone
+owner acceptance, integration tag, push, PR or merge has occurred.
+
+The final accepted-reference build/CPU/format/direct-policy run passed **13/13 commands**,
+including 363 Python tests. Separate final review independently verified 306 evidence checks
+and all 18 targeted tests. Task 12 is complete; original failed measurements remain above.
