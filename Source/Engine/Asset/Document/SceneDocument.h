@@ -169,10 +169,16 @@ AssetResult<SceneDocument> readSceneDocument(const std::filesystem::path& path);
 /// bufferUri is a decoded relative filesystem path; this function percent-encodes it once, just
 /// like asset/HDRI paths stored in the model.
 std::string sceneDocumentJson(const SceneDocument& doc, std::string_view bufferUri);
+/// Whether model validation re-reads immutable content bytes.
+enum class ContentBytes {
+    Verify,  ///< Rechecks vertex values, the geometry hash and every image's hash and pixels.
+    Trusted, ///< Skips those byte checks for content already verified when it was read.
+};
 /// Checks the model invariants a write depends on: finite numbers, valid enums, bounded local
 /// lights and consistent animations. Errors name a JSON pointer; sceneDocumentJson requires
-/// success.
-AssetResult<void> validateSceneDocumentModel(const SceneDocument& doc);
+/// success. Pass Trusted only for content shared unchanged with a document that was read.
+AssetResult<void> validateSceneDocumentModel(const SceneDocument& doc,
+                                             ContentBytes bytes = ContentBytes::Verify);
 /// Returns standard little-endian FLOAT animation data in deterministic accessor order.
 std::vector<std::byte> sceneDocumentBuffer(const SceneDocument& doc);
 /// Returns immutable vertices then indices for each geometry, four-byte aligned in model order.

@@ -122,6 +122,9 @@ AssetResult<void> checkTextureFolder(const std::filesystem::path& folder,
     for (std::filesystem::directory_iterator it(folder, ec), end; !ec && it != end;
          it.increment(ec)) {
         const auto name = it->path().filename();
+        // Hidden entries such as Finder's .DS_Store are never companions and never written.
+        if (name.string().starts_with('.'))
+            continue;
         const bool known = std::any_of(companions.begin(), companions.end(), [&](const auto& c) {
             return c.relative.parent_path() == folder.filename() && c.relative.filename() == name;
         });

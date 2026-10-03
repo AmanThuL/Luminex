@@ -30,6 +30,9 @@ glm::quat rotationForCamera(float yaw, float pitch);
 /// Preserves quaternion-derived zero signs; translation and signed or nonuniform scale stay
 /// untouched.
 glm::vec3 eulerDegreesForRotation(glm::quat rotation);
+/// Returns the Y * X * Z seed quaternion for finite XYZ degrees, the nearest saved form when no
+/// exact preimage exists; nonfinite degrees assert.
+glm::quat rotationForEulerDegrees(glm::vec3 eulerDegrees);
 /// Searches at most ±4 float ULPs per Y * X * Z seed quaternion component.
 /// A zero seed also searches its opposite signed zero, which nextafter skips.
 /// Returns only a bitwise exact Euler decoding; invalid or unmatched degrees return nullopt.

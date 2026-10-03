@@ -1217,6 +1217,36 @@ TEST_CASE("content save receipt covers JSON and animation only and adopts a clea
 }
 
 //======================================================================================================================
+TEST_CASE("a mesh rotation without an exact quaternion saves, adopts and stays clean",
+          "[gpu][app][document-save][ux6-mesh-export]") {
+    auto device = rojoRHI::createDevice();
+    REQUIRE(device);
+    scenes::SceneLibrary library(**device);
+    auto doc = test::contentDocument();
+    doc.nodes[1].mobility = asset::DocMobility::Movable;
+    const auto path = savePath("mesh-rotation", doc);
+    auto id = scenes::sceneIdFromPath(path);
+    REQUIRE(library.get(id));
+    app::SceneSession session;
+    session.activate(*library.loaded(id), app::SceneActivationMotion::Reset);
+    const auto index = session.loadedScene()->binding.nodes[1].objects.front();
+    const glm::vec3 angles(100, 0, 0);
+    REQUIRE_FALSE(asset::exactRotationForEulerDegrees(angles));
+    auto pose = session.objectDefault(index);
+    pose.eulerDegrees = angles;
+    REQUIRE(session.editObject(index, pose));
+    REQUIRE(dirty(session));
+    REQUIRE(app::saveSessionDocument(library, session, id, path, false));
+    CHECK_FALSE(dirty(session));
+    const auto reloaded = asset::readSceneDocument(path);
+    REQUIRE(reloaded);
+    CHECK(reloaded->nodes[1].rotation == asset::rotationForEulerDegrees(angles));
+    CHECK(session.scene().objects[index].eulerDegrees ==
+          asset::eulerDegreesForRotation(reloaded->nodes[1].rotation));
+    (*device)->waitIdle();
+}
+
+//======================================================================================================================
 TEST_CASE("saved mesh selection survives Save and verified proposal reload",
           "[gpu][app][document-save][ux6-mesh-export]") {
     auto device = rojoRHI::createDevice();

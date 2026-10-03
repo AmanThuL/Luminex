@@ -122,7 +122,7 @@ asset::AssetResult<void> exportImported(asset::SceneDocument& doc,
 //======================================================================================================================
 asset::AssetResult<void> exportMeshes(asset::SceneDocument& doc,
                                       const engine::SceneBinding& binding,
-                                      const engine::Scene& scene) {
+                                      const engine::Scene& scene, ExportReport* report) {
     for (uint32_t n = 0; n < doc.nodes.size(); ++n) {
         auto& node = doc.nodes[n];
         if (!node.mesh)
@@ -135,18 +135,17 @@ asset::AssetResult<void> exportMeshes(asset::SceneDocument& doc,
             continue;
         const auto pose = objectPose(scene.objects.at(index));
         const std::string pointer = "/nodes/" + std::to_string(n);
-        if (!isFinite(pose.translation) || !isFinite(pose.scale))
-            return std::unexpected(
-                asset::AssetError{asset::AssetErrorCode::Malformed,
-                                  pointer + "/pose: translation and scale must be finite"});
+        if (!isFinite(pose.translation) || !isFinite(pose.eulerDegrees) || !isFinite(pose.scale))
+            return std::unexpected(asset::AssetError{
+                asset::AssetErrorCode::Malformed,
+                pointer + "/pose: translation, rotation and scale must be finite"});
         if (!same(asset::eulerDegreesForRotation(node.rotation), pose.eulerDegrees)) {
-            const auto exact = asset::exactRotationForEulerDegrees(pose.eulerDegrees);
-            if (!exact)
-                return std::unexpected(asset::AssetError{
-                    asset::AssetErrorCode::Unsupported,
-                    pointer + "/rotation: object Euler degrees have no exact glTF quaternion "
-                              "in the bounded search"});
-            node.rotation = *exact;
+            if (const auto exact = asset::exactRotationForEulerDegrees(pose.eulerDegrees)) {
+                node.rotation = *exact;
+            } else {
+                node.rotation = asset::rotationForEulerDegrees(pose.eulerDegrees);
+                note(report, n, "object rotation");
+            }
         }
         node.translation = pose.translation;
         node.scale = pose.scale;
@@ -315,7 +314,7 @@ asset::AssetResult<asset::SceneDocument> exportSceneDocument(const engine::Loade
         doc.nodes[n].enabled = state.nodeEnabled[n];
     if (auto imported = exportImported(doc, loaded.binding, scene, state); !imported)
         return std::unexpected(imported.error());
-    if (auto meshes = exportMeshes(doc, loaded.binding, scene); !meshes)
+    if (auto meshes = exportMeshes(doc, loaded.binding, scene, report); !meshes)
         return std::unexpected(meshes.error());
     if (auto lights = exportLights(doc, loaded.binding, scene, report); !lights)
         return std::unexpected(lights.error());
@@ -323,7 +322,9 @@ asset::AssetResult<asset::SceneDocument> exportSceneDocument(const engine::Loade
         if (auto camera = exportCamera(doc, *state.sceneCamera, report); !camera)
             return std::unexpected(camera.error());
     // Nonfinite look or lens values would abort canonical formatting; report them like the rest.
-    if (auto valid = asset::validateSceneDocumentModel(doc); !valid)
+    // Content is shared unchanged with the loaded document, whose bytes the reader verified, so
+    // per-edit exports skip rehashing and decoding it; Save verifies it again before writing.
+    if (auto valid = asset::validateSceneDocumentModel(doc, asset::ContentBytes::Trusted); !valid)
         return std::unexpected(valid.error());
     return doc;
 }

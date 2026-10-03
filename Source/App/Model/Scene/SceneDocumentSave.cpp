@@ -187,8 +187,16 @@ asset::AssetResult<void> saveSessionDocument(scenes::SceneLibrary& library, Scen
     // is clean; exact ones already match.
     for (const auto& approximation : report.approximations) {
         const auto& binding = saved.binding.nodes.at(approximation.node);
-        const auto direction =
-            asset::directionForRotation(saved.document.nodes.at(approximation.node).rotation);
+        const auto rotation = saved.document.nodes.at(approximation.node).rotation;
+        if (saved.document.nodes.at(approximation.node).mesh) {
+            LMX_ASSERT(binding.objects.size() == 1,
+                       "a document mesh node binds exactly one object");
+            auto& object = session.scene().objects.at(binding.objects.front());
+            object.eulerDegrees = asset::eulerDegreesForRotation(rotation);
+            object.previousModel = object.modelMatrix();
+            continue;
+        }
+        const auto direction = asset::directionForRotation(rotation);
         if (binding.directional) {
             session.scene().lights[*binding.directional].direction = direction;
         } else if (binding.light) {

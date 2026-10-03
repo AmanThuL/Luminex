@@ -1338,8 +1338,13 @@ void Reader::content(SceneDocument& doc) {
     const auto meshes = optional(m_root, "meshes");
     auto content = std::make_shared<DocContent>();
     const auto textures = images(*content);
-    if (!meshes || array(*meshes) == 0)
+    if (!meshes || array(*meshes) == 0) {
+        // Save would drop unreferenced content, so refuse it instead of losing it silently.
+        for (const char* key : {"materials", "textures", "images", "samplers"})
+            if (const auto entry = optional(m_root, key); entry && array(*entry) > 0)
+                fail(entry->path(), "content requires meshes");
         return;
+    }
     content->geometrySha256 = sha256Hex(m_geometryBytes);
     const auto materials = required(m_root, "materials");
     for (size_t i = 0, count = array(materials); i < count && !m_error; ++i)

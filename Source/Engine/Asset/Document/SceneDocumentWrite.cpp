@@ -563,10 +563,10 @@ std::string sceneDocumentJson(const SceneDocument& doc, std::string_view bufferU
 }
 
 //======================================================================================================================
-AssetResult<void> validateSceneDocumentModel(const SceneDocument& doc) {
+AssetResult<void> validateSceneDocumentModel(const SceneDocument& doc, ContentBytes bytes) {
     if (auto valid = finiteModel(doc); !valid)
         return valid;
-    return detail::validateDocumentContent(doc);
+    return detail::validateDocumentContent(doc, bytes);
 }
 
 //======================================================================================================================

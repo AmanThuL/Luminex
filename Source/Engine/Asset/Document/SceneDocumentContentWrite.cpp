@@ -142,7 +142,7 @@ AssetResult<void> detail::validateImageName(std::string_view name, size_t index,
 }
 
 //======================================================================================================================
-AssetResult<void> detail::validateDocumentContent(const SceneDocument& doc) {
+AssetResult<void> detail::validateDocumentContent(const SceneDocument& doc, ContentBytes bytes) {
     if (doc.schemaVersion != 1 && doc.schemaVersion != kSceneDocumentSchema)
         return invalid("/extensions/LMX_scene/schemaVersion", "unsupported schema version");
     if (doc.bounds) {
@@ -178,9 +178,12 @@ AssetResult<void> detail::validateDocumentContent(const SceneDocument& doc) {
         referenced[mesh.geometry] = true;
     if (std::ranges::find(referenced, false) != referenced.end())
         return invalid("/meshes", "every geometry must be referenced by a mesh");
+    const bool verify = bytes == ContentBytes::Verify;
     for (const auto& geometry : doc.content->geometries) {
         if (geometry.vertices.empty() || geometry.indices.empty() || geometry.indices.size() % 3)
             return invalid("/meshes", "geometry requires vertices and triangle indices");
+        if (!verify)
+            continue;
         for (const auto& vertex : geometry.vertices)
             for (float value : std::bit_cast<std::array<float, 12>>(vertex))
                 if (!std::isfinite(value))
@@ -189,7 +192,7 @@ AssetResult<void> detail::validateDocumentContent(const SceneDocument& doc) {
             if (index >= geometry.vertices.size())
                 return invalid("/meshes", "vertex index out of range");
     }
-    if (sha256Hex(sceneDocumentGeometry(doc)) != doc.content->geometrySha256)
+    if (verify && sha256Hex(sceneDocumentGeometry(doc)) != doc.content->geometrySha256)
         return invalid("/extensions/LMX_scene/contentHashes",
                        "geometry bytes do not match the model hash");
     for (size_t i = 0; i < doc.content->images.size(); ++i) {
@@ -198,6 +201,8 @@ AssetResult<void> detail::validateDocumentContent(const SceneDocument& doc) {
         if (auto name = validateImageName(image.name, i, std::span(doc.content->images).first(i));
             !name)
             return name;
+        if (!verify)
+            continue;
         if (sha256Hex(image.file) != image.sha256)
             return invalid(path + "/uri", "PNG bytes do not match the model hash");
         const auto decoded = readPng(std::span<const std::byte>(image.file));

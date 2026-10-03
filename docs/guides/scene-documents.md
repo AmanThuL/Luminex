@@ -97,7 +97,9 @@ Documents are glTF 2.0 with `KHR_lights_punctual` and `LMX_scene` schema 2. Save
 POSITION/NORMAL/TANGENT/TEXCOORD_0, uint32 indices, material primitives and PNG textures. Shared
 geometry stays immutable; the reader verifies `contentHashes` for geometry/images before decoding
 and GPU allocation. JSON and animation are canonical editable files, separate from immutable
-`.scene.geometry.bin` and image content. Saving refuses foreign companion content before staging.
+`.scene.geometry.bin` and image content. Saving refuses foreign companion content before staging;
+hidden entries such as Finder's `.DS_Store` are ignored. Materials, textures, images or samplers
+without meshes fail to load rather than being dropped.
 The loaded hash is raw JSON then animation bytes; geometry/images enter through `contentHashes`.
 
 Legacy schema 1 remains readable: objects default Static and authored lights Movable. Save upgrades to

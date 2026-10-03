@@ -527,7 +527,7 @@ TEST_CASE("schema 1 remains mesh-free and schema 2 without meshes has no content
 }
 
 //======================================================================================================================
-TEST_CASE("schema 2 validates orphan image references without retaining content",
+TEST_CASE("schema 2 validates orphan image references and refuses content without meshes",
           "[asset][scene-document-content]") {
     Fixture fixture;
     replace(fixture.json, "\"meshes\":", "\"unusedMeshes\":");
@@ -541,10 +541,8 @@ TEST_CASE("schema 2 validates orphan image references without retaining content"
         replace(fixture.json, "\"cube.scene.textures/color.png\":", "\"wrong.png\":");
         failsAt(fixture, "/images/0/uri");
     }
-    SECTION("verified orphan image") {
-        const auto doc = fixture.read();
-        REQUIRE(doc);
-        CHECK_FALSE(doc->content);
+    SECTION("verified orphan content is refused rather than dropped") {
+        failsAt(fixture, "/materials");
     }
 }
 
@@ -678,6 +676,33 @@ TEST_CASE("content save refuses foreign targets and invalid image names before s
     CHECK_FALSE(fs::exists(fixture.path));
     CHECK(std::distance(fs::directory_iterator(fixture.directory), fs::directory_iterator{}) ==
           entries);
+}
+
+//======================================================================================================================
+TEST_CASE("trusted content validation skips only the immutable byte checks",
+          "[asset][scene-document-content][ux6-write]") {
+    auto doc = lmx::test::contentDocument();
+    REQUIRE(validateSceneDocumentModel(doc));
+    auto content = std::make_shared<DocContent>(*doc.content);
+    content->geometrySha256 = std::string(64, '0');
+    content->images[0].sha256 = std::string(64, '0');
+    doc.content = content;
+    const auto verified = validateSceneDocumentModel(doc);
+    REQUIRE_FALSE(verified);
+    CHECK(verified.error().message.contains("/extensions/LMX_scene/contentHashes"));
+    CHECK(validateSceneDocumentModel(doc, ContentBytes::Trusted));
+    doc.meshes[0].geometry = 7;
+    CHECK_FALSE(validateSceneDocumentModel(doc, ContentBytes::Trusted));
+}
+
+//======================================================================================================================
+TEST_CASE("content save ignores hidden entries in the texture folder",
+          "[asset][scene-document-content][ux6-write]") {
+    Fixture fixture;
+    const auto doc = lmx::test::contentDocument();
+    writeBytes(fixture.directory / "cube.scene.textures" / ".DS_Store", {});
+    REQUIRE(saveSceneDocument(doc, fixture.path));
+    CHECK(fs::exists(fixture.directory / "cube.scene.textures" / ".DS_Store"));
 }
 
 //======================================================================================================================

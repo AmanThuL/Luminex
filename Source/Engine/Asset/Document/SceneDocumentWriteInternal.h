@@ -20,8 +20,8 @@ std::string imageUri(std::string_view bufferUri, const DocImage& image);
 /// Checks a safe image filename stem against preceding images, with case-folded uniqueness.
 AssetResult<void> validateImageName(std::string_view name, size_t index,
                                     std::span<const DocImage> previous);
-/// Checks content indices, finite factors, filenames and immutable model hashes before writing.
-AssetResult<void> validateDocumentContent(const SceneDocument& doc);
+/// Checks content indices, finite factors, filenames and, unless trusted, immutable bytes.
+AssetResult<void> validateDocumentContent(const SceneDocument& doc, ContentBytes bytes);
 /// Appends geometry buffer views after the animation views in the open JSON array.
 void geometryViews(JsonWriter& writer, const SceneDocument& doc);
 /// Appends geometry accessors after animation accessors in the open JSON array.

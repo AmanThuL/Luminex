@@ -845,7 +845,7 @@ TEST_CASE("mesh TRS animation excludes pose export but emissive animation does n
 }
 
 //======================================================================================================================
-TEST_CASE("mesh export refuses unrepresentable Euler edits without approximation",
+TEST_CASE("mesh export saves the nearest quaternion for unrepresentable Euler edits",
           "[scene-export][ux6-mesh-export]") {
     engine::LoadedScene loaded{.scene = std::make_unique<engine::Scene>()};
     loaded.document = test::contentDocument();
@@ -855,15 +855,34 @@ TEST_CASE("mesh export refuses unrepresentable Euler edits without approximation
     loaded.binding.nodes[2].objects = {1};
     loaded.scene->objects.push_back({.scale = loaded.document.nodes[2].scale});
     auto state = scenes::initialDocumentState(loaded);
-    for (const auto angles : {glm::vec3(0, 360, 0), glm::vec3(100, 0, 0),
-                              glm::vec3(0, std::numeric_limits<float>::quiet_NaN(), 0)}) {
+    for (const auto angles : {glm::vec3(0, 360, 0), glm::vec3(100, 0, 0)}) {
         loaded.scene->objects[0].eulerDegrees = angles;
         scenes::ExportReport report;
         auto result = scenes::exportSceneDocument(loaded, *loaded.scene, state, &report);
-        REQUIRE_FALSE(result);
-        CHECK(result.error().message.contains("/nodes/1/rotation"));
-        CHECK(report.approximations.empty());
+        REQUIRE(result);
+        REQUIRE(report.approximations.size() == 1);
+        CHECK(report.approximations[0].node == 1);
+        CHECK(report.approximations[0].what == "object rotation");
+        CHECK(result->nodes[1].rotation == asset::rotationForEulerDegrees(angles));
+        // After Save adopts the saved node and its decoded value, the next export keeps the
+        // saved quaternion unchanged.
+        const auto original = loaded.document.nodes[1].rotation;
+        loaded.document.nodes[1].rotation = result->nodes[1].rotation;
+        loaded.scene->objects[0].eulerDegrees =
+            asset::eulerDegreesForRotation(result->nodes[1].rotation);
+        scenes::ExportReport again;
+        const auto adopted = scenes::exportSceneDocument(loaded, *loaded.scene, state, &again);
+        REQUIRE(adopted);
+        CHECK(again.approximations.empty());
+        CHECK(adopted->nodes[1].rotation == result->nodes[1].rotation);
+        loaded.document.nodes[1].rotation = original;
     }
+    loaded.scene->objects[0].eulerDegrees = {0, std::numeric_limits<float>::quiet_NaN(), 0};
+    scenes::ExportReport report;
+    auto result = scenes::exportSceneDocument(loaded, *loaded.scene, state, &report);
+    REQUIRE_FALSE(result);
+    CHECK(result.error().message.contains("/nodes/1/pose"));
+    CHECK(report.approximations.empty());
 }
 
 //======================================================================================================================
