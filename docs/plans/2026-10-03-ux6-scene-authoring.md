@@ -82,7 +82,7 @@ Waves: W1 Tasks 1–12 (UX6.1), W2 13–16 (UX6.2), W3 17–22 (UX6.3). Tasks 2 
 
 ### Task 11: Document validation tool (UX6.1)
 **Files:** `Tools/Scenes/validate_documents.py`, `Tools/tests/test_validate_documents.py`.
-- [ ] Tests first, then implement: for every catalog document, each `contentHashes` entry's file exists and matches; a missing entry for a referenced URI fails; `--selftest` runs these on a temporary fixture without the Khronos validator. The Khronos run is unchanged. Commit `tool: check document content hashes (UX6)`.
+- [x] Tests first, then implement: for every catalog document, each `contentHashes` entry's file exists and matches; a missing entry for a referenced URI fails; `--selftest` runs these on a temporary fixture without the Khronos validator. The Khronos run is unchanged. Commit `tool: check document content hashes (UX6)`.
 
 ### Task 12: UX6.1 checkpoint (main thread)
 - [ ] `python3 Tools/Screenshots/parity_rounds.py --parent-app … --candidate-app … --rounds 8 --parent-documents … --candidate-documents …` for the 15 standing cases, plus the same five modes for `light-lab` run by `parity.py` directly; `MTL_DEBUG_LAYER=1 xmake test -P . Tests/gpu`; `python3 Tools/Scenes/validate_documents.py`. Expected: Sponza identical; MaterialLab differs (axis station); TemporalLab and LightLab identical. Write results as measured into `docs/milestones/ux/ux6-validation.md`. In the App: edit a MaterialLab sphere's pose, Save, relaunch, confirm it persisted; open `material-lab.scene.gltf` in a generic glTF viewer if one is installed, else record unverified.

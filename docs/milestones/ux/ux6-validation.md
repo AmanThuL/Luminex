@@ -3,9 +3,8 @@
 **Status:** In progress
 **Date:** 2026-10-03. The milestone remains `Accepted`; no owner acceptance or merge occurred.
 
-Tasks 1–10 are complete; Task 8 is `c888541` and tag `ux6-exporter`.
-Task 17 passed its isolated gates and separate review; integration is pending. Task 11 is running
-in its own isolated checkout. Other remaining tasks
+Tasks 1–11 are complete; Task 8 is `c888541` and tag `ux6-exporter`.
+Task 17 passed its isolated gates and separate review; integration is pending. Other remaining tasks
 are unstarted. The owner requested parallel work and explicitly approved reusing the idle
 Task 1 reviewer as Task 17's implementer after the agent interface refused a fresh thread.
 Task 9 and Task 17 have independent checkouts and reviewers. Other tasks use fresh agents.
@@ -42,7 +41,8 @@ commands and assertions are unchanged, with distinct logs and no previous-eviden
 | 7 | `11264c55` | 12/12 passed | `task7-final-gates.json` |
 | 8 | `ux6-exporter` | 13/13 passed; 348 Python tests | `task8-sidecar-final-gates.json` |
 | 9 | `8dd7563` | 13/13 passed; 348 Python tests | `task9-final2-gates.json` |
-| 10 | Generated-row commit | 12/12 passed | `task10-final2-gates.json` |
+| 10 | `6914efb` | 12/12 passed | `task10-final2-gates.json` |
+| 11 | Content-hash commit | 13/13 passed; 356 Python tests | `task11-integration-gates.json` |
 
 ## Retained failures and resumptions
 
@@ -125,3 +125,21 @@ test explicitly opens its newly default-collapsed generator. Final focused and i
 runs passed 27 cases/188 assertions. The first full run failed policy on four test tag/path
 narration tokens; only those tokens changed. Its exact process tree was cancelled before
 refreezing sources. The fresh full run passed all 12 commands. Evidence: `task10-final-summary.json`.
+
+## Task 11 — Immutable content hashes
+
+The validation tool checks every catalog geometry/image reference and declared content hash,
+with URI-specific failure paths and a validator-free temporary-fixture selftest. Legacy/default
+schema 1 keeps its safe single animation buffer under arbitrary relative `.bin` names; schema 2
+excludes only its named animation buffer. Khronos invocation, report parsing and discovery are
+unchanged. Tests-first evidence and two separate reviews cover the final two Python files.
+The isolated and combined integration runs each passed all 13 commands; the combined Tools
+suite passed 356 tests. Final sources match `task11-legacy-fixed-evidence.json`.
+
+The isolated validator initially reported three IO errors because an existing negative native
+test deletes a shared writer fixture's immutable companions. The existing positive round-trip
+writer case refreshed that fixture (66 assertions, one case); the unchanged pinned validator
+then passed all 97 isolated documents. The combined run rebuilt Tests and explicitly repeated
+that positive writer case before validation: all 107 documents passed (six catalog, 101 writer).
+No discovery, assertion or hash check was weakened. Original failure and refresh logs remain
+in the evidence directory. Writer output stability after arbitrary CPU test ordering is unverified.
