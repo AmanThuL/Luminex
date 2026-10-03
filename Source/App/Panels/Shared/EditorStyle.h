@@ -96,7 +96,8 @@ bool activityStrip(const Activity& activity, bool showVerb = true);
 void setNextFieldProvenance(std::optional<ProvenanceMark> mark);
 /// Draws and clears the pending field mark beside the preceding label, if any.
 void consumeFieldProvenance();
-/// Space reserved beside a field label for its pending mark, including the gap.
+/// Space always reserved beside a field label for a mark, including the gap, so a mark that
+/// appears or clears never changes the row's layout.
 float fieldProvenanceWidth();
 
 /// Minimum property-grid width in base UI points before labels stack above values.
