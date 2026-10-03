@@ -194,6 +194,7 @@
         "Source/App/Panels/Graph/RenderGraphPanelInternal.h",
         "Source/App/Panels/Scene/ScenePanel.h",
         "Source/App/Panels/Viewport/ViewportPanel.h",
+        "Source/App/Panels/Viewport/ViewportGizmo.h",
         "Source/App/Headless/Screenshot.h",
         "Source/App/Panels/Shared/ActionFeedback.h",
         "Source/App/Panels/Shared/EditorStyle.h",

@@ -8,6 +8,8 @@
 #include "App/Model/Rendering/Settings/DebugView.h"
 #include "App/Model/Rendering/Temporal/DiagnosticLegend.h"
 #include "App/Panels/Shared/EditorStyle.h"
+#include "App/Panels/Viewport/ViewportGizmo.h"
+#include "Core/Diagnostics/Log.h"
 #include "Render/Passes/Occlusion/HzbStage.h"
 #include <rojoRHI/Metal4/Metal4ImGui.h>
 
@@ -220,7 +222,7 @@ ViewportPanelResult drawViewportPanel(bool& open, const ViewportPanelContext& co
     ImGui::PushStyleColor(ImGuiCol_WindowBg, editor_style::color(ThemeRole::SurfaceViewport));
     const bool visible = ImGui::Begin(kViewportPanelWindowName, &open);
     ImGui::PopStyleColor();
-    if (visible) {
+    if (visible && open) {
         const auto available = ImGui::GetContentRegionAvail();
         const float border = ImGui::GetStyle().ImageBorderSize;
         const ImVec2 imageSize(available.x - 2.0f * border, available.y - 2.0f * border);
@@ -246,12 +248,23 @@ ViewportPanelResult drawViewportPanel(bool& open, const ViewportPanelContext& co
             if (chip.hovered)
                 result.hovered = false;
             drawOcclusionOverlay(context, origin, imageSize, chip.bottom);
+            if (context.gizmo) {
+                const auto gizmo = drawViewportGizmo(*context.gizmo, origin, imageSize);
+                if (gizmo.hovered)
+                    result.hovered = false;
+                if (gizmo.edited)
+                    requestCameraCut(context.temporalState);
+                if (!gizmo.error.empty())
+                    LMX_LOG_WARN("Gizmo: {}", gizmo.error);
+            }
             const auto scale = ImGui::GetWindowViewport()->FramebufferScale;
             result.backingScale = scale.x;
             result.width = toPixels(imageSize.x, scale.x);
             result.height = toPixels(imageSize.y, scale.y);
         }
     }
+    if (!result.measured && context.gizmo)
+        drawViewportGizmo(*context.gizmo, {}, {});
     ImGui::End();
     return result;
 }

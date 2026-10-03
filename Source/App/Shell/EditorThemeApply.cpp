@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "App/Shell/EditorThemeApply.h"
 
+#include "App/Panels/Viewport/ViewportGizmo.h"
 #include "Core/Diagnostics/Assert.h"
 
 #include <imgui.h>
@@ -29,6 +30,29 @@ void applyNodeEditorColors(ax::NodeEditor::Style& style, const ThemePalette& pal
         const auto c = palette[static_cast<std::size_t>(slot.role)];
         style.Colors[i] = {c.r, c.g, c.b, c.a * slot.alphaScale};
     }
+}
+
+//======================================================================================================================
+void applyViewportGizmoColors(const ThemePalette& palette) {
+    const auto color = [&](ThemeRole role, float alpha = 1.0f) {
+        const auto value = palette[static_cast<std::size_t>(role)];
+        return ImVec4(value.r, value.g, value.b, value.a * alpha);
+    };
+    setViewportGizmoColors({
+        .axis = {color(ThemeRole::StatusError), color(ThemeRole::StatusSuccess),
+                 color(ThemeRole::StatusInfo)},
+        .plane = {color(ThemeRole::StatusError, 0.38f), color(ThemeRole::StatusSuccess, 0.38f),
+                  color(ThemeRole::StatusInfo, 0.38f)},
+        .selection = color(ThemeRole::AccentOperator),
+        .inactive = color(ThemeRole::TextDisabled),
+        .translation = color(ThemeRole::OverlayText),
+        .scale = color(ThemeRole::OverlayText),
+        .rotationBorder = color(ThemeRole::AccentOperator),
+        .rotationFill = color(ThemeRole::AccentOperator, 0.30f),
+        .hatch = color(ThemeRole::SurfaceViewport),
+        .text = color(ThemeRole::OverlayText),
+        .textShadow = color(ThemeRole::SurfaceViewport),
+    });
 }
 
 //======================================================================================================================
