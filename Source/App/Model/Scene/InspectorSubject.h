@@ -30,7 +30,8 @@ struct InspectorEnabledState {
 std::optional<InspectorEnabledState> inspectorEnabledState(const SceneSession& session,
                                                            const EditorSelection& selection);
 
-/// Loaded mobility for saved objects and authored lights; absent for generated or other subjects.
+/// Loaded mobility for saved objects and authored lights; absent for generated subjects, animated
+/// imported source nodes and other subjects.
 /// Inherited mobility is independent of animation and measurement pose locks.
 std::optional<bool> inspectorIsStatic(const engine::LoadedScene& loaded,
                                       const EditorSelection& selection);

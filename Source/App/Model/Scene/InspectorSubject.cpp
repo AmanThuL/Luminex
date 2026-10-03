@@ -52,6 +52,13 @@ std::optional<bool> inspectorIsStatic(const engine::LoadedScene& loaded,
             (index < binding.objectGeneratorNode.size() &&
              binding.objectGeneratorNode[index] != engine::kGeneratedNode))
             return std::nullopt;
+        // Animated source nodes take no mobility, as they take no pose override.
+        if (index < binding.objectImportedNode.size()) {
+            const auto imported = binding.objectImportedNode[index];
+            if (imported != engine::kGeneratedNode && (imported >= binding.importedNodes.size() ||
+                                                       binding.importedNodes[imported].animated))
+                return std::nullopt;
+        }
         return index >= loaded.objectMobility.size() ||
                loaded.objectMobility[index] == asset::DocMobility::Static;
     }

@@ -221,6 +221,11 @@ DecomposedTransform SceneSession::objectDefault(size_t index) const {
 
 //======================================================================================================================
 bool SceneSession::objectChanged(size_t index) const {
+    // No editor route moves an animation-owned object, and its live pose may reach the authored
+    // sample through a different float path (a baked track versus the asset clip), so exact
+    // comparison would report an operator change that never happened.
+    if (!persistentObject(index) && !isGenerated(EditorSubject::Object, index, {}))
+        return false;
     const auto original = objectDefault(index);
     const auto& object = scene().objects[index];
     return object.position != original.position || object.eulerDegrees != original.eulerDegrees ||

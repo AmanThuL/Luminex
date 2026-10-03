@@ -191,7 +191,8 @@ public:
     /// Authored object transform, sampled at current playback time when the object has a track.
     DecomposedTransform objectDefault(size_t index) const;
 
-    /// True when the editable transform differs from its authored/current-track default.
+    /// True when the editable transform differs from its authored default; always false for an
+    /// animation-owned object, which no editor route can move.
     bool objectChanged(size_t index) const;
 
     /// Shared pose permission, with measurement preceding generation, animation and mobility.

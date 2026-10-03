@@ -2,6 +2,7 @@
 
 #include "App/Model/Rendering/Settings/EditorRenderDefaults.h"
 #include "App/Model/Scene/InspectorSubject.h"
+#include "Scenes/SceneLibrary.h"
 
 using namespace lmx;
 using namespace lmx::app;
@@ -222,8 +223,9 @@ TEST_CASE("Inspector Static reports authored mobility independently of pose lock
     CHECK(session.objectPoseLock(0) == PoseLock::Measuring);
     CHECK(inspectorIsStatic(session, object) == false);
     session.setMeasurementActive(false);
+    // Animated source nodes take no mobility, so the Inspector shows no Static value for them.
     loaded.binding.importedNodes[1].animated = true;
-    CHECK(inspectorIsStatic(session, object) == false);
+    CHECK_FALSE(inspectorIsStatic(session, object).has_value());
     CHECK(session.objectPoseLock(0) == PoseLock::Animated);
     const auto id = loaded.scene->addLight(engine::LocalLight{});
     REQUIRE(id);
@@ -254,4 +256,39 @@ TEST_CASE("Inherited light disablement does not mark saved light fields edited",
     REQUIRE(setInspectorEnabled(session, local, false));
     CHECK(inspectorSubjectEdited(session, directional));
     CHECK(inspectorSubjectEdited(session, local));
+}
+
+//======================================================================================================================
+TEST_CASE("Stopped TemporalLab animated source rows carry no edit mark or mobility",
+          "[gpu][app][inspector-subject][mobility-display]") {
+    auto device = rojoRHI::createDevice();
+    REQUIRE(device);
+    scenes::SceneLibrary library(**device);
+    const auto id = scenes::parseSceneId("temporal-lab");
+    REQUIRE(id);
+    REQUIRE(library.get(*id));
+    SceneSession session;
+    session.activate(*library.loaded(*id), SceneActivationMotion::Reset);
+    const auto& binding = session.loadedScene()->binding;
+    size_t animated = 0;
+    for (size_t i = 0; i < binding.importedNodes.size(); ++i) {
+        const auto& source = binding.importedNodes[i];
+        if (!source.animated)
+            continue;
+        for (const auto object : source.objects) {
+            CAPTURE(source.name, object);
+            const EditorSelection selection{.sceneId = *id,
+                                            .subject = EditorSubject::Object,
+                                            .index = static_cast<uint32_t>(object),
+                                            .node = source.assetRoot,
+                                            .importedNode = static_cast<uint32_t>(i)};
+            CHECK(session.objectPoseLock(object) == PoseLock::Animated);
+            CHECK_FALSE(session.objectChanged(object));
+            CHECK_FALSE(inspectorSubjectEdited(session, selection));
+            CHECK_FALSE(inspectorIsStatic(session, selection));
+            ++animated;
+        }
+    }
+    CHECK(animated >= 2);
+    (*device)->waitIdle();
 }
