@@ -6,8 +6,8 @@ Use a capture for wrong rendered output, a timing trace for performance, and a r
 
 Choose a catalog scene with File > Open Scene. Hierarchy searches and selects scene lights and objects; its count includes disabled lights, and filtering retains selection. View > Editor Camera
 selects the camera in Inspector. Window > Rendering opens eight topics: Reconstruction, Resolution, Visibility, Occlusion, Submission, Lighting, Display and Scene tables. Environment Inspector owns saved Exposure/Bloom/Shadows; see [scene documents](scene-documents.md).
-Each topic puts controls before readings and collapsed Diagnostics; timing Details opens Performance. Inspector headers show subject, kind and scoped Reset. Property grids stack only below 260 base UI
-points; a vector puts its X/Y/Z or R/G/B fields on the label's row when three fit and stacks them otherwise. Object Position, Rotation and Scale tooltips give world space and XYZ degrees. Hover controls for help, including disabled reasons. Display diagnostics describe the SDR output/UI domains, framebuffer scale, target extent and 1:1
+Each topic puts controls before readings and collapsed Diagnostics; timing Details opens Performance. Inspector headers show a leading enabled box, subject, kind, a read-only Static label and box where mobility applies, and scoped Reset. Property grids stack only below 260 base UI
+points; a vector puts its X/Y/Z or R/G/B fields on the label's row when three fit and stacks them otherwise; space for an edit mark is always reserved, so editing never switches the layout. Object Position, Rotation and Scale tooltips give world space and XYZ degrees. Hover controls for help, including disabled reasons. Display diagnostics describe the SDR output/UI domains, framebuffer scale, target extent and 1:1
 mapping. Resize may briefly stretch the prior image during debounce. PNG preserves display/frame metadata; BMP remains available for historical parity.
 
 ## Editor playback

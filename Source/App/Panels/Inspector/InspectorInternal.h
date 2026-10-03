@@ -13,8 +13,9 @@
 
 namespace lmx::app {
 
-/// Draws the subject name, kind, optional enable checkbox and reset icon; the icon is enabled only
-/// when `changed` reports something to restore. Returns whether reset was clicked.
+/// Draws an optional leading enable checkbox, the subject name, its kind, an optional read-only
+/// Static value and the reset icon; the icon is enabled only when `changed` reports something to
+/// restore. Returns whether reset was clicked.
 bool drawInspectorHeader(const char* name, const char* kind, const char* resetTooltip, bool changed,
                          bool* enabled = nullptr, const std::optional<ProvenanceMark>& mark = {},
                          const std::optional<ProvenanceMark>& enabledMark = {},
