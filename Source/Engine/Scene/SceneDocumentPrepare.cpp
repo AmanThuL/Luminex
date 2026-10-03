@@ -467,6 +467,14 @@ asset::AssetResult<void> validateIndependentAssetClips(const asset::GltfScene& s
 asset::AssetResult<PreparedSceneDocument>
 prepareSceneDocument(const asset::SceneDocument& document,
                      const std::filesystem::path& assetsRoot) {
+    for (size_t n = 0; n < document.nodes.size(); ++n) {
+        const auto& node = document.nodes[n];
+        if (node.mobility == asset::DocMobility::Movable &&
+            (node.camera || node.generator || (!node.mesh && !node.asset && !node.light)))
+            return std::unexpected(
+                malformed("/nodes/" + std::to_string(n) + "/extensions/LMX_scene/mobility",
+                          "mobility requires an object, asset or light node"));
+    }
     PreparedSceneDocument prepared;
     const size_t count = document.nodes.size();
     prepared.assets.resize(count);
@@ -531,6 +539,9 @@ prepareSceneDocument(const asset::SceneDocument& document,
                 return std::unexpected(malformed(at + "/name", "expected '" + override.name +
                                                                    "', source node is named '" +
                                                                    imported.name + "'"));
+            if (override.mobility && imported.animated)
+                return std::unexpected(malformed(
+                    at + "/mobility", "animated source nodes cannot have a mobility override"));
             if (override.pose && imported.animated)
                 return std::unexpected(
                     malformed(at + "/pose", "animated source nodes cannot have a pose override"));

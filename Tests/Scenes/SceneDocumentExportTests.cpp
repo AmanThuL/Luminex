@@ -88,6 +88,7 @@ asset::SceneDocument exportFixture(const fs::path& root) {
     REQUIRE(staticBytes);
     REQUIRE(animatedBytes);
     asset::SceneDocument doc;
+    doc.schemaVersion = asset::kSceneDocumentSchema;
     doc.name = "Export fixture";
     doc.cameras = {{.name = "Saved lens", .farZ = {}, .aspectRatio = 1.6f}};
     doc.lights = {{.name = "Spot",
@@ -863,4 +864,42 @@ TEST_CASE("mesh export keeps own enabled state under a disabled ancestor",
     CHECK(result->nodes[1].enabled);
     CHECK_FALSE(result->nodes[3].enabled);
     CHECK_FALSE(scenes::documentDirty(loaded.document, *result));
+}
+
+//======================================================================================================================
+TEST_CASE("mobility follows nearest source override and export preserves authored values",
+          "[scene-export][ux6-mobility]") {
+    FakeDevice device;
+    const auto root = fixtureRoot();
+    auto doc = exportFixture(root);
+    doc.schemaVersion = 2;
+    doc.nodes[1].mobility = asset::DocMobility::Movable;
+    doc.nodes[2].mobility = asset::DocMobility::Static;
+    doc.nodes[2].overrides[0].mobility = asset::DocMobility::Movable;
+    doc.nodes[4].mobility = asset::DocMobility::Movable;
+    doc.nodes[6].mobility = asset::DocMobility::Movable;
+    SECTION("nearest child override wins") {
+        doc.nodes[2].overrides[1].mobility = asset::DocMobility::Static;
+    }
+    auto loaded = loadFixture(device, root, doc, "mobility-bound");
+    REQUIRE(loaded.objectMobility.size() == loaded.scene->objects.size());
+    for (auto object : loaded.binding.nodes[1].objects)
+        CHECK(loaded.objectMobility[object] == asset::DocMobility::Movable);
+    const auto expected = doc.nodes[2].overrides[1].mobility.value_or(asset::DocMobility::Movable);
+    for (auto object : loaded.binding.nodes[2].objects)
+        CHECK(loaded.objectMobility[object] == expected);
+    for (auto object : loaded.binding.nodes[9].objects)
+        CHECK(loaded.objectMobility[object] == asset::DocMobility::Static);
+    CHECK(loaded.lightMobility == std::vector<asset::DocMobility>{asset::DocMobility::Movable,
+                                                                  asset::DocMobility::Static,
+                                                                  asset::DocMobility::Movable});
+    app::SceneSession session;
+    session.activate(loaded, app::SceneActivationMotion::Reset);
+    const auto result = exported(loaded, session);
+    CHECK_FALSE(scenes::documentDirty(loaded.document, result));
+    CHECK(asset::sceneDocumentJson(result, "same.bin") ==
+          asset::sceneDocumentJson(loaded.document, "same.bin"));
+    auto reread = loadFixture(device, root, result, "mobility-exported");
+    CHECK(reread.objectMobility == loaded.objectMobility);
+    CHECK(reread.lightMobility == loaded.lightMobility);
 }

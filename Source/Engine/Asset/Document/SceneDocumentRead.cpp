@@ -492,6 +492,20 @@ DocNode Reader::node(const JsonNode& value) {
     }
     const auto lmx = required(extensions, "LMX_scene");
     result.enabled = boolean(required(lmx, "enabled"));
+    result.mobility =
+        m_schemaVersion == 1 && result.light ? DocMobility::Movable : DocMobility::Static;
+    if (auto mobility = optional(lmx, "mobility")) {
+        const auto text = string(*mobility);
+        if (m_schemaVersion != 2)
+            fail(mobility->path(), "mobility requires schema 2");
+        else if (text == "movable")
+            result.mobility = DocMobility::Movable;
+        else if (text != "static")
+            fail(mobility->path(), "expected static or movable");
+        if (result.camera || (!result.mesh && !result.light && !optional(lmx, "asset")) ||
+            optional(lmx, "generator"))
+            fail(mobility->path(), "mobility requires an object, asset or light node");
+    }
     if (m_schemaVersion == 2) {
         if (auto motion = optional(lmx, "motion")) {
             const auto value = string(*motion);
@@ -521,8 +535,19 @@ DocNode Reader::node(const JsonNode& value) {
                                     vector<float, 3>(required(*pose, "eulerDegrees")),
                                     vector<float, 3>(required(*pose, "scale"))};
             }
-            if (!o.enabled && !o.pose)
-                fail(value.path(), "override needs enabled or pose");
+            if (auto mobility = optional(value, "mobility")) {
+                const auto text = string(*mobility);
+                if (m_schemaVersion != 2)
+                    fail(mobility->path(), "mobility requires schema 2");
+                else if (text == "movable")
+                    o.mobility = DocMobility::Movable;
+                else if (text == "static")
+                    o.mobility = DocMobility::Static;
+                else
+                    fail(mobility->path(), "expected static or movable");
+            }
+            if (!o.enabled && !o.pose && !o.mobility)
+                fail(value.path(), "override needs enabled, pose or mobility");
             result.overrides.push_back(std::move(o));
         }
         if (!result.asset)

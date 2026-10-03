@@ -145,9 +145,12 @@ AssetResult<void> checkTextureFolder(const std::filesystem::path& folder,
 } // namespace
 
 //======================================================================================================================
-AssetResult<void> detail::saveSceneDocumentWithRename(const SceneDocument& doc,
+AssetResult<void> detail::saveSceneDocumentWithRename(const SceneDocument& input,
                                                       const std::filesystem::path& path,
                                                       const DocumentRename& rename) {
+    if (auto valid = validateSceneDocumentModel(input); !valid)
+        return valid;
+    const auto doc = sceneDocumentSaveForm(input);
     if (auto valid = validateSceneDocumentModel(doc); !valid)
         return valid;
     if (path.extension() != ".gltf")
@@ -294,6 +297,20 @@ AssetResult<void> detail::saveSceneDocumentWithRename(const SceneDocument& doc,
     }
     cleanup();
     return {};
+}
+
+//======================================================================================================================
+SceneDocument sceneDocumentSaveForm(const SceneDocument& doc) {
+    auto saved = doc;
+    if (saved.schemaVersion == 1) {
+        saved.schemaVersion = kSceneDocumentSchema;
+        for (auto& node : saved.nodes) {
+            node.mobility = node.light ? DocMobility::Movable : DocMobility::Static;
+            for (auto& override : node.overrides)
+                override.mobility.reset();
+        }
+    }
+    return saved;
 }
 
 //======================================================================================================================

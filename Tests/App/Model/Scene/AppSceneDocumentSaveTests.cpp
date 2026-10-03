@@ -13,6 +13,7 @@
 #include "Support/SceneDocumentFixtures.h"
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <fstream>
 #include <limits>
 
@@ -1262,4 +1263,43 @@ TEST_CASE("saved mesh selection survives Save and verified proposal reload",
         CHECK_FALSE(app::canPreserveSessionSelection(selection, *session.loadedScene(), proposal));
     }
     (*device)->waitIdle();
+}
+
+//======================================================================================================================
+TEST_CASE("schema one native Save and Save As adopt schema two with matching receipts",
+          "[app][document-save][ux6-mobility]") {
+    FakeDevice device;
+    auto doc = saveFixture();
+    doc.schemaVersion = 1;
+    const auto path = savePath("legacy-native", doc);
+    // Install actual schema-one bytes; savePath uses the current disk writer.
+    std::ofstream(path, std::ios::binary | std::ios::trunc)
+        << asset::sceneDocumentJson(doc, "legacy-native.scene.bin");
+    scenes::SceneLibrary library(device);
+    auto id = scenes::sceneIdFromPath(path);
+    REQUIRE(library.get(id));
+    app::SceneSession session;
+    session.activate(*library.loaded(id), app::SceneActivationMotion::Reset);
+    REQUIRE(session.loadedScene()->document.schemaVersion == 1);
+    CHECK_FALSE(dirty(session));
+    const auto destination = path.parent_path() / "legacy-native-as.scene.gltf";
+    const bool saveAs = GENERATE(false, true);
+    const auto target = saveAs ? destination : path;
+    app::SceneDocumentWrite receipt;
+    const auto saved = app::saveSessionDocument(library, session, id, target, saveAs, {}, &receipt);
+    INFO((saved ? "ok" : saved.error().message));
+    REQUIRE(saved);
+    CHECK(session.loadedScene()->document.schemaVersion == 2);
+    CHECK(session.loadedScene()->document.nodes[2].mobility == asset::DocMobility::Movable);
+    CHECK(session.loadedScene()->hash == receipt.hash);
+    REQUIRE(asset::sceneDocumentHash(target));
+    CHECK(*asset::sceneDocumentHash(target) == receipt.hash);
+    app::DocumentWatch watch;
+    const app::FileStamp observed{100, 200, 1, 1, false};
+    watch.reset(observed);
+    CHECK(watch.adoptSave(observed, observed, target, receipt.path, receipt.hash,
+                          *asset::sceneDocumentHash(target), true));
+    CHECK(watch.poll(observed, 1.0) == app::WatchDecision::Wait);
+    CHECK_FALSE(watch.ready());
+    CHECK_FALSE(dirty(session));
 }

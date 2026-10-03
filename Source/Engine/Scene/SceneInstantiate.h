@@ -70,7 +70,10 @@ struct SceneBinding {
 /// Fully constructed snapshot; publish the whole value together after construction succeeds.
 struct LoadedScene {
     std::unique_ptr<Scene> scene; ///< GPU resources; owner waits for retirement before destruction.
-    SceneBinding binding;         ///< Stable document/source identity for this scene only.
+    std::vector<asset::DocMobility> objectMobility; ///< One authored permission per scene object.
+    /// Authored directional/local lights in document-node binding order; generated lights omitted.
+    std::vector<asset::DocMobility> lightMobility;
+    SceneBinding binding;          ///< Stable document/source identity for this scene only.
     asset::SceneDocument document; ///< Loaded authored values, never rewritten by CLI masks.
     std::filesystem::path path;    ///< Document path as supplied by the caller.
     std::string hash;              ///< Loaded on-disk glTF and buffer hash.

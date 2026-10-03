@@ -402,6 +402,7 @@
         },
         "LMX_scene": {
           "enabled": false,
+          "mobility": "movable",
           "role": "key",
           "castsShadow": true
         }
@@ -416,6 +417,7 @@
         },
         "LMX_scene": {
           "enabled": false,
+          "mobility": "movable",
           "role": "fill",
           "castsShadow": false
         }
@@ -430,6 +432,7 @@
         },
         "LMX_scene": {
           "enabled": false,
+          "mobility": "movable",
           "role": "rim",
           "castsShadow": false
         }
@@ -441,6 +444,7 @@
       "extensions": {
         "LMX_scene": {
           "enabled": true,
+          "mobility": "movable",
           "asset": {
             "uri": "Fetched/DamagedHelmet/DamagedHelmet.glb",
             "sha256": "a1e3b04de97b11de564ce6e53b95f02954a297f0008183ac63a4f5974f6b32d8"

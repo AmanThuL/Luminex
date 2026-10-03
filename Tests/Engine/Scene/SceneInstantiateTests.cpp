@@ -8,6 +8,7 @@
 #include "Scenes/SceneDocuments.h"
 #include "Support/EngineTestSupport.h"
 #include "Support/GpuTestSupport.h"
+#include "Support/GraphTestSupport.h"
 #include "Support/SceneDocumentFixtures.h"
 
 #include <rojoRHI/RHI.h>
@@ -1208,4 +1209,52 @@ TEST_CASE("document content accepts signed scale boundaries and samples their ro
             (*device)->waitIdle();
         }
     }
+}
+
+//======================================================================================================================
+TEST_CASE("mobility preflight names unsupported document nodes and animated overrides",
+          "[scene-doc][instantiate][ux6-mobility]") {
+    const auto root = std::filesystem::current_path() / "SceneDocuments" / "mobility-preflight";
+    std::filesystem::create_directories(root);
+    auto doc = fixtureDocument(root);
+    doc.schemaVersion = 2;
+    SECTION("camera") {
+        doc.nodes[0].mobility = asset::DocMobility::Movable;
+    }
+    SECTION("group") {
+        doc.nodes.push_back({.name = "Group", .mobility = asset::DocMobility::Movable});
+        doc.rootNodes.push_back(2);
+    }
+    SECTION("generator") {
+        doc.nodes.push_back({.name = "Generator",
+                             .mobility = asset::DocMobility::Movable,
+                             .generator = asset::DocGenerator{"visibility-lab", {}}});
+        doc.rootNodes.push_back(2);
+    }
+    SECTION("animated source override") {
+        doc.nodes[1].overrides.push_back(
+            {.node = 0, .name = "Source Node", .mobility = asset::DocMobility::Static});
+    }
+    const auto result = engine::prepareSceneDocument(doc, root);
+    REQUIRE_FALSE(result);
+    CHECK(result.error().message.contains("/extensions/LMX_scene/"));
+    CHECK(result.error().message.contains("mobility"));
+}
+
+//======================================================================================================================
+TEST_CASE("saved mesh mobility stays aligned with instantiated object order",
+          "[scene-doc][instantiate][ux6-mobility]") {
+    FakeDevice device;
+    auto doc = test::contentDocument();
+    doc.nodes[1].mobility = asset::DocMobility::Movable;
+    const auto path =
+        std::filesystem::current_path() / "SceneDocuments" / "mobility-mesh.scene.gltf";
+    REQUIRE(asset::saveSceneDocument(doc, path));
+    const auto loaded = engine::instantiateSceneDocument(device, doc, path, {});
+    INFO((loaded ? "ok" : loaded.error().message));
+    REQUIRE(loaded);
+    CHECK(loaded->objectMobility ==
+          std::vector<asset::DocMobility>{asset::DocMobility::Movable, asset::DocMobility::Static});
+    CHECK(loaded->lightMobility.empty());
+    CHECK(loaded->binding.objectNode == std::vector<uint32_t>{1, 2});
 }

@@ -223,6 +223,7 @@
         },
         "LMX_scene": {
           "enabled": true,
+          "mobility": "movable",
           "role": "key",
           "castsShadow": true
         }
@@ -237,6 +238,7 @@
         },
         "LMX_scene": {
           "enabled": true,
+          "mobility": "movable",
           "role": "fill",
           "castsShadow": false
         }
@@ -251,6 +253,7 @@
         },
         "LMX_scene": {
           "enabled": true,
+          "mobility": "movable",
           "role": "rim",
           "castsShadow": false
         }

@@ -32,12 +32,19 @@ struct ObjectPose {
     glm::vec3 scale{1.0f};        ///< World-space scale.
 };
 
+/// File-authored permission to edit an object or light pose; no renderer semantics.
+enum class DocMobility {
+    Static,  ///< Pose is locked in editor authoring routes.
+    Movable, ///< Pose may be edited when playback and measurement permit.
+};
+
 /// Authored changes applying to every primitive instance of one imported glTF node.
 struct DocOverride {
-    uint32_t node = 0;              ///< Original glTF node index, including empty ancestors.
-    std::string name;               ///< Expected original name; mismatches fail instantiation.
-    std::optional<bool> enabled;    ///< Authored own-enabled state, independent of ancestors.
-    std::optional<ObjectPose> pose; ///< World pose; animated nodes reject pose overrides.
+    uint32_t node = 0;                   ///< Original glTF node index, including empty ancestors.
+    std::string name;                    ///< Expected original name; mismatches fail instantiation.
+    std::optional<bool> enabled;         ///< Authored own-enabled state, independent of ancestors.
+    std::optional<ObjectPose> pose;      ///< World pose; animated nodes reject pose overrides.
+    std::optional<DocMobility> mobility; ///< Nearest source ancestor override wins.
 };
 
 /// Referenced source asset; meshes and material data stay in this external file.
@@ -87,17 +94,18 @@ struct DocNode {
     glm::vec3 translation{0.0f};    ///< Node-local metres.
     /// Node-local glTF orientation, not normalized on read.
     glm::quat rotation{1.0f, 0.0f, 0.0f, 0.0f};
-    glm::vec3 scale{1.0f};                 ///< Node-local per-axis scale.
-    std::optional<uint32_t> camera;        ///< Perspective camera index.
-    std::optional<uint32_t> light;         ///< Punctual-light index.
-    std::optional<uint32_t> mesh;          ///< Saved mesh index; schema 2 only.
-    DocMotion motion = DocMotion::Rigid;   ///< Authored motion-vector behavior.
-    bool enabled = true;                   ///< Authored own-enabled state.
-    std::optional<DocAsset> asset;         ///< External asset instantiated below this node.
-    std::vector<DocOverride> overrides;    ///< Imported-node edits, valid only with asset.
-    std::optional<DocGenerator> generator; ///< Procedural lab instantiated below this node.
-    std::optional<std::string> role;       ///< Directional role: key, fill or rim.
-    bool castsShadow = false;              ///< Selects the one directional shadow caster.
+    glm::vec3 scale{1.0f};                      ///< Node-local per-axis scale.
+    std::optional<uint32_t> camera;             ///< Perspective camera index.
+    std::optional<uint32_t> light;              ///< Punctual-light index.
+    std::optional<uint32_t> mesh;               ///< Saved mesh index; schema 2 only.
+    DocMobility mobility = DocMobility::Static; ///< File-authored pose permission.
+    DocMotion motion = DocMotion::Rigid;        ///< Authored motion-vector behavior.
+    bool enabled = true;                        ///< Authored own-enabled state.
+    std::optional<DocAsset> asset;              ///< External asset instantiated below this node.
+    std::vector<DocOverride> overrides;         ///< Imported-node edits, valid only with asset.
+    std::optional<DocGenerator> generator;      ///< Procedural lab instantiated below this node.
+    std::optional<std::string> role;            ///< Directional role: key, fill or rim.
+    bool castsShadow = false;                   ///< Selects the one directional shadow caster.
 };
 
 /// Supported glTF target of a uniformly sampled document channel.
@@ -157,8 +165,9 @@ struct SceneDocument {
 /// Referenced asset/HDRI URIs and hashes are syntax-checked here; instantiation resolves the files
 /// and verifies their content hashes before creating GPU resources.
 AssetResult<SceneDocument> readSceneDocument(const std::filesystem::path& path);
-/// Returns canonical glTF JSON for a valid model. bufferUri is a decoded relative filesystem path;
-/// this function percent-encodes it once, just like asset/HDRI paths stored in the model.
+/// Returns canonical glTF JSON for a valid model, retaining schema-one identity for dirty checks.
+/// bufferUri is a decoded relative filesystem path; this function percent-encodes it once, just
+/// like asset/HDRI paths stored in the model.
 std::string sceneDocumentJson(const SceneDocument& doc, std::string_view bufferUri);
 /// Checks the model invariants a write depends on: finite numbers, valid enums, bounded local
 /// lights and consistent animations. Errors name a JSON pointer; sceneDocumentJson requires
@@ -176,6 +185,8 @@ std::vector<std::byte> sceneDocumentGeometry(const SceneDocument& doc);
 /// All companion conflicts fail before staging; newly installed files participate in rollback.
 /// Invalid models and filesystem errors fail.
 AssetResult<void> saveSceneDocument(const SceneDocument& doc, const std::filesystem::path& path);
+/// Returns the disk-save form: schema-one objects stay static and authored lights become movable.
+SceneDocument sceneDocumentSaveForm(const SceneDocument& doc);
 /// Returns the decoded path of a glTF's external animation buffer without reading that file.
 /// No animation buffer returns no path, including a schema 2 geometry-only document. Schema 2
 /// permits only the named animation/geometry pair; malformed JSON, buffer shape or URI fails.

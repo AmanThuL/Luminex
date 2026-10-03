@@ -102,7 +102,7 @@ void lookJson(JsonWriter& w, const SceneLook& look) {
 }
 
 //======================================================================================================================
-void nodeJson(JsonWriter& w, const DocNode& node) {
+void nodeJson(JsonWriter& w, const DocNode& node, uint32_t schemaVersion) {
     w.beginObject();
     scalar(w, "name", node.name);
     if (!node.children.empty())
@@ -128,6 +128,8 @@ void nodeJson(JsonWriter& w, const DocNode& node) {
     w.key("LMX_scene");
     w.beginObject();
     scalar(w, "enabled", node.enabled);
+    if (schemaVersion == 2 && node.mobility == DocMobility::Movable)
+        scalar(w, "mobility", "movable");
     if (node.motion == DocMotion::Invalid)
         scalar(w, "motion", "invalid");
     if (node.asset) {
@@ -146,6 +148,9 @@ void nodeJson(JsonWriter& w, const DocNode& node) {
             scalar(w, "name", override.name);
             if (override.enabled)
                 scalar(w, "enabled", *override.enabled);
+            if (schemaVersion == 2 && override.mobility)
+                scalar(w, "mobility",
+                       *override.mobility == DocMobility::Movable ? "movable" : "static");
             if (override.pose) {
                 w.key("pose");
                 w.beginObject();
@@ -367,6 +372,18 @@ AssetResult<void> finiteModel(const SceneDocument& doc) {
             for (const auto& [name, value] : n.generator->params)
                 if (!std::isfinite(value))
                     return bad(path + "/extensions/LMX_scene/generator/params/" + name);
+        if (n.mobility != DocMobility::Static && n.mobility != DocMobility::Movable)
+            return bad(path + "/extensions/LMX_scene/mobility");
+        if (n.mobility == DocMobility::Movable &&
+            (n.camera || n.generator || (!n.mesh && !n.asset && !n.light)))
+            return std::unexpected(AssetError{AssetErrorCode::Malformed,
+                                              path + "/extensions/LMX_scene/mobility: mobility "
+                                                     "requires an object, asset or light node"});
+        for (size_t o = 0; o < n.overrides.size(); ++o)
+            if (n.overrides[o].mobility && *n.overrides[o].mobility != DocMobility::Static &&
+                *n.overrides[o].mobility != DocMobility::Movable)
+                return bad(path + "/extensions/LMX_scene/overrides/" + std::to_string(o) +
+                           "/mobility");
         for (const auto& o : n.overrides)
             if (o.pose)
                 for (int k = 0; k < 3; ++k)
@@ -477,7 +494,7 @@ std::string sceneDocumentJson(const SceneDocument& doc, std::string_view bufferU
     w.key("nodes");
     w.beginArray();
     for (const auto& node : doc.nodes)
-        nodeJson(w, node);
+        nodeJson(w, node, doc.schemaVersion);
     w.endArray();
     w.key("cameras");
     w.beginArray();

@@ -230,6 +230,7 @@ asset::AssetResult<LoadedScene> instantiateSceneDocument(rojoRHI::Device& device
                 !result)
                 return std::unexpected(result.error());
             const uint32_t object = contentBinding.objectOfNode[n];
+            loaded.objectMobility.push_back(node.mobility);
             binding.nodes[n].objects.push_back(object);
             binding.objectNode.push_back(n);
             binding.objectImportedNode.push_back(kGeneratedNode);
@@ -281,6 +282,19 @@ asset::AssetResult<LoadedScene> instantiateSceneDocument(rojoRHI::Device& device
                 playback.clips = imported->source.clips;
                 scene.assetAnimations.push_back(std::move(playback));
             }
+            for (const auto& instance : imported->source.instances) {
+                auto mobility = node.mobility;
+                for (int32_t source = static_cast<int32_t>(instance.node); source >= 0;
+                     source = imported->source.nodes[static_cast<size_t>(source)].parent) {
+                    const auto found = std::ranges::find(
+                        node.overrides, static_cast<uint32_t>(source), &asset::DocOverride::node);
+                    if (found != node.overrides.end() && found->mobility) {
+                        mobility = *found->mobility;
+                        break;
+                    }
+                }
+                loaded.objectMobility.push_back(mobility);
+            }
             bindAsset(binding, n, objectBase, *imported);
             if (auto result = environment(scene); !result)
                 return std::unexpected(result.error());
@@ -299,6 +313,7 @@ asset::AssetResult<LoadedScene> instantiateSceneDocument(rojoRHI::Device& device
             for (size_t i = populationBase; i < scene.lightLabPopulations.size(); ++i)
                 scene.lightLabPopulations[i].documentNode = n;
             for (size_t i = objectBase; i < scene.objects.size(); ++i) {
+                loaded.objectMobility.push_back(asset::DocMobility::Static);
                 binding.nodes[n].objects.push_back(i);
                 binding.objectNode.push_back(kGeneratedNode);
                 binding.objectImportedNode.push_back(kGeneratedNode);
@@ -335,6 +350,8 @@ asset::AssetResult<LoadedScene> instantiateSceneDocument(rojoRHI::Device& device
     const auto outsideGroup = effectiveDocumentEnabled(doc, groupOwn);
     for (uint32_t n = 0; n < doc.nodes.size(); ++n) {
         const auto& node = doc.nodes[n];
+        if (prepared->directionalLights[n] || prepared->localLights[n])
+            loaded.lightMobility.push_back(node.mobility);
         if (prepared->directionalLights[n]) {
             const uint32_t slot = node.role == "fill" ? 1 : node.role == "rim" ? 2 : 0;
             scene.lights[slot] = *prepared->directionalLights[n];

@@ -121,3 +121,30 @@ TEST_CASE("schema 2 content and animation documents equal their canonical rewrit
     CHECK(*lmx::readWholeFile(root / "cube.scene.geometry.bin") ==
           lmx::asset::sceneDocumentGeometry(*read));
 }
+
+//======================================================================================================================
+TEST_CASE("catalog mobility authors only the helmet and every light movable",
+          "[scene-document][canonical][ux6-mobility]") {
+    const fs::path catalog = fs::path(LMX_REPO_ROOT) / "Assets/Scenes";
+    size_t scenes = 0, helmets = 0, lights = 0;
+    for (const auto& entry : fs::directory_iterator(catalog)) {
+        if (!entry.path().filename().string().ends_with(".scene.gltf"))
+            continue;
+        const auto doc = readSceneDocument(entry.path());
+        INFO(entry.path().string());
+        REQUIRE(doc);
+        CHECK(doc->schemaVersion == 2);
+        ++scenes;
+        for (const auto& node : doc->nodes) {
+            const bool helmet = node.asset && node.asset->uri.contains("DamagedHelmet");
+            const bool movable = node.light || helmet;
+            CHECK(node.mobility ==
+                  (movable ? lmx::asset::DocMobility::Movable : lmx::asset::DocMobility::Static));
+            helmets += helmet;
+            lights += node.light.has_value();
+        }
+    }
+    CHECK(scenes == 6);
+    CHECK(helmets == 1);
+    CHECK(lights == 34);
+}

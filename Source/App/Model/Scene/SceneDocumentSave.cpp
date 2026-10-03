@@ -141,6 +141,7 @@ asset::AssetResult<void> saveSessionDocument(scenes::SceneLibrary& library, Scen
         LMX_LOG_INFO("save: the {} at /nodes/{}/rotation has no exact glTF quaternion; saved the "
                      "nearest one",
                      approximation.what, approximation.node);
+    *exported = asset::sceneDocumentSaveForm(*exported);
     auto written = io.write ? io.write(*exported, path) : asset::saveSceneDocument(*exported, path);
     if (!written)
         return std::unexpected(written.error());

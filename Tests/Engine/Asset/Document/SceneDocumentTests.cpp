@@ -9,6 +9,7 @@
 #include "Support/SceneDocumentFixtures.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <bit>
 #include <cmath>
@@ -309,11 +310,13 @@ TEST_CASE("candidate buffer path decodes the glTF URI before its file exists",
 //======================================================================================================================
 TEST_CASE("every required LMX field rejects missing and mistyped values at its exact pointer",
           "[asset][scene-document]") {
-    const auto doc = completeDocument();
+    const auto doc = sceneDocumentSaveForm(completeDocument());
     const auto path = outputPath("complete.scene.gltf");
     REQUIRE(saveSceneDocument(doc, path));
     const auto text = sceneDocumentJson(doc, "complete.scene.bin");
-    const auto parsed = JsonTokens::parse(text);
+    // Legacy validation inputs retain their independently named animation buffer.
+    const auto parsed =
+        JsonTokens::parse(sceneDocumentJson(completeDocument(), "complete.scene.bin"));
     REQUIRE(parsed);
     const std::string root = "/extensions/LMX_scene";
     std::vector<std::string> fields = {
@@ -425,6 +428,7 @@ TEST_CASE("invalid hierarchy and model saves fail without replacing existing doc
 TEST_CASE("node transform serialization retains signed zero and exact quaternion components",
           "[asset][scene-document]") {
     auto doc = animatedDocument();
+    doc.schemaVersion = kSceneDocumentSchema;
     doc.nodes[0].translation.x = -0.0f;
     doc.nodes[0].rotation.y = -0.0f;
     const auto path = outputPath("signed-zero.scene.gltf");
@@ -919,4 +923,144 @@ TEST_CASE("emissive material targets remain independent of unused node identitie
         doc.animations[0].channels[0].path = DocChannelPath::Translation;
     }
     REQUIRE_FALSE(validateSceneDocumentModel(doc));
+}
+
+//======================================================================================================================
+TEST_CASE("schema one saves migrate to schema two without changing scene values",
+          "[asset][scene-document][ux6-mobility]") {
+    const auto source = lmx::test::goldenPath("scene-document-min.scene.gltf");
+    const auto legacy = readSceneDocument(source);
+    REQUIRE(legacy);
+    CHECK(legacy->schemaVersion == 1);
+    const auto path = outputPath("mobility-migration.scene.gltf");
+    REQUIRE(saveSceneDocument(*legacy, path));
+    const auto migrated = readSceneDocument(path);
+    REQUIRE(migrated);
+    CHECK(migrated->schemaVersion == 2);
+    CHECK(migrated->nodes[0].translation == legacy->nodes[0].translation);
+    CHECK(migrated->nodes[0].rotation == legacy->nodes[0].rotation);
+    CHECK(migrated->nodes[0].scale == legacy->nodes[0].scale);
+    CHECK(sceneDocumentBuffer(*migrated) == sceneDocumentBuffer(*legacy));
+}
+
+//======================================================================================================================
+TEST_CASE("mobility rejects invalid values and unsupported node kinds with its pointer",
+          "[asset][scene-document][ux6-mobility]") {
+    auto doc = animatedDocument();
+    doc.schemaVersion = 2;
+    const auto kind = GENERATE(0, 1, 2, 3);
+    if (kind == 1) {
+        doc.nodes.push_back({.name = "Group"});
+        doc.rootNodes.push_back(1);
+    } else if (kind == 2) {
+        doc.nodes.push_back({.name = "Generator", .generator = DocGenerator{"visibility-lab", {}}});
+        doc.rootNodes.push_back(1);
+    } else if (kind == 3) {
+        doc.nodes.push_back(
+            {.name = "Asset", .asset = DocAsset{"model.gltf", std::string(64, 'a')}});
+        doc.rootNodes.push_back(1);
+    }
+    auto json = sceneDocumentJson(doc, "mobility-invalid.scene.bin");
+    const size_t first = json.find("\"enabled\": true");
+    const size_t at = kind == 0 ? first : json.find("\"enabled\": true", first + 1);
+    REQUIRE(at != std::string::npos);
+    json.insert(at, kind == 3 ? "\"mobility\": \"dynamic\",\n" : "\"mobility\": \"static\",\n");
+    const auto path = outputPath("mobility-invalid.scene.gltf");
+    writeText(path, json);
+    writeBuffer(doc, outputPath("mobility-invalid.scene.bin"));
+    const auto read = readSceneDocument(path);
+    REQUIRE_FALSE(read);
+    CHECK(read.error().message.contains("/nodes/" + std::to_string(kind == 0 ? 0 : 1) +
+                                        "/extensions/LMX_scene/mobility"));
+}
+
+//======================================================================================================================
+TEST_CASE("schema two mobility round trips and override static stays explicit",
+          "[asset][scene-document][ux6-mobility]") {
+    auto doc = completeDocument();
+    doc.schemaVersion = 2;
+    doc.nodes[1].mobility = DocMobility::Movable;
+    doc.nodes[1].overrides[0].mobility = DocMobility::Static;
+    doc.nodes[3].mobility = DocMobility::Movable;
+    const auto path = outputPath("mobility-roundtrip.scene.gltf");
+    REQUIRE(saveSceneDocument(doc, path));
+    const auto read = readSceneDocument(path);
+    REQUIRE(read);
+    CHECK(read->nodes[0].mobility == DocMobility::Static);
+    CHECK(read->nodes[1].mobility == DocMobility::Movable);
+    CHECK(read->nodes[1].overrides[0].mobility == DocMobility::Static);
+    CHECK(read->nodes[3].mobility == DocMobility::Movable);
+    CHECK(sceneDocumentJson(*read, "mobility-roundtrip.scene.bin") == readText(path));
+    auto mobilityOnly = doc;
+    mobilityOnly.nodes[1].overrides[0].pose.reset();
+    mobilityOnly.nodes[1].overrides[0].enabled.reset();
+    REQUIRE(saveSceneDocument(mobilityOnly, outputPath("mobility-only.scene.gltf")));
+    REQUIRE(readSceneDocument(outputPath("mobility-only.scene.gltf")));
+}
+
+//======================================================================================================================
+TEST_CASE("schema one migration keeps every authored light movable and objects static",
+          "[asset][scene-document][ux6-mobility]") {
+    auto doc = completeDocument();
+    doc.schemaVersion = 1;
+    const auto oldPath = outputPath("mobility-legacy.scene.gltf");
+    writeText(oldPath, sceneDocumentJson(doc, "mobility-legacy.scene.bin"));
+    writeBuffer(doc, outputPath("mobility-legacy.scene.bin"));
+    const auto legacy = readSceneDocument(oldPath);
+    REQUIRE(legacy);
+    CHECK(legacy->schemaVersion == 1);
+    for (const auto& node : legacy->nodes)
+        CHECK(node.mobility == (node.light ? DocMobility::Movable : DocMobility::Static));
+    const auto newPath = outputPath("mobility-upgraded.scene.gltf");
+    REQUIRE(saveSceneDocument(*legacy, newPath));
+    const auto upgraded = readSceneDocument(newPath);
+    REQUIRE(upgraded);
+    CHECK(upgraded->schemaVersion == 2);
+    for (size_t i = 0; i < legacy->nodes.size(); ++i)
+        CHECK(upgraded->nodes[i].mobility == legacy->nodes[i].mobility);
+    CHECK(sceneDocumentBuffer(*upgraded) == sceneDocumentBuffer(*legacy));
+    auto expected = *legacy;
+    expected.schemaVersion = 2;
+    CHECK(sceneDocumentJson(*upgraded, "mobility-upgraded.scene.bin") ==
+          sceneDocumentJson(expected, "mobility-upgraded.scene.bin"));
+}
+
+//======================================================================================================================
+TEST_CASE("legacy save validates mobility before schema migration",
+          "[asset][scene-document][ux6-mobility][ux6-mobility-invalid]") {
+    auto doc = animatedDocument();
+    doc.schemaVersion = 1;
+    SECTION("invalid node enum") {
+        doc.nodes[0].mobility = static_cast<DocMobility>(255);
+    }
+    SECTION("movable camera") {
+        doc.nodes[0].mobility = DocMobility::Movable;
+    }
+    SECTION("movable group") {
+        doc.nodes.push_back({.name = "Group", .mobility = DocMobility::Movable});
+        doc.rootNodes.push_back(1);
+    }
+    SECTION("movable generator") {
+        doc.nodes.push_back({.name = "Generator",
+                             .mobility = DocMobility::Movable,
+                             .generator = DocGenerator{"visibility-lab", {}}});
+        doc.rootNodes.push_back(1);
+    }
+    SECTION("invalid override enum") {
+        doc = completeDocument();
+        doc.schemaVersion = 1;
+        doc.nodes[1].overrides[0].mobility = static_cast<DocMobility>(255);
+    }
+    const auto path = outputPath("mobility-invalid-legacy-save.scene.gltf");
+    auto bin = path;
+    bin.replace_extension(".bin");
+    fs::remove(path);
+    fs::remove(bin);
+    writeText(path, "unchanged target");
+    const auto result = saveSceneDocument(doc, path);
+    REQUIRE_FALSE(result);
+    CHECK(result.error().message.contains("mobility"));
+    CHECK(readText(path) == "unchanged target");
+    CHECK_FALSE(fs::exists(bin));
+    fs::remove(path);
 }
