@@ -48,7 +48,13 @@ uint64_t sceneTreeFingerprint(const engine::LoadedScene& loaded,
 //======================================================================================================================
 const SceneTreeView& SceneTreeState::view(const std::string& sceneKey,
                                           const SceneTreeInputs& inputs) {
-    const auto& expansion = m_expansion[sceneKey];
+    auto& expansion = m_expansion[sceneKey];
+    for (uint32_t node = 0; node < inputs.loaded.document.nodes.size(); ++node)
+        if (inputs.loaded.document.nodes[node].generator &&
+            expansion.initialized.insert(node).second) {
+            expansion.collapsed.insert(node);
+            ++expansion.version;
+        }
     Key key{.sceneKey = sceneKey,
             .loaded = &inputs.loaded,
             .sceneGeneration = inputs.sceneGeneration,
@@ -75,6 +81,7 @@ bool SceneTreeState::collapsed(const std::string& sceneKey, uint32_t key) const 
 //======================================================================================================================
 void SceneTreeState::setCollapsed(const std::string& sceneKey, uint32_t key, bool collapsed) {
     auto& expansion = m_expansion[sceneKey];
+    expansion.initialized.insert(key);
     const bool changed =
         collapsed ? expansion.collapsed.insert(key).second : expansion.collapsed.erase(key) > 0;
     if (changed)

@@ -1,7 +1,11 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "App/Model/Scene/SceneSession.h"
 #include "App/Model/Scene/SceneTree.h"
 #include "App/Model/Scene/SceneTreeState.h"
+#include "Scenes/SceneDocumentExport.h"
+#include "Support/GraphTestSupport.h"
+#include "Support/SceneDocumentFixtures.h"
 
 #include <algorithm>
 #include <set>
@@ -261,6 +265,7 @@ TEST_CASE("Scene tree state notices enabled-flag changes without an edit generat
     auto state = scenes::initialDocumentState(loaded);
     SceneTreeState tree;
     const SceneTreeInputs inputs{.loaded = loaded, .state = state};
+    tree.setCollapsed("a", 2, false);
     tree.view("a", inputs);
     loaded.scene->objects[0].enabled = false;
     const auto& view = tree.view("a", inputs);
@@ -312,4 +317,101 @@ TEST_CASE("Document labels share one unnamed fallback and dirty marker", "[app][
     auto state = scenes::initialDocumentState(loaded);
     const auto rows = buildSceneTree(loaded, state, "", {});
     CHECK(std::ranges::any_of(rows, [](const auto& row) { return row.label == "Node 1"; }));
+}
+
+//======================================================================================================================
+TEST_CASE("Generator groups default to collapsed and search retains their generated children",
+          "[app][scene-tree]") {
+    auto loaded = treeFixture();
+    const auto state = scenes::initialDocumentState(loaded);
+    SceneTreeState tree;
+    const SceneTreeInputs inputs{.loaded = loaded, .state = state};
+    const auto& compact = tree.view("fixture", inputs);
+    CHECK(tree.collapsed("fixture", 2));
+    CHECK_FALSE(tree.collapsed("fixture", 1));
+    CHECK_FALSE(tree.collapsed("fixture", 3));
+    CHECK(std::ranges::none_of(compact.rows, &SceneTreeRow::generated));
+    CHECK(compact.totalCount == 9);
+    const auto& filtered =
+        tree.view("fixture", {.loaded = loaded, .state = state, .filter = "generated cube"});
+    REQUIRE(filtered.rows.size() == 4);
+    CHECK(filtered.rows[1].label == "Lab");
+    CHECK(filtered.rows[2].label == "Generated");
+    CHECK(filtered.rows[2].group);
+    CHECK(filtered.rows.back().generated);
+    CHECK(filtered.rows.back().node == 2);
+    CHECK(filtered.rows.back().depth == filtered.rows[2].depth + 1);
+    CHECK(tree.collapsed("fixture", 2));
+    CHECK(std::ranges::none_of(tree.view("fixture", inputs).rows, &SceneTreeRow::generated));
+    tree.setCollapsed("fixture", 2, false);
+    CHECK(std::ranges::any_of(tree.view("fixture", inputs).rows, &SceneTreeRow::generated));
+    tree.view("other", inputs);
+    CHECK(std::ranges::any_of(tree.view("fixture", inputs).rows, &SceneTreeRow::generated));
+    tree.rekey("fixture", "saved-as");
+    CHECK_FALSE(tree.collapsed("saved-as", 2));
+    CHECK(std::ranges::any_of(tree.view("saved-as", inputs).rows, &SceneTreeRow::generated));
+}
+
+//======================================================================================================================
+TEST_CASE("An explicit generator expansion before first view survives default initialization",
+          "[app][scene-tree]") {
+    auto loaded = treeFixture();
+    const auto state = scenes::initialDocumentState(loaded);
+    SceneTreeState tree;
+    tree.setCollapsed("fixture", 2, false);
+    tree.setCollapsed("fixture", 3, true);
+    const auto& rows = tree.view("fixture", {.loaded = loaded, .state = state}).rows;
+    CHECK_FALSE(tree.collapsed("fixture", 2));
+    CHECK(tree.collapsed("fixture", 3));
+    CHECK(std::ranges::any_of(rows, &SceneTreeRow::generated));
+    CHECK(std::ranges::none_of(rows, [](const auto& row) { return row.importedNode == 1; }));
+}
+
+//======================================================================================================================
+TEST_CASE("Saved mesh rows select the bound object and retain exported pose edits",
+          "[app][scene-tree]") {
+    FakeDevice device;
+    auto doc = test::contentDocument();
+    doc.nodes[2].enabled = true;
+    // Document node 2 maps to object 1, not the node's numeric slot.
+    const auto path = std::filesystem::temp_directory_path() / "lmx-saved-mesh-tree.scene.gltf";
+    REQUIRE(asset::saveSceneDocument(doc, path));
+    auto result = scenes::loadSceneDocument(device, path);
+    INFO((result ? "loaded" : result.error().message));
+    REQUIRE(result);
+    auto loaded = std::move(*result);
+    SceneSession session;
+    session.activate(loaded, SceneActivationMotion::Reset);
+    const auto rows = buildSceneTree(loaded, session.documentState(), "second cube", {}, &session);
+    REQUIRE(rows.size() == 2);
+    const auto& row = rows.back();
+    REQUIRE(row.subject == EditorSubject::Object);
+    CHECK(row.node == 2);
+    REQUIRE(row.index == 1);
+    CHECK_FALSE(row.generated);
+    CHECK_FALSE(row.group);
+    CHECK(row.importedNode == engine::kGeneratedNode);
+    const EditorSelection selection{.sceneId = {"fixture"},
+                                    .subject = row.subject,
+                                    .index = row.index,
+                                    .node = row.node,
+                                    .importedNode = row.importedNode};
+    CHECK(sceneTreeRowSelected(row, selection));
+    CHECK_FALSE(sceneTreeSelectionHidden(rows, selection, "second cube"));
+    CHECK(sceneTreeKeyboardTarget(rows, {}, true)->subject == EditorSubject::Group);
+    CHECK(sceneTreeKeyboardTarget(std::span(rows).subspan(1), {}, true)->index == row.index);
+    const glm::vec3 edited{9.f, 8.f, 7.f};
+    const auto& object = loaded.scene->objects[row.index];
+    session.editObject(row.index, {edited, object.eulerDegrees, object.scale});
+    auto exported = scenes::exportSceneDocument(loaded, session.scene(), session.documentState());
+    REQUIRE(exported);
+    CHECK(exported->nodes[row.node].translation == edited);
+    CHECK(scenes::documentDirty(loaded.document, *exported));
+    REQUIRE(asset::saveSceneDocument(*exported, path));
+    auto reopened = scenes::loadSceneDocument(device, path);
+    REQUIRE(reopened);
+    const auto persisted = std::ranges::find(reopened->binding.objectNode, row.node);
+    REQUIRE(persisted != reopened->binding.objectNode.end());
+    CHECK(reopened->scene->objects[persisted - reopened->binding.objectNode.begin()].position ==
+          edited);
 }

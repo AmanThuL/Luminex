@@ -52,9 +52,17 @@ std::optional<ProvenanceMark> subjectProvenance(std::optional<std::string_view> 
                                                 std::optional<std::string_view> cliFlag,
                                                 bool edited);
 
+/// Describes content regenerated from a generator node's saved parameters.
+inline constexpr std::string_view kGeneratedPopulationTooltip =
+    "Created from this node's saved parameters each time the scene loads.";
+
+/// Returns the generator attribution without implying its saved parameters are unsaved.
+std::string generatedProvenanceSource(std::string_view generator);
+
 /// Returns a row tooltip's provenance lines without a leading newline: the mark's source, preceded
 /// on its own line by the generator sentence only when that source does not already begin with
-/// it. Empty when neither applies. Strings are borrowed for the call.
+/// it, followed by the saved-parameters explanation for generated rows. Empty when neither
+/// applies. Strings are borrowed for the call.
 std::string rowProvenanceTooltip(std::optional<std::string_view> generatedBy,
                                  const std::optional<ProvenanceMark>& mark);
 

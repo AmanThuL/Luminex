@@ -109,6 +109,13 @@ SceneTreeView buildSceneTreeView(const engine::LoadedScene& loaded,
             found != binding.lightGeneratorNode.end())
             lightsByGenerator[found->second].push_back(lightId);
 
+    std::vector<size_t> objectsByNode(document.nodes.size(), scene.objects.size());
+    for (size_t object = 0; object < binding.objectNode.size(); ++object) {
+        const uint32_t node = binding.objectNode[object];
+        if (node < document.nodes.size() && document.nodes[node].mesh)
+            objectsByNode[node] = object;
+    }
+
     const auto docEffective = engine::effectiveDocumentEnabled(document, state.nodeEnabled);
     std::vector<bool> importedEffective(binding.importedNodes.size(), true);
     std::unordered_map<uint64_t, uint32_t> importedBySource;
@@ -173,6 +180,9 @@ SceneTreeView buildSceneTreeView(const engine::LoadedScene& loaded,
         } else if (bound.light) {
             subject = EditorSubject::LocalLight;
             lightId = *bound.light;
+        } else if (node.mesh && objectsByNode[nodeIndex] < scene.objects.size()) {
+            subject = EditorSubject::Object;
+            index = objectsByNode[nodeIndex];
         }
         const bool own = session ? session->nodeEnabled(nodeIndex) : state.nodeEnabled[nodeIndex];
         const bool effective =
@@ -183,6 +193,7 @@ SceneTreeView buildSceneTreeView(const engine::LoadedScene& loaded,
                                              .node = nodeIndex,
                                              .depth = depth,
                                              .label = documentNodeLabel(node.name, nodeIndex),
+                                             .group = node.generator.has_value(),
                                              .enabled = own,
                                              .effective = effective});
         for (const uint32_t child : node.children)

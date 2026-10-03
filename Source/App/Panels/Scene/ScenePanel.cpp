@@ -329,7 +329,11 @@ void drawTreeRow(const SceneTreeRow& row, const ScenePanelContext& context) {
         label += " [off]";
     else if (!row.effective)
         label += " [off by parent]";
-    if (row.generated || (mark && mark->kind == Provenance::SessionOnly))
+    if (row.generated && context.loadedScene &&
+        row.node < context.loadedScene->document.nodes.size())
+        label += " · " + generatedProvenanceSource(
+                             context.loadedScene->document.nodes[row.node].generator->name);
+    else if (mark && mark->kind == Provenance::SessionOnly)
         label += " · not saved";
     // Rows are drawn flat with an explicit indent so a clipper can skip whole ranges; open state
     // comes from the model and is written back only when the user toggles it.
@@ -363,8 +367,9 @@ void drawTreeRow(const SceneTreeRow& row, const ScenePanelContext& context) {
     if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
         selectTreeRow(row, context);
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled)) {
-        const bool generated = row.generated && context.loadedScene &&
-                               row.node < context.loadedScene->document.nodes.size();
+        const bool generated = context.loadedScene &&
+                               row.node < context.loadedScene->document.nodes.size() &&
+                               context.loadedScene->document.nodes[row.node].generator.has_value();
         const std::string provenance = rowProvenanceTooltip(
             generated ? std::optional<std::string_view>(
                             context.loadedScene->document.nodes[row.node].generator->name)
