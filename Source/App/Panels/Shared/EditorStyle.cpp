@@ -585,10 +585,9 @@ void consumeFieldProvenance() {
 
 //======================================================================================================================
 float fieldProvenanceWidth() {
-    return nextFieldMark && nextFieldMark->kind != Provenance::Authored &&
-                   nextFieldMark->kind != Provenance::SessionOnly
-               ? scaled(kActorMarkSize) + ImGui::GetStyle().ItemInnerSpacing.x
-               : 0.0f;
+    // Reserved whether or not a mark is pending, so an edit mark appearing during a drag never
+    // rewraps the label or moves a vector row between its one-row and stacked layouts.
+    return scaled(kActorMarkSize) + ImGui::GetStyle().ItemInnerSpacing.x;
 }
 
 //======================================================================================================================

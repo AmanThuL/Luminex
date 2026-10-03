@@ -27,33 +27,38 @@ bool drawInspectorHeader(const char* name, const char* kind, const char* resetTo
                          std::optional<bool> isStatic) {
     editor_style::beginHeaderRow();
     bool reset = false;
+    const auto& style = ImGui::GetStyle();
+    // Marks always keep their space, so one appearing never rewraps the name or shifts a column.
+    const float markWidth =
+        editor_style::scaled(editor_style::kActorMarkSize) + style.ItemInnerSpacing.x;
     const auto flags = ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_NoSavedSettings;
+    // Unity's order: the enabled box leads the name, and the read-only Static value follows the
+    // kind with its label on the left, so neither label can be read as the other's.
     if (ImGui::BeginTable("InspectorHeader", 3 + (enabled ? 1 : 0) + (isStatic ? 1 : 0), flags)) {
+        if (enabled)
+            ImGui::TableSetupColumn("Enabled", ImGuiTableColumnFlags_WidthFixed,
+                                    ImGui::GetFrameHeight() + markWidth);
         ImGui::TableSetupColumn("Subject", ImGuiTableColumnFlags_WidthStretch, 1.0f);
         ImGui::TableSetupColumn("Kind", ImGuiTableColumnFlags_WidthFixed,
                                 ImGui::CalcTextSize(kind).x);
         if (isStatic)
             ImGui::TableSetupColumn("Static", ImGuiTableColumnFlags_WidthFixed,
-                                    ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x +
-                                        ImGui::CalcTextSize("Static").x);
-        if (enabled)
-            ImGui::TableSetupColumn("Enabled", ImGuiTableColumnFlags_WidthFixed,
-                                    ImGui::GetFrameHeight() +
-                                        (enabledMark && enabledMark->kind != Provenance::SessionOnly
-                                             ? editor_style::scaled(editor_style::kActorMarkSize) +
-                                                   ImGui::GetStyle().ItemInnerSpacing.x
-                                             : 0));
+                                    ImGui::CalcTextSize("Static").x + style.ItemInnerSpacing.x +
+                                        ImGui::GetFrameHeight());
         ImGui::TableSetupColumn("Reset", ImGuiTableColumnFlags_WidthFixed,
                                 editor_style::iconButtonWidth(EditorIcon::Reset));
+        if (enabled) {
+            ImGui::TableNextColumn();
+            ImGui::Checkbox("##enabled", enabled);
+            editorTooltip("Enabled: change this subject's own enabled state. A parent can still "
+                          "keep it off; its identity and edited fields are retained.");
+            if (enabledMark)
+                editor_style::provenanceMark(*enabledMark);
+        }
         ImGui::TableNextColumn();
         ImGui::AlignTextToFramePadding();
         {
             const editor_style::ScopedType type(TypeRole::BodyStrong);
-            const float markWidth =
-                mark && mark->kind != Provenance::Authored && mark->kind != Provenance::SessionOnly
-                    ? editor_style::scaled(editor_style::kActorMarkSize) +
-                          ImGui::GetStyle().ItemInnerSpacing.x
-                    : 0.0f;
             const float nameWidth = ImGui::GetContentRegionAvail().x - markWidth;
             ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + (nameWidth > 0 ? nameWidth : 1.0f));
             ImGui::TextUnformatted(name);
@@ -68,17 +73,13 @@ bool drawInspectorHeader(const char* name, const char* kind, const char* resetTo
         if (isStatic) {
             ImGui::TableNextColumn();
             ImGui::BeginDisabled();
-            ImGui::Checkbox("Static", &*isStatic);
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted("Static");
+            editorTooltip("Authored in the scene file.");
+            ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
+            ImGui::Checkbox("##static", &*isStatic);
             editorTooltip("Authored in the scene file.");
             ImGui::EndDisabled();
-        }
-        if (enabled) {
-            ImGui::TableNextColumn();
-            ImGui::Checkbox("##enabled", enabled);
-            editorTooltip("Change this subject's own enabled state. A parent can still keep it "
-                          "off; its identity and edited fields are retained.");
-            if (enabledMark)
-                editor_style::provenanceMark(*enabledMark);
         }
         ImGui::TableNextColumn();
         reset = editor_style::iconButton("resetSubject", EditorIcon::Reset, changed, resetTooltip);
