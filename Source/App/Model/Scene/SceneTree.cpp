@@ -5,6 +5,7 @@
 
 #include "App/Model/Scene/SceneTree.h"
 
+#include "App/Model/Scene/InspectorSubject.h"
 #include "App/Model/Scene/SceneSession.h"
 
 #include <algorithm>
@@ -232,6 +233,30 @@ SceneTreeView buildSceneTreeView(const engine::LoadedScene& loaded,
     for (const uint32_t root : document.rootNodes)
         appendDocument(0, root, 1);
     add(0, {.subject = EditorSubject::Environment, .depth = 1, .label = "Environment"});
+    for (auto& branch : branches) {
+        auto& row = branch.row;
+        if (row.generated || row.depth == 0)
+            continue;
+        const EditorSelection selection{.subject = row.subject,
+                                        .index = row.index,
+                                        .lightId = row.lightId,
+                                        .node = row.node,
+                                        .importedNode = row.importedNode};
+        const auto isStatic = inspectorIsStatic(loaded, selection);
+        row.movable = isStatic && !*isStatic;
+        if (session)
+            row.edited = inspectorSubjectEdited(*session, selection);
+        else if (row.importedNode != engine::kGeneratedNode) {
+            const auto& source = binding.importedNodes[row.importedNode];
+            const auto& overrides = document.nodes[source.assetRoot].overrides;
+            const auto found =
+                std::ranges::find(overrides, source.sourceNode, &asset::DocOverride::node);
+            row.edited =
+                row.enabled != (found == overrides.end() ? source.enabled
+                                                         : found->enabled.value_or(source.enabled));
+        } else if (row.node < document.nodes.size())
+            row.edited = row.enabled != document.nodes[row.node].enabled;
+    }
     const size_t totalCount = branches.size() - 1;
 
     std::vector<bool> retained(branches.size());

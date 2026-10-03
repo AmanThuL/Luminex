@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "App/Model/Scene/InspectorSubject.h"
+#include "App/Model/Rendering/Settings/EditorRenderDefaults.h"
 #include "App/Model/Scene/SceneTree.h"
 
 #include <algorithm>
@@ -39,6 +40,44 @@ bool importedBaseline(const engine::LoadedScene& loaded,
 }
 
 } // namespace
+
+//======================================================================================================================
+std::optional<bool> inspectorIsStatic(const engine::LoadedScene& loaded,
+                                      const EditorSelection& selection) {
+    const auto& binding = loaded.binding;
+    if (selection.subject == EditorSubject::Object) {
+        const auto index = selection.index;
+        if (index >= loaded.scene->objects.size() || index >= binding.objectNode.size() ||
+            binding.objectNode[index] >= loaded.document.nodes.size() ||
+            (index < binding.objectGeneratorNode.size() &&
+             binding.objectGeneratorNode[index] != engine::kGeneratedNode))
+            return std::nullopt;
+        return index >= loaded.objectMobility.size() ||
+               loaded.objectMobility[index] == asset::DocMobility::Static;
+    }
+    if (selection.subject != EditorSubject::DirectionalLight &&
+        selection.subject != EditorSubject::LocalLight)
+        return std::nullopt;
+    size_t mobility = 0;
+    for (const auto& node : binding.nodes) {
+        if (!node.directional && !node.light)
+            continue;
+        if (selection.subject == EditorSubject::DirectionalLight
+                ? node.directional == selection.index
+                : node.light == selection.lightId)
+            return mobility >= loaded.lightMobility.size() ||
+                   loaded.lightMobility[mobility] == asset::DocMobility::Static;
+        ++mobility;
+    }
+    return std::nullopt;
+}
+
+//======================================================================================================================
+std::optional<bool> inspectorIsStatic(const SceneSession& session,
+                                      const EditorSelection& selection) {
+    return session.loadedScene() ? inspectorIsStatic(*session.loadedScene(), selection)
+                                 : std::nullopt;
+}
 
 //======================================================================================================================
 std::optional<InspectorEnabledState> inspectorEnabledState(const SceneSession& session,
@@ -87,13 +126,16 @@ std::optional<InspectorEnabledState> inspectorEnabledState(const SceneSession& s
                                          .primitiveCount = source.objects.size()};
         }
         const uint32_t generator = binding.objectGeneratorNode.at(selection.index);
+        const uint32_t node = binding.objectNode.at(selection.index);
         return InspectorEnabledState{.label = sceneObjectLabel(session.scene(), selection.index),
                                      .kind = "Object",
                                      .generatedBy = generatedBy(*loaded, generator),
                                      .own = session.objectEnabled(selection.index),
                                      .effective = session.scene().objects[selection.index].enabled,
                                      .baseline =
-                                         binding.generatedObjectEnabled.at(selection.index)};
+                                         node < document.nodes.size() && document.nodes[node].mesh
+                                             ? document.nodes[node].enabled
+                                             : binding.generatedObjectEnabled.at(selection.index)};
     }
     if (selection.subject == EditorSubject::DirectionalLight) {
         if (selection.index >= std::size(session.scene().lights))
@@ -141,6 +183,44 @@ std::optional<InspectorEnabledState> inspectorEnabledState(const SceneSession& s
                             : true};
     }
     return std::nullopt;
+}
+
+//======================================================================================================================
+bool inspectorSubjectEdited(const SceneSession& session, const EditorSelection& selection) {
+    const auto enabled = inspectorEnabledState(session, selection);
+    const bool flagChanged = enabled && enabled->own != enabled->baseline;
+    switch (selection.subject) {
+    case EditorSubject::Object:
+        return flagChanged || session.objectChanged(selection.index);
+    case EditorSubject::DirectionalLight:
+        return flagChanged || session.lightChanged(selection.index);
+    case EditorSubject::LocalLight:
+        return flagChanged || session.localLightChanged(selection.lightId);
+    case EditorSubject::Environment:
+        return sceneLookChanged(session);
+    case EditorSubject::Group:
+        return flagChanged;
+    case EditorSubject::Camera: {
+        const auto* loaded = session.loadedScene();
+        if (!loaded)
+            return false;
+        const auto& document = loaded->document;
+        const uint32_t node =
+            selection.node < document.nodes.size() && document.nodes[selection.node].camera
+                ? selection.node
+                : document.camera;
+        const bool ownChanged = node < document.nodes.size() &&
+                                session.nodeEnabled(node) != document.nodes[node].enabled;
+        const auto current = session.authoredSceneCamera();
+        const auto& original = session.scene().initialCamera;
+        return ownChanged || current.position != original.position || current.yaw != original.yaw ||
+               current.pitch != original.pitch || current.fovY != original.fovY ||
+               current.nearZ != original.nearZ || current.farZ != original.farZ;
+    }
+    case EditorSubject::None:
+        return false;
+    }
+    return false;
 }
 
 //======================================================================================================================

@@ -28,6 +28,8 @@ void drawObjectSection(const InspectorPanelContext& context, size_t index) {
         std::ranges::any_of(session.scene().animation.tracks,
                             [index](const auto& track) { return track.objectIndex == index; });
     const auto baseline = session.objectDefault(index);
+    const auto poseLock = session.objectPoseLock(index);
+    const std::string lockReason(poseLockReason(poseLock));
     const auto headerMark = inspectorProvenance(session, context.selection,
                                                 inspectorSubjectEdited(session, context.selection),
                                                 {}, true, animated && session.objectChanged(index));
@@ -39,13 +41,16 @@ void drawObjectSection(const InspectorPanelContext& context, size_t index) {
     if (drawInspectorHeader(enabledState->label.c_str(), enabledState->kind.c_str(),
                             "Restore this object's authored transform and own enabled state. "
                             "Animated objects use their track at the current time.",
-                            session.objectChanged(index) ||
+                            (poseLock == PoseLock::None && session.objectChanged(index)) ||
                                 enabledState->own != enabledState->baseline,
-                            &enabled, headerMark, enabledMark)) {
-        if (const auto result = session.resetObject(index); !result)
-            editor_style::message(result.error().message.c_str(), true);
-        else
-            requestCameraCut(context.temporalState);
+                            &enabled, headerMark, enabledMark,
+                            inspectorIsStatic(session, context.selection))) {
+        if (poseLock == PoseLock::None) {
+            if (const auto result = session.resetObject(index); !result)
+                editor_style::message(result.error().message.c_str(), true);
+            else
+                requestCameraCut(context.temporalState);
+        }
         if (const auto result = resetInspectorEnabled(session, context.selection); !result)
             editor_style::message(result.error().message.c_str(), true);
         else
@@ -63,6 +68,8 @@ void drawObjectSection(const InspectorPanelContext& context, size_t index) {
     }
     if (enabledState->own && !enabledState->effective)
         editor_style::message("Off in scene because an ancestor is disabled.");
+    if (poseLock != PoseLock::None)
+        editor_style::message(lockReason.c_str());
     if (enabledState->primitiveCount > 1)
         ImGui::TextDisabled("One source node controls all %zu material primitives.",
                             enabledState->primitiveCount);
@@ -76,22 +83,24 @@ void drawObjectSection(const InspectorPanelContext& context, size_t index) {
     };
     if (editor_style::beginPropertyGrid("objectFields")) {
         DecomposedTransform transform{object.position, object.eulerDegrees, object.scale};
+        ImGui::BeginDisabled(poseLock != PoseLock::None);
         markInspectorField(context, object.position != baseline.position, "Position", animated);
         bool edited = editor_style::vector3(
             "Position", "position", &transform.position.x, 0.05f, 0.0f, 0.0f, "%.3f", 0, false,
-            animated ? "World-space position. Pause playback to edit. Reset samples the authored "
-                       "track at the current time; playback replaces transform edits on its next "
-                       "sample."
-                     : "World-space position.");
+            poseLock != PoseLock::None ? lockReason.c_str() : "World-space position.");
         markInspectorField(context, object.eulerDegrees != baseline.eulerDegrees, "Rotation",
                            animated);
-        edited |= editor_style::vector3("Rotation", "rotation", &transform.eulerDegrees.x, 1.0f,
-                                        0.0f, 0.0f, "%.3f", 0, false,
-                                        "Euler rotation about X, Y and Z, in degrees.");
+        edited |= editor_style::vector3(
+            "Rotation", "rotation", &transform.eulerDegrees.x, 1.0f, 0.0f, 0.0f, "%.3f", 0, false,
+            poseLock != PoseLock::None ? lockReason.c_str()
+                                       : "Euler rotation about X, Y and Z, in degrees.");
         markInspectorField(context, object.scale != baseline.scale, "Scale", animated);
         edited |= editor_style::vector3("Scale", "scale", &transform.scale.x, 0.01f, 0.01f, 100.0f,
                                         "%.3f", ImGuiSliderFlags_AlwaysClamp, false,
-                                        "Scale factor per axis, from 0.01 to 100.");
+                                        poseLock != PoseLock::None
+                                            ? lockReason.c_str()
+                                            : "Scale factor per axis, from 0.01 to 100.");
+        ImGui::EndDisabled();
         if (edited) {
             if (const auto result = session.editObject(index, transform); !result)
                 editor_style::message(result.error().message.c_str(), true);

@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "App/Model/Scene/InspectorSubject.h"
 #include "App/Model/Scene/SceneSession.h"
 #include "App/Model/Scene/SceneTree.h"
 #include "App/Model/Scene/SceneTreeState.h"
@@ -51,6 +52,149 @@ engine::LoadedScene treeFixture() {
     loaded.binding.nodes[4].directional = 0;
     loaded.scene->lights[0].enabled = false;
     return loaded;
+}
+
+//======================================================================================================================
+TEST_CASE("Hierarchy marks saved mobility and edits without marking generated or inherited state",
+          "[app][scene-tree][mobility-display]") {
+    auto loaded = treeFixture();
+    loaded.objectMobility = {asset::DocMobility::Movable, asset::DocMobility::Movable,
+                             asset::DocMobility::Movable};
+    loaded.lightMobility = {asset::DocMobility::Movable};
+    const auto authoredLight = loaded.scene->addLight(engine::LocalLight{});
+    REQUIRE(authoredLight);
+    loaded.document.nodes.push_back({.name = "Authored lamp", .light = 1});
+    loaded.document.nodes[1].children.push_back(5);
+    loaded.binding.nodes.resize(6);
+    loaded.binding.nodes[5].light = *authoredLight;
+    loaded.binding.lightNode[engine::sceneLightKey(*authoredLight)] = 5;
+    loaded.lightMobility.push_back(asset::DocMobility::Static);
+    const auto generatedLight = loaded.scene->addLight(engine::LocalLight{});
+    REQUIRE(generatedLight);
+    loaded.binding.lightGeneratorNode[engine::sceneLightKey(*generatedLight)] = 2;
+    loaded.binding.generatedLightEnabled[engine::sceneLightKey(*generatedLight)] = true;
+    SceneSession session;
+    session.activate(loaded, SceneActivationMotion::Reset);
+    const auto row = [&](std::string_view label) {
+        const auto rows = buildSceneTree(loaded, session.documentState(), "", {}, &session);
+        const auto found = std::ranges::find(rows, label, &SceneTreeRow::label);
+        REQUIRE(found != rows.end());
+        return *found;
+    };
+    CHECK(row("Pillar (2 primitives)").movable);
+    CHECK(row("Off light").movable);
+    CHECK_FALSE(row("Asset").movable);
+    CHECK_FALSE(row("Environment").movable);
+    CHECK_FALSE(row("Authored lamp").movable);
+    auto authored = *loaded.scene->light(*authoredLight);
+    authored.intensity = 2.f;
+    REQUIRE(session.editLocalLight(*authoredLight, authored));
+    CHECK(row("Authored lamp").edited);
+    CHECK_FALSE(row("Pillar (2 primitives)").edited);
+    REQUIRE(session.setNodeEnabled(3, false));
+    CHECK(row("Asset").edited);
+    CHECK_FALSE(row("Empty").edited);
+    CHECK_FALSE(row("Pillar (2 primitives)").edited);
+    REQUIRE(session.setImportedNodeEnabled(0, false));
+    CHECK(row("Empty").edited);
+    CHECK_FALSE(row("Pillar (2 primitives)").edited);
+    REQUIRE(session.setObjectEnabled(1, false));
+    CHECK(row("Pillar (2 primitives)").edited);
+    REQUIRE(session.setObjectEnabled(0, false));
+    auto generated = *loaded.scene->light(*generatedLight);
+    generated.intensity = 5.f;
+    REQUIRE(session.editLocalLight(*generatedLight, generated));
+    for (const auto& item : buildSceneTree(loaded, session.documentState(), "", {}, &session))
+        if (item.generated) {
+            CHECK_FALSE(item.movable);
+            CHECK_FALSE(item.edited);
+        }
+    auto light = loaded.scene->lights[0];
+    light.strength.x += 1.f;
+    REQUIRE(session.editLight(0, light));
+    CHECK(row("Off light").edited);
+    auto look = session.look();
+    look.bloom.intensity += 1.f;
+    session.editLook(look);
+    CHECK(row("Environment").edited);
+}
+
+//======================================================================================================================
+TEST_CASE("Hierarchy saved mesh edited marker uses the false document Enabled baseline",
+          "[app][scene-tree][mobility-display]") {
+    auto loaded = treeFixture();
+    loaded.document.nodes.push_back({.name = "Saved cube", .mesh = 0, .enabled = false});
+    loaded.document.nodes[1].children.push_back(5);
+    loaded.binding.nodes.resize(6);
+    loaded.binding.nodes[5].objects = {3};
+    loaded.binding.objectNode.push_back(5);
+    loaded.binding.objectImportedNode.push_back(engine::kGeneratedNode);
+    loaded.binding.objectGeneratorNode.push_back(engine::kGeneratedNode);
+    loaded.binding.generatedObjectEnabled.push_back(true);
+    loaded.scene->objects.emplace_back();
+    loaded.objectMobility.resize(4, asset::DocMobility::Static);
+    SceneSession session;
+    session.activate(loaded, SceneActivationMotion::Reset);
+    const auto row = [&] {
+        return buildSceneTree(loaded, session.documentState(), "saved cube", {}, &session).back();
+    };
+    CHECK_FALSE(row().enabled);
+    CHECK_FALSE(row().edited);
+    CHECK_FALSE(row().movable);
+    REQUIRE(session.setObjectEnabled(3, true));
+    CHECK(row().edited);
+    loaded.document.nodes[5].enabled = true;
+    session.adoptDocumentResetBaseline();
+    CHECK_FALSE(row().edited);
+    REQUIRE(session.setObjectEnabled(3, false));
+    CHECK(row().edited);
+}
+
+//======================================================================================================================
+TEST_CASE("Hierarchy camera marks explicit saved requests and clears after baseline adoption",
+          "[app][scene-tree][mobility-display]") {
+    auto loaded = treeFixture();
+    loaded.scene->initialCamera = {{0.f, 0.f, 1.f}, 0.f, 0.f, 1.f, 0.1f, 100.f};
+    SceneSession session;
+    session.activate(loaded, SceneActivationMotion::Reset);
+    const auto cameraRow = [&] {
+        return buildSceneTree(loaded, session.documentState(), "camera", {}, &session).at(1);
+    };
+    CHECK_FALSE(cameraRow().edited);
+    session.camera().position.x += 1.f;
+    CHECK_FALSE(cameraRow().edited);
+    const auto requested = session.setSceneCamera();
+    INFO((requested ? "camera saved" : requested.error().message));
+    REQUIRE(requested);
+    CHECK(cameraRow().edited);
+    loaded.scene->initialCamera = session.authoredSceneCamera();
+    session.adoptDocumentCamera(loaded.scene->initialCamera);
+    CHECK_FALSE(cameraRow().edited);
+}
+
+//======================================================================================================================
+TEST_CASE("Hierarchy camera marks own Enabled edits and excludes ancestor disablement",
+          "[app][scene-tree][mobility-display]") {
+    auto loaded = treeFixture();
+    loaded.scene->initialCamera = {{0.f, 0.f, 1.f}, 0.f, 0.f, 1.f, 0.1f, 100.f};
+    loaded.document.rootNodes = {1};
+    loaded.document.nodes[1].children.insert(loaded.document.nodes[1].children.begin(), 0);
+    SceneSession session;
+    session.activate(loaded, SceneActivationMotion::Reset);
+    const auto cameraRow = [&] {
+        return buildSceneTree(loaded, session.documentState(), "camera", {}, &session).back();
+    };
+    CHECK_FALSE(cameraRow().edited);
+    REQUIRE(session.setNodeEnabled(1, false));
+    CHECK_FALSE(cameraRow().effective);
+    CHECK_FALSE(cameraRow().edited);
+    REQUIRE(session.setNodeEnabled(0, false));
+    CHECK(cameraRow().edited);
+    loaded.document.nodes[0].enabled = false;
+    session.adoptDocumentResetBaseline();
+    CHECK_FALSE(cameraRow().edited);
+    REQUIRE(session.setNodeEnabled(0, true));
+    CHECK(cameraRow().edited);
 }
 
 } // namespace

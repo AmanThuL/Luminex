@@ -17,6 +17,7 @@ TEST_CASE("editor icons use the pinned Codicons code points and readable labels"
         std::pair{EditorIcon::NewBelow, U'\uEA9A'},     std::pair{EditorIcon::FitGraph, U'\uEB4C'},
         std::pair{EditorIcon::FitSelection, U'\uEBF8'}, std::pair{EditorIcon::Lock, U'\uEA75'},
         std::pair{EditorIcon::Unlock, U'\uEB74'},       std::pair{EditorIcon::Rail, U'\uEADA'},
+        std::pair{EditorIcon::Movable, U'\uEB22'},
     };
     std::set<char32_t> codepoints;
     for (const auto& [icon, codepoint] : expected) {
@@ -27,6 +28,11 @@ TEST_CASE("editor icons use the pinned Codicons code points and readable labels"
         REQUIRE(info.codepoint <= 0xEC40);
         REQUIRE(codepoints.insert(info.codepoint).second);
     }
+}
+
+//======================================================================================================================
+TEST_CASE("Movable hierarchy icon has a readable font fallback", "[app][icons][mobility-display]") {
+    CHECK(editorIconInfo(EditorIcon::Movable).label == "Movable");
 }
 
 //======================================================================================================================

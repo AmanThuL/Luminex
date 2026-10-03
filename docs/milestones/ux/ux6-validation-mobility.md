@@ -34,7 +34,7 @@ absent afterwards. Fresh full per-commit gates passed **12/12**. The pinned vali
 writer test refreshed its shared output (66 assertions, one case). This is this run's inventory,
 not Task 12's 107-document count; arbitrary test-order output stability remains unverified.
 Evidence: `task13-notes.json`, `task13-review.json` and final gate/validator logs. Task 13 is complete;
-Task 14 is complete; Tasks 15–16 and 18–22 are unstarted. No pose-lock/native mobility or image checkpoint pass is inferred.
+Tasks 14–15 are complete; Tasks 16 and 18–22 are unstarted. No pose-lock/native mobility or image checkpoint pass is inferred.
 
 ## Task 14 — Shared pose locks
 
@@ -71,3 +71,37 @@ the original failed run. `task14-final-composite-gates.json` preserves both rece
 change required the Python suite. ROOT and the separate reviewer approved the final boundary.
 Logs and notes remain under `task14-*`. Field-qualified bridge
 preview reasons, disabled Inspector presentation and native mobility checks remain Tasks 15–16.
+
+## Task 15 — Inspector and Hierarchy
+
+Inspector displays each authored subject's disabled Static checkbox, including inherited mobility
+on animated imported objects, independently of temporary pose locks. Locked pose fields have the
+exact shared reason; Enabled and light non-pose fields remain available. Locked object header
+Reset restores Enabled without attempting a refused pose reset. Generated subjects have no
+file-authored mobility checkbox. Hierarchy marks movable exceptions and edited saved values
+through the existing provenance path; generated children have neither row flag. Explicit saved
+camera changes and Environment look edits receive marks; ordinary camera navigation stays clean.
+The edited-subject helper moves into AppModel for shared, tested use without ImGui dependencies.
+
+Runtime RED reproduced the saved-disabled mesh baseline bug (**seven assertions, two failures**):
+Reset used generatedObjectEnabled=true and enabled the object. The fix reads the document mesh's
+own Enabled baseline. A separate API RED failed compilation on the new Movable icon/accessors.
+The first GREEN failed one camera request because the new fixture's lens was zero; an explicit
+valid authored lens repaired that fixture. Six new cases then passed **80 assertions**. ROOT's
+preliminary inherited-light concern was disproved by activation's existing own-flag normalization;
+a new initially-disabled-parent regression passed **11 assertions** without production changes.
+The first formatted build command incorrectly requested multiple xmake targets and was refused
+before compilation; separate App and Tests builds passed. The initial focused Inspector/Hierarchy/
+icon suite passed **367 assertions in 30 cases**. Final review found camera own Enabled changes
+were absent from the edited mark: a new runtime RED failed **two of nine assertions**. The helper
+now compares that own flag against the loaded camera node independently of pose/lens. Repaired
+focused tests passed **376 assertions in 31 cases** (eight new cases, 100 assertions). The first
+full gate run completed 11 commands: ten passed, policy rejected seven task-number test tags.
+Those tags were renamed to describe mobility, with assertions unchanged. The remaining layout
+check was cancelled using its recorded own process tree when source freeze was revoked; it was
+not counted as passed. New formatted source, App and Tests rebuilds passed before fresh gates. No assertion, golden file, tolerance or image
+reference changed. Fresh full per-commit gates passed **12/12**, and independent review rebuilt
+Tests and passed the same **376 assertions in 31 cases**. All 15 source/test hashes match the
+formatted freeze. Evidence: `task15-final2-gates.json`, `task15/` and `task15-review.json`.
+ROOT and the separate reviewer approved the final boundary. Native mobility presentation and
+image parity remain the Task 16 checkpoint.

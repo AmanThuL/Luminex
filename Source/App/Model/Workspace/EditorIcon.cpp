@@ -42,6 +42,8 @@ EditorIconInfo editorIconInfo(EditorIcon icon) {
         return {static_cast<char32_t>(icon), "Resume"};
     case EditorIcon::Rail:
         return {static_cast<char32_t>(icon), "Follow camera rail"};
+    case EditorIcon::Movable:
+        return {static_cast<char32_t>(icon), "Movable"};
     }
     LMX_ASSERT(false, "Invalid editor icon");
     std::unreachable();

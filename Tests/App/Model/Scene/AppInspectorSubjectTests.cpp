@@ -168,3 +168,90 @@ TEST_CASE("Environment reset restores the complete saved look only", "[app][insp
     CHECK_FALSE(sceneLookChanged(session));
     CHECK(settings.renderScale == 0.6f);
 }
+
+//======================================================================================================================
+TEST_CASE("Saved mesh Enabled resets to its loaded false own flag",
+          "[app][inspector-subject][mobility-display]") {
+    auto loaded = inspectorFixture();
+    loaded.document.nodes.push_back({.name = "Saved cube", .mesh = 0, .enabled = false});
+    loaded.document.nodes[0].children.push_back(5);
+    loaded.binding.nodes.resize(6);
+    loaded.binding.nodes[5].objects = {3};
+    loaded.binding.objectNode.push_back(5);
+    loaded.binding.objectImportedNode.push_back(engine::kGeneratedNode);
+    loaded.binding.objectGeneratorNode.push_back(engine::kGeneratedNode);
+    loaded.binding.generatedObjectEnabled.push_back(true);
+    loaded.scene->objects.emplace_back();
+    SceneSession session;
+    session.activate(loaded, SceneActivationMotion::Reset);
+    const EditorSelection cube{
+        .sceneId = {"fixture"}, .subject = EditorSubject::Object, .index = 3, .node = 5};
+    REQUIRE(inspectorEnabledState(session, cube));
+    CHECK(inspectorIsStatic(session, cube) == true);
+    CHECK_FALSE(inspectorSubjectEdited(session, cube));
+    CHECK_FALSE(inspectorEnabledState(session, cube)->baseline);
+    CHECK_FALSE(inspectorEnabledState(session, cube)->own);
+    REQUIRE(setInspectorEnabled(session, cube, true));
+    CHECK(inspectorSubjectEdited(session, cube));
+    REQUIRE(resetInspectorEnabled(session, cube));
+    CHECK_FALSE(inspectorEnabledState(session, cube)->own);
+    CHECK_FALSE(inspectorSubjectEdited(session, cube));
+}
+
+//======================================================================================================================
+TEST_CASE("Inspector Static reports authored mobility independently of pose locks",
+          "[app][inspector-subject][mobility-display]") {
+    auto loaded = inspectorFixture();
+    loaded.objectMobility = {asset::DocMobility::Movable, asset::DocMobility::Movable,
+                             asset::DocMobility::Static};
+    // Binding order is local node 2 then directional node 4, not scene-light order.
+    loaded.lightMobility = {asset::DocMobility::Static, asset::DocMobility::Movable};
+    SceneSession session;
+    session.activate(loaded, SceneActivationMotion::Reset);
+    const EditorSelection object{.subject = EditorSubject::Object, .index = 0};
+    const EditorSelection generated{.subject = EditorSubject::Object, .index = 2};
+    const EditorSelection local{.subject = EditorSubject::LocalLight,
+                                .lightId = loaded.scene->localLights().front()};
+    const EditorSelection directional{.subject = EditorSubject::DirectionalLight, .index = 0};
+    CHECK(inspectorIsStatic(session, object) == false);
+    CHECK(inspectorIsStatic(session, local) == true);
+    CHECK(inspectorIsStatic(session, directional) == false);
+    CHECK_FALSE(inspectorIsStatic(session, generated).has_value());
+    CHECK_FALSE(inspectorIsStatic(session, {.subject = EditorSubject::Group, .node = 0}));
+    session.setMeasurementActive(true);
+    CHECK(session.objectPoseLock(0) == PoseLock::Measuring);
+    CHECK(inspectorIsStatic(session, object) == false);
+    session.setMeasurementActive(false);
+    loaded.binding.importedNodes[1].animated = true;
+    CHECK(inspectorIsStatic(session, object) == false);
+    CHECK(session.objectPoseLock(0) == PoseLock::Animated);
+    const auto id = loaded.scene->addLight(engine::LocalLight{});
+    REQUIRE(id);
+    loaded.binding.lightGeneratorNode[engine::sceneLightKey(*id)] = 3;
+    CHECK_FALSE(inspectorIsStatic(session, {.subject = EditorSubject::LocalLight, .lightId = *id}));
+}
+
+//======================================================================================================================
+TEST_CASE("Inherited light disablement does not mark saved light fields edited",
+          "[app][inspector-subject][mobility-display]") {
+    auto loaded = inspectorFixture();
+    loaded.document.nodes[0].enabled = false;
+    loaded.scene->lights[0].enabled = false;
+    const auto id = loaded.scene->localLights().front();
+    auto light = *loaded.scene->light(id);
+    light.enabled = false;
+    REQUIRE(loaded.scene->updateLight(id, light));
+    SceneSession session;
+    session.activate(loaded, SceneActivationMotion::Reset);
+    const EditorSelection directional{.subject = EditorSubject::DirectionalLight, .index = 0};
+    const EditorSelection local{.subject = EditorSubject::LocalLight, .lightId = id};
+    CHECK_FALSE(inspectorSubjectEdited(session, directional));
+    CHECK_FALSE(inspectorSubjectEdited(session, local));
+    REQUIRE(session.setNodeEnabled(0, true));
+    CHECK_FALSE(inspectorSubjectEdited(session, directional));
+    CHECK_FALSE(inspectorSubjectEdited(session, local));
+    REQUIRE(setInspectorEnabled(session, directional, false));
+    REQUIRE(setInspectorEnabled(session, local, false));
+    CHECK(inspectorSubjectEdited(session, directional));
+    CHECK(inspectorSubjectEdited(session, local));
+}

@@ -320,11 +320,19 @@ void drawTreeRow(const SceneTreeRow& row, const ScenePanelContext& context) {
         root && context.proposal ? std::optional{proposedProvenance(context.proposal->client)}
         : root && context.loadedScene
             ? documentProvenance(context.dirty, context.loadedScene->path.string())
-        : context.session ? inspectorProvenance(*context.session, subject,
-                                                inspectorSubjectEdited(*context.session, subject),
-                                                {}, true, preview)
-                          : std::nullopt;
+        : context.session
+            ? inspectorProvenance(*context.session, subject,
+                                  row.generated ? inspectorSubjectEdited(*context.session, subject)
+                                                : row.edited,
+                                  {}, true, preview)
+            : std::nullopt;
     std::string label = row.label;
+    if (row.movable) {
+        const auto icon = editorIconInfo(EditorIcon::Movable);
+        const bool hasGlyph =
+            ImGui::GetFontBaked()->FindGlyphNoFallback(static_cast<ImWchar>(icon.codepoint));
+        label = (hasGlyph ? encodeUtf8(icon.codepoint) : std::string(icon.label)) + " " + label;
+    }
     if (!row.enabled)
         label += " [off]";
     else if (!row.effective)

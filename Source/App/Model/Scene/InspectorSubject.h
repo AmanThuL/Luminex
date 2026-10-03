@@ -30,6 +30,16 @@ struct InspectorEnabledState {
 std::optional<InspectorEnabledState> inspectorEnabledState(const SceneSession& session,
                                                            const EditorSelection& selection);
 
+/// Loaded mobility for saved objects and authored lights; absent for generated or other subjects.
+/// Inherited mobility is independent of animation and measurement pose locks.
+std::optional<bool> inspectorIsStatic(const engine::LoadedScene& loaded,
+                                      const EditorSelection& selection);
+/// Resolves authored mobility from the active loaded scene, without changing it.
+std::optional<bool> inspectorIsStatic(const SceneSession& session,
+                                      const EditorSelection& selection);
+/// Compares the subject's fields with saved reset baselines; camera navigation alone is excluded.
+bool inspectorSubjectEdited(const SceneSession& session, const EditorSelection& selection);
+
 /// Changes only the selected subject's own flag through SceneSession's validated edit path.
 rojoRHI::Result<void> setInspectorEnabled(SceneSession& session, const EditorSelection& selection,
                                           bool enabled);

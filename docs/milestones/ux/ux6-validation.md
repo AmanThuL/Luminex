@@ -3,11 +3,11 @@
 **Status:** In progress
 **Date:** 2026-10-03. The milestone remains `Accepted`; no owner acceptance or merge occurred.
 
-Tasks 1–14 are complete; Task 8 is `c888541` and tag `ux6-exporter`.
+Tasks 1–15 are complete; Task 8 is `c888541` and tag `ux6-exporter`.
 Task 17 is also complete after isolated and combined gates plus separate review. Task 12 automatic
 checks and images ran. After the required image/native stop, the owner accepted the five
 MaterialLab reference updates and authorized native retries. Sphere edit/Save/relaunch and generic
-glTF import now pass as observed below. Task 13 adds document mobility; Task 14 adds shared pose locks; Tasks 15–16 and 18–22 are unstarted. The owner requested parallel work and explicitly approved reusing the idle
+glTF import now pass as observed below. Task 13 adds document mobility; Task 14 adds shared pose locks; Task 15 adds Inspector/Hierarchy presentation; Tasks 16 and 18–22 are unstarted. The owner requested parallel work and explicitly approved reusing the idle
 Task 1 reviewer as Task 17's implementer after the agent interface refused a fresh thread.
 Task 9 and Task 17 have independent checkouts and reviewers. Other tasks use fresh agents.
 
@@ -48,7 +48,8 @@ commands and assertions are unchanged, with distinct logs and no previous-eviden
 | 17 | `6a7a338` | 13/13 passed; 359 Python tests | `task17-integration-gates.json` |
 | 12 | `c9cd9b6` | 13/13 passed; 363 Python tests | `task12-accepted-gates.json` |
 | 13 | `1343471` | 12/12 passed | `task13-final2-gates.json` |
-| 14 | pending commit | 12/12 composite; initial 11/12 retained | `task14-final-composite-gates.json` |
+| 14 | `9dc7f6e` | 12/12 composite; initial 11/12 retained | `task14-final-composite-gates.json` |
+| 15 | pending commit | 12/12 passed; initial cancelled run retained | `task15-final2-gates.json` |
 
 ## Retained failures and resumptions
 
@@ -242,6 +243,6 @@ and all 18 targeted tests. Task 12 is complete; original failed measurements rem
 
 ## Mobility validation
 
-[Mobility validation](ux6-validation-mobility.md) preserves Task 13–14 reader/writer/migration and pose-lock
+[Mobility validation](ux6-validation-mobility.md) preserves Task 13–15 reader/writer/migration, pose-lock and presentation
 measurements, failed attempts, scope additions and independent review. Native mobility and the
 Task 16 image checkpoint remain unverified.

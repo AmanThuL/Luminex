@@ -33,6 +33,8 @@ void drawDirectionalLightSection(const InspectorPanelContext& context, size_t in
         return;
     }
     const auto& baseline = session.lightDefault(index);
+    const auto poseLock = session.lightPoseLock(EditorSubject::DirectionalLight, index, {});
+    const std::string lockReason(poseLockReason(poseLock));
     const auto headerMark = inspectorProvenance(
         session, context.selection, inspectorSubjectEdited(session, context.selection), {}, true);
     const auto enabledMark = inspectorAppliedMark(
@@ -43,7 +45,8 @@ void drawDirectionalLightSection(const InspectorPanelContext& context, size_t in
     if (drawInspectorHeader(enabledState->label.c_str(), "Directional",
                             "Restore this directional light's direction and scene-linear "
                             "radiance and its own enabled state from the document.",
-                            session.lightChanged(index), &enabled, headerMark, enabledMark)) {
+                            session.lightChanged(index), &enabled, headerMark, enabledMark,
+                            inspectorIsStatic(session, context.selection))) {
         if (const auto result = session.resetLight(index); !result)
             editor_style::message(result.error().message.c_str(), true);
         else {
@@ -54,15 +57,21 @@ void drawDirectionalLightSection(const InspectorPanelContext& context, size_t in
     }
     if (enabledState->own && !enabledState->effective)
         editor_style::message("Off in scene because an ancestor is disabled.");
+    if (poseLock != PoseLock::None)
+        editor_style::message(lockReason.c_str());
     light.enabled = enabled;
     if (editor_style::beginPropertyGrid("directionalLightFields")) {
         markInspectorField(context, light.direction != baseline.direction, "Direction (world)");
         glm::vec3 direction = light.direction;
-        if (editor_style::vector3("Direction (world)", "direction", &direction.x, 0.01f)) {
+        ImGui::BeginDisabled(poseLock != PoseLock::None);
+        if (editor_style::vector3("Direction (world)", "direction", &direction.x, 0.01f, 0.0f, 0.0f,
+                                  "%.3f", 0, false,
+                                  poseLock != PoseLock::None ? lockReason.c_str() : nullptr)) {
             if (glm::length(direction) > kMinLightDirectionLength) {
                 light.direction = glm::normalize(direction);
             }
         }
+        ImGui::EndDisabled();
         markInspectorField(context, light.strength != baseline.strength,
                            "Radiance (scene-linear RGB)");
         editor_style::vector3("Radiance (scene-linear RGB)", "radiance", &light.strength.x, 0.01f,

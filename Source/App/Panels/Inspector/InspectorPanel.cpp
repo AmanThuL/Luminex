@@ -23,14 +23,19 @@ using editor_style::field;
 //======================================================================================================================
 bool drawInspectorHeader(const char* name, const char* kind, const char* resetTooltip, bool changed,
                          bool* enabled, const std::optional<ProvenanceMark>& mark,
-                         const std::optional<ProvenanceMark>& enabledMark) {
+                         const std::optional<ProvenanceMark>& enabledMark,
+                         std::optional<bool> isStatic) {
     editor_style::beginHeaderRow();
     bool reset = false;
     const auto flags = ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_NoSavedSettings;
-    if (ImGui::BeginTable("InspectorHeader", enabled ? 4 : 3, flags)) {
+    if (ImGui::BeginTable("InspectorHeader", 3 + (enabled ? 1 : 0) + (isStatic ? 1 : 0), flags)) {
         ImGui::TableSetupColumn("Subject", ImGuiTableColumnFlags_WidthStretch, 1.0f);
         ImGui::TableSetupColumn("Kind", ImGuiTableColumnFlags_WidthFixed,
                                 ImGui::CalcTextSize(kind).x);
+        if (isStatic)
+            ImGui::TableSetupColumn("Static", ImGuiTableColumnFlags_WidthFixed,
+                                    ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x +
+                                        ImGui::CalcTextSize("Static").x);
         if (enabled)
             ImGui::TableSetupColumn("Enabled", ImGuiTableColumnFlags_WidthFixed,
                                     ImGui::GetFrameHeight() +
@@ -60,6 +65,13 @@ bool drawInspectorHeader(const char* name, const char* kind, const char* resetTo
         ImGui::TableNextColumn();
         ImGui::AlignTextToFramePadding();
         ImGui::TextColored(editor_style::color(ThemeRole::TextSecondary), "%s", kind);
+        if (isStatic) {
+            ImGui::TableNextColumn();
+            ImGui::BeginDisabled();
+            ImGui::Checkbox("Static", &*isStatic);
+            editorTooltip("Authored in the scene file.");
+            ImGui::EndDisabled();
+        }
         if (enabled) {
             ImGui::TableNextColumn();
             ImGui::Checkbox("##enabled", enabled);
@@ -75,28 +87,6 @@ bool drawInspectorHeader(const char* name, const char* kind, const char* resetTo
     editor_style::endHeaderRow();
     ImGui::Separator();
     return reset;
-}
-
-//======================================================================================================================
-bool inspectorSubjectEdited(const SceneSession& session, const EditorSelection& selection) {
-    const auto enabled = inspectorEnabledState(session, selection);
-    const bool flagChanged = enabled && enabled->own != enabled->baseline;
-    switch (selection.subject) {
-    case EditorSubject::Object:
-        return flagChanged || session.objectChanged(selection.index);
-    case EditorSubject::DirectionalLight:
-        return flagChanged || session.lightChanged(selection.index);
-    case EditorSubject::LocalLight:
-        return flagChanged || session.localLightChanged(selection.lightId);
-    case EditorSubject::Environment:
-        return sceneLookChanged(session);
-    case EditorSubject::Group:
-        return flagChanged;
-    case EditorSubject::None:
-    case EditorSubject::Camera:
-        return false;
-    }
-    return false;
 }
 
 //======================================================================================================================
