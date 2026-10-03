@@ -8,6 +8,42 @@
 #include <array>
 
 //======================================================================================================================
+TEST_CASE("retired lab generators name the schema 2 retirement in both schemas",
+          "[scene-doc][composition][ux6-retirement]") {
+    using namespace lmx;
+    for (const uint32_t schema : {1u, 2u}) {
+        for (const std::string name : {"material-lab", "temporal-lab"}) {
+            DYNAMIC_SECTION("schema " << schema << " generator " << name) {
+                asset::SceneDocument document;
+                document.schemaVersion = schema;
+                document.nodes.push_back({.generator = asset::DocGenerator{.name = name}});
+                const auto result = scenes::validateSceneGenerators(document, {});
+                REQUIRE_FALSE(result);
+                REQUIRE(result.error().code == asset::AssetErrorCode::Unsupported);
+                REQUIRE(result.error().message ==
+                        "/nodes/0/extensions/LMX_scene/generator/name: generator '" + name +
+                            "' was retired in schema 2; its objects are saved in the document");
+            }
+        }
+        for (const std::string name : {"light-lab", "visibility-lab"}) {
+            DYNAMIC_SECTION("schema " << schema << " axisStation on " << name) {
+                asset::SceneDocument document;
+                document.schemaVersion = schema;
+                document.nodes.push_back({.generator = asset::DocGenerator{
+                                              .name = name, .params = {{"axisStation", 1}}}});
+                const auto result = scenes::validateSceneGenerators(document, {});
+                REQUIRE_FALSE(result);
+                REQUIRE(result.error().code == asset::AssetErrorCode::Unsupported);
+                REQUIRE(
+                    result.error().message ==
+                    "/nodes/0/extensions/LMX_scene/generator/params/axisStation: generator "
+                    "'axisStation' was retired in schema 2; its objects are saved in the document");
+            }
+        }
+    }
+}
+
+//======================================================================================================================
 TEST_CASE("document generator validation counts every generated and authored light",
           "[scene-doc][composition]") {
     using namespace lmx;
@@ -223,5 +259,84 @@ TEST_CASE("document missing directional roles stay inert in the rendered view",
     for (const auto& light : view.lights)
         REQUIRE(light.strength == glm::vec3(0));
     (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+}
+
+//======================================================================================================================
+TEST_CASE("LightLab append preserves the saved material field and its bounds",
+          "[gpu][scene-doc][composition][ux6-retirement]") {
+    using namespace lmx;
+    auto device = rojoRHI::createDevice();
+    REQUIRE(device);
+    engine::Scene scene;
+    auto texture = makeProbeTarget(**device, "UX6.saved-field-texture");
+    REQUIRE(texture);
+    const auto textureId = scene.addTexture(std::move(*texture));
+    const auto materialId = scene.addMaterial({.diffuse = textureId, .roughness = 0.85f});
+    const auto meshId = scene.addMesh(engine::makeCube(), "UX6.saved-field-mesh");
+    scene.addObject(
+        {.name = "Saved fixture", .position = {1, 2, 3}, .mesh = meshId, .material = materialId});
+    scene.authoredBounds = {{-12, -4, -8}, {16, 10, 20}};
+    scene.boundingSphere = {2, 3, 4, 30};
+    const auto objects = scene.objects;
+    std::vector<const rojoRHI::Texture*> textures;
+    std::vector<engine::MaterialRecord> materials;
+    std::vector<const engine::MeshRow*> meshes;
+    for (const auto& object : objects) {
+        const auto& material = scene.material(object.material);
+        materials.push_back(material);
+        meshes.push_back(scene.tryMesh(object.mesh));
+        for (const auto texture : {material.diffuse, material.normalMap, material.metallicRoughness,
+                                   material.occlusion, material.emissiveMap})
+            if (texture)
+                textures.push_back(scene.tryTexture(*texture));
+    }
+    const auto tables = scene.tableStats();
+    const auto bounds = scene.authoredBounds;
+    const auto sphere = scene.boundingSphere;
+    bool environmentCalled = false;
+    const auto result =
+        scenes::appendLightLab(scene, 8, 3, [&](engine::Scene&) -> asset::AssetResult<void> {
+            environmentCalled = true;
+            return {};
+        });
+    REQUIRE(result);
+    REQUIRE(environmentCalled);
+    REQUIRE(scene.objects.size() == objects.size());
+    REQUIRE(scene.objects.size() == 1);
+    size_t textureIndex = 0;
+    for (size_t i = 0; i < objects.size(); ++i) {
+        REQUIRE(scene.objects[i].name == objects[i].name);
+        REQUIRE(scene.objects[i].position == objects[i].position);
+        REQUIRE(scene.objects[i].mesh == objects[i].mesh);
+        REQUIRE(scene.objects[i].material == objects[i].material);
+        REQUIRE(scene.tryMesh(objects[i].mesh) == meshes[i]);
+        const auto& material = scene.material(objects[i].material);
+        REQUIRE(material.albedo == materials[i].albedo);
+        REQUIRE(material.roughness == materials[i].roughness);
+        REQUIRE(material.metallic == materials[i].metallic);
+        REQUIRE(material.occlusionStrength == materials[i].occlusionStrength);
+        REQUIRE(material.emissive == materials[i].emissive);
+        REQUIRE(material.uvTransform == materials[i].uvTransform);
+        REQUIRE(material.alphaMode == materials[i].alphaMode);
+        REQUIRE(material.alphaCutoff == materials[i].alphaCutoff);
+        REQUIRE(material.doubleSided == materials[i].doubleSided);
+        REQUIRE(material.diffuse == materials[i].diffuse);
+        REQUIRE(material.normalMap == materials[i].normalMap);
+        REQUIRE(material.metallicRoughness == materials[i].metallicRoughness);
+        REQUIRE(material.occlusion == materials[i].occlusion);
+        REQUIRE(material.emissiveMap == materials[i].emissiveMap);
+        for (const auto texture : {material.diffuse, material.normalMap, material.metallicRoughness,
+                                   material.occlusion, material.emissiveMap})
+            if (texture)
+                REQUIRE(scene.tryTexture(*texture) == textures[textureIndex++]);
+    }
+    REQUIRE(scene.tableStats().materialCount == tables.materialCount);
+    REQUIRE(scene.tableStats().meshCount == tables.meshCount);
+    REQUIRE(scene.authoredBounds.minimum == bounds.minimum);
+    REQUIRE(scene.authoredBounds.maximum == bounds.maximum);
+    REQUIRE(scene.boundingSphere == sphere);
+    REQUIRE(scene.localLights().size() == 11);
+    REQUIRE(scene.animation.lightTracks.size() == 2);
     (*device)->waitIdle();
 }

@@ -516,8 +516,12 @@ TEST_CASE("Save preserves immutable imported poses and generated session default
     doc.nodes.push_back(
         {.name = "Generator",
          .generator = asset::DocGenerator{"light-lab", {{"lights", 1}, {"pile", 0}}}});
+    doc.nodes.push_back(
+        {.name = "Generated objects",
+         .generator = asset::DocGenerator{"visibility-lab", {{"instances", 1}, {"occluders", 0}}}});
     doc.rootNodes.push_back(3);
     doc.rootNodes.push_back(4);
+    doc.rootNodes.push_back(5);
     REQUIRE(asset::saveSceneDocument(doc, path));
     const auto oldCwd = fs::current_path();
     FakeDevice device;
@@ -531,6 +535,7 @@ TEST_CASE("Save preserves immutable imported poses and generated session default
     app::SceneSession session;
     session.activate(*library.loaded(id), app::SceneActivationMotion::Reset);
     const auto& bindings = session.loadedScene()->binding;
+    REQUIRE(bindings.nodes[5].objects.size() == 1);
     const auto imported = std::find_if(bindings.importedNodes.begin(), bindings.importedNodes.end(),
                                        [](const auto& node) { return !node.objects.empty(); });
     REQUIRE(imported != bindings.importedNodes.end());

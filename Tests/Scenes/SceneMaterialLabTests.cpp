@@ -1,13 +1,12 @@
 #include "Engine/Asset/RepositoryAsset.h"
 #include "Render/Renderer/SceneViewBuilder.h"
-#include "Scenes/CatalogScenes.h"
 #include "Support/EngineSceneTestSupport.h"
 #include "Support/SceneDocumentTestSupport.h"
 
 //======================================================================================================================
 // Deterministic diagnostics use the required studio environment authored by the document.
 TEST_CASE(
-    "loadMaterialLabScene builds deterministic diagnostics with its required document environment",
+    "MaterialLab document builds deterministic diagnostics with its required document environment",
     "[gpu]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
@@ -17,7 +16,7 @@ TEST_CASE(
 
     // 5x5 sphere grid (25) + 6 colour patches + 1 gradient ramp + 1 normal-map probe + 3 depth
     // probes + 1 mip probe.
-    REQUIRE((*scene)->objects.size() == 44); // original 37, six axis marks, one helmet draw
+    REQUIRE((*scene)->objects.size() == 38); // 37 saved diagnostics and one helmet draw
     // One material per sphere (25, distinct roughness/metallic) + 6 patches + the ramp + the
     // normal probe + one material shared by the three depth probes + the mip probe.
     REQUIRE((*scene)->tableStats().materialCount >= 35);
@@ -46,9 +45,12 @@ TEST_CASE(
     }
     REQUIRE(normalMapped >= 1);
 
-    REQUIRE(findObject(**scene, "material-lab axis +X red shaft") != nullptr);
-    REQUIRE(findObject(**scene, "material-lab axis +Y green shaft") != nullptr);
-    REQUIRE(findObject(**scene, "material-lab axis +Z blue shaft") != nullptr);
+    REQUIRE(findObject(**scene, "material-lab axis +X red shaft") == nullptr);
+    REQUIRE(findObject(**scene, "material-lab axis +X red tip") == nullptr);
+    REQUIRE(findObject(**scene, "material-lab axis +Y green shaft") == nullptr);
+    REQUIRE(findObject(**scene, "material-lab axis +Y green tip") == nullptr);
+    REQUIRE(findObject(**scene, "material-lab axis +Z blue shaft") == nullptr);
+    REQUIRE(findObject(**scene, "material-lab axis +Z blue tip") == nullptr);
 
     REQUIRE((*scene)->boundingSphere.w > 0.0f);
     REQUIRE((*scene)->skyCubemap != nullptr);
@@ -72,7 +74,7 @@ TEST_CASE("MaterialLab rejects a missing required studio environment", "[scene-d
 }
 
 //======================================================================================================================
-TEST_CASE("loadMaterialLabScene does not double-light the fetched studio environment", "[gpu]") {
+TEST_CASE("MaterialLab document does not double-light the fetched studio environment", "[gpu]") {
     if (!findRepoAsset("Assets/Fetched/MaterialLab/studio_small_09_1k.hdr")) {
         SKIP("Studio Small 09 is not present (xmake setup fetches it)");
     }
@@ -97,7 +99,7 @@ TEST_CASE("loadMaterialLabScene does not double-light the fetched studio environ
 }
 
 //======================================================================================================================
-TEST_CASE("loadMaterialLabScene's sphere grid sweeps roughness across columns and metallic "
+TEST_CASE("MaterialLab document's sphere grid sweeps roughness across columns and metallic "
           "across rows",
           "[gpu]") {
     auto device = rojoRHI::createDevice();
@@ -126,7 +128,7 @@ TEST_CASE("loadMaterialLabScene's sphere grid sweeps roughness across columns an
 // A pure projection check (no rendering): panning the initial camera along +X to the depth lane
 // frames every probe without changing yaw, pitch, Y, Z, or FOV. This catches probe placements where
 // the far probe's screen footprint sits entirely inside the mid probe's and hides it completely.
-TEST_CASE("loadMaterialLabScene's depth lane is framed by a horizontal camera pan and its probes "
+TEST_CASE("MaterialLab document's depth lane is framed by a horizontal camera pan and its probes "
           "do not occlude each other",
           "[gpu]") {
     auto device = rojoRHI::createDevice();
@@ -168,7 +170,7 @@ TEST_CASE("loadMaterialLabScene's depth lane is framed by a horizontal camera pa
 //======================================================================================================================
 // The opening view is a lookdev view, not an inventory thumbnail: the complete sphere matrix must
 // be visible, yet large enough that roughness and reflection changes are immediately readable.
-TEST_CASE("loadMaterialLabScene opens with the complete sphere matrix prominent", "[gpu]") {
+TEST_CASE("MaterialLab document opens with the complete sphere matrix prominent", "[gpu]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = lmx::test::loadCatalogScene(**device, "material-lab");
@@ -200,7 +202,7 @@ TEST_CASE("loadMaterialLabScene opens with the complete sphere matrix prominent"
 //======================================================================================================================
 // The authored-colour and texture diagnostics share one framing reached solely by translating the
 // initial camera along X. Exact X centres also pin the left-to-right lane ordering as scene data.
-TEST_CASE("loadMaterialLabScene arranges texture diagnostics in a horizontally pannable lane",
+TEST_CASE("MaterialLab document arranges texture diagnostics in a horizontally pannable lane",
           "[gpu]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
@@ -247,7 +249,7 @@ TEST_CASE("loadMaterialLabScene arranges texture diagnostics in a horizontally p
 // The flat region of the normal map is data (RGBA8Unorm, no lighting involved), so this copies
 // the uploaded texture verbatim via Shaders/FullscreenSample.slang's `Load`-based passthrough
 // rather than trying to reconstruct it from a lit render.
-TEST_CASE("loadMaterialLabScene's normal-map probe encodes an exact flat {128,128,255,255} "
+TEST_CASE("MaterialLab document's normal-map probe encodes an exact flat {128,128,255,255} "
           "outside the bump",
           "[gpu]") {
     auto device = rojoRHI::createDevice();
@@ -327,7 +329,7 @@ TEST_CASE("loadMaterialLabScene's normal-map probe encodes an exact flat {128,12
 // The saturated primaries land on 33 in their two dark channels rather than 0 because their peak
 // channel is above the tone map's 0.76 shoulder, where it desaturates toward the compressed peak;
 // the achromatic patches sit below it and lose only the constant 0.04 black offset.
-TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display transform and its "
+TEST_CASE("MaterialLab document's known-colour patches round-trip the display transform and its "
           "gradient ramp reads back monotonic",
           "[gpu]") {
     auto device = rojoRHI::createDevice();
@@ -494,7 +496,7 @@ TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display tr
 // Neutral tone map and the sRGB encode). What matters to this case is only that the three outcomes
 // stay well separated: a point-picked mip lands on the black or the white end, and a filtered one
 // lands between them.
-TEST_CASE("loadMaterialLabScene's mip probe converges to mid-gray under strong minification, "
+TEST_CASE("MaterialLab document's mip probe converges to mid-gray under strong minification, "
           "proving its mips are filtered rather than point-picked",
           "[gpu]") {
     auto device = rojoRHI::createDevice();
@@ -513,8 +515,7 @@ TEST_CASE("loadMaterialLabScene's mip probe converges to mid-gray under strong m
     REQUIRE(renderer.has_value());
 
     // 10 world units back from the probe, on the +Z side its quad normal faces (the probe's front
-    // face is invisible from initialCamera on the other side by construction -- see
-    // MaterialLab.cpp's file-level comment).
+    // face is invisible from initialCamera on the other side in the saved document).
     lmx::engine::Camera camera;
     camera.position = probe->position + glm::vec3(0.0f, 0.0f, 10.0f);
     camera.fovY = glm::radians(45.0f);

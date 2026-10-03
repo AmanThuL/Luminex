@@ -1,10 +1,9 @@
 #include "App/Model/Scene/SceneSession.h"
-#include "Scenes/CatalogScenes.h"
 #include "Support/EngineSceneTestSupport.h"
 #include "Support/SceneDocumentTestSupport.h"
 
 //======================================================================================================================
-TEST_CASE("loadTemporalLabScene places its diagnostics at the documented world positions",
+TEST_CASE("TemporalLab document places its diagnostics at the documented world positions",
           "[gpu]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
@@ -64,7 +63,7 @@ TEST_CASE("loadTemporalLabScene places its diagnostics at the documented world p
 }
 
 //======================================================================================================================
-TEST_CASE("loadTemporalLabScene's tracks close their loop and hit their documented periods",
+TEST_CASE("TemporalLab document's tracks close their loop and hit their documented periods",
           "[gpu]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
@@ -192,7 +191,7 @@ TEST_CASE("TemporalLab's imported truck wheel loops on its source clip across th
 // A pure projection check (no rendering): the initial camera frames every probe in a 1280x720
 // viewport, the moving objects do not overlap the still ones they are read against, and the poles
 // stay separated on screen across their whole swing.
-TEST_CASE("loadTemporalLabScene frames its probes and keeps its poles separated", "[gpu]") {
+TEST_CASE("TemporalLab document frames its probes and keeps its poles separated", "[gpu]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = lmx::test::loadCatalogScene(**device, "temporal-lab");

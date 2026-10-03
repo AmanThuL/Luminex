@@ -1,6 +1,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file LightLab.cpp
-/// @brief Builds LightLab's material field, scalable light population, and looping camera rail.
+/// @brief Builds LightLab's scalable lights, pile and closed-form orbits around its saved field.
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Scenes/LightLab.h"
@@ -9,11 +9,7 @@
 #include "Scenes/CatalogScenes.h"
 
 #include "Core/Diagnostics/Assert.h"
-#include "Core/Math/Aabb.h"
 #include "Core/Math/Color.h"
-#include "Core/Math/Sphere.h"
-#include "Engine/Asset/Model/GeometryGenerator.h"
-#include "Engine/Geometry/Mesh.h"
 
 #include <glm/gtc/constants.hpp>
 
@@ -38,7 +34,6 @@ constexpr float kPillarHalfWidth = 0.6f;
 constexpr float kSphereRadius = 0.9f;
 constexpr float kPillarRowZ = 3.5f;
 constexpr float kSphereRowZ = -3.5f;
-constexpr float kFloorHalfExtent = kLightLabGridHalfExtent + 12.0f;
 
 // Light population.
 // Keep the floor inside every light's range as density grows.
@@ -111,62 +106,6 @@ std::array<glm::vec3, 4> lightPalette() {
     return {
         srgbToLinear(glm::vec3(1.00f, 0.86f, 0.66f)), srgbToLinear(glm::vec3(0.55f, 0.76f, 1.00f)),
         srgbToLinear(glm::vec3(1.00f, 0.55f, 0.35f)), srgbToLinear(glm::vec3(0.72f, 0.48f, 1.00f))};
-}
-
-//======================================================================================================================
-// Adds the fixed pillar/sphere/floor field spanning the material range; returns the scene's field
-// bounding box so the caller can fit a bounding sphere around the renderable geometry.
-void addMaterialField(engine::Scene& scene, Aabb& bounds) {
-    engine::MaterialRecord floorMaterial;
-    floorMaterial.albedo = srgbToLinear(glm::vec4(0.5f, 0.5f, 0.52f, 1.0f));
-    floorMaterial.roughness = 0.85f;
-    floorMaterial.metallic = 0.0f;
-    const engine::MaterialId floorMaterialId = scene.addMaterial(floorMaterial);
-    const engine::MeshId floorMesh =
-        scene.addMesh(engine::makePlane(kFloorHalfExtent), "LightLab.floor");
-    scene.addObject({.name = "Floor", .mesh = floorMesh, .material = floorMaterialId});
-    expand(bounds, glm::vec3(-kFloorHalfExtent, 0.0f, -kFloorHalfExtent));
-    expand(bounds, glm::vec3(kFloorHalfExtent, 0.0f, kFloorHalfExtent));
-
-    const engine::MeshId pillarMesh = scene.addMesh(engine::makeCube(), "LightLab.pillar");
-    const engine::MeshId sphereMesh =
-        scene.addMesh(engine::fromGeo(asset::makeSphere(kSphereRadius, 24, 16)), "LightLab.sphere");
-    const std::array<glm::vec3, 4> palette = lightPalette();
-
-    std::array<engine::MaterialId, kFieldColumnCount> materials;
-    for (uint32_t c = 0; c < kFieldColumnCount; ++c) {
-        engine::MaterialRecord material;
-        material.albedo = glm::vec4(palette[c % palette.size()], 1.0f);
-        const uint32_t roughnessIndex = c % (kFieldColumnCount / 2);
-        material.roughness = 0.08f + static_cast<float>(roughnessIndex) * (1.0f - 0.08f) /
-                                         static_cast<float>(kFieldColumnCount / 2 - 1);
-        material.metallic = c < kFieldColumnCount / 2 ? 0.0f : 1.0f;
-        materials[c] = scene.addMaterial(material);
-    }
-
-    const float span = static_cast<float>(kFieldColumnCount - 1) * kFieldSpacing;
-    for (uint32_t c = 0; c < kFieldColumnCount; ++c) {
-        const float x = static_cast<float>(c) * kFieldSpacing - span * 0.5f;
-        const glm::vec3 pillarPosition(x, kPillarHalfHeight, kPillarRowZ);
-        scene.addObject({.name = "Pillar " + std::to_string(c),
-                         .position = pillarPosition,
-                         .scale = glm::vec3(kPillarHalfWidth * 2.0f, kPillarHalfHeight * 2.0f,
-                                            kPillarHalfWidth * 2.0f),
-                         .mesh = pillarMesh,
-                         .material = materials[c]});
-        expand(bounds,
-               pillarPosition - glm::vec3(kPillarHalfWidth, kPillarHalfHeight, kPillarHalfWidth));
-        expand(bounds,
-               pillarPosition + glm::vec3(kPillarHalfWidth, kPillarHalfHeight, kPillarHalfWidth));
-
-        const glm::vec3 spherePosition(x, kSphereRadius, kSphereRowZ);
-        scene.addObject({.name = "Sphere " + std::to_string(c),
-                         .position = spherePosition,
-                         .mesh = sphereMesh,
-                         .material = materials[kFieldColumnCount - 1 - c]});
-        expand(bounds, spherePosition - glm::vec3(kSphereRadius));
-        expand(bounds, spherePosition + glm::vec3(kSphereRadius));
-    }
 }
 
 } // namespace
@@ -286,9 +225,6 @@ asset::AssetResult<void> appendLightLab(engine::Scene& target, uint32_t lightCou
     engine::LightLabPopulation population;
     const uint32_t lightBase = static_cast<uint32_t>(scene->localLights().size());
 
-    Aabb bounds = emptyAabb();
-    addMaterialField(*scene, bounds);
-
     for (const engine::LocalLight& light : lightLabLights(lightCount, pileCount)) {
         const auto added = scene->addLight(light);
         if (!added)
@@ -310,9 +246,6 @@ asset::AssetResult<void> appendLightLab(engine::Scene& target, uint32_t lightCou
     scene->animate(0.0);
     scene->resetMotion();
 
-    expand(scene->authoredBounds, bounds.minimum);
-    expand(scene->authoredBounds, bounds.maximum);
-    scene->boundingSphere = toVec4(boundingSphere(scene->authoredBounds));
     if (auto attached = environment(*scene); !attached) {
         return std::unexpected(attached.error());
     }

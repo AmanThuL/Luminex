@@ -118,8 +118,10 @@ asset::SceneDocument exportFixture(const fs::path& root) {
         {.name = "Lab",
          .generator = asset::DocGenerator{"light-lab", {{"lights", 1}, {"pile", 0}}}},
         {.name = "Animated asset",
-         .asset = asset::DocAsset{"animated/quad.gltf", sha256Hex(*animatedBytes)}}};
-    doc.rootNodes = {0, 1, 2, 3, 6, 7, 8};
+         .asset = asset::DocAsset{"animated/quad.gltf", sha256Hex(*animatedBytes)}},
+        {.name = "Generated objects",
+         .generator = asset::DocGenerator{"visibility-lab", {{"instances", 1}, {"occluders", 0}}}}};
+    doc.rootNodes = {0, 1, 2, 3, 6, 7, 8, 9};
     // Redundant authored values remain byte-stable instead of being cleaned up during export.
     doc.nodes[2].overrides = {{.node = 0, .name = "Empty parent", .enabled = true},
                               {.node = 1,
@@ -361,7 +363,8 @@ TEST_CASE("generated and animated previews never enter the saved document", "[sc
     auto loaded = loadFixture(device, root, exportFixture(root));
     app::SceneSession session;
     session.activate(loaded, app::SceneActivationMotion::Reset);
-    const auto generated = loaded.binding.nodes[7].objects.front();
+    REQUIRE(loaded.binding.nodes[9].objects.size() == 1);
+    const auto generated = loaded.binding.nodes[9].objects.front();
     const auto generatedLight = loaded.scene->lightLabPopulations.front().grid.front();
     session.editObject(generated, {.position = {8, 9, 10}});
     REQUIRE(session.setObjectEnabled(generated, false));

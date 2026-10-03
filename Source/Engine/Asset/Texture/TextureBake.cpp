@@ -81,8 +81,8 @@ uint8_t encodeRaw(float value) {
 
 //======================================================================================================================
 // Encodes a tangent-space component already mapped into [0,1] (caller passes component*0.5+0.5),
-// matching MaterialLab.cpp's encodeUnitToByte -- the same rounding convention, kept in step so a
-// flat normal's zero component always lands on byte 128, never 127.
+// matching the saved MaterialLab normal probe's rounding convention, so a flat normal's zero
+// component always lands on byte 128, never 127.
 uint8_t encodeUnitToByte(float unitComponent) {
     return static_cast<uint8_t>(std::clamp(unitComponent, 0.0f, 1.0f) * 255.0f + 0.5f);
 }
