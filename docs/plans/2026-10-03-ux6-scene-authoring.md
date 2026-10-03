@@ -109,7 +109,7 @@ Waves: W1 Tasks 1–12 (UX6.1), W2 13–16 (UX6.2), W3 17–22 (UX6.3). Tasks 2 
 
 ### Task 17: Vendor ImGuizmo (UX6.3)
 **Files:** `xmake/setup.lua`, `xmake/dependencies.lua`, `Source/App/xmake.lua`, `Tools/module_contract.json`, `ThirdParty/README.md`; create `docs/decisions/0032-vendored-imguizmo.md` (next free number; Proposed, following ADR 0011).
-- [ ] Pin `local imguizmo_pin = "18cef5e031d8c6973d80284c67f60549fafd78c1"` (MIT), fetched like imgui-node-editor into `ThirdParty/ImGuizmo` with the pin assertion. Target, verbatim form:
+- [x] Pin `local imguizmo_pin = "18cef5e031d8c6973d80284c67f60549fafd78c1"` (MIT), fetched like imgui-node-editor into `ThirdParty/ImGuizmo` with the pin assertion. Target, verbatim form:
   ```lua
   target("ImGuizmo")
       set_kind("static")
@@ -119,7 +119,7 @@ Waves: W1 Tasks 1–12 (UX6.1), W2 13–16 (UX6.2), W3 17–22 (UX6.3). Tasks 2 
       add_deps("ImGui")
   ```
   App adds it to `add_deps`; the contract adds `ImGuizmo` to `thirdPartyTargets`, to `app-shell.thirdParty` and to the `app-shell` target deps.
-- [ ] **Verify:** `xmake setup -P . && xmake -P .` builds against the pinned ImGui. If it does not, add `Tools/Patches/imguizmo-imgui-1.93.patch` through `apply_maintained_patch`; if a patch cannot make it build, stop and report (the record's `ImDrawList` fallback is the owner's call). Commit `build: vendor ImGuizmo (UX6)`.
+- [x] **Verify:** `xmake setup -P . && xmake -P .` builds against the pinned ImGui. If it does not, add `Tools/Patches/imguizmo-imgui-1.93.patch` through `apply_maintained_patch`; if a patch cannot make it build, stop and report (the record's `ImDrawList` fallback is the owner's call). Commit `build: vendor ImGuizmo (UX6)`.
 
 ### Task 18: Gizmo model (UX6.3)
 **Files:** create `Source/App/Model/Scene/GizmoModel.{h,cpp}`, `Tests/App/Model/Scene/AppGizmoModelTests.cpp`. **Consumes:** Task 14.

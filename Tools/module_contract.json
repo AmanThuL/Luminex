@@ -11,7 +11,8 @@
   },
   "thirdPartyTargets": [
     "ImGui",
-    "ImGuiNodeEditor"
+    "ImGuiNodeEditor",
+    "ImGuizmo"
   ],
   "budgets": {
     "production": 1000,
@@ -177,6 +178,7 @@
         "glm",
         "imgui",
         "imgui-node-editor",
+        "ImGuizmo",
         "libsdl3"
       ],
       "privateHeaders": [
@@ -362,7 +364,8 @@
         "Asset",
         "AppModel",
         "Engine",
-        "Scenes"
+        "Scenes",
+        "ImGuizmo"
       ]
     },
     "Tests": {

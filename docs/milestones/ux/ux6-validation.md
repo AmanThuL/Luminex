@@ -4,8 +4,8 @@
 **Date:** 2026-10-03. The milestone remains `Accepted`; no owner acceptance or merge occurred.
 
 Tasks 1–11 are complete; Task 8 is `c888541` and tag `ux6-exporter`.
-Task 17 passed its isolated gates and separate review; integration is pending. Other remaining tasks
-are unstarted. The owner requested parallel work and explicitly approved reusing the idle
+Task 17 is also complete after isolated and combined gates plus separate review. Other remaining
+tasks are unstarted. The owner requested parallel work and explicitly approved reusing the idle
 Task 1 reviewer as Task 17's implementer after the agent interface refused a fresh thread.
 Task 9 and Task 17 have independent checkouts and reviewers. Other tasks use fresh agents.
 
@@ -42,7 +42,8 @@ commands and assertions are unchanged, with distinct logs and no previous-eviden
 | 8 | `ux6-exporter` | 13/13 passed; 348 Python tests | `task8-sidecar-final-gates.json` |
 | 9 | `8dd7563` | 13/13 passed; 348 Python tests | `task9-final2-gates.json` |
 | 10 | `6914efb` | 12/12 passed | `task10-final2-gates.json` |
-| 11 | Content-hash commit | 13/13 passed; 356 Python tests | `task11-integration-gates.json` |
+| 11 | `d66e2fe` | 13/13 passed; 356 Python tests | `task11-integration-gates.json` |
+| 17 | ImGuizmo commit | 13/13 passed; 359 Python tests | `task17-integration-gates.json` |
 
 ## Retained failures and resumptions
 
@@ -143,3 +144,14 @@ then passed all 97 isolated documents. The combined run rebuilt Tests and explic
 that positive writer case before validation: all 107 documents passed (six catalog, 101 writer).
 No discovery, assertion or hash check was weakened. Original failure and refresh logs remain
 in the evidence directory. Writer output stability after arbitrary CPU test ordering is unverified.
+
+## Task 17 — ImGuizmo dependency
+
+ImGuizmo is fetched at `18cef5e031d8c6973d80284c67f60549fafd78c1`, with its upstream
+MIT license and provenance. The planned static target builds against the pinned Dear ImGui
+without a patch. App is its only consumer; no Engine, Render, AppModel or Tests include/link
+permission was added. The isolated setup/build and all 13 gates passed, followed by separate
+review. After integration all 13 combined commands passed, including 359 Python tests; the
+root `--link` dependency check also passed. All seven reviewed file hashes still match.
+Evidence: `task17-dependency.json`, `task17-integration-boundary.json` and integration logs.
+The owner's approved agent reuse is recorded above. Gizmo drawing and gestures remain unverified.

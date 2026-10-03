@@ -23,6 +23,7 @@ local imgui_pin    = "83f668625ad45364de71d385aeb6a5dd04bee02e"
 -- which predates the docking-branch ImGui API this project pins). Patched against our imgui_pin
 -- below; re-pinning requires re-verifying the patch's version gates.
 local node_editor_pin = "021aa0ea4da13fed864bafb2a92d4c5205076866"
+local imguizmo_pin = "18cef5e031d8c6973d80284c67f60549fafd78c1"
 
 local geist_version = "1.7.2"
 local geist_url = "https://github.com/vercel/geist-font/releases/download/v" .. geist_version ..
@@ -300,6 +301,21 @@ task("setup")
         local node_editor_patch = path.join(os.projectdir(),
                                             "Tools/Patches/imgui-node-editor-imgui-1.93.patch")
         apply_maintained_patch("ThirdParty/imgui-node-editor", node_editor_patch)
+
+        if not os.isdir("ThirdParty/ImGuizmo") then
+            os.mkdir("ThirdParty/ImGuizmo")
+            os.execv("git", {"-C", "ThirdParty/ImGuizmo", "init", "-q"})
+            os.execv("git", {"-C", "ThirdParty/ImGuizmo", "remote", "add", "origin",
+                             "https://github.com/CedricGuillemet/ImGuizmo.git"})
+            os.execv("git", {"-C", "ThirdParty/ImGuizmo", "fetch", "--depth", "1",
+                             "origin", imguizmo_pin})
+            os.execv("git", {"-C", "ThirdParty/ImGuizmo", "checkout", "-q", "FETCH_HEAD"})
+        end
+        local imguizmo_head = os.iorunv("git", {"-C", "ThirdParty/ImGuizmo",
+                                                 "rev-parse", "HEAD"}):trim()
+        assert(imguizmo_head == imguizmo_pin,
+               format("ThirdParty/ImGuizmo is at %s; expected pinned commit %s",
+                      imguizmo_head, imguizmo_pin))
         -- Every Khronos sample ships the same three files under Models/<name>: the binary glTF,
         -- its license and its provenance metadata. All three are fetched so the checkout carries
         -- the attribution each asset's license requires.
@@ -470,8 +486,8 @@ Attribution is not required under CC0. Original author: Sergej Majboroda.
                                  "Assets/Fetched/SanMiguel/SanMiguel.gltf", texturebake_bin})
         end
 
-        print("setup done: metal-cpp %s, slang %s, imgui %s, imgui-node-editor %s, " ..
+        print("setup done: metal-cpp %s, slang %s, imgui %s, imgui-node-editor %s, ImGuizmo %s, " ..
               "Sponza archive %s, Khronos samples %s, MaterialLab environment %s", metalcpp_pin,
-              slang_pin, imgui_pin, node_editor_pin, sponza_archive_sha256, helmet_pin,
+              slang_pin, imgui_pin, node_editor_pin, imguizmo_pin, sponza_archive_sha256, helmet_pin,
               material_lab_environment_sha256)
     end)
