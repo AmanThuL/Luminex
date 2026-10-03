@@ -7,7 +7,7 @@ Tasks 1–16 are complete; Task 8 is `c888541` and tag `ux6-exporter`.
 Task 17 is also complete after isolated and combined gates plus separate review. Task 12 automatic
 checks and images ran. After the required image/native stop, the owner accepted the five
 MaterialLab reference updates and authorized native retries. Sphere edit/Save/relaunch and generic
-glTF import now pass as observed below. Task 13 adds document mobility; Task 14 adds shared pose locks; Task 15 adds Inspector/Hierarchy presentation; Tasks 18–22 remain. The owner requested parallel work and explicitly approved reusing the idle
+glTF import now pass as observed below. Task 13 adds document mobility; Task 14 adds shared pose locks; Task 15 adds Inspector/Hierarchy presentation; Task 18 is complete after model tests, all gates and separate/ROOT review; Tasks 19–22 remain. The owner requested parallel work and explicitly approved reusing the idle
 Task 1 reviewer as Task 17's implementer after the agent interface refused a fresh thread.
 Task 9 and Task 17 have independent checkouts and reviewers. Other tasks use fresh agents.
 
@@ -50,7 +50,8 @@ commands and assertions are unchanged, with distinct logs and no previous-eviden
 | 13 | `1343471` | 12/12 passed | `task13-final2-gates.json` |
 | 14 | `9dc7f6e` | 12/12 composite; initial 11/12 retained | `task14-final-composite-gates.json` |
 | 15 | `a6dac95` | 12/12 passed; initial cancelled run retained | `task15-final2-gates.json` |
-| 16 | this commit | 12/12 passed; 15/15 exact images; native checkpoint | `task16-final-gates.json` |
+| 16 | `80e20d2` | 12/12 passed; 15/15 exact images; native checkpoint | `task16-final-gates.json` |
+| 18 | this commit | 12/12 passed; 628 focused assertions | `task18-final-gates.json` |
 
 ## Retained failures and resumptions
 
@@ -248,3 +249,10 @@ and all 18 targeted tests. Task 12 is complete; original failed measurements rem
 measurements, failed attempts, scope additions and independent review. Task 16 passed all 12 gates,
 880 bridge assertions, 15/15 actual byte comparisons against Task 12, and the native Static/Enabled/Save
 checkpoint. Static-tooltip hover and fresh reload were not exercised; Task 22 remains pending.
+
+
+## Gizmo validation
+
+[Gizmo validation](ux6-validation-gizmo.md) preserves Task 18 model measurements, original failures,
+activation-generation scope addition, independent tests and ROOT design review. Native gizmo and
+completion gates remain unverified until Tasks 20/22.

@@ -26,6 +26,7 @@ uint64_t lightKey(engine::LightId id) {
 
 //======================================================================================================================
 void SceneSession::activate(engine::Scene& scene, SceneActivationMotion motion) {
+    ++m_activationGeneration;
     m_loaded = nullptr;
     auto [entry, inserted] = m_defaults.try_emplace(&scene);
     if (inserted) {
@@ -77,6 +78,7 @@ void SceneSession::invalidate(const engine::Scene& old) {
     m_defaults.erase(&old);
     m_documentStates.erase(&old);
     if (m_scene == &old) {
+        ++m_activationGeneration;
         m_scene = nullptr;
         m_loaded = nullptr;
     }

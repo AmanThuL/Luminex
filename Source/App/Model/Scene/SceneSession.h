@@ -101,6 +101,10 @@ public:
     /// The borrowed scene, or null before the first activation.
     engine::Scene* activeScene() const { return m_scene; }
 
+    /// Changes on every activation and active-scene invalidation, independently of persistent
+    /// edits. Transient interactions use it to reject replaced or reactivated scene storage.
+    uint64_t activationGeneration() const { return m_activationGeneration; }
+
     /// The active scene, editable by its owner; asserts if no scene has been activated.
     engine::Scene& scene() const;
 
@@ -280,6 +284,7 @@ private:
 
     bool m_measurementActive = false;
     bool m_temporalResetPending = false;
+    uint64_t m_activationGeneration = 0;
     engine::Scene* m_scene = nullptr;
     engine::Camera m_camera;
     std::unordered_map<const engine::Scene*, Defaults> m_defaults;
