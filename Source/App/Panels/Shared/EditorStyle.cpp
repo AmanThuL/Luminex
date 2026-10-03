@@ -708,6 +708,24 @@ void endDiagnostics() {
 }
 
 //======================================================================================================================
+void textEllipsis(const char* text, float width) {
+    ImGuiWindow* window = ImGui::GetCurrentWindow();
+    if (window->SkipItems)
+        return;
+    // Laid out like ImGui::TextEx, so AlignTextToFramePadding, SameLine and hover tooltips apply.
+    const ImVec2 position{window->DC.CursorPos.x,
+                          window->DC.CursorPos.y + window->DC.CurrLineTextBaseOffset};
+    const ImVec2 size{std::min(ImGui::CalcTextSize(text).x, std::max(width, 1.0f)),
+                      ImGui::GetTextLineHeight()};
+    const ImRect bounds(position, {position.x + size.x, position.y + size.y});
+    ImGui::ItemSize(size, 0.0f);
+    if (!ImGui::ItemAdd(bounds, 0))
+        return;
+    ImGui::RenderTextEllipsis(window->DrawList, bounds.Min, bounds.Max, bounds.Max.x, text, nullptr,
+                              nullptr);
+}
+
+//======================================================================================================================
 bool vector3(const char* label, const char* id, float* values, float speed, float minimum,
              float maximum, const char* format, ImGuiSliderFlags flags, bool rgb,
              const char* tooltip) {

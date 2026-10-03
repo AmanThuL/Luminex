@@ -96,6 +96,9 @@ bool activityStrip(const Activity& activity, bool showVerb = true);
 void setNextFieldProvenance(std::optional<ProvenanceMark> mark);
 /// Draws and clears the pending field mark beside the preceding label, if any.
 void consumeFieldProvenance();
+/// Draws one line of text, ending in an ellipsis when it is wider than width; the item still
+/// takes a following tooltip or SameLine.
+void textEllipsis(const char* text, float width);
 /// Space always reserved beside a field label for a mark, including the gap, so a mark that
 /// appears or clears never changes the row's layout.
 float fieldProvenanceWidth();

@@ -59,10 +59,8 @@ bool drawInspectorHeader(const char* name, const char* kind, const char* resetTo
         ImGui::AlignTextToFramePadding();
         {
             const editor_style::ScopedType type(TypeRole::BodyStrong);
-            const float nameWidth = ImGui::GetContentRegionAvail().x - markWidth;
-            ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + (nameWidth > 0 ? nameWidth : 1.0f));
-            ImGui::TextUnformatted(name);
-            ImGui::PopTextWrapPos();
+            // One line keeps the header a fixed height; the tooltip below carries the full name.
+            editor_style::textEllipsis(name, ImGui::GetContentRegionAvail().x - markWidth);
         }
         editorTooltip(name);
         if (mark)
