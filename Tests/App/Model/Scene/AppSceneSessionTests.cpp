@@ -1,3 +1,4 @@
+#include "App/Model/Scene/EditorSelection.h"
 #include "App/Model/Scene/SceneSession.h"
 #include "Support/GraphTestSupport.h"
 #include "Support/SceneDocumentFixtures.h"
@@ -8,6 +9,7 @@
 
 #include <glm/glm.hpp>
 
+#include <bit>
 #include <cmath>
 #include <vector>
 
@@ -282,20 +284,28 @@ TEST_CASE("SceneSession::stepAnimation advances an orbit-tracked light by exactl
 //======================================================================================================================
 TEST_CASE("SceneSession restores original static defaults after leaving and reactivating a scene",
           "[app][scene-session]") {
-    auto first = makeSessionScene();
+    engine::LoadedScene loaded{.scene = std::make_unique<engine::Scene>(makeSessionScene())};
+    loaded.document = lmx::test::contentDocument();
+    loaded.document.nodes[1].mobility = asset::DocMobility::Movable;
+    loaded.objectMobility = {asset::DocMobility::Movable};
+    loaded.binding.nodes.resize(loaded.document.nodes.size());
+    loaded.binding.objectNode = {1};
+    loaded.binding.objectImportedNode = {engine::kGeneratedNode};
+    loaded.binding.objectGeneratorNode = {engine::kGeneratedNode};
+    auto& first = *loaded.scene;
     first.animation.tracks.clear();
     first.lights[0].strength = {4.0f, 2.0f, 1.0f};
     auto second = makeSessionScene();
     SceneSession session;
-    session.activate(first, SceneActivationMotion::Reset);
-    session.editObject(0, {.position = {20.0f, 1.0f, 2.0f}});
+    session.activate(loaded, SceneActivationMotion::Reset);
+    REQUIRE(session.editObject(0, {.position = {20.0f, 1.0f, 2.0f}}));
     first.lights[0].strength = {10.0f, 10.0f, 10.0f};
     REQUIRE(session.objectChanged(0));
     REQUIRE(session.lightChanged(0));
     session.activate(second, SceneActivationMotion::Reset);
-    session.activate(first, SceneActivationMotion::Reset);
+    session.activate(loaded, SceneActivationMotion::Reset);
     REQUIRE(first.objects[0].position.x == 20.0f);
-    session.resetObject(0);
+    REQUIRE(session.resetObject(0));
     session.resetLight(0);
     CHECK(first.objects[0].position == glm::vec3(7.0f, 0.0f, 0.0f));
     CHECK(first.objects[0].previousModel == first.objects[0].modelMatrix());
@@ -305,9 +315,8 @@ TEST_CASE("SceneSession restores original static defaults after leaving and reac
 }
 
 //======================================================================================================================
-TEST_CASE(
-    "SceneSession resets one animated transform at current time without discarding other edits",
-    "[app][scene-session]") {
+TEST_CASE("SceneSession refuses animated transform edits and exposes defaults at the current time",
+          "[app][scene-session]") {
     auto scene = makeSessionScene();
     scene.addObject({.name = "other",
                      .position = {9.0f, 0.0f, 0.0f},
@@ -319,17 +328,28 @@ TEST_CASE(
     SceneSession session;
     session.activate(scene, SceneActivationMotion::Reset);
     scene.animationTime = 0.5;
-    session.editObject(0, {.position = {100.0f, 0.0f, 0.0f}});
-    session.editObject(1, {.position = {200.0f, 0.0f, 0.0f}});
+    scene.animate(scene.animationTime);
+    const auto first = scene.objects[0];
+    const auto second = scene.objects[1];
+    const auto generation = session.editGeneration();
+    const auto edit = session.editObject(0, {.position = {100.0f, 0.0f, 0.0f}});
+    REQUIRE_FALSE(edit);
+    CHECK(edit.error().message == "Animation owns this transform");
+    REQUIRE_FALSE(session.editObject(1, {.position = {200.0f, 0.0f, 0.0f}}));
     scene.lights[1].strength = {6.0f, 5.0f, 4.0f};
-    session.resetObject(0);
+    const auto reset = session.resetObject(0);
+    REQUIRE_FALSE(reset);
+    CHECK(reset.error().message == "Animation owns this transform");
     CHECK(scene.animationTime == 0.5);
-    CHECK(scene.objects[0].position.x == Catch::Approx(30.0f));
-    CHECK(scene.objects[0].previousModel == scene.objects[0].modelMatrix());
-    CHECK(scene.objects[1].position.x == 200.0f);
+    CHECK(session.objectDefault(0).position.x == Catch::Approx(30.0f));
+    CHECK(scene.objects[0].position == first.position);
+    CHECK(scene.objects[0].previousModel == first.previousModel);
+    CHECK(scene.objects[1].position == second.position);
+    CHECK(scene.objects[1].previousModel == second.previousModel);
     CHECK(scene.lights[1].strength == glm::vec3(6.0f, 5.0f, 4.0f));
     CHECK_FALSE(session.objectChanged(0));
-    CHECK(session.objectChanged(1));
+    CHECK_FALSE(session.objectChanged(1));
+    CHECK(session.editGeneration() == generation);
 }
 
 //======================================================================================================================
@@ -363,9 +383,18 @@ TEST_CASE("SceneSession reset uses each asset clip's unwrapped phase and source 
     scene.animate(scene.animationTime, scene.unwrappedAnimationTime);
     REQUIRE(scene.objects[0].position.x == Catch::Approx(10.5f));
     CHECK_FALSE(session.objectChanged(0));
-    session.editObject(0, {.position = {100, 0, 0}});
-    REQUIRE(session.objectChanged(0));
-    session.resetObject(0);
+    const auto before = scene.objects[0];
+    const auto generation = session.editGeneration();
+    const auto edit = session.editObject(0, {.position = {100, 0, 0}});
+    REQUIRE_FALSE(edit);
+    CHECK(edit.error().message == "Animation owns this transform");
+    const auto reset = session.resetObject(0);
+    REQUIRE_FALSE(reset);
+    CHECK(reset.error().message == "Animation owns this transform");
+    CHECK(session.objectDefault(0).position.x == Catch::Approx(10.5f));
+    CHECK(scene.objects[0].position == before.position);
+    CHECK(scene.objects[0].previousModel == before.previousModel);
+    CHECK(session.editGeneration() == generation);
     CHECK(scene.objects[0].position.x == Catch::Approx(10.5f));
     CHECK_FALSE(session.objectChanged(0));
 }
@@ -373,7 +402,11 @@ TEST_CASE("SceneSession reset uses each asset clip's unwrapped phase and source 
 //======================================================================================================================
 TEST_CASE("SceneSession local-light reset uses full identities and current orbit position",
           "[app][scene-session][local-light-editor]") {
-    engine::Scene scene;
+    engine::LoadedScene loaded{.scene = std::make_unique<engine::Scene>()};
+    loaded.document.nodes = {{.name = "Generated lights"}};
+    loaded.document.rootNodes = {0};
+    loaded.binding.nodes.resize(1);
+    auto& scene = *loaded.scene;
     engine::LocalLight authored;
     authored.position = {1.0f, 2.0f, 3.0f};
     const auto id = scene.addLight(authored);
@@ -384,8 +417,9 @@ TEST_CASE("SceneSession local-light reset uses full identities and current orbit
                                            .radius = 3.0f,
                                            .phase = 0.0f,
                                            .period = 4.0f});
+    loaded.binding.lightGeneratorNode[engine::sceneLightKey(*id)] = 0;
     SceneSession session;
-    session.activate(scene, SceneActivationMotion::PreserveLoadedMotion);
+    session.activate(loaded, SceneActivationMotion::PreserveLoadedMotion);
     scene.animationTime = 1.0;
     scene.animate(scene.animationTime);
     REQUIRE_FALSE(session.localLightChanged(*id));
@@ -530,4 +564,243 @@ TEST_CASE("saved mesh enabled edits share document own flags and ancestor effect
     CHECK_FALSE(session.objectEnabled(0));
     CHECK_FALSE(session.scene().objects[0].enabled);
     CHECK(session.editGeneration() == generation);
+}
+
+//======================================================================================================================
+TEST_CASE("SceneSession object pose locks refuse edits and resets without mutation",
+          "[app][scene-session][ux6-pose-lock]") {
+    using lmx::app::PoseLock;
+    engine::LoadedScene loaded{.scene = std::make_unique<engine::Scene>()};
+    loaded.document = lmx::test::contentDocument();
+    loaded.document.nodes[2].mobility = asset::DocMobility::Movable;
+    loaded.binding.nodes.resize(loaded.document.nodes.size());
+    loaded.binding.objectNode = {1, 2};
+    loaded.binding.objectImportedNode.assign(2, engine::kGeneratedNode);
+    loaded.binding.objectGeneratorNode.assign(2, engine::kGeneratedNode);
+    loaded.objectMobility = {asset::DocMobility::Static, asset::DocMobility::Movable};
+    loaded.scene->objects.resize(2);
+    for (size_t i = 0; i < 2; ++i) {
+        loaded.binding.nodes[i + 1].objects = {i};
+        loaded.scene->objects[i].position = {1, 2, 3};
+        loaded.scene->objects[i].previousModel = glm::mat4(2.0f);
+    }
+    SceneSession session;
+    session.activate(loaded, SceneActivationMotion::PreserveLoadedMotion);
+    PoseLock expected = PoseLock::Static;
+    SECTION("static") {}
+    SECTION("generated takes precedence over its static mobility") {
+        loaded.binding.objectGeneratorNode[0] = 1;
+        expected = PoseLock::Generated;
+    }
+    SECTION("rigid animation takes precedence over its static mobility") {
+        loaded.scene->animation.tracks.push_back({.objectIndex = 0});
+        expected = PoseLock::Animated;
+    }
+    SECTION("imported animation ownership is retained without a rigid track") {
+        loaded.binding.objectImportedNode[0] = 0;
+        loaded.binding.importedNodes.push_back({.assetRoot = 1, .animated = true, .objects = {0}});
+        expected = PoseLock::Animated;
+    }
+    SECTION("measurement takes precedence over generated and animated ownership") {
+        session.setMeasurementActive(true);
+        loaded.binding.objectGeneratorNode[0] = 1;
+        loaded.scene->animation.tracks.push_back({.objectIndex = 0});
+        expected = PoseLock::Measuring;
+    }
+    CHECK(session.objectPoseLock(0) == expected);
+    const auto before = loaded.scene->objects[0];
+    const auto generation = session.editGeneration();
+    const auto refused = session.editObject(0, {.position = {9, 8, 7}});
+    REQUIRE_FALSE(refused);
+    CHECK(refused.error().message == lmx::app::poseLockReason(expected));
+    const auto reset = session.resetObject(0);
+    REQUIRE_FALSE(reset);
+    CHECK(reset.error().message == lmx::app::poseLockReason(expected));
+    CHECK(loaded.scene->objects[0].position == before.position);
+    CHECK(loaded.scene->objects[0].eulerDegrees == before.eulerDegrees);
+    CHECK(loaded.scene->objects[0].scale == before.scale);
+    CHECK(loaded.scene->objects[0].previousModel == before.previousModel);
+    CHECK(session.editGeneration() == generation);
+    if (expected == PoseLock::Static) {
+        REQUIRE(session.setObjectEnabled(0, false));
+        CHECK_FALSE(session.objectEnabled(0));
+        CHECK(session.objectPoseLock(0) == PoseLock::Static);
+        CHECK(session.editGeneration() == generation + 1);
+        CHECK(session.objectPoseLock(1) == PoseLock::None);
+        CHECK(session.objectTransformPersistable(1));
+        REQUIRE(session.editObject(1, {.position = {4, 5, 6}}));
+        CHECK(loaded.scene->objects[1].position == glm::vec3(4, 5, 6));
+        REQUIRE(session.resetObject(1));
+        CHECK(loaded.scene->objects[1].position == glm::vec3(1, 2, 3));
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("SceneSession pose locks have stable reasons and bounded invalid-subject handling",
+          "[app][scene-session][ux6-pose-lock]") {
+    using lmx::app::PoseLock;
+    using lmx::app::poseLockReason;
+    CHECK(poseLockReason(PoseLock::None).empty());
+    CHECK(poseLockReason(PoseLock::Static) == "Static: mobility is authored in the scene file");
+    CHECK(poseLockReason(PoseLock::Generated) == "Generated objects are placed by their generator");
+    CHECK(poseLockReason(PoseLock::Animated) == "Animation owns this transform");
+    CHECK(poseLockReason(PoseLock::Measuring) == "Pose edits are unavailable during measurement");
+    SceneSession session;
+    CHECK_FALSE(session.editObject(0, {}));
+    CHECK_FALSE(session.resetObject(0));
+    CHECK_FALSE(session.editLocalLight({}, {}));
+    CHECK_FALSE(session.editLight(0, {}));
+    engine::LoadedScene loaded{.scene = std::make_unique<engine::Scene>()};
+    loaded.scene->objects.emplace_back();
+    session.activate(loaded, SceneActivationMotion::Reset);
+    CHECK(session.objectPoseLock(0) == PoseLock::Static);
+    CHECK_FALSE(session.editObject(0, {}));
+    CHECK_FALSE(session.editObject(99, {}));
+    CHECK_FALSE(session.resetObject(99));
+    CHECK_FALSE(session.resetLight(99));
+    CHECK_FALSE(session.editLight(99, {}));
+    CHECK_FALSE(session.objectTransformPersistable(99));
+    CHECK(session.objectPoseLock(99) != PoseLock::None);
+    CHECK(session.lightPoseLock(lmx::app::EditorSubject::LocalLight, 0, {}) != PoseLock::None);
+    CHECK(session.editGeneration() == 0);
+}
+
+//======================================================================================================================
+TEST_CASE("SceneSession light pose locks follow authored binding order and preserve non-pose edits",
+          "[app][scene-session][ux6-pose-lock]") {
+    using lmx::app::EditorSubject;
+    using lmx::app::PoseLock;
+    engine::LoadedScene loaded{.scene = std::make_unique<engine::Scene>()};
+    loaded.document.nodes = {{.name = "Movable point", .light = 0},
+                             {.name = "Static rim", .light = 1},
+                             {.name = "Static spot", .light = 2},
+                             {.name = "Movable key", .light = 3},
+                             {.name = "Generator"}};
+    loaded.document.nodes[0].mobility = asset::DocMobility::Movable;
+    loaded.document.nodes[3].mobility = asset::DocMobility::Movable;
+    loaded.binding.nodes.resize(5);
+    loaded.document.rootNodes = {0, 1, 2, 3, 4};
+    loaded.lightMobility = {asset::DocMobility::Movable, asset::DocMobility::Static,
+                            asset::DocMobility::Static, asset::DocMobility::Movable};
+    const auto point = loaded.scene->addLight({});
+    const auto spot = loaded.scene->addLight({.type = engine::LocalLightType::Spot,
+                                              .position = {-0.0f, 2, 3},
+                                              .direction = {-0.0f, -2, -3},
+                                              .innerCone = 0.1f,
+                                              .outerCone = 0.7f});
+    const auto generated = loaded.scene->addLight({});
+    REQUIRE(point);
+    REQUIRE(spot);
+    REQUIRE(generated);
+    loaded.binding.nodes[0].light = *point;
+    loaded.binding.nodes[1].directional = 2;
+    loaded.binding.nodes[2].light = *spot;
+    loaded.binding.nodes[3].directional = 0;
+    loaded.binding.lightNode[engine::sceneLightKey(*point)] = 0;
+    loaded.binding.lightNode[engine::sceneLightKey(*spot)] = 2;
+    loaded.binding.lightGeneratorNode[engine::sceneLightKey(*generated)] = 4;
+    loaded.scene->lights[2].direction = {-0.0f, -2, -3};
+    SceneSession session;
+    session.activate(loaded, SceneActivationMotion::PreserveLoadedMotion);
+    CHECK(session.lightPoseLock(EditorSubject::LocalLight, 999, *point) == PoseLock::None);
+    CHECK(session.lightPoseLock(EditorSubject::LocalLight, 0, *spot) == PoseLock::Static);
+    CHECK(session.lightPoseLock(EditorSubject::DirectionalLight, 2, {}) == PoseLock::Static);
+    CHECK(session.lightPoseLock(EditorSubject::DirectionalLight, 0, {}) == PoseLock::None);
+    CHECK(session.lightPoseLock(EditorSubject::LocalLight, 0, *generated) == PoseLock::None);
+    const auto originalSpot = *loaded.scene->light(*spot);
+    const auto originalRim = loaded.scene->lights[2];
+    const auto generation = session.editGeneration();
+    for (bool position : {false, true}) {
+        auto changed = originalSpot;
+        (position ? changed.position : changed.direction).x = 4;
+        changed.intensity += 10;
+        const auto refused = session.editLocalLight(*spot, changed);
+        REQUIRE_FALSE(refused);
+        CHECK(refused.error().message == lmx::app::poseLockReason(PoseLock::Static));
+        CHECK(loaded.scene->light(*spot)->position == originalSpot.position);
+        CHECK(loaded.scene->light(*spot)->direction == originalSpot.direction);
+        CHECK(loaded.scene->light(*spot)->intensity == originalSpot.intensity);
+        CHECK(session.editGeneration() == generation);
+    }
+    auto changedRim = originalRim;
+    changedRim.direction.x = 4;
+    changedRim.strength *= 2;
+    REQUIRE_FALSE(session.editLight(2, changedRim));
+    CHECK(loaded.scene->lights[2].strength == originalRim.strength);
+    CHECK(session.editGeneration() == generation);
+    const auto sameBits = [](glm::vec3 a, glm::vec3 b) {
+        for (int i = 0; i < 3; ++i)
+            CHECK(std::bit_cast<uint32_t>(a[i]) == std::bit_cast<uint32_t>(b[i]));
+    };
+    for (int edit = 0; edit < 3; ++edit) {
+        auto changed = *loaded.scene->light(*spot);
+        changed.position.x = 0.0f;
+        changed.direction.x = 0.0f;
+        changed.intensity += 1;
+        changed.colour = {0.25f, 0.5f, 0.75f};
+        changed.range += 1;
+        changed.innerCone = 0.1f;
+        changed.outerCone = 0.7f;
+        changed.enabled = !session.localLightEnabled(*spot);
+        REQUIRE(session.editLocalLight(*spot, changed));
+        sameBits(loaded.scene->light(*spot)->position, originalSpot.position);
+        sameBits(loaded.scene->light(*spot)->direction, originalSpot.direction);
+        CHECK(loaded.scene->light(*spot)->intensity == changed.intensity);
+        CHECK(loaded.scene->light(*spot)->colour == changed.colour);
+        CHECK(loaded.scene->light(*spot)->range == changed.range);
+        CHECK(loaded.scene->light(*spot)->innerCone == changed.innerCone);
+        CHECK(loaded.scene->light(*spot)->outerCone == changed.outerCone);
+        CHECK(session.localLightEnabled(*spot) == changed.enabled);
+        auto rim = loaded.scene->lights[2];
+        rim.direction.x = 0.0f;
+        rim.strength += glm::vec3(1);
+        rim.enabled = !rim.enabled;
+        REQUIRE(session.editLight(2, rim));
+        sameBits(loaded.scene->lights[2].direction, originalRim.direction);
+        CHECK(loaded.scene->lights[2].strength == rim.strength);
+        CHECK(loaded.scene->lights[2].enabled == rim.enabled);
+    }
+    REQUIRE(session.setLocalLightEnabled(*spot, false));
+    sameBits(loaded.scene->light(*spot)->direction, originalSpot.direction);
+    auto moved = *loaded.scene->light(*point);
+    moved.position.x = 6;
+    REQUIRE(session.editLocalLight(*point, moved));
+    auto key = loaded.scene->lights[0];
+    key.direction = {1, 0, 0};
+    REQUIRE(session.editLight(0, key));
+    loaded.scene->animation.lightTracks = {{.light = 0}, {.light = 2}};
+    CHECK(session.lightPoseLock(EditorSubject::LocalLight, 0, *point) == PoseLock::Animated);
+    CHECK(session.lightPoseLock(EditorSubject::LocalLight, 0, *generated) == PoseLock::None);
+    moved.position.x = 7;
+    const auto beforeAnimated = session.editGeneration();
+    const auto refusedAnimated = session.editLocalLight(*point, moved);
+    REQUIRE_FALSE(refusedAnimated);
+    CHECK(refusedAnimated.error().message == lmx::app::poseLockReason(PoseLock::Animated));
+    CHECK(loaded.scene->light(*point)->position.x == 6);
+    CHECK(session.editGeneration() == beforeAnimated);
+    auto generatedEdit = *loaded.scene->light(*generated);
+    generatedEdit.position.x = 8;
+    REQUIRE(session.editLocalLight(*generated, generatedEdit));
+    CHECK(session.editGeneration() == beforeAnimated);
+    session.setMeasurementActive(true);
+    for (const auto id : {*point, *spot, *generated}) {
+        CHECK(session.lightPoseLock(EditorSubject::LocalLight, 0, id) == PoseLock::Measuring);
+        auto changed = *loaded.scene->light(id);
+        changed.position.x += 1;
+        const auto refused = session.editLocalLight(id, changed);
+        REQUIRE_FALSE(refused);
+        CHECK(refused.error().message == lmx::app::poseLockReason(PoseLock::Measuring));
+    }
+    CHECK(session.lightPoseLock(EditorSubject::DirectionalLight, 0, {}) == PoseLock::Measuring);
+    key.direction = {0, 1, 0};
+    const auto refused = session.editLight(0, key);
+    REQUIRE_FALSE(refused);
+    CHECK(refused.error().message == lmx::app::poseLockReason(PoseLock::Measuring));
+    CHECK(session.editGeneration() == beforeAnimated);
+    auto measuring = *loaded.scene->light(*spot);
+    measuring.intensity += 1;
+    REQUIRE(session.editLocalLight(*spot, measuring));
+    sameBits(loaded.scene->light(*spot)->position, originalSpot.position);
+    sameBits(loaded.scene->light(*spot)->direction, originalSpot.direction);
+    CHECK(session.editGeneration() == beforeAnimated + 1);
 }

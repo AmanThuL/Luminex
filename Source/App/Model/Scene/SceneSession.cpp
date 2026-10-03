@@ -226,8 +226,13 @@ bool SceneSession::objectChanged(size_t index) const {
 }
 
 //======================================================================================================================
-void SceneSession::editObject(size_t index, const DecomposedTransform& transform) {
-    LMX_ASSERT(index < scene().objects.size(), "Object index out of range");
+rojoRHI::Result<void> SceneSession::editObject(size_t index, const DecomposedTransform& transform) {
+    if (!m_scene || index >= scene().objects.size())
+        return std::unexpected(
+            rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, "Object index out of range"});
+    if (const auto lock = objectPoseLock(index); lock != PoseLock::None)
+        return std::unexpected(
+            rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, std::string(poseLockReason(lock))});
     const auto apply = [&](size_t target) {
         auto& object = scene().objects[target];
         const bool changed = object.position != transform.position ||
@@ -240,27 +245,55 @@ void SceneSession::editObject(size_t index, const DecomposedTransform& transform
         return changed;
     };
     bool changed = false;
-    const auto imported =
-        m_loaded ? m_loaded->binding.objectImportedNode.at(index) : engine::kGeneratedNode;
+    const auto imported = m_loaded && index < m_loaded->binding.objectImportedNode.size()
+                              ? m_loaded->binding.objectImportedNode[index]
+                              : engine::kGeneratedNode;
     if (imported != engine::kGeneratedNode) {
-        for (size_t target : m_loaded->binding.importedNodes.at(imported).objects)
+        if (imported >= m_loaded->binding.importedNodes.size())
+            return std::unexpected(
+                rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, "Object binding is invalid"});
+        const auto& targets = m_loaded->binding.importedNodes[imported].objects;
+        for (const size_t target : targets) {
+            if (target >= scene().objects.size())
+                return std::unexpected(
+                    rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, "Object binding is invalid"});
+            if (const auto lock = objectPoseLock(target); lock != PoseLock::None)
+                return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
+                                                      std::string(poseLockReason(lock))});
+        }
+        for (const size_t target : targets)
             changed |= apply(target);
     } else {
         changed = apply(index);
     }
     if (changed && persistentObject(index))
         notifyPersistentEdit();
+    return {};
 }
 
 //======================================================================================================================
 bool SceneSession::objectTransformPersistable(size_t index) const {
-    return m_loaded && index < scene().objects.size() && persistentObject(index) &&
-           m_loaded->binding.objectImportedNode.at(index) != engine::kGeneratedNode;
+    if (!m_loaded || !persistentObject(index))
+        return false;
+    if (index < m_loaded->binding.objectImportedNode.size() &&
+        m_loaded->binding.objectImportedNode[index] != engine::kGeneratedNode)
+        return true;
+    if (index >= m_loaded->binding.objectNode.size())
+        return false;
+    const auto node = m_loaded->binding.objectNode[index];
+    return node < m_loaded->document.nodes.size() &&
+           m_loaded->document.nodes[node].mesh.has_value();
 }
 
 //======================================================================================================================
-void SceneSession::resetObject(size_t index) {
-    editObject(index, objectDefault(index));
+rojoRHI::Result<void> SceneSession::resetObject(size_t index) {
+    if (!m_scene || index >= scene().objects.size())
+        return std::unexpected(
+            rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, "Object index out of range"});
+    if (const auto lock = objectPoseLock(index); lock != PoseLock::None)
+        return std::unexpected(
+            rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, std::string(poseLockReason(lock))});
+    return editObject(index, objectDefault(index));
 }
 
 //======================================================================================================================
@@ -271,6 +304,9 @@ const engine::DirectionalLight& SceneSession::lightDefault(size_t index) const {
 
 //======================================================================================================================
 rojoRHI::Result<void> SceneSession::resetLight(size_t index) {
+    if (!m_scene || index >= 3)
+        return std::unexpected(
+            rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, "Light index out of range"});
     return editLight(index, lightDefault(index));
 }
 
@@ -354,10 +390,15 @@ bool SceneSession::localLightChanged(engine::LightId id) const {
 //======================================================================================================================
 rojoRHI::Result<void> SceneSession::editLocalLight(engine::LightId id,
                                                    const engine::LocalLight& light) {
-    const auto* current = scene().light(id);
+    const auto* current = m_scene ? scene().light(id) : nullptr;
     if (!current)
         return std::unexpected(
             rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, "Light no longer exists"});
+    const auto lock = lightPoseLock(EditorSubject::LocalLight, 0, id);
+    if (lock != PoseLock::None &&
+        (current->position != light.position || current->direction != light.direction))
+        return std::unexpected(
+            rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, std::string(poseLockReason(lock))});
     if (m_measurementActive && light.enabled != localLightEnabled(id))
         return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
                                               "Enabled edits are unavailable during measurement"});
@@ -369,6 +410,10 @@ rojoRHI::Result<void> SceneSession::editLocalLight(engine::LightId id,
         current->innerCone != light.innerCone || current->outerCone != light.outerCone;
     const bool enabledChanged = light.enabled != localLightEnabled(id);
     auto effective = light;
+    if (lock != PoseLock::None) {
+        effective.position = current->position;
+        effective.direction = current->direction;
+    }
     effective.enabled = current->enabled;
     if (auto result = scene().updateLight(id, effective); !result)
         return result;

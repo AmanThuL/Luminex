@@ -520,6 +520,9 @@ TEST_CASE("Save preserves immutable imported poses and generated session default
     doc.nodes.push_back(
         {.name = "Generated objects",
          .generator = asset::DocGenerator{"visibility-lab", {{"instances", 1}, {"occluders", 0}}}});
+    doc.schemaVersion = asset::kSceneDocumentSchema;
+    doc.nodes[3].mobility = asset::DocMobility::Movable;
+    doc.nodes[2].mobility = asset::DocMobility::Movable;
     doc.rootNodes.push_back(3);
     doc.rootNodes.push_back(4);
     doc.rootNodes.push_back(5);
@@ -547,7 +550,7 @@ TEST_CASE("Save preserves immutable imported poses and generated session default
     const auto immutable = *session.documentState().importedPoseBaseline[importedIndex];
     auto edited = original;
     edited.position.x += 5;
-    session.editObject(object, edited);
+    REQUIRE(session.editObject(object, edited));
     REQUIRE(session.setObjectEnabled(object, false));
     REQUIRE(session.setNodeEnabled(3, false));
     const auto generated = std::find_if(
@@ -560,7 +563,14 @@ TEST_CASE("Save preserves immutable imported poses and generated session default
     const auto generatedDefault = session.objectDefault(generatedIndex);
     auto generatedEdit = generatedDefault;
     generatedEdit.position.x += 10;
-    session.editObject(generatedIndex, generatedEdit);
+    const auto generation = session.editGeneration();
+    const auto generatedPose = session.scene().objects[generatedIndex];
+    const auto refused = session.editObject(generatedIndex, generatedEdit);
+    REQUIRE_FALSE(refused);
+    CHECK(refused.error().message == "Generated objects are placed by their generator");
+    CHECK(session.scene().objects[generatedIndex].position == generatedPose.position);
+    CHECK(session.scene().objects[generatedIndex].previousModel == generatedPose.previousModel);
+    CHECK(session.editGeneration() == generation);
     REQUIRE(app::saveSessionDocument(library, session, id, path, false));
     REQUIRE_FALSE(dirty(session));
     CHECK_FALSE(session.objectEnabled(object));
@@ -569,9 +579,9 @@ TEST_CASE("Save preserves immutable imported poses and generated session default
           immutable.translation);
     CHECK(session.objectDefault(object).position == edited.position);
     CHECK(session.objectDefault(generatedIndex).position == generatedDefault.position);
-    session.editObject(object, original);
+    REQUIRE(session.editObject(object, original));
     REQUIRE(dirty(session));
-    session.resetObject(object);
+    REQUIRE(session.resetObject(object));
     CHECK_FALSE(dirty(session));
     auto destination = path.parent_path() / "imported-copy.scene.gltf";
     REQUIRE(app::saveSessionDocument(library, session, id, destination, true));
@@ -1212,7 +1222,9 @@ TEST_CASE("saved mesh selection survives Save and verified proposal reload",
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
     scenes::SceneLibrary library(**device);
-    const auto path = savePath("mesh-selection", test::contentDocument());
+    auto doc = test::contentDocument();
+    doc.nodes[1].mobility = asset::DocMobility::Movable;
+    const auto path = savePath("mesh-selection", doc);
     auto id = scenes::sceneIdFromPath(path);
     REQUIRE(library.get(id));
     app::SceneSession session;
@@ -1224,7 +1236,7 @@ TEST_CASE("saved mesh selection survives Save and verified proposal reload",
                                    .node = 1};
     auto pose = session.objectDefault(index);
     pose.position.x = 5.f;
-    session.editObject(index, pose);
+    REQUIRE(session.editObject(index, pose));
     REQUIRE(app::saveSessionDocument(library, session, id, path, false));
     CHECK_FALSE(dirty(session));
     CHECK(session.objectDefault(index).position.x == 5.f);

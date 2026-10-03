@@ -51,6 +51,44 @@ struct PreparedBatch {
 };
 
 //======================================================================================================================
+rojoRHI::Result<void> poseEditsAllowed(const SceneSession& session, const PreparedBatch& batch) {
+    // Resolve every permission before the first write, including an imported subject's sibling
+    // primitives, so a later refusal cannot leave an earlier edit applied.
+    const auto checkObject = [&](size_t index) -> rojoRHI::Result<void> {
+        if (const auto lock = session.objectPoseLock(index); lock != PoseLock::None)
+            return std::unexpected(
+                rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, std::string(poseLockReason(lock))});
+        return {};
+    };
+    for (const auto& [index, transform] : batch.objects) {
+        if (const auto allowed = checkObject(index); !allowed)
+            return allowed;
+        const auto& binding = session.loadedScene()->binding;
+        if (index >= binding.objectImportedNode.size())
+            continue;
+        const auto imported = binding.objectImportedNode[index];
+        if (imported == engine::kGeneratedNode)
+            continue;
+        if (imported >= binding.importedNodes.size())
+            return std::unexpected(
+                rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, "Object binding is invalid"});
+        for (const auto target : binding.importedNodes[imported].objects)
+            if (const auto allowed = checkObject(target); !allowed)
+                return allowed;
+    }
+    for (const auto& [key, light] : batch.lights) {
+        const auto* current = session.scene().light(light.id);
+        const auto lock = session.lightPoseLock(EditorSubject::LocalLight, 0, light.id);
+        if (current && lock != PoseLock::None &&
+            (current->position != light.value.position ||
+             current->direction != light.value.direction))
+            return std::unexpected(
+                rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, std::string(poseLockReason(lock))});
+    }
+    return {};
+}
+
+//======================================================================================================================
 std::string jsonVector(glm::vec3 value) {
     JsonWriter writer;
     writer.beginArray(true);
@@ -604,8 +642,11 @@ rojoRHI::Result<void> applyEdits(SceneSession& session, const SceneTreeView& tre
     auto prepared = prepare(session, tree, edits);
     if (!prepared)
         return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, prepared.error()});
+    if (const auto allowed = poseEditsAllowed(session, *prepared); !allowed)
+        return allowed;
     for (const auto& [index, transform] : prepared->objects)
-        session.editObject(index, transform);
+        if (auto result = session.editObject(index, transform); !result)
+            return result;
     for (const auto& [key, light] : prepared->lights)
         if (auto result = session.editLocalLight(light.id, light.value); !result)
             return result;

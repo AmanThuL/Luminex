@@ -373,6 +373,7 @@ TEST_CASE("Saved mesh rows select the bound object and retain exported pose edit
     FakeDevice device;
     auto doc = test::contentDocument();
     doc.nodes[2].enabled = true;
+    doc.nodes[2].mobility = asset::DocMobility::Movable;
     // Document node 2 maps to object 1, not the node's numeric slot.
     const auto path = std::filesystem::temp_directory_path() / "lmx-saved-mesh-tree.scene.gltf";
     REQUIRE(asset::saveSceneDocument(doc, path));
@@ -402,7 +403,7 @@ TEST_CASE("Saved mesh rows select the bound object and retain exported pose edit
     CHECK(sceneTreeKeyboardTarget(std::span(rows).subspan(1), {}, true)->index == row.index);
     const glm::vec3 edited{9.f, 8.f, 7.f};
     const auto& object = loaded.scene->objects[row.index];
-    session.editObject(row.index, {edited, object.eulerDegrees, object.scale});
+    REQUIRE(session.editObject(row.index, {edited, object.eulerDegrees, object.scale}));
     auto exported = scenes::exportSceneDocument(loaded, session.scene(), session.documentState());
     REQUIRE(exported);
     CHECK(exported->nodes[row.node].translation == edited);

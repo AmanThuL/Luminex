@@ -42,10 +42,14 @@ void drawObjectSection(const InspectorPanelContext& context, size_t index) {
                             session.objectChanged(index) ||
                                 enabledState->own != enabledState->baseline,
                             &enabled, headerMark, enabledMark)) {
-        session.resetObject(index);
+        if (const auto result = session.resetObject(index); !result)
+            editor_style::message(result.error().message.c_str(), true);
+        else
+            requestCameraCut(context.temporalState);
         if (const auto result = resetInspectorEnabled(session, context.selection); !result)
             editor_style::message(result.error().message.c_str(), true);
-        requestCameraCut(context.temporalState);
+        else
+            requestCameraCut(context.temporalState);
     } else if (enabled != enabledState->own) {
         if (const auto result = setInspectorEnabled(session, context.selection, enabled); !result)
             editor_style::message(result.error().message.c_str(), true);
@@ -89,8 +93,10 @@ void drawObjectSection(const InspectorPanelContext& context, size_t index) {
                                         "%.3f", ImGuiSliderFlags_AlwaysClamp, false,
                                         "Scale factor per axis, from 0.01 to 100.");
         if (edited) {
-            session.editObject(index, transform);
-            requestCameraCut(context.temporalState);
+            if (const auto result = session.editObject(index, transform); !result)
+                editor_style::message(result.error().message.c_str(), true);
+            else
+                requestCameraCut(context.temporalState);
         }
         for (const auto& row : visibilityFields) {
             if (!diagnostic(row))

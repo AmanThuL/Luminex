@@ -3,11 +3,11 @@
 **Status:** In progress
 **Date:** 2026-10-03. The milestone remains `Accepted`; no owner acceptance or merge occurred.
 
-Tasks 1–13 are complete; Task 8 is `c888541` and tag `ux6-exporter`.
+Tasks 1–14 are complete; Task 8 is `c888541` and tag `ux6-exporter`.
 Task 17 is also complete after isolated and combined gates plus separate review. Task 12 automatic
 checks and images ran. After the required image/native stop, the owner accepted the five
 MaterialLab reference updates and authorized native retries. Sphere edit/Save/relaunch and generic
-glTF import now pass as observed below. Task 13 adds document mobility; Tasks 14–16 and 18–22 are unstarted. The owner requested parallel work and explicitly approved reusing the idle
+glTF import now pass as observed below. Task 13 adds document mobility; Task 14 adds shared pose locks; Tasks 15–16 and 18–22 are unstarted. The owner requested parallel work and explicitly approved reusing the idle
 Task 1 reviewer as Task 17's implementer after the agent interface refused a fresh thread.
 Task 9 and Task 17 have independent checkouts and reviewers. Other tasks use fresh agents.
 
@@ -47,7 +47,8 @@ commands and assertions are unchanged, with distinct logs and no previous-eviden
 | 11 | `d66e2fe` | 13/13 passed; 356 Python tests | `task11-integration-gates.json` |
 | 17 | `6a7a338` | 13/13 passed; 359 Python tests | `task17-integration-gates.json` |
 | 12 | `c9cd9b6` | 13/13 passed; 363 Python tests | `task12-accepted-gates.json` |
-| 13 | pending commit | 12/12 passed | `task13-final2-gates.json` |
+| 13 | `1343471` | 12/12 passed | `task13-final2-gates.json` |
+| 14 | pending commit | 12/12 composite; initial 11/12 retained | `task14-final-composite-gates.json` |
 
 ## Retained failures and resumptions
 
@@ -239,32 +240,8 @@ The final accepted-reference build/CPU/format/direct-policy run passed **13/13 c
 including 363 Python tests. Separate final review independently verified 306 evidence checks
 and all 18 targeted tests. Task 12 is complete; original failed measurements remain above.
 
-## Task 13 — Authored mobility
+## Mobility validation
 
-The document model carries Static/Movable mobility and nearest imported-source override inheritance.
-All six catalogs change only mobility: Helmet and every authored light are movable; other subjects
-remain static. Binding vectors preserve object and authored-light order; export preserves mobility.
-Schema 1 reads lights as movable and saves as schema 2. The canonical identity serializer retains
-legacy bytes for dirty/watch comparisons; a new save-form helper upgrades the actual saved payload.
-Engine and App save files are added to scope so disk bytes, receipt hashes and adopted scenes agree.
-
-Initial RED: two cases, 33 assertions, five failures. Two new test compile errors (a macro ternary and missing GraphTestSupport include) were
-corrected before final GREEN. The first broader CPU diagnostic failed 15 cases/15 assertions out of
-1,583,065 assertions on catalog punctuation and old disk-canonical assumptions. Review then found
-migration could erase invalid model mobility before validation. Five new refusal sections failed
-before repair; save now validates both original and migrated models and preserves files on refusal.
-The next focused run failed four cases/assertions (59/63 cases, 83,659/83,663 assertions): a shared
-fixture migration caused schema 1 arbitrary-URI tests to hit schema 2 naming checks first. Restoring
-legacy reader fixtures and migrating only save-comparison setups preserved every old assertion and
-golden file. The repaired focused run passed **83,988 assertions in 63 cases**. Original logs remain
-under `task13-*.log`; separate review audited 1,031 original assertion invocations unchanged.
-The new refusal test initially left its protected invalid sentinel in validator discovery. Cleanup
-now removes it after all preservation assertions. The obsolete first gate run was cancelled at
-11/12 passed, with layout uncompleted, and its exact process records/logs retained. The rebuilt
-final and independent focused runs each passed **316 assertions in ten cases**; the sentinel is
-absent afterwards. Fresh full per-commit gates passed **12/12**. The pinned validator passed
-**92 documents** (six catalogs plus 86 discovered writer fixtures), after the unchanged positive
-writer test refreshed its shared output (66 assertions, one case). This is this run's inventory,
-not Task 12's 107-document count; arbitrary test-order output stability remains unverified.
-Evidence: `task13-notes.json`, `task13-review.json` and final gate/validator logs. Task 13 is complete;
-Tasks 14–16 and 18–22 are unstarted. No pose-lock/native mobility or image checkpoint pass is inferred.
+[Mobility validation](ux6-validation-mobility.md) preserves Task 13–14 reader/writer/migration and pose-lock
+measurements, failed attempts, scope additions and independent review. Native mobility and the
+Task 16 image checkpoint remain unverified.

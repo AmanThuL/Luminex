@@ -122,6 +122,9 @@ asset::SceneDocument exportFixture(const fs::path& root) {
          .asset = asset::DocAsset{"animated/quad.gltf", sha256Hex(*animatedBytes)}},
         {.name = "Generated objects",
          .generator = asset::DocGenerator{"visibility-lab", {{"instances", 1}, {"occluders", 0}}}}};
+    doc.nodes[1].mobility = asset::DocMobility::Movable;
+    for (uint32_t node : {4u, 6u})
+        doc.nodes[node].mobility = asset::DocMobility::Movable;
     doc.rootNodes = {0, 1, 2, 3, 6, 7, 8, 9};
     // Redundant authored values remain byte-stable instead of being cleaned up during export.
     doc.nodes[2].overrides = {{.node = 0, .name = "Empty parent", .enabled = true},
@@ -222,10 +225,10 @@ TEST_CASE("persistent edits then exact restoration become clean despite generati
     const auto object = loaded.binding.importedNodes[source].objects.front();
     const auto lightId = *loaded.binding.nodes[4].light;
     SECTION("object pose") {
-        session.editObject(
-            object, {.position = {3, 4, 5}, .eulerDegrees = {10, 20, 30}, .scale = {2, 1, 1}});
+        REQUIRE(session.editObject(
+            object, {.position = {3, 4, 5}, .eulerDegrees = {10, 20, 30}, .scale = {2, 1, 1}}));
         REQUIRE(dirty(loaded, session));
-        session.resetObject(object);
+        REQUIRE(session.resetObject(object));
     }
     SECTION("object own flag") {
         REQUIRE(session.setObjectEnabled(object, false));
@@ -284,7 +287,7 @@ TEST_CASE("saved object group light and look edits survive reader and reinstanti
     const auto objects = loaded.binding.importedNodes[source].objects;
     REQUIRE(objects.size() == 2);
     const DecomposedTransform pose{{-4, 5, 6}, {10, 20, 30}, {2, 1, 1}};
-    session.editObject(objects.back(), pose);
+    REQUIRE(session.editObject(objects.back(), pose));
     REQUIRE(session.setObjectEnabled(objects.front(), false));
     REQUIRE(session.setImportedNodeEnabled(importedIndex(loaded, 2, 0), false));
     REQUIRE(session.setNodeEnabled(3, true));
@@ -367,7 +370,12 @@ TEST_CASE("generated and animated previews never enter the saved document", "[sc
     REQUIRE(loaded.binding.nodes[9].objects.size() == 1);
     const auto generated = loaded.binding.nodes[9].objects.front();
     const auto generatedLight = loaded.scene->lightLabPopulations.front().grid.front();
-    session.editObject(generated, {.position = {8, 9, 10}});
+    const auto generatedPose = loaded.scene->objects[generated];
+    const auto refusedGenerated = session.editObject(generated, {.position = {8, 9, 10}});
+    REQUIRE_FALSE(refusedGenerated);
+    CHECK(refusedGenerated.error().message == "Generated objects are placed by their generator");
+    CHECK(loaded.scene->objects[generated].position == generatedPose.position);
+    CHECK(loaded.scene->objects[generated].previousModel == generatedPose.previousModel);
     REQUIRE(session.setObjectEnabled(generated, false));
     auto light = *session.scene().light(generatedLight);
     light.position = {4, 5, 6};
@@ -376,7 +384,12 @@ TEST_CASE("generated and animated previews never enter the saved document", "[sc
     REQUIRE(session.editLocalLight(generatedLight, light));
     REQUIRE(session.setLightLabPile(2));
     const auto animated = loaded.binding.importedNodes[importedIndex(loaded, 8, 1)].objects.front();
-    session.editObject(animated, {.position = {30, 40, 50}});
+    const auto animatedPose = loaded.scene->objects[animated];
+    const auto refusedAnimated = session.editObject(animated, {.position = {30, 40, 50}});
+    REQUIRE_FALSE(refusedAnimated);
+    CHECK(refusedAnimated.error().message == "Animation owns this transform");
+    CHECK(loaded.scene->objects[animated].position == animatedPose.position);
+    CHECK(loaded.scene->objects[animated].previousModel == animatedPose.previousModel);
     CHECK_FALSE(dirty(loaded, session));
     CHECK(session.editGeneration() == 0);
     app::EditorPlayback playback;
@@ -675,7 +688,7 @@ TEST_CASE("successful save adoption uses the new override before the immutable p
     const auto object = loaded.binding.importedNodes[importedIndex(loaded, 1, 1)].objects.front();
     const auto original = session.objectDefault(object);
     const DecomposedTransform changed{{4, 5, 6}, {10, 20, 30}, {1, 2, 1}};
-    session.editObject(object, changed);
+    REQUIRE(session.editObject(object, changed));
     REQUIRE(session.setObjectEnabled(object, false));
     auto saved = exported(loaded, session);
     const auto path = root / "adopted.scene.gltf";
@@ -689,9 +702,9 @@ TEST_CASE("successful save adoption uses the new override before the immutable p
     loaded.hash = *hash;
     session.adoptDocumentResetBaseline();
     CHECK_FALSE(dirty(loaded, session));
-    session.editObject(object, original);
+    REQUIRE(session.editObject(object, original));
     CHECK(dirty(loaded, session));
-    session.resetObject(object);
+    REQUIRE(session.resetObject(object));
     CHECK_FALSE(dirty(loaded, session));
     REQUIRE(session.setObjectEnabled(object, true));
     CHECK(dirty(loaded, session));
@@ -705,6 +718,7 @@ TEST_CASE("saved mesh export preserves loaded bits and independently persists ed
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
     auto doc = test::contentDocument();
+    doc.nodes[1].mobility = asset::DocMobility::Movable;
     doc.nodes[1].rotation = glm::quat(-.5f, -.5f, -.5f, -.5f);
     doc.nodes[1].translation.x = -0.f;
     const auto path = fixtureRoot() / "mesh-export.scene.gltf";
@@ -725,7 +739,7 @@ TEST_CASE("saved mesh export preserves loaded bits and independently persists ed
         auto pose = session.objectDefault(object);
         pose.position = {5.f, -0.f, 7.f};
         pose.scale = {-2.f, .125f, 3.f};
-        session.editObject(object, pose);
+        REQUIRE(session.editObject(object, pose));
         result = exported(*loaded, session);
         CHECK(std::memcmp(&result.nodes[1].rotation, &loaded->document.nodes[1].rotation,
                           sizeof(glm::quat)) == 0);
@@ -735,7 +749,7 @@ TEST_CASE("saved mesh export preserves loaded bits and independently persists ed
         pose.position = {5.f, -0.f, 7.f};
         pose.eulerDegrees = {0.f, 30.f, 0.f};
         pose.scale = {-2.f, .125f, 3.f};
-        session.editObject(object, pose);
+        REQUIRE(session.editObject(object, pose));
         result = exported(*loaded, session);
         const auto decoded = asset::eulerDegreesForRotation(result.nodes[1].rotation);
         for (int k = 0; k < 3; ++k)
@@ -787,6 +801,7 @@ TEST_CASE("mesh TRS animation excludes pose export but emissive animation does n
                                          .values = {{1, 2, 3, 0}, {4, 5, 6, 0}}}}}};
     }
     SECTION("emissive track leaves pose editable") {
+        doc.nodes[1].mobility = asset::DocMobility::Movable;
         doc.animations = {{.keyCount = 2,
                            .channels = {{.node = 0,
                                          .path = asset::DocChannelPath::EmissiveStrength,
@@ -804,7 +819,17 @@ TEST_CASE("mesh TRS animation excludes pose export but emissive animation does n
     const auto object = loaded->binding.nodes[1].objects.front();
     auto pose = session.objectDefault(object);
     pose.position.x = 9.f;
-    session.editObject(object, pose);
+    const auto before = session.scene().objects[object];
+    const auto generation = session.editGeneration();
+    const auto edit = session.editObject(object, pose);
+    if (rigid) {
+        REQUIRE_FALSE(edit);
+        CHECK(edit.error().message == "Animation owns this transform");
+        CHECK(session.scene().objects[object].position == before.position);
+        CHECK(session.scene().objects[object].previousModel == before.previousModel);
+        CHECK(session.editGeneration() == generation);
+    } else
+        REQUIRE(edit);
     auto result = exported(*loaded, session);
     if (rigid)
         CHECK_FALSE(scenes::documentDirty(loaded->document, result));

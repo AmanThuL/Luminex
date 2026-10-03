@@ -175,9 +175,16 @@ TEST_CASE("TemporalLab's imported truck wheel loops on its source clip across th
     (*scene)->animate((*scene)->animationTime, (*scene)->unwrappedAnimationTime);
     const glm::mat4 pausedWheel = (*scene)->objects[wheel].modelMatrix();
     REQUIRE_FALSE(session.objectChanged(wheel));
-    session.editObject(wheel, {.position = {100.0f, 0.0f, 0.0f}});
-    REQUIRE(session.objectChanged(wheel));
-    session.resetObject(wheel);
+    const auto generation = session.editGeneration();
+    const auto previous = (*scene)->objects[wheel].previousModel;
+    const auto edit = session.editObject(wheel, {.position = {100.0f, 0.0f, 0.0f}});
+    REQUIRE_FALSE(edit);
+    CHECK(edit.error().message == "Animation owns this transform");
+    const auto reset = session.resetObject(wheel);
+    REQUIRE_FALSE(reset);
+    CHECK(reset.error().message == "Animation owns this transform");
+    CHECK(session.editGeneration() == generation);
+    CHECK((*scene)->objects[wheel].previousModel == previous);
     REQUIRE(matricesNear((*scene)->objects[wheel].modelMatrix(), pausedWheel, 1e-4f));
     REQUIRE_FALSE(session.objectChanged(wheel));
 

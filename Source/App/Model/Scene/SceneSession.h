@@ -12,6 +12,7 @@
 
 #include <array>
 #include <cstdint>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -24,6 +25,18 @@ enum class SceneActivationMotion : uint8_t {
     PreserveLoadedMotion, ///< Headless startup preserves the loader's previous transforms exactly.
     Reset,                ///< Editor activation collapses motion onto the scene's current pose.
 };
+
+/// Why an editor subject's pose cannot be changed.
+enum class PoseLock {
+    None,      ///< A movable subject permits pose edits.
+    Static,    ///< Mobility is authored as static or unavailable.
+    Generated, ///< The generator owns an object's placement.
+    Animated,  ///< Animation owns the subject's transform.
+    Measuring, ///< Measurement temporarily prevents pose edits.
+};
+
+/// Returns the stable user-facing refusal reason, empty for an unlocked pose.
+std::string_view poseLockReason(PoseLock lock);
 
 /// A borrowed active scene and its application-owned camera, independent of windowing and input.
 ///
@@ -177,21 +190,26 @@ public:
     /// True when the editable transform differs from its authored/current-track default.
     bool objectChanged(size_t index) const;
 
-    /// Applies an editor transform at the current playback time and collapses this object's motion.
-    /// Playing tracks replace the edit at the next sample; every primitive of a bound source node
-    /// receives the same world pose. Animated and generated edits never notify persistent dirty.
-    void editObject(size_t index, const DecomposedTransform& transform);
+    /// Shared pose permission, with measurement preceding generation, animation and mobility.
+    /// Invalid subjects and missing mobility fail closed as Static.
+    PoseLock objectPoseLock(size_t index) const;
+    /// Shared light pose permission; generated lights retain session-only edits, even with orbits.
+    /// Measurement precedes all other locks. Invalid subjects and absent mobility are Static.
+    PoseLock lightPoseLock(EditorSubject subject, size_t index, engine::LightId id) const;
+    /// Applies a movable object's pose to every primitive of its bound source node and resets
+    /// motion. Any pose lock or invalid index fails without changing pose or edit generation.
+    rojoRHI::Result<void> editObject(size_t index, const DecomposedTransform& transform);
     /// Whether an object's transform is saved by the document exporter.
     bool objectTransformPersistable(size_t index) const;
 
-    /// Restores one object's authored/current-track transform, preserving other objects and time.
-    void resetObject(size_t index);
+    /// Restores one movable object's authored transform through the shared pose permission.
+    rojoRHI::Result<void> resetObject(size_t index);
 
     /// The original scene-linear light retained on first activation, before any editor changes.
     const engine::DirectionalLight& lightDefault(size_t index) const;
 
-    /// Commits directional fields; enabled is the own flag for a bound light. Measure rejects
-    /// changes to enabled, and changed persistent fields notify dirty tracking.
+    /// Commits directional fields; a pose lock refuses direction changes, preserving its bits
+    /// on allowed strength/enabled edits. Measure also refuses enabled changes.
     rojoRHI::Result<void> editLight(size_t index, const engine::DirectionalLight& light);
 
     /// Restores only the selected light; enabled changes during Measure fail without mutation.
@@ -223,7 +241,8 @@ public:
     bool localLightChanged(engine::LightId id) const;
     /// Validates and edits one live light before prepareFrame, retaining its original reset value.
     /// The supplied enabled field is its own flag, so callers read it with localLightEnabled.
-    /// Measure rejects enabled changes; generated changes never notify persistent dirty.
+    /// Pose locks refuse position/direction changes; allowed non-pose edits preserve pose bits.
+    /// Measure also rejects enabled changes; generated changes never notify persistent dirty.
     rojoRHI::Result<void> editLocalLight(engine::LightId id, const engine::LocalLight& light);
     /// Restores all authored fields and current orbit position; stale/foreign IDs return
     /// InvalidDesc.

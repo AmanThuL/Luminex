@@ -33,11 +33,15 @@ bool dirty(const app::SceneSession& session) {
 engine::LoadedScene editableFixture(engine::LightId& lightId) {
     engine::LoadedScene loaded{.scene = std::make_unique<engine::Scene>()};
     loaded.document.name = "Bridge fixture";
+    loaded.objectMobility = {asset::DocMobility::Movable};
+    loaded.lightMobility = {asset::DocMobility::Movable};
     loaded.document.nodes = {
         {.name = "Camera", .translation = {0, 1, 4}, .camera = 0},
         {.name = "Asset",
          .asset = asset::DocAsset{.uri = "fixture.gltf", .sha256 = std::string(64, '0')}},
         {.name = "Lamp", .light = 0}};
+    loaded.document.nodes[1].mobility = asset::DocMobility::Movable;
+    loaded.document.nodes[2].mobility = asset::DocMobility::Movable;
     loaded.document.cameras = {{.name = "Lens"}};
     loaded.document.lights = {{.name = "Lamp",
                                .type = asset::DocLightType::Spot,
@@ -544,4 +548,71 @@ TEST_CASE("an orbiting light's position cannot be proposed while playback runs",
         other.activate(resting, app::SceneActivationMotion::Reset);
         CHECK_FALSE(app::animationOwnedEditRefusal(other, editableTree(still), position, false));
     }
+}
+
+//======================================================================================================================
+TEST_CASE("bridge pose refusal leaves every object in a mixed batch unchanged",
+          "[app][session-edits][ux6-pose-batch]") {
+    engine::LightId id;
+    auto loaded = editableFixture(id);
+    loaded.document.nodes.push_back({.name = "Static asset", .mesh = 0});
+    loaded.document.rootNodes.push_back(3);
+    loaded.binding.nodes.push_back({.objects = {1}});
+    loaded.binding.objectNode.push_back(3);
+    loaded.binding.objectImportedNode.push_back(engine::kGeneratedNode);
+    loaded.binding.objectGeneratorNode.push_back(engine::kGeneratedNode);
+    loaded.objectMobility.push_back(asset::DocMobility::Static);
+    loaded.scene->objects.emplace_back();
+    app::SceneSession session;
+    session.activate(loaded, app::SceneActivationMotion::Reset);
+    auto tree = editableTree(id);
+    tree.rows.push_back(
+        {.subject = app::EditorSubject::Object, .index = 1, .node = 3, .label = "Static mesh"});
+    SECTION("the selected static mesh refuses the batch") {}
+    SECTION("a hidden imported primitive refuses the batch") {
+        loaded.objectMobility[1] = asset::DocMobility::Movable;
+        loaded.binding.objectImportedNode[1] = 1;
+        loaded.binding.importedNodes.push_back({.assetRoot = 3, .objects = {1, 2}});
+        loaded.scene->objects.emplace_back();
+        loaded.objectMobility.push_back(asset::DocMobility::Static);
+        loaded.binding.objectNode.push_back(3);
+        loaded.binding.objectImportedNode.push_back(1);
+        loaded.binding.objectGeneratorNode.push_back(engine::kGeneratedNode);
+    }
+    const auto before = loaded.scene->objects;
+    const auto generation = session.editGeneration();
+    const std::vector<app::ProposalEdit> edits{{"imported:0", "position", "[2,3,4]"},
+                                               {"node:3", "position", "[5,6,7]"}};
+    const auto result = app::applyEdits(session, tree, edits);
+    REQUIRE_FALSE(result);
+    CHECK(result.error().message == "Static: mobility is authored in the scene file");
+    for (size_t i = 0; i < before.size(); ++i) {
+        CHECK(loaded.scene->objects[i].position == before[i].position);
+        CHECK(loaded.scene->objects[i].previousModel == before[i].previousModel);
+    }
+    CHECK(session.editGeneration() == generation);
+}
+
+//======================================================================================================================
+TEST_CASE("bridge light pose refusal precedes earlier object mutation",
+          "[app][session-edits][ux6-pose-batch]") {
+    engine::LightId id;
+    auto loaded = editableFixture(id);
+    loaded.document.nodes[2].mobility = asset::DocMobility::Static;
+    loaded.lightMobility[0] = asset::DocMobility::Static;
+    app::SceneSession session;
+    session.activate(loaded, app::SceneActivationMotion::Reset);
+    const auto before = loaded.scene->objects[0];
+    const auto lightBefore = *loaded.scene->light(id);
+    const auto generation = session.editGeneration();
+    const std::vector<app::ProposalEdit> edits{{"imported:0", "position", "[2,3,4]"},
+                                               {"node:2", "position", "[5,6,7]"}};
+    const auto result = app::applyEdits(session, editableTree(id), edits);
+    REQUIRE_FALSE(result);
+    CHECK(result.error().message == "Static: mobility is authored in the scene file");
+    CHECK(loaded.scene->objects[0].position == before.position);
+    CHECK(loaded.scene->objects[0].previousModel == before.previousModel);
+    CHECK(loaded.scene->light(id)->position == lightBefore.position);
+    CHECK(loaded.scene->light(id)->direction == lightBefore.direction);
+    CHECK(session.editGeneration() == generation);
 }
