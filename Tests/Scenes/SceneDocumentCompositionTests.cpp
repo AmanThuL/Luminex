@@ -4,6 +4,7 @@
 #include "Scenes/CatalogScenes.h"
 #include "Scenes/SceneLibrary.h"
 #include "Support/GpuTestSupport.h"
+#include "Support/SceneDocumentTestSupport.h"
 #include <array>
 
 //======================================================================================================================
@@ -12,8 +13,9 @@ TEST_CASE("document generator validation counts every generated and authored lig
     using namespace lmx;
     auto document = scenes::readCatalogDocument("light-lab");
     REQUIRE(document);
-    document->nodes[0].generator->params = {{"lights", 4096}, {"pile", 0}};
-    auto second = document->nodes[0];
+    const auto generatorNode = test::documentGeneratorNode(*document, "light-lab");
+    document->nodes[generatorNode].generator->params = {{"lights", 4096}, {"pile", 0}};
+    auto second = document->nodes[generatorNode];
     second.generator->params = {{"lights", 1}, {"pile", 0}};
     const auto index = static_cast<uint32_t>(document->nodes.size());
     document->nodes.push_back(second);
@@ -29,7 +31,7 @@ TEST_CASE("document generator validation counts every generated and authored lig
     result = scenes::validateSceneGenerators(*document, {});
     REQUIRE_FALSE(result);
     REQUIRE(result.error().message.find("/nodes/" + std::to_string(index)) != std::string::npos);
-    document->nodes[0].generator->params[0].second = 4095;
+    document->nodes[generatorNode].generator->params[0].second = 4095;
     REQUIRE(scenes::validateSceneGenerators(*document, {}));
     // A shared definition still creates another identity for each referencing node.
     document->nodes.push_back(document->nodes[index]);
@@ -51,9 +53,10 @@ TEST_CASE("partial light CLI masks combine with authored document parameters",
     REQUIRE(options->generatorOverrides.pile == 4000);
     auto document = scenes::readCatalogDocument("light-lab");
     REQUIRE(document);
-    document->nodes[0].generator->params = {{"lights", 1}, {"pile", 8}};
+    const auto generatorNode = test::documentGeneratorNode(*document, "light-lab");
+    document->nodes[generatorNode].generator->params = {{"lights", 1}, {"pile", 8}};
     REQUIRE(scenes::validateSceneGenerators(*document, options->generatorOverrides));
-    document->nodes[0].generator->params[0].second = 97;
+    document->nodes[generatorNode].generator->params[0].second = 97;
     REQUIRE_FALSE(scenes::validateSceneGenerators(*document, options->generatorOverrides));
     const std::array<std::string_view, 4> lightsArgs{"--scene", "custom.scene.gltf", "--lab-lights",
                                                      "4090"};
@@ -61,7 +64,7 @@ TEST_CASE("partial light CLI masks combine with authored document parameters",
     REQUIRE(lightsOptions);
     REQUIRE_FALSE(lightsOptions->generatorOverrides.pile);
     REQUIRE_FALSE(scenes::validateSceneGenerators(*document, lightsOptions->generatorOverrides));
-    document->nodes[0].generator->params[1].second = 6;
+    document->nodes[generatorNode].generator->params[1].second = 6;
     REQUIRE(scenes::validateSceneGenerators(*document, lightsOptions->generatorOverrides));
 }
 
@@ -73,9 +76,10 @@ TEST_CASE("document pile edits preserve authored lights and other generator popu
     REQUIRE(device);
     auto document = scenes::readCatalogDocument("light-lab");
     REQUIRE(document);
-    document->nodes[0].generator->params = {{"lights", 1}, {"pile", 2}};
+    const auto generatorNode = test::documentGeneratorNode(*document, "light-lab");
+    document->nodes[generatorNode].generator->params = {{"lights", 1}, {"pile", 2}};
     const auto secondNode = static_cast<uint32_t>(document->nodes.size());
-    auto second = document->nodes[0];
+    auto second = document->nodes[generatorNode];
     second.generator->params = {{"lights", 2}, {"pile", 1}};
     document->nodes.push_back(second);
     document->rootNodes.push_back(secondNode);
@@ -96,7 +100,7 @@ TEST_CASE("document pile edits preserve authored lights and other generator popu
     const auto authored = *loaded->scene->light(id);
     const auto populations = loaded->scene->lightLabPopulations;
     REQUIRE(populations.size() == 2);
-    REQUIRE(populations[0].documentNode == 0);
+    REQUIRE(populations[0].documentNode == generatorNode);
     REQUIRE(populations[1].documentNode == secondNode);
     app::SceneSession session;
     session.activate(*loaded, app::SceneActivationMotion::Reset);
@@ -114,7 +118,8 @@ TEST_CASE("document pile edits preserve authored lights and other generator popu
         for (const auto kept : populations[1].pile)
             REQUIRE(loaded->scene->light(kept));
         for (const auto added : loaded->scene->lightLabPopulations[0].pile)
-            REQUIRE(loaded->binding.lightGeneratorNode.at(engine::sceneLightKey(added)) == 0);
+            REQUIRE(loaded->binding.lightGeneratorNode.at(engine::sceneLightKey(added)) ==
+                    generatorNode);
     }
     (*device)->waitIdle();
 }
@@ -129,7 +134,8 @@ TEST_CASE("document caster role survives binding with none and disabled roles su
         for (bool enabled : {false, true}) {
             auto document = scenes::readCatalogDocument("light-lab");
             REQUIRE(document);
-            document->nodes[0].generator->params = {{"lights", 1}, {"pile", 0}};
+            const auto generatorNode = test::documentGeneratorNode(*document, "light-lab");
+            document->nodes[generatorNode].generator->params = {{"lights", 1}, {"pile", 0}};
             std::array<uint32_t, 3> roleNodes{};
             for (uint32_t n = 0; n < document->nodes.size(); ++n) {
                 auto& node = document->nodes[n];
@@ -193,7 +199,8 @@ TEST_CASE("document missing directional roles stay inert in the rendered view",
     REQUIRE(device);
     auto document = scenes::readCatalogDocument("light-lab");
     REQUIRE(document);
-    document->nodes[0].generator->params = {{"lights", 1}, {"pile", 0}};
+    const auto generatorNode = test::documentGeneratorNode(*document, "light-lab");
+    document->nodes[generatorNode].generator->params = {{"lights", 1}, {"pile", 0}};
     for (auto& node : document->nodes) {
         if (!node.role)
             continue;

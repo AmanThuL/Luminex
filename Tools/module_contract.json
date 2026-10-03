@@ -32,6 +32,11 @@
       "file": "Tests/Engine/Asset/Document/SceneDocumentContentTests.cpp",
       "header": "Source/Engine/Asset/Document/SceneDocumentSaveInternal.h",
       "reason": "Inject rename failures to verify rollback of new geometry and PNG companions."
+    },
+    {
+      "file": "Tests/Scenes/LabContentExport.cpp",
+      "header": "Source/Scenes/LabContentCapture.h",
+      "reason": "Capture generator resources and verify exact document reconstruction before removing the exporter."
     }
   ],
   "units": {
@@ -103,9 +108,12 @@
         "engine"
       ],
       "thirdParty": [
-        "glm"
+        "glm",
+        "stb"
       ],
-      "privateHeaders": []
+      "privateHeaders": [
+        "Source/Scenes/LabContentCapture.h"
+      ]
     },
     "render": {
       "paths": [

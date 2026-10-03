@@ -6,27 +6,28 @@
   "scene": 0,
   "scenes": [
     {
-      "name": "San Miguel",
-      "nodes": [0, 1, 5]
+      "name": "MaterialLab",
+      "nodes": [0, 1, 2, 3, 4, 5]
     }
   ],
   "nodes": [
     {
-      "name": "San Miguel",
+      "name": "MaterialLab",
       "extensions": {
         "LMX_scene": {
           "enabled": true,
-          "asset": {
-            "uri": "Fetched/SanMiguel/SanMiguel.gltf",
-            "sha256": "9e04ecdef92d66fe929ef912d7f655cb4f3ad13d33d441e5dc62a3b993fb6680"
+          "generator": {
+            "name": "material-lab",
+            "params": {
+              "axisStation": 1
+            }
           }
         }
       }
     },
     {
-      "name": "Tour Camera",
-      "translation": [8, 1.8, 12],
-      "rotation": [0.03471998, 0.049783595, -0.0017316807, 0.9981547],
+      "name": "Scene Camera",
+      "translation": [0, 0, 12],
       "camera": 0,
       "extensions": {
         "LMX_scene": {
@@ -42,7 +43,7 @@
           "light": 0
         },
         "LMX_scene": {
-          "enabled": true,
+          "enabled": false,
           "role": "key",
           "castsShadow": true
         }
@@ -56,7 +57,7 @@
           "light": 1
         },
         "LMX_scene": {
-          "enabled": true,
+          "enabled": false,
           "role": "fill",
           "castsShadow": false
         }
@@ -70,114 +71,35 @@
           "light": 2
         },
         "LMX_scene": {
-          "enabled": true,
+          "enabled": false,
           "role": "rim",
           "castsShadow": false
         }
       }
     },
     {
-      "name": "Lights",
-      "children": [2, 3, 4],
+      "name": "Damaged Helmet · axis station",
+      "translation": [6.2, 0, 0],
       "extensions": {
         "LMX_scene": {
-          "enabled": true
+          "enabled": true,
+          "asset": {
+            "uri": "Fetched/DamagedHelmet/DamagedHelmet.glb",
+            "sha256": "a1e3b04de97b11de564ce6e53b95f02954a297f0008183ac63a4f5974f6b32d8"
+          }
         }
       }
     }
   ],
   "cameras": [
     {
-      "name": "Tour Camera",
+      "name": "Scene Camera",
       "type": "perspective",
       "perspective": {
-        "yfov": 0.9599311,
-        "znear": 0.05,
-        "zfar": 500
+        "yfov": 0.7853982,
+        "znear": 0.1,
+        "zfar": 100
       }
-    }
-  ],
-  "animations": [
-    {
-      "name": "Camera Rail",
-      "channels": [
-        {
-          "sampler": 0,
-          "target": {
-            "node": 1,
-            "path": "translation"
-          }
-        },
-        {
-          "sampler": 1,
-          "target": {
-            "node": 1,
-            "path": "rotation"
-          }
-        }
-      ],
-      "samplers": [
-        {
-          "input": 0,
-          "output": 1,
-          "interpolation": "LINEAR"
-        },
-        {
-          "input": 0,
-          "output": 2,
-          "interpolation": "LINEAR"
-        }
-      ],
-      "extensions": {
-        "LMX_scene": {
-          "sampleRate": 60
-        }
-      }
-    }
-  ],
-  "buffers": [
-    {
-      "uri": "san-miguel.scene.bin",
-      "byteLength": 23072
-    }
-  ],
-  "bufferViews": [
-    {
-      "buffer": 0,
-      "byteOffset": 0,
-      "byteLength": 2884
-    },
-    {
-      "buffer": 0,
-      "byteOffset": 2884,
-      "byteLength": 8652
-    },
-    {
-      "buffer": 0,
-      "byteOffset": 11536,
-      "byteLength": 11536
-    }
-  ],
-  "accessors": [
-    {
-      "bufferView": 0,
-      "componentType": 5126,
-      "count": 721,
-      "type": "SCALAR",
-      "min": [0],
-      "max": [12]
-    },
-    {
-      "bufferView": 1,
-      "componentType": 5126,
-      "count": 721,
-      "type": "VEC3"
-    },
-    {
-      "bufferView": 2,
-      "componentType": 5126,
-      "count": 721,
-      "type": "VEC4"
     }
   ],
   "extensions": {
@@ -204,7 +126,7 @@
       ]
     },
     "LMX_scene": {
-      "schemaVersion": 2,
+      "schemaVersion": 1,
       "camera": 1,
       "look": {
         "exposure": {
@@ -228,7 +150,15 @@
           "filter": "pcf"
         },
         "environment": {
-          "skySrgb8": [149, 170, 196]
+          "skySrgb8": [149, 170, 196],
+          "hdri": {
+            "uri": "Fetched/MaterialLab/studio_small_09_1k.hdr",
+            "sha256": "e7cfda5f4e98e623db12b8bfd0184e048488e4855d9c83e2751fb44a32e80c45",
+            "yaw": 0,
+            "scale": 0.25,
+            "faceSize": 128,
+            "diffuseFaceSize": 32
+          }
         }
       },
       "loop": true

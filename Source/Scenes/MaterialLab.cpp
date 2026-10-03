@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Scenes/CatalogScenes.h"
+#include "Scenes/LabContentCapture.h"
 
 #include "Engine/Asset/RepositoryAsset.h"
 
@@ -142,6 +143,27 @@ std::vector<uint8_t> makeCheckerboardPixels() {
 }
 
 } // namespace
+
+//======================================================================================================================
+std::vector<LabTexture> materialLabTextures() {
+    std::vector<LabTexture> textures;
+    {
+        const auto pixels = makeGradientRampPixels();
+        const auto bytes = std::as_bytes(std::span(pixels));
+        textures.push_back({"ramp", 256, 1, true, false, {bytes.begin(), bytes.end()}});
+    }
+    {
+        const auto pixels = makeNormalMapPixels();
+        const auto bytes = std::as_bytes(std::span(pixels));
+        textures.push_back({"normal", 64, 64, false, false, {bytes.begin(), bytes.end()}});
+    }
+    {
+        const auto pixels = makeCheckerboardPixels();
+        const auto bytes = std::as_bytes(std::span(pixels));
+        textures.push_back({"checker", 64, 64, true, true, {bytes.begin(), bytes.end()}});
+    }
+    return textures;
+}
 
 //======================================================================================================================
 // Deterministic diagnostic geometry with an optional fetched studio environment and no randomness.

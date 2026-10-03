@@ -2,24 +2,135 @@
   "asset": {
     "version": "2.0"
   },
-  "extensionsUsed": ["LMX_scene", "KHR_lights_punctual"],
+  "extensionsUsed": ["LMX_scene", "KHR_lights_punctual", "KHR_materials_emissive_strength", "KHR_animation_pointer"],
   "scene": 0,
   "scenes": [
     {
       "name": "TemporalLab",
-      "nodes": [0, 1, 2, 3, 4, 5]
+      "nodes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 15, 16]
     }
   ],
   "nodes": [
     {
-      "name": "TemporalLab",
+      "name": "temporal-lab floor",
+      "mesh": 0,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "temporal-lab rotating cube",
+      "translation": [-3, 1, 0],
+      "rotation": [-0, 0, 0, 1],
+      "mesh": 1,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "temporal-lab reference cube",
+      "translation": [3, 1, 0],
+      "mesh": 2,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "temporal-lab orbit sphere",
+      "translation": [5, 1, 0],
+      "rotation": [-0, 0, 0, 1],
+      "mesh": 3,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "temporal-lab pole 0",
+      "translation": [-1, 1.5, -4],
+      "rotation": [-0, 0, 0, 1],
+      "scale": [0.05, 3, 0.05],
+      "mesh": 4,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "temporal-lab pole 1",
+      "translation": [-0.5, 1.5, -4],
+      "rotation": [-0, 0, 0, 1],
+      "scale": [0.05, 3, 0.05],
+      "mesh": 5,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "temporal-lab pole 2",
+      "translation": [0, 1.5, -4],
+      "rotation": [-0, 0, 0, 1],
+      "scale": [0.05, 3, 0.05],
+      "mesh": 6,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "temporal-lab pole 3",
+      "translation": [0.5, 1.5, -4],
+      "rotation": [-0, 0, 0, 1],
+      "scale": [0.05, 3, 0.05],
+      "mesh": 7,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "temporal-lab pole 4",
+      "translation": [1, 1.5, -4],
+      "rotation": [-0, 0, 0, 1],
+      "scale": [0.05, 3, 0.05],
+      "mesh": 8,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "temporal-lab invalid cube",
+      "translation": [0, 1, 4],
+      "mesh": 9,
       "extensions": {
         "LMX_scene": {
           "enabled": true,
-          "generator": {
-            "name": "temporal-lab",
-            "params": {}
-          }
+          "motion": "invalid"
+        }
+      }
+    },
+    {
+      "name": "temporal-lab emissive sign",
+      "translation": [0, 2.5, -6],
+      "rotation": [0.70710677, 0, 0, 0.70710677],
+      "mesh": 10,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
         }
       }
     },
@@ -89,6 +200,15 @@
           }
         }
       }
+    },
+    {
+      "name": "Lights",
+      "children": [12, 13, 14],
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
     }
   ],
   "cameras": [
@@ -109,14 +229,14 @@
         {
           "sampler": 0,
           "target": {
-            "node": 1,
+            "node": 11,
             "path": "translation"
           }
         },
         {
           "sampler": 1,
           "target": {
-            "node": 1,
+            "node": 11,
             "path": "rotation"
           }
         }
@@ -138,12 +258,380 @@
           "sampleRate": 60
         }
       }
+    },
+    {
+      "name": "temporal-lab rotating cube",
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "node": 1,
+            "path": "translation"
+          }
+        },
+        {
+          "sampler": 1,
+          "target": {
+            "node": 1,
+            "path": "rotation"
+          }
+        },
+        {
+          "sampler": 2,
+          "target": {
+            "node": 1,
+            "path": "scale"
+          }
+        }
+      ],
+      "samplers": [
+        {
+          "input": 3,
+          "output": 4,
+          "interpolation": "LINEAR"
+        },
+        {
+          "input": 3,
+          "output": 5,
+          "interpolation": "LINEAR"
+        },
+        {
+          "input": 3,
+          "output": 6,
+          "interpolation": "LINEAR"
+        }
+      ],
+      "extensions": {
+        "LMX_scene": {
+          "sampleRate": 60
+        }
+      }
+    },
+    {
+      "name": "temporal-lab orbit sphere",
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "node": 3,
+            "path": "translation"
+          }
+        },
+        {
+          "sampler": 1,
+          "target": {
+            "node": 3,
+            "path": "rotation"
+          }
+        },
+        {
+          "sampler": 2,
+          "target": {
+            "node": 3,
+            "path": "scale"
+          }
+        }
+      ],
+      "samplers": [
+        {
+          "input": 7,
+          "output": 8,
+          "interpolation": "LINEAR"
+        },
+        {
+          "input": 7,
+          "output": 9,
+          "interpolation": "LINEAR"
+        },
+        {
+          "input": 7,
+          "output": 10,
+          "interpolation": "LINEAR"
+        }
+      ],
+      "extensions": {
+        "LMX_scene": {
+          "sampleRate": 60
+        }
+      }
+    },
+    {
+      "name": "temporal-lab pole 0",
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "node": 4,
+            "path": "translation"
+          }
+        },
+        {
+          "sampler": 1,
+          "target": {
+            "node": 4,
+            "path": "rotation"
+          }
+        },
+        {
+          "sampler": 2,
+          "target": {
+            "node": 4,
+            "path": "scale"
+          }
+        }
+      ],
+      "samplers": [
+        {
+          "input": 11,
+          "output": 12,
+          "interpolation": "LINEAR"
+        },
+        {
+          "input": 11,
+          "output": 13,
+          "interpolation": "LINEAR"
+        },
+        {
+          "input": 11,
+          "output": 14,
+          "interpolation": "LINEAR"
+        }
+      ],
+      "extensions": {
+        "LMX_scene": {
+          "sampleRate": 60
+        }
+      }
+    },
+    {
+      "name": "temporal-lab pole 1",
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "node": 5,
+            "path": "translation"
+          }
+        },
+        {
+          "sampler": 1,
+          "target": {
+            "node": 5,
+            "path": "rotation"
+          }
+        },
+        {
+          "sampler": 2,
+          "target": {
+            "node": 5,
+            "path": "scale"
+          }
+        }
+      ],
+      "samplers": [
+        {
+          "input": 15,
+          "output": 16,
+          "interpolation": "LINEAR"
+        },
+        {
+          "input": 15,
+          "output": 17,
+          "interpolation": "LINEAR"
+        },
+        {
+          "input": 15,
+          "output": 18,
+          "interpolation": "LINEAR"
+        }
+      ],
+      "extensions": {
+        "LMX_scene": {
+          "sampleRate": 60
+        }
+      }
+    },
+    {
+      "name": "temporal-lab pole 2",
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "node": 6,
+            "path": "translation"
+          }
+        },
+        {
+          "sampler": 1,
+          "target": {
+            "node": 6,
+            "path": "rotation"
+          }
+        },
+        {
+          "sampler": 2,
+          "target": {
+            "node": 6,
+            "path": "scale"
+          }
+        }
+      ],
+      "samplers": [
+        {
+          "input": 19,
+          "output": 20,
+          "interpolation": "LINEAR"
+        },
+        {
+          "input": 19,
+          "output": 21,
+          "interpolation": "LINEAR"
+        },
+        {
+          "input": 19,
+          "output": 22,
+          "interpolation": "LINEAR"
+        }
+      ],
+      "extensions": {
+        "LMX_scene": {
+          "sampleRate": 60
+        }
+      }
+    },
+    {
+      "name": "temporal-lab pole 3",
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "node": 7,
+            "path": "translation"
+          }
+        },
+        {
+          "sampler": 1,
+          "target": {
+            "node": 7,
+            "path": "rotation"
+          }
+        },
+        {
+          "sampler": 2,
+          "target": {
+            "node": 7,
+            "path": "scale"
+          }
+        }
+      ],
+      "samplers": [
+        {
+          "input": 23,
+          "output": 24,
+          "interpolation": "LINEAR"
+        },
+        {
+          "input": 23,
+          "output": 25,
+          "interpolation": "LINEAR"
+        },
+        {
+          "input": 23,
+          "output": 26,
+          "interpolation": "LINEAR"
+        }
+      ],
+      "extensions": {
+        "LMX_scene": {
+          "sampleRate": 60
+        }
+      }
+    },
+    {
+      "name": "temporal-lab pole 4",
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "node": 8,
+            "path": "translation"
+          }
+        },
+        {
+          "sampler": 1,
+          "target": {
+            "node": 8,
+            "path": "rotation"
+          }
+        },
+        {
+          "sampler": 2,
+          "target": {
+            "node": 8,
+            "path": "scale"
+          }
+        }
+      ],
+      "samplers": [
+        {
+          "input": 27,
+          "output": 28,
+          "interpolation": "LINEAR"
+        },
+        {
+          "input": 27,
+          "output": 29,
+          "interpolation": "LINEAR"
+        },
+        {
+          "input": 27,
+          "output": 30,
+          "interpolation": "LINEAR"
+        }
+      ],
+      "extensions": {
+        "LMX_scene": {
+          "sampleRate": 60
+        }
+      }
+    },
+    {
+      "name": "temporal-lab emissive sign emission",
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "path": "pointer",
+            "extensions": {
+              "KHR_animation_pointer": {
+                "pointer": "/materials/6/extensions/KHR_materials_emissive_strength/emissiveStrength"
+              }
+            }
+          }
+        }
+      ],
+      "samplers": [
+        {
+          "input": 31,
+          "output": 32,
+          "interpolation": "STEP"
+        }
+      ],
+      "extensions": {
+        "LMX_scene": {
+          "sampleRate": 60
+        }
+      }
     }
   ],
   "buffers": [
     {
       "uri": "temporal-lab.scene.bin",
-      "byteLength": 46112
+      "byteLength": 501468
+    },
+    {
+      "uri": "temporal-lab.scene.geometry.bin",
+      "byteLength": 74736
     }
   ],
   "bufferViews": [
@@ -161,6 +649,208 @@
       "buffer": 0,
       "byteOffset": 23056,
       "byteLength": 23056
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 46112,
+      "byteLength": 5764
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 51876,
+      "byteLength": 17292
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 69168,
+      "byteLength": 23056
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 92224,
+      "byteLength": 17292
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 109516,
+      "byteLength": 5764
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 115280,
+      "byteLength": 17292
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 132572,
+      "byteLength": 23056
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 155628,
+      "byteLength": 17292
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 172920,
+      "byteLength": 5764
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 178684,
+      "byteLength": 17292
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 195976,
+      "byteLength": 23056
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 219032,
+      "byteLength": 17292
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 236324,
+      "byteLength": 5764
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 242088,
+      "byteLength": 17292
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 259380,
+      "byteLength": 23056
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 282436,
+      "byteLength": 17292
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 299728,
+      "byteLength": 5764
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 305492,
+      "byteLength": 17292
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 322784,
+      "byteLength": 23056
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 345840,
+      "byteLength": 17292
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 363132,
+      "byteLength": 5764
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 368896,
+      "byteLength": 17292
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 386188,
+      "byteLength": 23056
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 409244,
+      "byteLength": 17292
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 426536,
+      "byteLength": 5764
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 432300,
+      "byteLength": 17292
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 449592,
+      "byteLength": 23056
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 472648,
+      "byteLength": 17292
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 489940,
+      "byteLength": 5764
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 495704,
+      "byteLength": 5764
+    },
+    {
+      "buffer": 1,
+      "byteOffset": 0,
+      "byteLength": 192,
+      "byteStride": 48,
+      "target": 34962
+    },
+    {
+      "buffer": 1,
+      "byteOffset": 192,
+      "byteLength": 24,
+      "target": 34963
+    },
+    {
+      "buffer": 1,
+      "byteOffset": 216,
+      "byteLength": 1152,
+      "byteStride": 48,
+      "target": 34962
+    },
+    {
+      "buffer": 1,
+      "byteOffset": 1368,
+      "byteLength": 144,
+      "target": 34963
+    },
+    {
+      "buffer": 1,
+      "byteOffset": 1512,
+      "byteLength": 49200,
+      "byteStride": 48,
+      "target": 34962
+    },
+    {
+      "buffer": 1,
+      "byteOffset": 50712,
+      "byteLength": 23808,
+      "target": 34963
+    },
+    {
+      "buffer": 1,
+      "byteOffset": 74520,
+      "byteLength": 192,
+      "byteStride": 48,
+      "target": 34962
+    },
+    {
+      "buffer": 1,
+      "byteOffset": 74712,
+      "byteLength": 24,
+      "target": 34963
     }
   ],
   "accessors": [
@@ -183,6 +873,658 @@
       "componentType": 5126,
       "count": 1441,
       "type": "VEC4"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "SCALAR",
+      "min": [0],
+      "max": [24]
+    },
+    {
+      "bufferView": 4,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 5,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 6,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 7,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "SCALAR",
+      "min": [0],
+      "max": [24]
+    },
+    {
+      "bufferView": 8,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 9,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 10,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 11,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "SCALAR",
+      "min": [0],
+      "max": [24]
+    },
+    {
+      "bufferView": 12,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 13,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 14,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 15,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "SCALAR",
+      "min": [0],
+      "max": [24]
+    },
+    {
+      "bufferView": 16,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 17,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 18,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 19,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "SCALAR",
+      "min": [0],
+      "max": [24]
+    },
+    {
+      "bufferView": 20,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 21,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 22,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 23,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "SCALAR",
+      "min": [0],
+      "max": [24]
+    },
+    {
+      "bufferView": 24,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 25,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 26,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 27,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "SCALAR",
+      "min": [0],
+      "max": [24]
+    },
+    {
+      "bufferView": 28,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 29,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 30,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 31,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "SCALAR",
+      "min": [0],
+      "max": [24]
+    },
+    {
+      "bufferView": 32,
+      "componentType": 5126,
+      "count": 1441,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 33,
+      "byteOffset": 0,
+      "componentType": 5126,
+      "count": 4,
+      "type": "VEC3",
+      "min": [-10, 0, -10],
+      "max": [10, 0, 10]
+    },
+    {
+      "bufferView": 33,
+      "byteOffset": 12,
+      "componentType": 5126,
+      "count": 4,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 33,
+      "byteOffset": 24,
+      "componentType": 5126,
+      "count": 4,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 33,
+      "byteOffset": 40,
+      "componentType": 5126,
+      "count": 4,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 34,
+      "byteOffset": 0,
+      "componentType": 5125,
+      "count": 6,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 35,
+      "byteOffset": 0,
+      "componentType": 5126,
+      "count": 24,
+      "type": "VEC3",
+      "min": [-0.5, -0.5, -0.5],
+      "max": [0.5, 0.5, 0.5]
+    },
+    {
+      "bufferView": 35,
+      "byteOffset": 12,
+      "componentType": 5126,
+      "count": 24,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 35,
+      "byteOffset": 24,
+      "componentType": 5126,
+      "count": 24,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 35,
+      "byteOffset": 40,
+      "componentType": 5126,
+      "count": 24,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 36,
+      "byteOffset": 0,
+      "componentType": 5125,
+      "count": 36,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 37,
+      "byteOffset": 0,
+      "componentType": 5126,
+      "count": 1025,
+      "type": "VEC3",
+      "min": [-0.4, -0.4, -0.4],
+      "max": [0.4, 0.4, 0.4]
+    },
+    {
+      "bufferView": 37,
+      "byteOffset": 12,
+      "componentType": 5126,
+      "count": 1025,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 37,
+      "byteOffset": 24,
+      "componentType": 5126,
+      "count": 1025,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 37,
+      "byteOffset": 40,
+      "componentType": 5126,
+      "count": 1025,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 38,
+      "byteOffset": 0,
+      "componentType": 5125,
+      "count": 5952,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 39,
+      "byteOffset": 0,
+      "componentType": 5126,
+      "count": 4,
+      "type": "VEC3",
+      "min": [-0.75, 0, -0.375],
+      "max": [0.75, 0, 0.375]
+    },
+    {
+      "bufferView": 39,
+      "byteOffset": 12,
+      "componentType": 5126,
+      "count": 4,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 39,
+      "byteOffset": 24,
+      "componentType": 5126,
+      "count": 4,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 39,
+      "byteOffset": 40,
+      "componentType": 5126,
+      "count": 4,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 40,
+      "byteOffset": 0,
+      "componentType": 5125,
+      "count": 6,
+      "type": "SCALAR"
+    }
+  ],
+  "meshes": [
+    {
+      "name": "temporal-lab floor",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 33,
+            "NORMAL": 34,
+            "TANGENT": 35,
+            "TEXCOORD_0": 36
+          },
+          "indices": 37,
+          "material": 0
+        }
+      ]
+    },
+    {
+      "name": "temporal-lab rotating cube",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 38,
+            "NORMAL": 39,
+            "TANGENT": 40,
+            "TEXCOORD_0": 41
+          },
+          "indices": 42,
+          "material": 1
+        }
+      ]
+    },
+    {
+      "name": "temporal-lab reference cube",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 38,
+            "NORMAL": 39,
+            "TANGENT": 40,
+            "TEXCOORD_0": 41
+          },
+          "indices": 42,
+          "material": 2
+        }
+      ]
+    },
+    {
+      "name": "temporal-lab orbit sphere",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 43,
+            "NORMAL": 44,
+            "TANGENT": 45,
+            "TEXCOORD_0": 46
+          },
+          "indices": 47,
+          "material": 3
+        }
+      ]
+    },
+    {
+      "name": "temporal-lab pole 0",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 38,
+            "NORMAL": 39,
+            "TANGENT": 40,
+            "TEXCOORD_0": 41
+          },
+          "indices": 42,
+          "material": 4
+        }
+      ]
+    },
+    {
+      "name": "temporal-lab pole 1",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 38,
+            "NORMAL": 39,
+            "TANGENT": 40,
+            "TEXCOORD_0": 41
+          },
+          "indices": 42,
+          "material": 4
+        }
+      ]
+    },
+    {
+      "name": "temporal-lab pole 2",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 38,
+            "NORMAL": 39,
+            "TANGENT": 40,
+            "TEXCOORD_0": 41
+          },
+          "indices": 42,
+          "material": 4
+        }
+      ]
+    },
+    {
+      "name": "temporal-lab pole 3",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 38,
+            "NORMAL": 39,
+            "TANGENT": 40,
+            "TEXCOORD_0": 41
+          },
+          "indices": 42,
+          "material": 4
+        }
+      ]
+    },
+    {
+      "name": "temporal-lab pole 4",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 38,
+            "NORMAL": 39,
+            "TANGENT": 40,
+            "TEXCOORD_0": 41
+          },
+          "indices": 42,
+          "material": 4
+        }
+      ]
+    },
+    {
+      "name": "temporal-lab invalid cube",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 38,
+            "NORMAL": 39,
+            "TANGENT": 40,
+            "TEXCOORD_0": 41
+          },
+          "indices": 42,
+          "material": 5
+        }
+      ]
+    },
+    {
+      "name": "temporal-lab emissive sign",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 48,
+            "NORMAL": 49,
+            "TANGENT": 50,
+            "TEXCOORD_0": 51
+          },
+          "indices": 52,
+          "material": 6
+        }
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "name": "Material 0",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [1, 1, 1, 1],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.8,
+        "baseColorTexture": {
+          "index": 0
+        }
+      },
+      "emissiveFactor": [0, 0, 0],
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5,
+      "doubleSided": false,
+      "extensions": {
+        "KHR_materials_emissive_strength": {
+          "emissiveStrength": 1
+        }
+      }
+    },
+    {
+      "name": "Material 1",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [0.6920712, 0.05087609, 0.033104762, 1],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.5
+      },
+      "emissiveFactor": [0, 0, 0],
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5,
+      "doubleSided": false,
+      "extensions": {
+        "KHR_materials_emissive_strength": {
+          "emissiveStrength": 1
+        }
+      }
+    },
+    {
+      "name": "Material 2",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [0.05087609, 0.21404114, 0.6920712, 1],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.5
+      },
+      "emissiveFactor": [0, 0, 0],
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5,
+      "doubleSided": false,
+      "extensions": {
+        "KHR_materials_emissive_strength": {
+          "emissiveStrength": 1
+        }
+      }
+    },
+    {
+      "name": "Material 3",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [0.8900055, 0.6038274, 0.033104762, 1],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.3
+      },
+      "emissiveFactor": [0, 0, 0],
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5,
+      "doubleSided": false,
+      "extensions": {
+        "KHR_materials_emissive_strength": {
+          "emissiveStrength": 1
+        }
+      }
+    },
+    {
+      "name": "Material 4",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [0.78741235, 0.78741235, 0.78741235, 1],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.6
+      },
+      "emissiveFactor": [0, 0, 0],
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5,
+      "doubleSided": false,
+      "extensions": {
+        "KHR_materials_emissive_strength": {
+          "emissiveStrength": 1
+        }
+      }
+    },
+    {
+      "name": "Material 5",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [0.21404114, 0.01960665, 0.31854683, 1],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.5
+      },
+      "emissiveFactor": [0, 0, 0],
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5,
+      "doubleSided": false,
+      "extensions": {
+        "KHR_materials_emissive_strength": {
+          "emissiveStrength": 1
+        }
+      }
+    },
+    {
+      "name": "Material 6",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [0.033104762, 0.033104762, 0.033104762, 1],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.9
+      },
+      "emissiveFactor": [1, 0.8, 0.3],
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5,
+      "doubleSided": false,
+      "extensions": {
+        "KHR_materials_emissive_strength": {
+          "emissiveStrength": 0
+        }
+      }
+    }
+  ],
+  "textures": [
+    {
+      "source": 0,
+      "sampler": 0
+    }
+  ],
+  "images": [
+    {
+      "name": "checker",
+      "uri": "temporal-lab.scene.textures/checker.png"
+    }
+  ],
+  "samplers": [
+    {
+      "minFilter": 9987
     }
   ],
   "extensions": {
@@ -209,8 +1551,8 @@
       ]
     },
     "LMX_scene": {
-      "schemaVersion": 1,
-      "camera": 1,
+      "schemaVersion": 2,
+      "camera": 11,
       "look": {
         "exposure": {
           "ev": 0,
@@ -236,7 +1578,15 @@
           "skySrgb8": [149, 170, 196]
         }
       },
-      "loop": true
+      "loop": true,
+      "bounds": {
+        "min": [-10, -1.4000001, -10],
+        "max": [10, 3.4, 10]
+      },
+      "contentHashes": {
+        "temporal-lab.scene.geometry.bin": "564fa68b73dd17883f300ded64d32aa696c2ce6a1b3138d457c29be2651115a8",
+        "temporal-lab.scene.textures/checker.png": "a3d2b3527fcb8ed7dfad807895ce6bd78e697f57faa9472e93ecabac7a9a1997"
+      }
     }
   }
 }

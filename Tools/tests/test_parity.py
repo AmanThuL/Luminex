@@ -79,10 +79,9 @@ class DocumentHashTests(unittest.TestCase):
         self.assertEqual(parity.document_hash(self.document),
                          hashlib.sha256(self.document.read_bytes()).hexdigest())
 
-    def test_catalog_hashes_keep_the_pinned_values(self):
-        tools = Path(__file__).resolve().parents[1]
-        reference = json.loads((tools / "Screenshots/reference.json").read_text())
-        catalog = tools.parent / "Assets/Scenes"
+    def test_historical_catalog_hashes_keep_the_pinned_values(self):
+        catalog = Path(__file__).resolve().parents[2] / "Tests/Golden/ux6-schema1-catalog"
+        reference = json.loads((catalog / "reference.json").read_text())
         for scene, expected in reference["documents"].items():
             with self.subTest(scene=scene):
                 self.assertEqual(parity.document_hash(catalog / f"{scene}.scene.gltf"), expected)

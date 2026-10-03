@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Scenes/CatalogScenes.h"
+#include "Scenes/LabContentCapture.h"
 
 #include "Core/Math/Aabb.h"
 #include "Core/Math/Color.h"
@@ -108,6 +109,17 @@ float phase(double time, double seconds) {
 }
 
 } // namespace
+
+//======================================================================================================================
+std::vector<LabTexture> temporalLabTextures() {
+    std::vector<LabTexture> textures;
+    {
+        const auto pixels = makeCheckerPixels();
+        const auto bytes = std::as_bytes(std::span(pixels));
+        textures.push_back({"checker", 512, 512, true, true, {bytes.begin(), bytes.end()}});
+    }
+    return textures;
+}
 
 //======================================================================================================================
 // Deterministic temporal diagnostics with no randomness and no fetched assets. Every motion is a

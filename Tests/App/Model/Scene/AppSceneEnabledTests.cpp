@@ -275,13 +275,19 @@ TEST_CASE("Measurement refuses imported and generated edits without notification
 //======================================================================================================================
 TEST_CASE("Instantiation captures generated own flags before an off ancestor masks them",
           "[app][scene-enabled]") {
-    auto document = scenes::readCatalogDocument("light-lab");
-    REQUIRE(document);
-    document->nodes[0].enabled = false;
+    asset::SceneDocument document;
+    document.name = "Generated own flags";
+    document.cameras.emplace_back();
+    document.camera = 1;
+    document.nodes = {{.name = "Disabled generator",
+                       .enabled = false,
+                       .generator = asset::DocGenerator{.name = "test-own-flags"}},
+                      {.name = "Camera", .camera = 0}};
+    document.rootNodes = {0, 1};
     const auto path =
         std::filesystem::current_path() / "SceneDocuments" / "generated-own-flags.scene.gltf";
     std::filesystem::create_directories(path.parent_path());
-    REQUIRE(asset::saveSceneDocument(*document, path));
+    REQUIRE(asset::saveSceneDocument(document, path));
     FakeDevice device;
     const engine::SceneGenerator generator =
         [](engine::Scene& scene, const asset::DocGenerator&,
@@ -298,7 +304,7 @@ TEST_CASE("Instantiation captures generated own flags before an off ancestor mas
         }
         return {};
     };
-    auto loaded = engine::instantiateSceneDocument(device, *document, path,
+    auto loaded = engine::instantiateSceneDocument(device, document, path,
                                                    [&](std::string_view) { return &generator; });
     REQUIRE(loaded);
     REQUIRE(loaded->scene->objects.size() == 2);

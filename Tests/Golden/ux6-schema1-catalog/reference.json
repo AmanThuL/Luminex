@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 2,
+  "source": "docs/milestones/ux/ux3-validation.md#ux32--fixture-integration",
+  "originalReference": "../Luminex-evidence/ux3/original-reference.json",
+  "originalDocuments": "../Luminex-evidence/ux3/original-documents/",
+  "originalReferenceSha256": "40a6bd60db1141d3142dea569466ec8b3b30b0225a807234f38e7a1b59121c79",
+  "provenance": {
+    "device": "Apple M3 Max",
+    "macOS": "26.7 (25G229)",
+    "xcode": "26.6 (17F113)",
+    "buildMode": "release",
+    "width": 1280,
+    "height": 720,
+    "frames": 32,
+    "container": "bmp",
+    "camera": "fixed initial scene camera",
+    "environment": {
+      "MTL_DEBUG_LAYER": "1",
+      "LMX_SCREENSHOT_NO_BLOOM": "unset"
+    }
+  },
+  "evidenceLimit": "All fifteen hashes were captured on the same device, release build and fixed 1280x720/32-frame BMP settings: ten lab hashes after fixture integration, five Sponza hashes re-captured from the integrated head on 2026-09-29 after two identical rounds, because no current build, including the parent, reproduced the historical schema-1 values. The re-baseline and the normalized directional rig were authorized by the owner on 2026-09-29. Original schema-1 reference and eight documents remain frozen for explicit-path replay; neither historical failures nor tolerances are erased.",
+  "documents": {
+    "sponza": "fce4c430a537e1cb2e97d6aa2a597f6cf481aab2d55ecb028308657ebaf0d2dc",
+    "material-lab": "46924032cc023d36f662286fd1149958ff23de671c5abac302f93e0860d856a6",
+    "temporal-lab": "4eda44f54b3000353e2cb783bb49892af67760f878b7204b130500e3ef884114"
+  },
+  "images": [
+    {
+      "name": "sponza-off",
+      "scene": "sponza",
+      "temporal": "off",
+      "renderScale": 1,
+      "sha256": "3f583ea48aee73c46c6fc281cb8bcf60ee7269532899b739c4508c3c766bdf58"
+    },
+    {
+      "name": "sponza-taa-1",
+      "scene": "sponza",
+      "temporal": "taa",
+      "renderScale": 1,
+      "sha256": "f8871693ec93de1506d2ddd7cc1624dad99b5b1f31c6c78213dfa9b97949657a"
+    },
+    {
+      "name": "sponza-taa-0.5",
+      "scene": "sponza",
+      "temporal": "taa",
+      "renderScale": 0.5,
+      "sha256": "d65583649aac231e7b2d715a7ab0f256414f6056ebb3d74cfffeeebe3dad5eb6"
+    },
+    {
+      "name": "sponza-vendor-1",
+      "scene": "sponza",
+      "temporal": "metalfx",
+      "renderScale": 1,
+      "sha256": "c0469916fd838dc6eb31e8a44d31701689b7d7d3e9bd379d486696113b4d467f"
+    },
+    {
+      "name": "sponza-vendor-0.5",
+      "scene": "sponza",
+      "temporal": "metalfx",
+      "renderScale": 0.5,
+      "sha256": "b114ef8fa84a0cd29199662357a561320f4ce4d3b733d14cc6e0776d0ca78912"
+    },
+    {
+      "name": "material-lab-off",
+      "scene": "material-lab",
+      "temporal": "off",
+      "renderScale": 1,
+      "sha256": "227dc4bef138821a23857ccec7f280555bcae89e645944d2d753e0fa306ec622"
+    },
+    {
+      "name": "material-lab-taa-1",
+      "scene": "material-lab",
+      "temporal": "taa",
+      "renderScale": 1,
+      "sha256": "a6386adf9bb7b7ae9651bf7dca89b12cc881863d5db60230e705411bdab26646"
+    },
+    {
+      "name": "material-lab-taa-0.5",
+      "scene": "material-lab",
+      "temporal": "taa",
+      "renderScale": 0.5,
+      "sha256": "ef7cfb3ff64ba0b1ef9b18b6428fc3fed96609655446d154a90412f1ad5d6166"
+    },
+    {
+      "name": "material-lab-vendor-1",
+      "scene": "material-lab",
+      "temporal": "metalfx",
+      "renderScale": 1,
+      "sha256": "dc8e2bdd3ea024d676402e583d1fe12570e7648fdda71c47fdcebead50c7ff15"
+    },
+    {
+      "name": "material-lab-vendor-0.5",
+      "scene": "material-lab",
+      "temporal": "metalfx",
+      "renderScale": 0.5,
+      "sha256": "f55237e7b197a88bd211bc4889f519ef28bf1b8426efbb2613b850957a0cf319"
+    },
+    {
+      "name": "temporal-lab-off",
+      "scene": "temporal-lab",
+      "temporal": "off",
+      "renderScale": 1,
+      "sha256": "89becf9c930c1135dde7bfc37969896e61129d29de02ffc9070625998ce66b71"
+    },
+    {
+      "name": "temporal-lab-taa-1",
+      "scene": "temporal-lab",
+      "temporal": "taa",
+      "renderScale": 1,
+      "sha256": "969c4e2fe8d69c1c48fceeb33975588174576577136e2872c90e5ff83aafa849"
+    },
+    {
+      "name": "temporal-lab-taa-0.5",
+      "scene": "temporal-lab",
+      "temporal": "taa",
+      "renderScale": 0.5,
+      "sha256": "91f9f582fbc190f0a424eb0f9b73a4a01325f23aa37e0b04db6a9d51ba09afb9"
+    },
+    {
+      "name": "temporal-lab-vendor-1",
+      "scene": "temporal-lab",
+      "temporal": "metalfx",
+      "renderScale": 1,
+      "sha256": "3b1c024f83a683ccccf9ba48aad1fcc7b4a0d578ca6fcf84d70d0ffe5e747d31"
+    },
+    {
+      "name": "temporal-lab-vendor-0.5",
+      "scene": "temporal-lab",
+      "temporal": "metalfx",
+      "renderScale": 0.5,
+      "sha256": "6e547b4d39ed9c8e5f60b6b00552925753c8ad130ece99ca97ea8436510fc43a"
+    }
+  ]
+}

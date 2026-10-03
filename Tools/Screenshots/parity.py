@@ -208,9 +208,14 @@ def run(app: Path, output: Path, reference_path: Path, documents: Path | None = 
     return report["allMatched"]
 
 
+def selftest_fixture_root() -> Path:
+    """Locate immutable historical inputs used only by the tool's self-tests."""
+    return Path(__file__).resolve().parents[2] / "Tests/Golden/ux6-schema1-catalog"
+
+
 def copy_scene_document(scene: str, destination: Path) -> None:
-    """Copy a catalog scene's glTF and, when it has one, its .bin companion."""
-    catalog = Path(__file__).resolve().parents[2] / "Assets/Scenes"
+    """Copy a historical self-test scene and its optional animation companion."""
+    catalog = selftest_fixture_root()
     shutil.copyfile(catalog / f"{scene}.scene.gltf", destination / f"{scene}.scene.gltf")
     buffer = catalog / f"{scene}.scene.bin"
     if buffer.is_file():
@@ -231,7 +236,8 @@ class ParityTests(unittest.TestCase):
         self.assertEqual(mapped[2], "/frozen/documents/temporal-lab.scene.gltf")
 
     def test_schema_two_checks_document_and_buffer_before_image(self):
-        reference = load_reference(Path(__file__).with_name("reference.json"))
+        reference_path = selftest_fixture_root() / "reference.json"
+        reference = load_reference(reference_path)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for scene in reference["documents"]:
@@ -247,11 +253,10 @@ class ParityTests(unittest.TestCase):
                 (root / "Shaders").mkdir()
                 (root / "Shaders/test.metallib").write_bytes(b"shader")
                 with self.assertRaisesRegex(ValueError, "material-lab.*drift"):
-                    run(app, root / "output", Path(__file__).with_name("reference.json"), root)
+                    run(app, root / "output", reference_path, root)
                 capture.assert_not_called()
                 self.assertFalse((root / "output").exists())
-            shutil.copyfile(Path(__file__).resolve().parents[2] / "Assets/Scenes/material-lab.scene.gltf",
-                            root / "material-lab.scene.gltf")
+            copy_scene_document("material-lab", root)
             (root / "temporal-lab.scene.bin").write_bytes(
                 (root / "temporal-lab.scene.bin").read_bytes() + b"changed")
             with self.assertRaisesRegex(ValueError, "temporal-lab.*drift"):
@@ -274,7 +279,7 @@ class ParityTests(unittest.TestCase):
                 document_root_for(root / "App", None)
 
     def test_default_preflight_rejects_nearer_catalog_document(self):
-        reference_path = Path(__file__).with_name("reference.json")
+        reference_path = selftest_fixture_root() / "reference.json"
         reference = load_reference(reference_path)
         with tempfile.TemporaryDirectory() as directory:
             checkout = Path(directory)
@@ -305,8 +310,7 @@ class ParityTests(unittest.TestCase):
             shadow = nearer / "sponza.scene.gltf"
             shadow.unlink()
             shadow.mkdir()
-            shutil.copyfile(Path(__file__).resolve().parents[2] / "Assets/Scenes/sponza.scene.gltf",
-                            catalog / "sponza.scene.gltf")
+            copy_scene_document("sponza", catalog)
             with mock.patch.object(subprocess, "run") as capture:
                 with self.assertRaisesRegex(ValueError, "sponza.*document drift"):
                     run(app, output, reference_path)
@@ -314,7 +318,7 @@ class ParityTests(unittest.TestCase):
             self.assertFalse(output.exists())
 
     def test_malformed_document_shapes_refuse_with_scene_name(self):
-        reference_path = Path(__file__).with_name("reference.json")
+        reference_path = selftest_fixture_root() / "reference.json"
         reference = load_reference(reference_path)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -434,7 +438,7 @@ class ParityTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 1 if "--temporal" in command and "off" in command else 0)
 
             with mock.patch.object(subprocess, "run", side_effect=capture), contextlib.redirect_stdout(io.StringIO()):
-                self.assertFalse(run(app, root / "output", Path(__file__).with_name("reference.json"), documents))
+                self.assertFalse(run(app, root / "output", selftest_fixture_root() / "reference.json", documents))
             report = json.loads((root / "output/parity.json").read_text())
             self.assertTrue(report["complete"])
             self.assertFalse(report["allMatched"])

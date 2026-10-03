@@ -7,7 +7,7 @@
   "scenes": [
     {
       "name": "San Miguel",
-      "nodes": [0, 1, 5]
+      "nodes": [0, 1, 2, 3, 4]
     }
   ],
   "nodes": [
@@ -73,15 +73,6 @@
           "enabled": true,
           "role": "rim",
           "castsShadow": false
-        }
-      }
-    },
-    {
-      "name": "Lights",
-      "children": [2, 3, 4],
-      "extensions": {
-        "LMX_scene": {
-          "enabled": true
         }
       }
     }
@@ -204,7 +195,7 @@
       ]
     },
     "LMX_scene": {
-      "schemaVersion": 2,
+      "schemaVersion": 1,
       "camera": 1,
       "look": {
         "exposure": {

@@ -4,6 +4,32 @@
 
 namespace lmx::test {
 //======================================================================================================================
+inline uint32_t documentGeneratorNode(const asset::SceneDocument& document, std::string_view name) {
+    std::optional<uint32_t> found;
+    for (uint32_t n = 0; n < document.nodes.size(); ++n) {
+        const auto& generator = document.nodes[n].generator;
+        if (!generator || generator->name != name)
+            continue;
+        REQUIRE_FALSE(found);
+        found = n;
+    }
+    REQUIRE(found);
+    return *found;
+}
+//======================================================================================================================
+inline uint32_t documentAssetNode(const asset::SceneDocument& document, std::string_view uri) {
+    std::optional<uint32_t> found;
+    for (uint32_t n = 0; n < document.nodes.size(); ++n) {
+        const auto& asset = document.nodes[n].asset;
+        if (!asset || asset->uri != uri)
+            continue;
+        REQUIRE_FALSE(found);
+        found = n;
+    }
+    REQUIRE(found);
+    return *found;
+}
+//======================================================================================================================
 inline asset::AssetResult<std::unique_ptr<engine::Scene>>
 loadCatalogScene(rojoRHI::Device& device, std::string_view id, std::optional<uint32_t> first = {},
                  std::optional<uint32_t> second = {}) {

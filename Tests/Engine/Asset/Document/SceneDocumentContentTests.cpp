@@ -506,8 +506,10 @@ TEST_CASE("schema 1 remains mesh-free and schema 2 without meshes has no content
         REQUIRE(doc);
         CHECK_FALSE(doc->content);
     }
-    SECTION("schema 1 catalog unchanged") {
-        for (const auto& file : fs::directory_iterator(fs::path(LMX_REPO_ROOT) / "Assets/Scenes")) {
+    SECTION("historical schema 1 catalog unchanged") {
+        const auto catalog = fs::path(LMX_REPO_ROOT) / "Tests/Golden/ux6-schema1-catalog";
+        size_t documents = 0;
+        for (const auto& file : fs::directory_iterator(catalog)) {
             if (file.path().extension() != ".gltf")
                 continue;
             const auto doc = readSceneDocument(file.path());
@@ -518,7 +520,9 @@ TEST_CASE("schema 1 remains mesh-free and schema 2 without meshes has no content
             const auto bytes = *lmx::readWholeFile(file.path());
             const std::string text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
             CHECK(sceneDocumentJson(*doc, file.path().stem().string() + ".bin") == text);
+            ++documents;
         }
+        REQUIRE(documents == 6);
     }
 }
 

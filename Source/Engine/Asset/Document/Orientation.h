@@ -27,9 +27,11 @@ glm::quat rotationForDirection(glm::vec3 direction);
 glm::quat rotationForCamera(float yaw, float pitch);
 /// Decodes an object quaternion to XYZ degrees in the editor's Y * X * Z rotation order.
 /// Uses double intermediates before the final float conversion to avoid losing degree preimages.
-/// Extracts orientation only; translation and signed or nonuniform scale remain untouched.
+/// Preserves quaternion-derived zero signs; translation and signed or nonuniform scale stay
+/// untouched.
 glm::vec3 eulerDegreesForRotation(glm::quat rotation);
 /// Searches at most ±4 float ULPs per Y * X * Z seed quaternion component.
+/// A zero seed also searches its opposite signed zero, which nextafter skips.
 /// Returns only a bitwise exact Euler decoding; invalid or unmatched degrees return nullopt.
 std::optional<glm::quat> exactRotationForEulerDegrees(glm::vec3 eulerDegrees);
 /// Adds the nearest full-turn offset using the camera rail's exact float arithmetic.

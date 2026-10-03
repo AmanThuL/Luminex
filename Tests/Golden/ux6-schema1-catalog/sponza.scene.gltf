@@ -7,7 +7,7 @@
   "scenes": [
     {
       "name": "Sponza",
-      "nodes": [0, 1, 5, 22]
+      "nodes": [0, 1, 2, 3, 4, 5]
     }
   ],
   "nodes": [
@@ -284,15 +284,6 @@
           "enabled": true
         }
       }
-    },
-    {
-      "name": "Lights",
-      "children": [2, 3, 4],
-      "extensions": {
-        "LMX_scene": {
-          "enabled": true
-        }
-      }
     }
   ],
   "cameras": [
@@ -557,7 +548,7 @@
       ]
     },
     "LMX_scene": {
-      "schemaVersion": 2,
+      "schemaVersion": 1,
       "camera": 1,
       "look": {
         "exposure": {

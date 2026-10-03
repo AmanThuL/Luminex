@@ -6,27 +6,28 @@
   "scene": 0,
   "scenes": [
     {
-      "name": "San Miguel",
-      "nodes": [0, 1, 5]
+      "name": "VisibilityLab",
+      "nodes": [0, 1, 2, 3, 4]
     }
   ],
   "nodes": [
     {
-      "name": "San Miguel",
+      "name": "VisibilityLab",
       "extensions": {
         "LMX_scene": {
           "enabled": true,
-          "asset": {
-            "uri": "Fetched/SanMiguel/SanMiguel.gltf",
-            "sha256": "9e04ecdef92d66fe929ef912d7f655cb4f3ad13d33d441e5dc62a3b993fb6680"
+          "generator": {
+            "name": "visibility-lab",
+            "params": {
+              "instances": 4096,
+              "occluders": 0
+            }
           }
         }
       }
     },
     {
       "name": "Tour Camera",
-      "translation": [8, 1.8, 12],
-      "rotation": [0.03471998, 0.049783595, -0.0017316807, 0.9981547],
       "camera": 0,
       "extensions": {
         "LMX_scene": {
@@ -75,15 +76,6 @@
           "castsShadow": false
         }
       }
-    },
-    {
-      "name": "Lights",
-      "children": [2, 3, 4],
-      "extensions": {
-        "LMX_scene": {
-          "enabled": true
-        }
-      }
     }
   ],
   "cameras": [
@@ -91,9 +83,9 @@
       "name": "Tour Camera",
       "type": "perspective",
       "perspective": {
-        "yfov": 0.9599311,
-        "znear": 0.05,
-        "zfar": 500
+        "yfov": 1.0471976,
+        "znear": 0.1,
+        "zfar": 320.07166
       }
     }
   ],
@@ -137,7 +129,7 @@
   ],
   "buffers": [
     {
-      "uri": "san-miguel.scene.bin",
+      "uri": "visibility-lab.scene.bin",
       "byteLength": 23072
     }
   ],
@@ -204,7 +196,7 @@
       ]
     },
     "LMX_scene": {
-      "schemaVersion": 2,
+      "schemaVersion": 1,
       "camera": 1,
       "look": {
         "exposure": {

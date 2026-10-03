@@ -6,27 +6,27 @@
   "scene": 0,
   "scenes": [
     {
-      "name": "San Miguel",
-      "nodes": [0, 1, 5]
+      "name": "TemporalLab",
+      "nodes": [0, 1, 2, 3, 4, 5]
     }
   ],
   "nodes": [
     {
-      "name": "San Miguel",
+      "name": "TemporalLab",
       "extensions": {
         "LMX_scene": {
           "enabled": true,
-          "asset": {
-            "uri": "Fetched/SanMiguel/SanMiguel.gltf",
-            "sha256": "9e04ecdef92d66fe929ef912d7f655cb4f3ad13d33d441e5dc62a3b993fb6680"
+          "generator": {
+            "name": "temporal-lab",
+            "params": {}
           }
         }
       }
     },
     {
       "name": "Tour Camera",
-      "translation": [8, 1.8, 12],
-      "rotation": [0.03471998, 0.049783595, -0.0017316807, 0.9981547],
+      "translation": [0, 3, 10],
+      "rotation": [-0.07492971, 0, 0, 0.99718887],
       "camera": 0,
       "extensions": {
         "LMX_scene": {
@@ -77,11 +77,16 @@
       }
     },
     {
-      "name": "Lights",
-      "children": [2, 3, 4],
+      "name": "Milk Truck · animated asset",
+      "translation": [6.7, 0, -4],
+      "scale": [0.85, 0.85, 0.85],
       "extensions": {
         "LMX_scene": {
-          "enabled": true
+          "enabled": true,
+          "asset": {
+            "uri": "Fetched/CesiumMilkTruck/CesiumMilkTruck.glb",
+            "sha256": "09371b34608116de5842d23abe260bf11acf3e1554daf334a647eb566eee5c49"
+          }
         }
       }
     }
@@ -91,9 +96,9 @@
       "name": "Tour Camera",
       "type": "perspective",
       "perspective": {
-        "yfov": 0.9599311,
+        "yfov": 0.7853982,
         "znear": 0.05,
-        "zfar": 500
+        "zfar": 200
       }
     }
   ],
@@ -137,46 +142,46 @@
   ],
   "buffers": [
     {
-      "uri": "san-miguel.scene.bin",
-      "byteLength": 23072
+      "uri": "temporal-lab.scene.bin",
+      "byteLength": 46112
     }
   ],
   "bufferViews": [
     {
       "buffer": 0,
       "byteOffset": 0,
-      "byteLength": 2884
+      "byteLength": 5764
     },
     {
       "buffer": 0,
-      "byteOffset": 2884,
-      "byteLength": 8652
+      "byteOffset": 5764,
+      "byteLength": 17292
     },
     {
       "buffer": 0,
-      "byteOffset": 11536,
-      "byteLength": 11536
+      "byteOffset": 23056,
+      "byteLength": 23056
     }
   ],
   "accessors": [
     {
       "bufferView": 0,
       "componentType": 5126,
-      "count": 721,
+      "count": 1441,
       "type": "SCALAR",
       "min": [0],
-      "max": [12]
+      "max": [24]
     },
     {
       "bufferView": 1,
       "componentType": 5126,
-      "count": 721,
+      "count": 1441,
       "type": "VEC3"
     },
     {
       "bufferView": 2,
       "componentType": 5126,
-      "count": 721,
+      "count": 1441,
       "type": "VEC4"
     }
   ],
@@ -204,7 +209,7 @@
       ]
     },
     "LMX_scene": {
-      "schemaVersion": 2,
+      "schemaVersion": 1,
       "camera": 1,
       "look": {
         "exposure": {
