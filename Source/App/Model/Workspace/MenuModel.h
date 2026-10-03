@@ -7,6 +7,7 @@
 
 #include "App/Model/Capture/EditorShortcuts.h"
 #include "App/Model/Rendering/Settings/DebugView.h"
+#include "App/Model/Scene/GizmoModel.h"
 #include "App/Model/Workspace/WorkspaceModel.h"
 
 #include <cstdint>
@@ -30,6 +31,8 @@ enum class MenuCommand {
     FrameSelected,    ///< Fits current selection using the renderer at dispatch consumption.
     SelectionOutline, ///< Toggles the visible-geometry outline.
     EditorCamera,     ///< Selects and focuses the editor camera Inspector.
+    GizmoTool,        ///< Argument is a GizmoTool enumerator.
+    GizmoSpace,       ///< Toggles World/Local axes; argument is unused.
     DebugView,        ///< Zero means Final; otherwise use menuDebugArgument.
     Appearance,       ///< Argument is an Appearance enumerator.
     Density,          ///< Argument is a Density enumerator.
@@ -43,7 +46,7 @@ enum class MenuCommand {
     Capture,          ///< Requests the next GPU frame or its unavailable recovery notice.
 };
 
-/// Platform-neutral key equivalent; key is O, S, Q, Home, F, -, +, 0 or C.
+/// Platform-neutral key equivalent; key names use uppercase letters or Home, -, + and 0.
 struct Shortcut {
     std::string key;      ///< Unmodified logical key name.
     bool command = false; ///< Requires the platform Command modifier.
@@ -85,6 +88,7 @@ struct MenuContext {
     bool objectSelected = false;   ///< Selection is an object.
     bool outlineReady = false;     ///< Outline and current renderer extents match.
     bool showOutline = true;       ///< Stored outline toggle, independent of availability.
+    GizmoState gizmo;              ///< Transient tool and axes choices.
     std::optional<DebugView> debug;           ///< Current diagnostic; null means Final.
     std::vector<DebugViewEntry> debugEntries; ///< Resolved diagnostics and their actual reasons.
     Appearance appearance = Appearance::Auto; ///< Effective preference, including CLI override.

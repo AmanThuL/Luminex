@@ -13,6 +13,8 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <utility>
+
 namespace lmx::app {
 
 namespace {
@@ -99,6 +101,17 @@ void EditorShell::updateEditorShortcuts(const render::Renderer& renderer) {
     }
     if (m_documentWorkflow.step() != WorkflowStep::Idle)
         return;
+    if (shortcutAllowed(EditorShortcut::Gizmo, context)) {
+        for (const auto& [key, tool] : {std::pair{ImGuiKey_Q, GizmoTool::View},
+                                        {ImGuiKey_W, GizmoTool::Move},
+                                        {ImGuiKey_E, GizmoTool::Rotate},
+                                        {ImGuiKey_R, GizmoTool::Scale},
+                                        {ImGuiKey_Y, GizmoTool::Combined}})
+            if (ImGui::IsKeyPressed(key, false))
+                runMenuCommand(MenuCommand::GizmoTool, static_cast<uint32_t>(tool));
+        if (ImGui::IsKeyPressed(ImGuiKey_X, false))
+            runMenuCommand(MenuCommand::GizmoSpace);
+    }
     if (!m_measurement.active() && ImGui::IsKeyPressed(ImGuiKey_F, false) &&
         shortcutAllowed(EditorShortcut::FrameSelected, context)) {
         runMenuCommand(MenuCommand::FrameSelected);

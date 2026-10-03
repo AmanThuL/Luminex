@@ -44,6 +44,18 @@ EditorIconInfo editorIconInfo(EditorIcon icon) {
         return {static_cast<char32_t>(icon), "Follow camera rail"};
     case EditorIcon::Movable:
         return {static_cast<char32_t>(icon), "Movable"};
+    case EditorIcon::View:
+        return {static_cast<char32_t>(icon), "View"};
+    case EditorIcon::Rotate:
+        return {static_cast<char32_t>(icon), "Rotate"};
+    case EditorIcon::Scale:
+        return {static_cast<char32_t>(icon), "Scale"};
+    case EditorIcon::Transform:
+        return {static_cast<char32_t>(icon), "Transform"};
+    case EditorIcon::World:
+        return {static_cast<char32_t>(icon), "World"};
+    case EditorIcon::Local:
+        return {static_cast<char32_t>(icon), "Local"};
     }
     LMX_ASSERT(false, "Invalid editor icon");
     std::unreachable();
