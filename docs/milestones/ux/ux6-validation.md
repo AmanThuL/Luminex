@@ -7,9 +7,10 @@ Tasks 1–16 are complete; Task 8 is `c888541` and tag `ux6-exporter`.
 Task 17 is also complete after isolated and combined gates plus separate review. Task 12 automatic
 checks and images ran. After the required image/native stop, the owner accepted the five
 MaterialLab reference updates and authorized native retries. Sphere edit/Save/relaunch and generic
-glTF import now pass as observed below. Task 13 adds document mobility; Task 14 adds shared pose locks; Task 15 adds Inspector/Hierarchy presentation; Task 18 is complete after model tests, all gates and separate/ROOT review. Task 19 is complete after all gates and separate review; Task 20 passes wrapper tests, full gates and native screenshot isolation; Tasks 21–22 remain. The owner requested parallel work and explicitly approved reusing the idle
+glTF import now pass as observed below. Task 13 adds document mobility; Task 14 adds shared pose locks; Task 15 adds Inspector/Hierarchy presentation; Task 18 is complete after model tests, all gates and separate/ROOT review. Task 19 is complete after all gates and separate review; Task 20 passes wrapper tests, full gates and native screenshot isolation; Task 21 documents the shipped contracts; Task 22 remains. The owner requested parallel work and explicitly approved reusing the idle
 Task 1 reviewer as Task 17's implementer after the agent interface refused a fresh thread.
-Task 9 and Task 17 have independent checkouts and reviewers. Other tasks use fresh agents.
+Task 9 and Task 17 have independent checkouts and reviewers. The owner also approved reusing
+Task 19 for Task 21 with separate review; other implementation tasks use fresh agents.
 
 ## Source and evidence
 
@@ -53,6 +54,7 @@ commands and assertions are unchanged, with distinct logs and no previous-eviden
 | 16 | `80e20d2` | 12/12 passed; 15/15 exact images; native checkpoint | `task16-final-gates.json` |
 | 18 | `dbd946a` | 12/12 passed; 628 focused assertions | `task18-final-gates.json` |
 | 19 | `343f87a` | 12/12 passed; 27,306 focused assertions | `task19-final-gates.json` |
+| 20 | `9711874` | 13/13 passed; 17/17 actual-wrapper cases | `task20-final-gates.json` |
 
 ## Retained failures and resumptions
 
@@ -257,3 +259,14 @@ checkpoint. Static-tooltip hover and fresh reload were not exercised; Task 22 re
 [Gizmo validation](ux6-validation-gizmo.md) preserves Tasks 18–20 model, tool and viewport measurements, original failures,
 activation-generation scope addition, independent tests and ROOT design review. Native gizmo and
 remaining native gestures, scene-only GPU capture and completion gates remain unverified until Task 22.
+
+## Task 21 documents
+
+ADR 0031 remains Proposed. The guides, subsystem pages and dependency contract describe immutable
+content, schema migration, file-authored mobility and the shared Inspector/Session/gizmo rules.
+The pinned vendor scales local TRS even with World selected; Combined uses SCALEU to preserve
+Move/Rotate space. The three pages at budget retain their line counts. Targeted contract, links
+and budgets passed 144/144 checks after 68 original RED failures; retained intermediate checker
+failures are in `task21/`. The owner approved reusing Task 19 for this documentation task;
+Task 20 supplies separate review. All 12 per-commit commands passed (`task21-final-gates.json`); separate review confirms
+the exact documentation and execution-record boundary.

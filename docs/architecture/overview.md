@@ -38,7 +38,9 @@ in the repository.
 `Source/Scenes`. Asset is a CPU-only content library for glTF, DDS, Radiance HDR, and PNG/BMP,
 including texture baking and IBL generation. Engine owns the scene vocabulary and the GPU-resident
 scene itself, with generational instance, mesh, material, texture, and light identities, paced
-upload tables, and playback. Scenes holds the scene catalog built on top of Engine.
+upload tables, and playback. Asset owns saved mesh/material/image content, hashed immutable
+companions and file-authored mobility; Scenes holds the six-document catalog and retained generators.
+[Proposed ADR 0031](../decisions/0031-scene-document-content-and-mobility.md) describes these additions.
 
 [Render Graph](render-graph.md) is the frame-scoped graph builder under `Source/Render/Graph`. It
 declares and validates one frame's raster, compute, copy, and external passes before any of them
@@ -57,7 +59,8 @@ reconstruction, exposure/bloom/display, and the editor-only selection outline.
 
 [App](app.md) is the editor and headless-runner layer above the renderer. It splits into
 `AppModel`, the ImGui/SDL/Metal-free editor logic under `Source/App/Model`, and `App`, the SDL3
-shell, panels, and frame loops under `Source/App` outside `Model`. Its
+shell, panels, and frame loops under `Source/App` outside `Model`. Pure gizmo models share pose
+permissions with Inspector/Session; App alone wraps ImGuizmo for editor UI drawing. Its
 [design-system companion](app-design-system.md) covers tokens, typography, appearance and native menus.
 [App Session](app-session.md) covers document proposals, the local bridge, threads and evidence export.
 

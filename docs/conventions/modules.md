@@ -22,10 +22,10 @@ and AppModel static target.
 | `core` | `Source/Core` (`Core`) | `lmx` | Logging, assertions, whole-file reading, JSON escaping; the geometry and algorithms over glm types — AABBs with their corner transform, spheres, frusta, colour transfer, TRS transforms, reversed-infinite-Z and orthographic-fit projections, low-discrepancy sequences, IBL sampling measures, alignment and dispatch division; the generic containers: a generational handle with its slot allocator, a dirty set, an interval, a ring buffer; numeric parsing, SHA-256, a stopwatch, ASCII lowercasing | — | spdlog, glm |
 | `asset` | `Source/Engine/Asset` (`Asset`) | `lmx::asset` | CPU decoding, texture baking, IBL generation, procedural geometry, animation clip data and sampling, the asset error domain, repository asset discovery | `core` | glm, cgltf, stb |
 | `engine` | `Source/Engine` outside `Asset` (`Engine`) | `lmx::engine` | Scene vocabulary — `Camera`, mesh geometry, `LocalLightMath`, `AlphaMode`, `LocalLight`, `DrawItem`, `DirectionalLight`, `MotionClass` and the shared scene-table row ABI/bindings — plus GPU-owning scenes: generational identities, immutable geometry pool, paced scene tables, uploads, environment rig, playback, initial camera | `core`, `asset` | glm |
-| `scenes` | `Source/Scenes` (`Scenes`) | `lmx::scenes` | The catalog: `SceneLibrary` and `SceneId`, the four labs, San Miguel, the Sponza light rig and camera tour | `core`, `asset`, `engine` | glm |
+| `scenes` | `Source/Scenes` (`Scenes`) | `lmx::scenes` | The catalog: `SceneLibrary` and `SceneId`, six scene documents with saved lab content, VisibilityLab objects, LightLab lights/orbits and catalog loading | `core`, `asset`, `engine` | glm |
 | `render` | `Source/Render` (`Render`) | `lmx::render` | `SceneView` production via the builder, render graph, renderer and draw stages, shared frame declaration, leaf frame input and compiled-record contracts, and the RHI-to-project-log forwarding sink | `core`, `engine`, `asset` | glm |
-| `app-model` | `Source/App/Model` (`AppModel`) | `lmx::app` | ImGui/SDL/Metal-free editor logic: options, selection, workspace schema, actions, performance and graph models, dynamic-resolution policy, capture metadata and scene session | `core`, `asset`, `engine`, `render`, `scenes` | glm |
-| `app-shell` | `Source/App` outside `Model` (`App`) | `lmx::app` | SDL3, Dear ImGui, panels, the editor shell, the frame loops, `main` | `core`, `asset`, `render`, `engine`, `app-model`, `scenes` | glm, imgui, imgui-node-editor, libsdl3 |
+| `app-model` | `Source/App/Model` (`AppModel`) | `lmx::app` | ImGui/SDL/Metal-free editor logic: options, selection, workspace schema, actions, performance and graph models, dynamic-resolution policy, capture metadata, scene session and pure `GizmoModel` | `core`, `asset`, `engine`, `render`, `scenes` | glm |
+| `app-shell` | `Source/App` outside `Model` (`App`) | `lmx::app` | SDL3, Dear ImGui, panels, the editor shell, the frame loops, `main` | `core`, `asset`, `render`, `engine`, `app-model`, `scenes` | glm, imgui, imgui-node-editor, imguizmo, libsdl3 |
 | `tests` | `Tests` (`Tests`) | — | Unit and GPU cases for the units it may depend on | `core`, `render`, `asset`, `engine`, `app-model`, `scenes` | glm, catch2 |
 | `texture-bake` | `Tools/TextureBake` (`TextureBake`) | — | The offline mip-bake entry point | `core`, `asset` | glm, stb |
 | `benchmarks` | `Benchmarks` (`FrameDataBench`) | — | Paired CPU-encoding measurement harnesses | `core` | glm |
@@ -92,12 +92,12 @@ project library.
 
 ### Directory ownership
 Asset, Engine and AppModel own their directories and static targets.
-`Source/App/Model` owns the shared editor models and scene session in `Options/`, `Scene/`,
-`Graph/`, `Performance/`, `Console/`, `Capture/`, `Workspace/`, `Session/` and
+`Source/App/Model` owns shared editor models and scene session in `Options/`, `Scene/`, `Graph/`, `Performance/`, `Console/`, `Capture/`, `Workspace/`, `Session/` and
 `Rendering/{Settings,Temporal,Lighting,Visibility}/`.
 The remaining App sources live in `Shell/` (including `main.cpp` and EditorShell partials),
 `Headless/` (Screenshot, Measurement and OcclusionValidation) and `Panels/` (Scene, Inspector,
 Viewport, Graph, Performance, Console, Gallery, Session and Shared). The root holds its build file only.
+`ViewportGizmo.cpp` alone includes ImGuizmo; the App-only `imguizmo` dependency draws UI handles.
 Workspace persistence/docking and camera input are EditorShell partials; Inspector's subject
 units share private `Panels/Inspector/InspectorInternal.h`. [Session](../architecture/app-session.md)
 keeps listener/mailbox models in AppModel, polling/ChildRun in shell and review in panels; these add no contract units.
