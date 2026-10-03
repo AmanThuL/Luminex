@@ -207,7 +207,7 @@ Authored cameras use their document-node ID (`node:1` in the six checked-in scen
 | Editable subject | Fields / JSON values |
 |---|---|
 | Document/imported nodes, persistent objects/local lights | `enabled`: boolean |
-| Persistent, unanimated objects | `position`: XYZ meters; `eulerDegrees`: XYZ degrees; `scale`: XYZ factors 0.01–100 |
+| Movable, unanimated objects | `position`: XYZ meters; `eulerDegrees`: XYZ degrees; `scale`: XYZ factors 0.01–100 |
 | Authored local lights | `position`: XYZ meters; `color`: RGB sRGB 0–1; `intensity`: nonnegative relative scalar; `range`: positive meters |
 | Authored spot lights | `direction`: nonzero XYZ normalized on apply; `innerCone`, `outerCone`: degrees, 0 ≤ inner < outer ≤ 89 |
 | `environment` | `exposure`, `bloom`: partial objects; `shadowFilter`: `"pcf"` or `"pcss"` |
@@ -219,8 +219,8 @@ Exposure keys are `autoEnabled`, `ev`, `lowPercentile`, `highPercentile`, `targe
 ranges: 0 ≤ `lowPercentile` < `highPercentile` ≤ 100, `targetGrey` > 0, `evMin` ≤ `evMax`,
 nonnegative adaptation speeds and nonnegative bloom threshold and intensity. One value out of range
 answers `invalid` and refuses the whole batch. Camera edits change the saved scene camera, never the
-editor camera. Generated subjects and unsavable animated transforms are refused. Directional lights,
-structural create/delete/duplicate/reparent, selection and playback have no proposal edit operation.
+editor camera. Pose refusals use `<subject>/<field>: <poseLockReason>`; mobility refusals use
+`<subject>/mobility: Mobility is authored in the scene file`. Generated edits, directional lights and structural, selection or playback edits are unavailable.
 
 ## External file proposals and sidecars
 

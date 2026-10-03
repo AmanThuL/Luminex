@@ -105,7 +105,7 @@ Waves: W1 Tasks 1–12 (UX6.1), W2 13–16 (UX6.2), W3 17–22 (UX6.3). Tasks 2 
 
 ### Task 16: Session bridge and UX6.2 checkpoint
 **Files:** `Source/App/Model/Session/SessionEdits.cpp`, `Tests/App/Model/Session/AppSessionEditsTests.cpp`, `docs/guides/agent-session.md` (net zero lines). **Consumes:** Task 14.
-- [ ] `previewEdits` refuses a pose field on a locked subject with `"<subject>/<field>: " + poseLockReason`, and a `mobility` field with `"Mobility is authored in the scene file"`; `applyEdits` propagates `editObject`'s result (Review focus 5). Tests first for both, for objects and lights. **Checkpoint:** scene-only screenshots of the 15 cases are byte-identical to Task 12's; in the App a static pillar's fields are disabled with the reason and its Enabled toggles and saves. Commit `editor: refuse static pose proposals (UX6)`.
+- [x] `previewEdits` refuses a pose field on a locked subject with `"<subject>/<field>: " + poseLockReason`, and a `mobility` field with `"Mobility is authored in the scene file"`; `applyEdits` propagates `editObject`'s result (Review focus 5). Tests first for both, for objects and lights. **Checkpoint:** scene-only screenshots of the 15 cases are byte-identical to Task 12's; in the App a static pillar's fields are disabled with the reason and its Enabled toggles and saves. Commit `editor: refuse static pose proposals (UX6)`.
 
 ### Task 17: Vendor ImGuizmo (UX6.3)
 **Files:** `xmake/setup.lua`, `xmake/dependencies.lua`, `Source/App/xmake.lua`, `Tools/module_contract.json`, `ThirdParty/README.md`; create `docs/decisions/0032-vendored-imguizmo.md` (next free number; Proposed, following ADR 0011).

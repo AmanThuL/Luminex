@@ -3,11 +3,11 @@
 **Status:** In progress
 **Date:** 2026-10-03. The milestone remains `Accepted`; no owner acceptance or merge occurred.
 
-Tasks 1–15 are complete; Task 8 is `c888541` and tag `ux6-exporter`.
+Tasks 1–16 are complete; Task 8 is `c888541` and tag `ux6-exporter`.
 Task 17 is also complete after isolated and combined gates plus separate review. Task 12 automatic
 checks and images ran. After the required image/native stop, the owner accepted the five
 MaterialLab reference updates and authorized native retries. Sphere edit/Save/relaunch and generic
-glTF import now pass as observed below. Task 13 adds document mobility; Task 14 adds shared pose locks; Task 15 adds Inspector/Hierarchy presentation; Tasks 16 and 18–22 are unstarted. The owner requested parallel work and explicitly approved reusing the idle
+glTF import now pass as observed below. Task 13 adds document mobility; Task 14 adds shared pose locks; Task 15 adds Inspector/Hierarchy presentation; Tasks 18–22 remain. The owner requested parallel work and explicitly approved reusing the idle
 Task 1 reviewer as Task 17's implementer after the agent interface refused a fresh thread.
 Task 9 and Task 17 have independent checkouts and reviewers. Other tasks use fresh agents.
 
@@ -49,7 +49,8 @@ commands and assertions are unchanged, with distinct logs and no previous-eviden
 | 12 | `c9cd9b6` | 13/13 passed; 363 Python tests | `task12-accepted-gates.json` |
 | 13 | `1343471` | 12/12 passed | `task13-final2-gates.json` |
 | 14 | `9dc7f6e` | 12/12 composite; initial 11/12 retained | `task14-final-composite-gates.json` |
-| 15 | pending commit | 12/12 passed; initial cancelled run retained | `task15-final2-gates.json` |
+| 15 | `a6dac95` | 12/12 passed; initial cancelled run retained | `task15-final2-gates.json` |
+| 16 | this commit | 12/12 passed; 15/15 exact images; native checkpoint | `task16-final-gates.json` |
 
 ## Retained failures and resumptions
 
@@ -234,7 +235,7 @@ converted location `[-3,0,-3]`. An initial empty-filename attempt reported "Plea
 entering the explicit filename succeeded. This verifies generic glTF opening, not external
 LMX asset loading or full rendered material appearance. `task12-native/generic-viewer.json`
 records the route and limits. Original native screenshots are displayed in the conversation;
-no local screenshot file was saved. Later slice/completion gates remain unverified. No milestone
+no local screenshot file was saved. Later gizmo/completion gates remain unverified. No milestone
 owner acceptance, integration tag, push, PR or merge has occurred.
 
 The final accepted-reference build/CPU/format/direct-policy run passed **13/13 commands**,
@@ -243,6 +244,7 @@ and all 18 targeted tests. Task 12 is complete; original failed measurements rem
 
 ## Mobility validation
 
-[Mobility validation](ux6-validation-mobility.md) preserves Task 13–15 reader/writer/migration, pose-lock and presentation
-measurements, failed attempts, scope additions and independent review. Native mobility and the
-Task 16 image checkpoint remain unverified.
+[Mobility validation](ux6-validation-mobility.md) preserves Task 13–16 reader/writer/migration, pose-lock and presentation
+measurements, failed attempts, scope additions and independent review. Task 16 passed all 12 gates,
+880 bridge assertions, 15/15 actual byte comparisons against Task 12, and the native Static/Enabled/Save
+checkpoint. Static-tooltip hover and fresh reload were not exercised; Task 22 remains pending.

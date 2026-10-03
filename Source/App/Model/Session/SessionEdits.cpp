@@ -321,7 +321,7 @@ std::expected<void, std::string> updateBloom(asset::SceneLook::Bloom& bloom,
 std::expected<PreparedBatch, std::string> prepare(const SceneSession& session,
                                                   const SceneTreeView& tree,
                                                   std::span<const ProposalEdit> edits) {
-    if (!session.loadedScene() || session.measurementActive())
+    if (!session.loadedScene())
         return std::unexpected("Scene edits require a document and no active measurement");
     if (edits.empty())
         return std::unexpected("edits must be nonempty");
@@ -336,6 +336,31 @@ std::expected<PreparedBatch, std::string> prepare(const SceneSession& session,
         if (!id.empty())
             rows.try_emplace(id, &row);
     }
+    // Pose permissions precede storage restrictions and the measurement-wide refusal so every
+    // locked field names the same reason as the Inspector, even on generated or animated rows.
+    for (const auto& edit : edits) {
+        const auto found = rows.find(edit.subject);
+        if (found == rows.end())
+            continue;
+        const auto& row = *found->second;
+        if (row.subject == EditorSubject::LocalLight && !session.scene().light(row.lightId))
+            continue;
+        const auto prefix = edit.subject + "/" + edit.field + ": ";
+        if (edit.field == "mobility")
+            return std::unexpected(prefix + "Mobility is authored in the scene file");
+        PoseLock lock = PoseLock::None;
+        if (row.subject == EditorSubject::Object &&
+            (edit.field == "position" || edit.field == "eulerDegrees" || edit.field == "scale"))
+            lock = session.objectPoseLock(row.index);
+        else if ((row.subject == EditorSubject::LocalLight ||
+                  row.subject == EditorSubject::DirectionalLight) &&
+                 (edit.field == "position" || edit.field == "direction"))
+            lock = session.lightPoseLock(row.subject, row.index, row.lightId);
+        if (lock != PoseLock::None)
+            return std::unexpected(prefix + std::string(poseLockReason(lock)));
+    }
+    if (session.measurementActive())
+        return std::unexpected("Scene edits require a document and no active measurement");
     for (const auto& edit : edits) {
         const auto found = rows.find(edit.subject);
         if (found == rows.end() || found->second->generated)

@@ -105,3 +105,37 @@ Tests and passed the same **376 assertions in 31 cases**. All 15 source/test has
 formatted freeze. Evidence: `task15-final2-gates.json`, `task15/` and `task15-review.json`.
 ROOT and the separate reviewer approved the final boundary. Native mobility presentation and
 image parity remain the Task 16 checkpoint.
+
+
+## Task 16 — Named session refusals and checkpoint
+
+The bridge preflights locked object Position/Rotation/Scale and light Position/Direction with
+`<subject>/<field>: ` plus the shared pose-lock reason. Mobility requests say that mobility is
+authored in the scene file. Invalid/stale local-light identities retain their existing refusal;
+measurement and generated-storage rules retain their priority. Atomic apply preflight is unchanged.
+Only the two planned source/test files and the net-zero, 300-line agent-session guide changed.
+
+Initial RED: 3 cases, 201 assertions, 34 failed. The first GREEN attempt had six failures from a
+new fixture's duplicate `node:1` group/object identity; the fixture was corrected. Independent
+review found stale light identities getting a lock reason: additional actual RED was 1 case,
+58 assertions, 12 failed. Guarding invalid identities repaired it. Final and independently rebuilt
+`[session-edits]` runs each passed **880 assertions in 21 cases**. No assertion or tolerance loosened.
+Corrected source hashes are in `task16/task16-verified-notes-4322cdfe-688f-44a8-a880-fe675bc86465.json`;
+initial pre-fix notes remain evidence and do not identify the final source.
+
+`task16-final-gates.json` records **12/12 passing commands**. The physical App SHA-256 is
+`1528064f53ac57ed93feca3c559752e55c8879a7a5c2cbc925023eed10c27801`; its 126 runtime shaders
+and 63 source shaders were frozen. Actual captures matched Task 12's original candidate BMPs
+**15/15 byte for byte**, independently audited (`task16-task12-image-exactness.json`). An external
+frozen reference updates document pins only for the mobility-authored files; every approved image
+hash and other reference field stays identical. `Tools/Screenshots/reference.json` was not changed.
+
+CUA selected LightLab Pillar 0: Static was checked/disabled, pose fields gray, and the exact reason
+visible. Clicking Static and dragging Position left the pose and clean title unchanged. Enabled
+made the row `[off]`, with dirty title and operator marks; Cmd+S reported Scene saved and cleared
+them. Saved JSON changed only `/nodes/1/extensions/LMX_scene/enabled` from true to false; all other
+copied files were unchanged (`task16-native/saved-enabled.json`). The first attachment timed out
+while prior PID 2836 was absent, cause unproven; detached PID 3892 attached successfully. Cmd+Q
+exited PID 3892; AX observation after exit timed out, with exit independently confirmed. Screenshots
+were shown in the conversation, not saved locally. Static-checkbox tooltip hover and fresh reload
+were not exercised here; final native/gizmo/completion checks remain for Task 22.
