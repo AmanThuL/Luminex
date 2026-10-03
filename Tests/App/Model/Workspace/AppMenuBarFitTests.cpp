@@ -97,3 +97,37 @@ TEST_CASE("menu activity width contracts preserve nondefault and absent groups",
     REQUIRE_FALSE(fitMenuBar(48, widths).showActivityVerb);
     REQUIRE(fitMenuBar(0, widths).transportX == 17);
 }
+
+//======================================================================================================================
+TEST_CASE("menu bar hides gizmo tools before activity verb readout and zoom",
+          "[app][menu-fit][gizmo-tools]") {
+    MenuBarWidths widths{200, 100, 80, 40, 10};
+    widths.activity = 120;
+    widths.activityCompact = 30;
+    widths.gizmo = 80;
+    const auto all = fitMenuBar(670, widths);
+    CHECK(all.showGizmo);
+    CHECK(all.showActivityVerb);
+    CHECK(all.showReadout);
+    CHECK(all.showZoom);
+    CHECK(all.transportX + widths.buttons + widths.spacing + widths.gizmo + widths.spacing +
+              widths.readout + widths.spacing + widths.activity <=
+          620);
+    const auto noTools = fitMenuBar(669, widths);
+    CHECK_FALSE(noTools.showGizmo);
+    CHECK(noTools.showActivityVerb);
+    CHECK(noTools.showReadout);
+    CHECK(noTools.showZoom);
+    CHECK(fitMenuBar(580, widths).showActivityVerb);
+    CHECK_FALSE(fitMenuBar(579, widths).showActivityVerb);
+    CHECK(fitMenuBar(490, widths).showReadout);
+    CHECK_FALSE(fitMenuBar(489, widths).showReadout);
+    CHECK(fitMenuBar(400, widths).showZoom);
+    CHECK_FALSE(fitMenuBar(399, widths).showZoom);
+    widths.activity = widths.activityCompact = 0;
+    CHECK(fitMenuBar(540, widths).showGizmo);
+    CHECK_FALSE(fitMenuBar(539, widths).showGizmo);
+    widths.gizmo = 0;
+    CHECK_FALSE(fitMenuBar(700, widths).showGizmo);
+    CHECK(fitMenuBar(700, widths).transportX == 335);
+}

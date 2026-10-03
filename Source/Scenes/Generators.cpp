@@ -48,14 +48,23 @@ asset::AssetResult<void> validateSceneGenerators(const asset::SceneDocument& doc
         const auto& g = *node.generator;
         const std::string pointer =
             "/nodes/" + std::to_string(n) + "/extensions/LMX_scene/generator";
-        if (g.name != "material-lab" && g.name != "temporal-lab" && g.name != "visibility-lab" &&
-            g.name != "light-lab")
+        if (g.name == "material-lab" || g.name == "temporal-lab")
+            return std::unexpected(asset::AssetError{
+                asset::AssetErrorCode::Unsupported,
+                pointer + "/name: generator '" + g.name +
+                    "' was retired in schema 2; its objects are saved in the document"});
+        if (g.name != "visibility-lab" && g.name != "light-lab")
             return std::unexpected(
                 asset::AssetError{asset::AssetErrorCode::Unsupported,
                                   pointer + "/name: unknown generator '" + g.name + "'"});
         for (const auto& [name, value] : g.params) {
+            if (name == "axisStation")
+                return std::unexpected(asset::AssetError{
+                    asset::AssetErrorCode::Unsupported,
+                    pointer +
+                        "/params/axisStation: generator 'axisStation' was retired in schema 2; "
+                        "its objects are saved in the document"});
             const bool allowed =
-                (g.name == "material-lab" && name == "axisStation") ||
                 (g.name == "visibility-lab" && (name == "instances" || name == "occluders")) ||
                 (g.name == "light-lab" && (name == "lights" || name == "pile"));
             if (!allowed)
@@ -64,8 +73,7 @@ asset::AssetResult<void> validateSceneGenerators(const asset::SceneDocument& doc
                                       pointer + "/params/" + name + ": unknown parameter"});
             const auto checked =
                 parameter(g, name, 0, name == "instances" || name == "lights" ? 1 : 0,
-                          name == "axisStation" ? 1
-                          : name == "instances" ? 1048576
+                          name == "instances"   ? 1048576
                           : name == "occluders" ? 1024
                                                 : engine::kMaxLocalLights);
             if (!checked)
@@ -106,15 +114,6 @@ sceneGenerators(rojoRHI::Device& device, const asset::SceneDocument& document,
     if (auto checked = validateSceneGenerators(document, overrides); !checked)
         return std::unexpected(checked.error());
     std::map<std::string, engine::SceneGenerator> result;
-    result["material-lab"] = [&device](engine::Scene& scene, const asset::DocGenerator& g,
-                                       const engine::EnvironmentHook& environment) {
-        return appendMaterialLab(device, scene, environment,
-                                 *parameter(g, "axisStation", 0, 0, 1) != 0);
-    };
-    result["temporal-lab"] = [&device](engine::Scene& scene, const asset::DocGenerator&,
-                                       const engine::EnvironmentHook& environment) {
-        return appendTemporalLab(device, scene, environment);
-    };
     result["visibility-lab"] = [&device, overrides](engine::Scene& scene,
                                                     const asset::DocGenerator& g,
                                                     const engine::EnvironmentHook& environment) {

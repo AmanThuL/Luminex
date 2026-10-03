@@ -5,7 +5,7 @@
 Part IV of the [rendering roadmap](../roadmap.md) owns editor usability and the presentation of
 rendering evidence: UX1 before M7.1, then [UX2](#ux2--editor-surfaces),
 [UX3](#ux3--scene-documents-and-hierarchy) and [UX4](#ux4--design-system-and-themes) between R4
-and N1, ending with [UX5](#ux5--agent-session); [UX6](#ux6--scene-authoring) is proposed. The [2026-09-14 audit](../research/2026-09-14-editor-uiux-audit.md) found that
+and N1, ending with [UX5](#ux5--agent-session); [UX6](#ux6--scene-authoring), placed before N1, is implemented and integrated. The [2026-09-14 audit](../research/2026-09-14-editor-uiux-audit.md) found that
 the shipped controls expose substantial capability, but clipped data, ambiguous states and an
 unstable graph make that capability difficult to inspect. This part owns the accepted boundary; the milestone record distinguishes implementation
 from completed acceptance.
@@ -78,7 +78,7 @@ All required areas above must pass the following observable tasks on the actual 
 - Under default Native TAA, retain graph selection, group state and pan/zoom for at least ten
   seconds across history-slot alternation. Freeze a frame, inspect its resources and matched
   timings, dump that same record, then resume live. Genuine topology changes remain visible.
-- Read every supported debug view using its legend, return to Final, identify MaterialLab axes,
+- Read every supported debug view using its legend, return to Final, identify a selected object's axes with the gizmo,
   operate TemporalLab playback/step/reset and recover changed camera/light/rendering settings.
 - Complete dump and capture workflows with visible output paths or actionable failure reasons.
   Verify capture-disabled startup and capture-enabled success, as well as recoverable failures.
@@ -255,15 +255,15 @@ Implemented; on 2026-10-02 the owner authorized integration by squash merge afte
 
 ## UX6 — Scene authoring
 
-**Placement (proposed):** [UX5](#ux5--agent-session) → UX6 → N1. The owner asked for the proposal on 2026-10-02; the accepted order still has N1 next, and UX6 has no step until the owner accepts the [proposed record](../milestones/ux/ux6.md) and its placement.
+**Placement:** [UX5](#ux5--agent-session) → UX6 → N1. The owner asked for the proposal on 2026-10-02 and placed it before N1 on 2026-10-03, answering the record's open decisions the same day. The owner accepted the [record](../milestones/ux/ux6.md) and authorized execution on 2026-10-03; the owner authorized integration on 2026-10-04 after a [milestone review](../milestones/ux/ux6-review-validation.md) and its fixes, and the executor plan is closed. [Validation](../milestones/ux/ux6-validation.md) retains 10/15 original parent parity, 15/15 accepted-reference parity, LightLab 5/5 and incomplete native completion; the outcome and gates below bind.
 
-**Outcome:** lab content is saved scene content; each object says whether it may move; an operator moves a movable object with a viewport gizmo and cannot move a static one.
+**Outcome:** lab objects are saved in the scene document; each object and light says whether it may move; an operator moves a movable subject with a viewport gizmo and cannot move a static one.
 
-**Deliver:** static lab content as checked-in content assets referenced by the scene documents, with parameter-sized populations and behavior without a glTF form left generated (UX6.1); an authored `static` or `movable` value per object, honored by the Inspector, the gizmo and the session bridge (UX6.2); a vendored transform gizmo in the editor's UI layer, replacing MaterialLab's axis-station geometry (UX6.3).
+**Deliver:** lab objects, materials and animations saved in the scene documents, with geometry in a read-only buffer and textures in image files beside them, and only parameter-sized populations left generated (UX6.1); an authored `static` or `movable` value per object and light, changed only in the scene file and honored by the Inspector, the gizmo and the session bridge (UX6.2); a vendored transform gizmo in the editor's UI layer for objects and authored lights, with Unity's tool shortcuts, replacing MaterialLab's axis-station geometry (UX6.3).
 
-**Exit gate (proposed):** the standing matrix is compared with the parent as measured and MaterialLab is re-baselined once with the owner's acceptance; edits to former generated objects survive save and relaunch; a static object's pose cannot change through any editor route; a gizmo drag exports the same bytes as the equivalent Inspector edit; scene-only screenshots are identical with the gizmo shown.
+**Exit gate:** the standing matrix and LightLab are compared with the parent as measured and MaterialLab is re-baselined once with the owner's acceptance; edits to former generated objects survive save and relaunch; a static subject's pose cannot change through any editor route; a gizmo drag exports the same bytes as the equivalent Inspector edit and the two track each other live; scene-only screenshots are identical with the gizmo shown.
 
-**Defer:** create, duplicate, delete and reparent; viewport picking; Undo/Redo; snapping; gizmos and mobility for lights; any renderer use of mobility.
+**Defer:** create, duplicate, delete and reparent; viewport picking; Undo/Redo; snapping; material editing; changing mobility inside the editor; any renderer use of mobility.
 
 ## Candidate — offline pipeline editing
 

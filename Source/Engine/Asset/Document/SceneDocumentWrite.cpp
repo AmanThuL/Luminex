@@ -1,26 +1,18 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file SceneDocumentWrite.cpp
-/// @brief Writes canonical glTF animation documents and rolls back failed two-file saves.
+/// @brief Writes canonical glTF scene documents and deterministic animation data.
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Asset/Document/SceneDocument.h"
 
-#include "Core/IO/File.h"
 #include "Core/IO/JsonWriter.h"
 #include "Engine/Asset/Document/DocumentUri.h"
-#include "Engine/Asset/Document/SceneDocumentSaveInternal.h"
-#include "Engine/Asset/Model/JsonTokens.h"
+#include "Engine/Asset/Document/SceneDocumentWriteInternal.h"
 
 #include <algorithm>
-#include <atomic>
 #include <bit>
-#include <chrono>
 #include <cmath>
-#include <fstream>
 #include <limits>
-#include <system_error>
-
-#include <unistd.h>
 
 namespace lmx::asset {
 namespace {
@@ -110,7 +102,7 @@ void lookJson(JsonWriter& w, const SceneLook& look) {
 }
 
 //======================================================================================================================
-void nodeJson(JsonWriter& w, const DocNode& node) {
+void nodeJson(JsonWriter& w, const DocNode& node, uint32_t schemaVersion) {
     w.beginObject();
     scalar(w, "name", node.name);
     if (!node.children.empty())
@@ -123,6 +115,8 @@ void nodeJson(JsonWriter& w, const DocNode& node) {
         vector(w, "scale", node.scale, 3);
     if (node.camera)
         scalar(w, "camera", *node.camera);
+    if (node.mesh)
+        scalar(w, "mesh", *node.mesh);
     w.key("extensions");
     w.beginObject();
     if (node.light) {
@@ -134,6 +128,10 @@ void nodeJson(JsonWriter& w, const DocNode& node) {
     w.key("LMX_scene");
     w.beginObject();
     scalar(w, "enabled", node.enabled);
+    if (schemaVersion == 2 && node.mobility == DocMobility::Movable)
+        scalar(w, "mobility", "movable");
+    if (node.motion == DocMotion::Invalid)
+        scalar(w, "motion", "invalid");
     if (node.asset) {
         w.key("asset");
         w.beginObject();
@@ -150,6 +148,9 @@ void nodeJson(JsonWriter& w, const DocNode& node) {
             scalar(w, "name", override.name);
             if (override.enabled)
                 scalar(w, "enabled", *override.enabled);
+            if (schemaVersion == 2 && override.mobility)
+                scalar(w, "mobility",
+                       *override.mobility == DocMobility::Movable ? "movable" : "static");
             if (override.pose) {
                 w.key("pose");
                 w.beginObject();
@@ -191,6 +192,8 @@ const char* channelName(DocChannelPath path) {
         return "rotation";
     case DocChannelPath::Scale:
         return "scale";
+    case DocChannelPath::EmissiveStrength:
+        return "pointer";
     }
     return "";
 }
@@ -200,6 +203,7 @@ struct AccessorLayout {
     uint32_t count;
     uint32_t components;
     float lastTime;
+    bool time = false;
 };
 
 //======================================================================================================================
@@ -208,10 +212,12 @@ std::vector<AccessorLayout> accessorLayout(const SceneDocument& doc) {
     uint64_t offset = 0;
     for (const auto& animation : doc.animations) {
         result.push_back({offset, animation.keyCount, 1,
-                          float(double(animation.keyCount - 1) / animation.sampleRate)});
+                          float(double(animation.keyCount - 1) / animation.sampleRate), true});
         offset += uint64_t(animation.keyCount) * sizeof(float);
         for (const auto& channel : animation.channels) {
-            const uint32_t width = channel.path == DocChannelPath::Rotation ? 4 : 3;
+            const uint32_t width = channel.path == DocChannelPath::EmissiveStrength ? 1
+                                   : channel.path == DocChannelPath::Rotation       ? 4
+                                                                                    : 3;
             result.push_back({offset, animation.keyCount, width, 0.0f});
             offset += uint64_t(animation.keyCount) * width * sizeof(float);
         }
@@ -220,8 +226,7 @@ std::vector<AccessorLayout> accessorLayout(const SceneDocument& doc) {
 }
 
 //======================================================================================================================
-void animationsJson(JsonWriter& w, const SceneDocument& doc, std::string_view bufferUri) {
-    const auto layout = accessorLayout(doc);
+void animationsJson(JsonWriter& w, const SceneDocument& doc) {
     w.key("animations");
     w.beginArray();
     uint32_t accessor = 0;
@@ -236,8 +241,20 @@ void animationsJson(JsonWriter& w, const SceneDocument& doc, std::string_view bu
             scalar(w, "sampler", i);
             w.key("target");
             w.beginObject();
-            scalar(w, "node", c.node);
+            if (c.path != DocChannelPath::EmissiveStrength)
+                scalar(w, "node", c.node);
             scalar(w, "path", channelName(c.path));
+            if (c.path == DocChannelPath::EmissiveStrength) {
+                w.key("extensions");
+                w.beginObject();
+                w.key("KHR_animation_pointer");
+                w.beginObject();
+                scalar(w, "pointer",
+                       "/materials/" + std::to_string(*c.material) +
+                           "/extensions/KHR_materials_emissive_strength/emissiveStrength");
+                w.endObject();
+                w.endObject();
+            }
             w.endObject();
             w.endObject();
         }
@@ -263,13 +280,27 @@ void animationsJson(JsonWriter& w, const SceneDocument& doc, std::string_view bu
         accessor += uint32_t(a.channels.size()) + 1;
     }
     w.endArray();
+}
+
+//======================================================================================================================
+void buffersJson(JsonWriter& w, const SceneDocument& doc, std::string_view bufferUri) {
+    const auto layout = accessorLayout(doc);
     w.key("buffers");
     w.beginArray();
-    w.beginObject();
-    scalar(w, "uri", detail::encodeDocumentUri(bufferUri));
-    const auto& last = layout.back();
-    scalar(w, "byteLength", last.offset + uint64_t(last.count) * last.components * sizeof(float));
-    w.endObject();
+    if (!layout.empty()) {
+        w.beginObject();
+        scalar(w, "uri", detail::encodeDocumentUri(bufferUri));
+        const auto& last = layout.back();
+        scalar(w, "byteLength",
+               last.offset + uint64_t(last.count) * last.components * sizeof(float));
+        w.endObject();
+    }
+    if (doc.content) {
+        w.beginObject();
+        scalar(w, "uri", detail::encodeDocumentUri(detail::geometryUri(bufferUri)));
+        scalar(w, "byteLength", sceneDocumentGeometry(doc).size());
+        w.endObject();
+    }
     w.endArray();
     w.key("bufferViews");
     w.beginArray();
@@ -280,6 +311,7 @@ void animationsJson(JsonWriter& w, const SceneDocument& doc, std::string_view bu
         scalar(w, "byteLength", uint64_t(a.count) * a.components * sizeof(float));
         w.endObject();
     }
+    detail::geometryViews(w, doc);
     w.endArray();
     w.key("accessors");
     w.beginArray();
@@ -290,12 +322,13 @@ void animationsJson(JsonWriter& w, const SceneDocument& doc, std::string_view bu
         scalar(w, "componentType", 5126);
         scalar(w, "count", a.count);
         scalar(w, "type", a.components == 1 ? "SCALAR" : a.components == 3 ? "VEC3" : "VEC4");
-        if (a.components == 1) {
+        if (a.time) {
             vector(w, "min", std::array<float, 1>{0.0f}, 1);
             vector(w, "max", std::array<float, 1>{a.lastTime}, 1);
         }
         w.endObject();
     }
+    detail::geometryAccessors(w, doc, layout.size());
     w.endArray();
 }
 
@@ -339,6 +372,18 @@ AssetResult<void> finiteModel(const SceneDocument& doc) {
             for (const auto& [name, value] : n.generator->params)
                 if (!std::isfinite(value))
                     return bad(path + "/extensions/LMX_scene/generator/params/" + name);
+        if (n.mobility != DocMobility::Static && n.mobility != DocMobility::Movable)
+            return bad(path + "/extensions/LMX_scene/mobility");
+        if (n.mobility == DocMobility::Movable &&
+            (n.camera || n.generator || (!n.mesh && !n.asset && !n.light)))
+            return std::unexpected(AssetError{AssetErrorCode::Malformed,
+                                              path + "/extensions/LMX_scene/mobility: mobility "
+                                                     "requires an object, asset or light node"});
+        for (size_t o = 0; o < n.overrides.size(); ++o)
+            if (n.overrides[o].mobility && *n.overrides[o].mobility != DocMobility::Static &&
+                *n.overrides[o].mobility != DocMobility::Movable)
+                return bad(path + "/extensions/LMX_scene/overrides/" + std::to_string(o) +
+                           "/mobility");
         for (const auto& o : n.overrides)
             if (o.pose)
                 for (int k = 0; k < 3; ++k)
@@ -380,6 +425,27 @@ AssetResult<void> finiteModel(const SceneDocument& doc) {
                 AssetError{AssetErrorCode::Malformed, "/animations/" + std::to_string(i) +
                                                           ": invalid rate, key count or channels"});
         for (const auto& c : a.channels) {
+            const auto target = "/animations/" + std::to_string(i) + "/channels/" +
+                                std::to_string(&c - a.channels.data()) + "/target";
+            if (c.path == DocChannelPath::EmissiveStrength) {
+                if (!c.material || *c.material >= doc.materials.size())
+                    return std::unexpected(
+                        AssetError{AssetErrorCode::Malformed,
+                                   target + "/extensions/KHR_animation_pointer/pointer: material "
+                                            "index is out of range"});
+                if (!c.step || a.sampleRate != 60.0)
+                    return std::unexpected(
+                        AssetError{AssetErrorCode::Malformed,
+                                   target + ": emissive channels require STEP at 60 Hz"});
+                for (const auto& value : c.values)
+                    if (value.x < 0.0f)
+                        return std::unexpected(
+                            AssetError{AssetErrorCode::Malformed,
+                                       target + ": emissive strength must be nonnegative"});
+            } else if (c.material)
+                return std::unexpected(
+                    AssetError{AssetErrorCode::Malformed,
+                               target + ": material is only valid for emissive strength"});
             if (c.values.size() != a.keyCount)
                 return std::unexpected(
                     AssetError{AssetErrorCode::Malformed, "/animations/" + std::to_string(i) +
@@ -390,74 +456,6 @@ AssetResult<void> finiteModel(const SceneDocument& doc) {
                         return bad("/animations/" + std::to_string(i));
         }
     }
-    return {};
-}
-
-//======================================================================================================================
-AssetError ioError(const std::filesystem::path& path, std::string_view message) {
-    return {AssetErrorCode::Io, path.string() + ": " + std::string(message)};
-}
-
-//======================================================================================================================
-AssetResult<void> writableTarget(const std::filesystem::path& path) {
-    std::error_code ec;
-    const auto status = std::filesystem::symlink_status(path, ec);
-    if (ec == std::errc::no_such_file_or_directory)
-        return {};
-    if (ec)
-        return std::unexpected(ioError(path, ec.message()));
-    if (status.type() == std::filesystem::file_type::not_found)
-        return {};
-    if (!std::filesystem::is_regular_file(status))
-        return std::unexpected(ioError(path, "target is not a regular file"));
-    constexpr auto writeBits = std::filesystem::perms::owner_write |
-                               std::filesystem::perms::group_write |
-                               std::filesystem::perms::others_write;
-    if ((status.permissions() & writeBits) == std::filesystem::perms::none ||
-        access(path.c_str(), W_OK) != 0)
-        return std::unexpected(ioError(path, "target is read-only"));
-    return {};
-}
-
-//======================================================================================================================
-// An existing companion may be replaced only when the existing target document names it; a stray
-// file beside a new Save As destination is somebody else's data.
-AssetResult<void> ownedCompanion(const std::filesystem::path& path,
-                                 const std::filesystem::path& binPath) {
-    std::error_code ec;
-    if (!std::filesystem::exists(binPath, ec) && !ec)
-        return {};
-    // Only the buffer URI matters; an existing document with a damaged companion may still be
-    // replaced by its own save.
-    if (const auto bytes = readWholeFile(path)) {
-        const auto json = JsonTokens::parse(
-            std::string(reinterpret_cast<const char*>(bytes->data()), bytes->size()));
-        const auto buffers = json ? json->root().find("buffers") : std::nullopt;
-        if (buffers && buffers->isArray() && buffers->size() == 1) {
-            const auto uri = buffers->at(0).find("uri");
-            const auto text = uri ? uri->asString() : std::expected<std::string, std::string>();
-            const auto decoded = text ? detail::decodeDocumentUri(*text, "")
-                                      : AssetResult<std::string>(std::unexpected(AssetError{}));
-            if (decoded &&
-                std::filesystem::equivalent(path.parent_path() / *decoded, binPath, ec) && !ec)
-                return {};
-        }
-    }
-    return std::unexpected(ioError(binPath, "companion file exists and is not referenced by the "
-                                            "target document; refusing to overwrite it"));
-}
-
-//======================================================================================================================
-AssetResult<void> writeBytes(const std::filesystem::path& path, const void* data, size_t size) {
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
-    if (!file)
-        return std::unexpected(ioError(path, "cannot open staged output"));
-    file.write(static_cast<const char*>(data), static_cast<std::streamsize>(size));
-    file.flush();
-    const bool good = file.good();
-    file.close();
-    if (!good || file.fail())
-        return std::unexpected(ioError(path, "cannot write staged output"));
     return {};
 }
 
@@ -476,6 +474,14 @@ std::string sceneDocumentJson(const SceneDocument& doc, std::string_view bufferU
     w.string("LMX_scene");
     if (!doc.lights.empty())
         w.string("KHR_lights_punctual");
+    if (!doc.materials.empty())
+        w.string("KHR_materials_emissive_strength");
+    if (std::ranges::any_of(doc.animations, [](const DocAnimation& animation) {
+            return std::ranges::any_of(animation.channels, [](const DocChannel& channel) {
+                return channel.path == DocChannelPath::EmissiveStrength;
+            });
+        }))
+        w.string("KHR_animation_pointer");
     w.endArray();
     scalar(w, "scene", 0);
     w.key("scenes");
@@ -488,7 +494,7 @@ std::string sceneDocumentJson(const SceneDocument& doc, std::string_view bufferU
     w.key("nodes");
     w.beginArray();
     for (const auto& node : doc.nodes)
-        nodeJson(w, node);
+        nodeJson(w, node, doc.schemaVersion);
     w.endArray();
     w.key("cameras");
     w.beginArray();
@@ -509,7 +515,10 @@ std::string sceneDocumentJson(const SceneDocument& doc, std::string_view bufferU
     }
     w.endArray();
     if (!doc.animations.empty())
-        animationsJson(w, doc, bufferUri);
+        animationsJson(w, doc);
+    if (!doc.animations.empty() || doc.content)
+        buffersJson(w, doc, bufferUri);
+    detail::contentJson(w, doc, bufferUri, accessorLayout(doc).size());
     w.key("extensions");
     w.beginObject();
     if (!doc.lights.empty()) {
@@ -546,6 +555,7 @@ std::string sceneDocumentJson(const SceneDocument& doc, std::string_view bufferU
     scalar(w, "camera", doc.camera);
     lookJson(w, doc.look);
     scalar(w, "loop", doc.loop);
+    detail::contentExtensionJson(w, doc, bufferUri);
     w.endObject();
     w.endObject();
     w.endObject();
@@ -553,8 +563,10 @@ std::string sceneDocumentJson(const SceneDocument& doc, std::string_view bufferU
 }
 
 //======================================================================================================================
-AssetResult<void> validateSceneDocumentModel(const SceneDocument& doc) {
-    return finiteModel(doc);
+AssetResult<void> validateSceneDocumentModel(const SceneDocument& doc, ContentBytes bytes) {
+    if (auto valid = finiteModel(doc); !valid)
+        return valid;
+    return detail::validateDocumentContent(doc, bytes);
 }
 
 //======================================================================================================================
@@ -571,120 +583,13 @@ std::vector<std::byte> sceneDocumentBuffer(const SceneDocument& doc) {
         for (const auto& channel : animation.channels)
             for (const auto& value : channel.values)
                 for (int component = 0;
-                     component < (channel.path == DocChannelPath::Rotation ? 4 : 3); ++component)
+                     component < (channel.path == DocChannelPath::EmissiveStrength ? 1
+                                  : channel.path == DocChannelPath::Rotation       ? 4
+                                                                                   : 3);
+                     ++component)
                     append(value[component]);
     }
     return bytes;
-}
-
-//======================================================================================================================
-AssetResult<void> detail::saveSceneDocumentWithRename(const SceneDocument& doc,
-                                                      const std::filesystem::path& path,
-                                                      const DocumentRename& rename) {
-    if (auto valid = finiteModel(doc); !valid)
-        return valid;
-    if (path.extension() != ".gltf")
-        return std::unexpected(ioError(path, "scene document must use the .gltf extension"));
-    auto binPath = path;
-    binPath.replace_extension(".bin");
-    const auto bin = sceneDocumentBuffer(doc);
-    // A document without animations has no buffer and writes no companion file.
-    std::vector<std::filesystem::path> targets{path};
-    if (!bin.empty()) {
-        if (auto owned = ownedCompanion(path, binPath); !owned)
-            return owned;
-        targets.push_back(binPath);
-    }
-    for (const auto& target : targets)
-        if (auto writable = writableTarget(target); !writable)
-            return writable;
-    const auto parent = path.has_parent_path() ? path.parent_path() : std::filesystem::path(".");
-    std::error_code ec;
-    const auto permissions = std::filesystem::status(parent, ec).permissions();
-    constexpr auto writeBits = std::filesystem::perms::owner_write |
-                               std::filesystem::perms::group_write |
-                               std::filesystem::perms::others_write;
-    if (ec || (permissions & writeBits) == std::filesystem::perms::none ||
-        access(parent.c_str(), W_OK) != 0)
-        return std::unexpected(ioError(parent, "output directory is not writable"));
-    static std::atomic<uint64_t> sequence{0};
-    const auto unique =
-        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + "-" +
-        std::to_string(sequence++);
-    const auto staging = parent / (".lmx-save-" + unique + ".tmp");
-    if (!std::filesystem::create_directory(staging, ec))
-        return std::unexpected(ioError(staging, ec.message()));
-    const auto cleanup = [&] {
-        std::error_code ignored;
-        std::filesystem::remove_all(staging, ignored);
-    };
-    const auto json = sceneDocumentJson(doc, binPath.filename().string());
-    auto written = writeBytes(staging / path.filename(), json.data(), json.size());
-    if (written && !bin.empty())
-        written = writeBytes(staging / binPath.filename(), bin.data(), bin.size());
-    if (!written) {
-        cleanup();
-        return written;
-    }
-    const auto checked = readSceneDocument(staging / path.filename());
-    if (!checked) {
-        cleanup();
-        return std::unexpected(checked.error());
-    }
-    std::vector<bool> backedUp(targets.size());
-    std::vector<bool> installed(targets.size());
-    const auto rollback = [&](AssetError error) -> AssetResult<void> {
-        bool restored = true;
-        for (size_t i = 0; i < targets.size(); ++i) {
-            std::error_code recovery;
-            if (installed[i]) {
-                std::filesystem::remove(targets[i], recovery);
-                if (recovery) {
-                    restored = false;
-                    error.message += "; rollback remove: " + recovery.message();
-                }
-            }
-            if (backedUp[i]) {
-                rename(staging / (std::to_string(i) + ".bak"), targets[i], recovery);
-                if (recovery) {
-                    restored = false;
-                    error.message += "; rollback restore: " + recovery.message();
-                }
-            }
-        }
-        if (restored)
-            cleanup();
-        else
-            error.message += "; preserved backups at " + staging.string();
-        return std::unexpected(std::move(error));
-    };
-    for (size_t i = 0; i < targets.size(); ++i) {
-        const bool exists = std::filesystem::exists(targets[i], ec);
-        if (ec)
-            return rollback(ioError(targets[i], ec.message()));
-        if (exists) {
-            rename(targets[i], staging / (std::to_string(i) + ".bak"), ec);
-            if (ec)
-                return rollback(ioError(targets[i], ec.message()));
-            backedUp[i] = true;
-        }
-    }
-    for (size_t i = 0; i < targets.size(); ++i) {
-        rename(staging / targets[i].filename(), targets[i], ec);
-        if (ec)
-            return rollback(ioError(targets[i], ec.message()));
-        installed[i] = true;
-    }
-    cleanup();
-    return {};
-}
-
-//======================================================================================================================
-AssetResult<void> saveSceneDocument(const SceneDocument& doc, const std::filesystem::path& path) {
-    return detail::saveSceneDocumentWithRename(
-        doc, path,
-        [](const std::filesystem::path& from, const std::filesystem::path& to,
-           std::error_code& error) { std::filesystem::rename(from, to, error); });
 }
 
 } // namespace lmx::asset

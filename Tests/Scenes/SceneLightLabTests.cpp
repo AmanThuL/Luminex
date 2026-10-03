@@ -4,7 +4,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "App/Model/Scene/SceneSession.h"
-#include "Scenes/CatalogScenes.h"
 #include "Scenes/LightLab.h"
 #include "Scenes/SceneLibrary.h"
 #include "Support/SceneDocumentTestSupport.h"
@@ -220,6 +219,18 @@ TEST_CASE("LightLab loads from the catalog with its requested population",
     REQUIRE(result);
     auto& loaded = **result;
     REQUIRE(loaded.name == "LightLab");
+    REQUIRE(loaded.objects.size() == 17);
+    REQUIRE(loaded.objects[0].name == "Floor");
+    const auto* document = library.loaded(*id);
+    REQUIRE(document != nullptr);
+    for (uint32_t column = 0; column < 8; ++column) {
+        REQUIRE(loaded.objects[1 + column * 2].name == "Pillar " + std::to_string(column));
+        REQUIRE(loaded.objects[2 + column * 2].name == "Sphere " + std::to_string(column));
+    }
+    for (size_t object = 0; object < loaded.objects.size(); ++object) {
+        REQUIRE(document->binding.objectNode[object] != engine::kGeneratedNode);
+        REQUIRE(document->document.nodes[document->binding.objectNode[object]].mesh.has_value());
+    }
     REQUIRE(loaded.localLights().size() == 144);
     REQUIRE(loaded.lightLabPopulations.front().grid.size() == 128);
     const auto gridId = loaded.localLights().front();
@@ -273,5 +284,38 @@ TEST_CASE("LightLab grid brightness stays comparable as ranges shrink", "[scene]
         CAPTURE(n);
         for (uint32_t channel = 0; channel < 3; ++channel)
             REQUIRE(actual[channel] == Approx(expected[channel]).epsilon(1e-4));
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("LightLab document keeps seventeen saved objects at every CLI population",
+          "[gpu][scene][light-lab][ux6-retirement]") {
+    auto device = rojoRHI::createDevice();
+    REQUIRE(device);
+    for (const auto [lights, pile] : {std::pair{1u, 0u}, {64u, 10u}, {256u, 0u}, {4096u, 0u}}) {
+        CAPTURE(lights, pile);
+        auto loaded = lmx::test::loadCatalogScene(**device, "light-lab", lights, pile);
+        REQUIRE(loaded);
+        REQUIRE((*loaded)->objects.size() == 17);
+        REQUIRE((*loaded)->localLights().size() == lights + pile);
+        REQUIRE((*loaded)->lightLabPopulations.size() == 1);
+        REQUIRE((*loaded)->lightLabPopulations[0].grid.size() == lights);
+        REQUIRE((*loaded)->lightLabPopulations[0].pile.size() == pile);
+        auto expected = scenes::lightLabLights(lights, pile);
+        const auto tracks = scenes::lightLabTracks(lights, pile);
+        for (const auto& track : tracks)
+            expected[track.light].position = asset::sampleOrbit(track, 0.0f);
+        REQUIRE((*loaded)->animation.lightTracks.size() == tracks.size());
+        for (size_t i = 0; i < expected.size(); ++i) {
+            const auto actualRow =
+                engine::makeLightRow(*(*loaded)->light((*loaded)->localLights()[i]));
+            const auto expectedRow = engine::makeLightRow(expected[i]);
+            REQUIRE(actualRow);
+            REQUIRE(expectedRow);
+            REQUIRE(std::memcmp(&*actualRow, &*expectedRow, sizeof(engine::LightRow)) == 0);
+        }
+        REQUIRE(std::memcmp((*loaded)->animation.lightTracks.data(), tracks.data(),
+                            tracks.size() * sizeof(asset::LightOrbitTrack)) == 0);
+        (*device)->waitIdle();
     }
 }

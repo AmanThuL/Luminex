@@ -15,6 +15,8 @@
 
 namespace lmx::app {
 
+struct ViewportGizmoContext;
+
 /// The Dear ImGui window name this panel submits. The shell's dock builder places the window under
 /// exactly this name, so both sides read it from here.
 inline constexpr const char* kViewportPanelWindowName = "Viewport";
@@ -48,6 +50,7 @@ struct ViewportPanelContext {
     /// Reconstruction after vendor fallback; gates the chip's native-only temporal entries.
     render::ReconstructionMode effectiveReconstruction;
     const VisibilityDisplay* visibilityDisplay = nullptr; ///< Matched retired bounds.
+    ViewportGizmoContext* gizmo = nullptr; ///< Editor-only handles and their owned drag lifecycle.
 };
 
 /// Number of HZB levels `render::hzbLayout` allocates for the renderer's current output extent;

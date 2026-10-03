@@ -27,7 +27,7 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def load_reference(path: Path) -> dict:
+def load_reference(path: Path, light_lab: bool = False) -> dict:
     reference = json.loads(path.read_text())
     schema = reference.get("schemaVersion")
     if schema not in (1, 2):
@@ -38,11 +38,17 @@ def load_reference(path: Path) -> dict:
     images = reference["images"]
     scenes = ("sponza", "damaged-helmet", "material-lab") if schema == 1 else (
         "sponza", "material-lab", "temporal-lab")
+    if light_lab:
+        if schema != 2:
+            raise ValueError("LightLab requires a schema 2 reference")
+        scenes = ("light-lab",)
+    count = len(scenes) * 5
     expected = {(scene, mode, scale) for scene in scenes
                 for mode, scale in (("off", 1), ("taa", 1), ("taa", 0.5), ("metalfx", 1), ("metalfx", 0.5))}
     actual = {(row["scene"], row["temporal"], row["renderScale"]) for row in images}
-    if len(images) != 15 or actual != expected or len({row["name"] for row in images}) != 15:
-        raise ValueError("reference must contain all fifteen distinct scene/mode/scale cases")
+    if len(images) != count or actual != expected or len({row["name"] for row in images}) != count:
+        raise ValueError("reference must contain all five distinct LightLab mode/scale cases" if light_lab
+                         else "reference must contain all fifteen distinct scene/mode/scale cases")
     for row in images:
         if not re.fullmatch(r"[a-z0-9.-]+", row["name"]) or not re.fullmatch(r"[0-9a-f]{64}", row["sha256"]):
             raise ValueError("invalid reference name or SHA-256")
@@ -51,24 +57,30 @@ def load_reference(path: Path) -> dict:
         if not isinstance(documents, dict) or set(documents) != set(scenes) or any(
                 not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value)
                 for value in documents.values()):
-            raise ValueError("reference requires three scene document SHA-256 values")
+            raise ValueError("reference requires the LightLab document SHA-256" if light_lab
+                             else "reference requires three scene document SHA-256 values")
     return reference
 
 
 def document_hash(path: Path) -> str:
-    """Match sceneDocumentHash: SHA-256 of JSON bytes followed by referenced buffer bytes."""
+    """Match sceneDocumentHash: JSON bytes, then animation bytes; geometry is covered by JSON."""
     data = path.read_bytes()
     parsed = json.loads(data)
     if not isinstance(parsed, dict):
         raise ValueError(f"{path.name}: expected a JSON object")
     buffers = parsed.get("buffers", [])
-    if not isinstance(buffers, list) or len(buffers) > 1 or (
-            buffers and (not isinstance(buffers[0], dict)
-                         or buffers[0].get("uri") != path.with_suffix(".bin").name)):
-        raise ValueError(f"{path.name}: expected at most one matching .bin companion")
+    animation = path.with_suffix(".bin")
+    geometry = path.with_suffix(".geometry.bin")
+    if not isinstance(buffers, list) or len(buffers) > 2 or any(
+            not isinstance(buffer, dict) or buffer.get("uri") not in (animation.name, geometry.name)
+            for buffer in buffers):
+        raise ValueError(f"{path.name}: expected matching animation and/or geometry .bin companions")
+    uris = [buffer["uri"] for buffer in buffers]
+    if len(set(uris)) != len(uris):
+        raise ValueError(f"{path.name}: duplicate .bin companion")
     digest = hashlib.sha256(data)
-    if buffers:
-        digest.update(path.with_suffix(".bin").read_bytes())
+    if animation.name in uris:
+        digest.update(animation.read_bytes())
     return digest.hexdigest()
 
 
@@ -137,8 +149,9 @@ def shader_hashes(app: Path) -> dict:
     return result
 
 
-def run(app: Path, output: Path, reference_path: Path, documents: Path | None = None) -> bool:
-    reference = load_reference(reference_path)
+def run(app: Path, output: Path, reference_path: Path, documents: Path | None = None,
+        light_lab: bool = False) -> bool:
+    reference = load_reference(reference_path, light_lab=light_lab)
     app, output = app.resolve(), output.resolve()
     if not app.is_file():
         raise ValueError(f"App binary missing: {app}")
@@ -199,13 +212,18 @@ def run(app: Path, output: Path, reference_path: Path, documents: Path | None = 
     report["complete"] = True
     report["allMatched"] = all(row["match"] for row in report["images"])
     report_path.write_text(json.dumps(report, indent=2) + "\n")
-    print(f"{sum(row['match'] for row in report['images'])}/15 byte-identical; report: {report_path}")
+    print(f"{sum(row['match'] for row in report['images'])}/{len(reference['images'])} byte-identical; report: {report_path}")
     return report["allMatched"]
 
 
+def selftest_fixture_root() -> Path:
+    """Locate immutable historical inputs used only by the tool's self-tests."""
+    return Path(__file__).resolve().parents[2] / "Tests/Golden/ux6-schema1-catalog"
+
+
 def copy_scene_document(scene: str, destination: Path) -> None:
-    """Copy a catalog scene's glTF and, when it has one, its .bin companion."""
-    catalog = Path(__file__).resolve().parents[2] / "Assets/Scenes"
+    """Copy a historical self-test scene and its optional animation companion."""
+    catalog = selftest_fixture_root()
     shutil.copyfile(catalog / f"{scene}.scene.gltf", destination / f"{scene}.scene.gltf")
     buffer = catalog / f"{scene}.scene.bin"
     if buffer.is_file():
@@ -226,7 +244,8 @@ class ParityTests(unittest.TestCase):
         self.assertEqual(mapped[2], "/frozen/documents/temporal-lab.scene.gltf")
 
     def test_schema_two_checks_document_and_buffer_before_image(self):
-        reference = load_reference(Path(__file__).with_name("reference.json"))
+        reference_path = selftest_fixture_root() / "reference.json"
+        reference = load_reference(reference_path)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for scene in reference["documents"]:
@@ -242,11 +261,10 @@ class ParityTests(unittest.TestCase):
                 (root / "Shaders").mkdir()
                 (root / "Shaders/test.metallib").write_bytes(b"shader")
                 with self.assertRaisesRegex(ValueError, "material-lab.*drift"):
-                    run(app, root / "output", Path(__file__).with_name("reference.json"), root)
+                    run(app, root / "output", reference_path, root)
                 capture.assert_not_called()
                 self.assertFalse((root / "output").exists())
-            shutil.copyfile(Path(__file__).resolve().parents[2] / "Assets/Scenes/material-lab.scene.gltf",
-                            root / "material-lab.scene.gltf")
+            copy_scene_document("material-lab", root)
             (root / "temporal-lab.scene.bin").write_bytes(
                 (root / "temporal-lab.scene.bin").read_bytes() + b"changed")
             with self.assertRaisesRegex(ValueError, "temporal-lab.*drift"):
@@ -269,7 +287,7 @@ class ParityTests(unittest.TestCase):
                 document_root_for(root / "App", None)
 
     def test_default_preflight_rejects_nearer_catalog_document(self):
-        reference_path = Path(__file__).with_name("reference.json")
+        reference_path = selftest_fixture_root() / "reference.json"
         reference = load_reference(reference_path)
         with tempfile.TemporaryDirectory() as directory:
             checkout = Path(directory)
@@ -300,8 +318,7 @@ class ParityTests(unittest.TestCase):
             shadow = nearer / "sponza.scene.gltf"
             shadow.unlink()
             shadow.mkdir()
-            shutil.copyfile(Path(__file__).resolve().parents[2] / "Assets/Scenes/sponza.scene.gltf",
-                            catalog / "sponza.scene.gltf")
+            copy_scene_document("sponza", catalog)
             with mock.patch.object(subprocess, "run") as capture:
                 with self.assertRaisesRegex(ValueError, "sponza.*document drift"):
                     run(app, output, reference_path)
@@ -309,7 +326,7 @@ class ParityTests(unittest.TestCase):
             self.assertFalse(output.exists())
 
     def test_malformed_document_shapes_refuse_with_scene_name(self):
-        reference_path = Path(__file__).with_name("reference.json")
+        reference_path = selftest_fixture_root() / "reference.json"
         reference = load_reference(reference_path)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -429,7 +446,7 @@ class ParityTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 1 if "--temporal" in command and "off" in command else 0)
 
             with mock.patch.object(subprocess, "run", side_effect=capture), contextlib.redirect_stdout(io.StringIO()):
-                self.assertFalse(run(app, root / "output", Path(__file__).with_name("reference.json"), documents))
+                self.assertFalse(run(app, root / "output", selftest_fixture_root() / "reference.json", documents))
             report = json.loads((root / "output/parity.json").read_text())
             self.assertTrue(report["complete"])
             self.assertFalse(report["allMatched"])
@@ -457,6 +474,8 @@ def main() -> int:
     parser.add_argument("--app", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--reference", type=Path, default=Path(__file__).with_name("reference.json"))
+    parser.add_argument("--light-lab", action="store_true",
+                        help="validate and capture an explicit five-mode LightLab reference")
     parser.add_argument("--documents", type=Path,
                         help="map reference scene ids to this frozen document directory")
     parser.add_argument("--selftest", action="store_true")
@@ -467,7 +486,7 @@ def main() -> int:
     if args.app is None or args.output is None:
         parser.error("--app and --output are required unless --selftest is used")
     try:
-        return 0 if run(args.app, args.output, args.reference, args.documents) else 1
+        return 0 if run(args.app, args.output, args.reference, args.documents, args.light_lab) else 1
     except (OSError, ValueError, KeyError) as error:
         print(f"parity refused: {error}", file=sys.stderr)
         return 1

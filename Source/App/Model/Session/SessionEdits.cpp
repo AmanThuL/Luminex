@@ -51,6 +51,44 @@ struct PreparedBatch {
 };
 
 //======================================================================================================================
+rojoRHI::Result<void> poseEditsAllowed(const SceneSession& session, const PreparedBatch& batch) {
+    // Resolve every permission before the first write, including an imported subject's sibling
+    // primitives, so a later refusal cannot leave an earlier edit applied.
+    const auto checkObject = [&](size_t index) -> rojoRHI::Result<void> {
+        if (const auto lock = session.objectPoseLock(index); lock != PoseLock::None)
+            return std::unexpected(
+                rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, std::string(poseLockReason(lock))});
+        return {};
+    };
+    for (const auto& [index, transform] : batch.objects) {
+        if (const auto allowed = checkObject(index); !allowed)
+            return allowed;
+        const auto& binding = session.loadedScene()->binding;
+        if (index >= binding.objectImportedNode.size())
+            continue;
+        const auto imported = binding.objectImportedNode[index];
+        if (imported == engine::kGeneratedNode)
+            continue;
+        if (imported >= binding.importedNodes.size())
+            return std::unexpected(
+                rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, "Object binding is invalid"});
+        for (const auto target : binding.importedNodes[imported].objects)
+            if (const auto allowed = checkObject(target); !allowed)
+                return allowed;
+    }
+    for (const auto& [key, light] : batch.lights) {
+        const auto* current = session.scene().light(light.id);
+        const auto lock = session.lightPoseLock(EditorSubject::LocalLight, 0, light.id);
+        if (current && lock != PoseLock::None &&
+            (current->position != light.value.position ||
+             current->direction != light.value.direction))
+            return std::unexpected(
+                rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, std::string(poseLockReason(lock))});
+    }
+    return {};
+}
+
+//======================================================================================================================
 std::string jsonVector(glm::vec3 value) {
     JsonWriter writer;
     writer.beginArray(true);
@@ -283,7 +321,7 @@ std::expected<void, std::string> updateBloom(asset::SceneLook::Bloom& bloom,
 std::expected<PreparedBatch, std::string> prepare(const SceneSession& session,
                                                   const SceneTreeView& tree,
                                                   std::span<const ProposalEdit> edits) {
-    if (!session.loadedScene() || session.measurementActive())
+    if (!session.loadedScene())
         return std::unexpected("Scene edits require a document and no active measurement");
     if (edits.empty())
         return std::unexpected("edits must be nonempty");
@@ -298,6 +336,31 @@ std::expected<PreparedBatch, std::string> prepare(const SceneSession& session,
         if (!id.empty())
             rows.try_emplace(id, &row);
     }
+    // Pose permissions precede storage restrictions and the measurement-wide refusal so every
+    // locked field names the same reason as the Inspector, even on generated or animated rows.
+    for (const auto& edit : edits) {
+        const auto found = rows.find(edit.subject);
+        if (found == rows.end())
+            continue;
+        const auto& row = *found->second;
+        if (row.subject == EditorSubject::LocalLight && !session.scene().light(row.lightId))
+            continue;
+        const auto prefix = edit.subject + "/" + edit.field + ": ";
+        if (edit.field == "mobility")
+            return std::unexpected(prefix + "Mobility is authored in the scene file");
+        PoseLock lock = PoseLock::None;
+        if (row.subject == EditorSubject::Object &&
+            (edit.field == "position" || edit.field == "eulerDegrees" || edit.field == "scale"))
+            lock = session.objectPoseLock(row.index);
+        else if ((row.subject == EditorSubject::LocalLight ||
+                  row.subject == EditorSubject::DirectionalLight) &&
+                 (edit.field == "position" || edit.field == "direction"))
+            lock = session.lightPoseLock(row.subject, row.index, row.lightId);
+        if (lock != PoseLock::None)
+            return std::unexpected(prefix + std::string(poseLockReason(lock)));
+    }
+    if (session.measurementActive())
+        return std::unexpected("Scene edits require a document and no active measurement");
     for (const auto& edit : edits) {
         const auto found = rows.find(edit.subject);
         if (found == rows.end() || found->second->generated)
@@ -604,8 +667,11 @@ rojoRHI::Result<void> applyEdits(SceneSession& session, const SceneTreeView& tre
     auto prepared = prepare(session, tree, edits);
     if (!prepared)
         return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, prepared.error()});
+    if (const auto allowed = poseEditsAllowed(session, *prepared); !allowed)
+        return allowed;
     for (const auto& [index, transform] : prepared->objects)
-        session.editObject(index, transform);
+        if (auto result = session.editObject(index, transform); !result)
+            return result;
     for (const auto& [key, light] : prepared->lights)
         if (auto result = session.editLocalLight(light.id, light.value); !result)
             return result;

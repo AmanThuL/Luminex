@@ -28,8 +28,7 @@ LMX_GRAPH_DUMP=/tmp/luminex-frame.txt xmake run App
 
 The path must be absolute. The first frame the run compiles is written and no later one is, so the
 file is the same whether the run lasted one frame or ten thousand. It lists the imported resources,
-the declared sinks, each scheduled pass with its uses in schedule order, each culled pass with the
-reason it was dropped, and the barriers the graph derived. It carries no GPU timing and no
+the declared sinks, each scheduled pass with its uses in schedule order, each culled pass with the reason it was dropped, and the barriers the graph derived. It carries no GPU timing and no
 driver-reported value, so it answers "was this pass declared, ordered, and kept?" rather than "how long did it take", which is the timing trace's question.
 
 A pass listed under `culled` never ran; its reason explains why. Window > Render Graph opens the detached graph window. It publishes one owned frame with exact matched timings at 4 Hz; first data and
@@ -44,7 +43,7 @@ the path or write failure, with Copy path/Reveal. This dump contains graph decla
 ## Console and editor selection diagnostics
 
 Window > Console opens the bounded read-only log viewer. It shares the bottom dock with the compact Performance tab; Rendering shares Inspector's dock. Inspector and Console are the default active
-tabs. Detailed Performance and Render Graph are detached, closed by default. Window toggles each surface separately. Schema 5 saves eight visibilities, UI scale, appearance and density alongside docking and window bounds.
+tabs. Detailed Performance and Render Graph are detached, closed by default. Window toggles each surface separately. Schema 6 saves nine visibilities, UI scale, appearance and density alongside docking and window bounds; schema 5 restores with Session hidden.
 Schema 4 restores without rebuilding using Auto/Comfortable; schema 3 keeps six visibilities, scale and detached bounds and rebuilds main docks once with the new tabs. Schema 2 keeps valid scale
 and rebuilds defaults; unknown schemas use defaults. Reset Default Layout preserves scale, appearance and density, closes both detached windows and resets Performance's next-open bounds.
 See [workspace recovery](editor-workspace.md#workspace-recovery) for persistence and Gallery behavior.
@@ -58,6 +57,11 @@ commands.
 The selection outline follows visible geometry, including depth occlusion and masked cutouts. Foreground occlusion cuts never become silhouette edges; border endpoints are depth-tested. App adds
 `lmx.pass.selection.coverage`, `lmx.pass.selection.visibility` and `lmx.pass.selection.outline` to a separate SDR target. Their costs appear in graph/timing records; scene targets and temporal history
 stay unchanged. Offscreen screenshots/sequences omit these editor cues. See the [UX1 design](../milestones/ux/ux1-design.md) and [acceptance record](../milestones/ux/ux1.md).
+
+View > Gizmo chooses viewport transform tools; [transform tools](editor-workspace.md#transform-tools)
+explains Q/W/E/R/Y/X, mobility, local scale axes and drag cancellation. The tools draw in editor UI,
+so headless screenshots/sequences and Session capture children omit them. Native GPU traces can include the UI pass: inspect scene and UI encoders separately before claiming scene-encoder
+isolation. [Gizmo validation](../milestones/ux/ux6-validation-gizmo.md) preserves original failures, passing screenshot pairs and incomplete native drag/scene-encoder verification.
 
 ## Capture and inspect a frame
 
@@ -132,8 +136,7 @@ Find `lmx.render.vendorMotion`, `lmx.render.vendorReactive` and `lmx.render.vend
 scene color, current depth and the output color-history slot. The exposure texel is **reciprocal
 applied exposure**; zero packed motion with reactive 1 represents the invalid-motion sentinel.
 
-The vendor pass's command-buffer groups name the pass and `lmx.temporal.vendor.scaler MetalFX
-Temporal`; its owned fence has a `.handoff` suffix. These labels identify the opaque algorithm;
+The vendor pass's command-buffer groups name the pass and `lmx.temporal.vendor.scaler MetalFX Temporal`; its owned fence has a `.handoff` suffix. These labels identify the opaque algorithm;
 the current automated dump does not recover MetalFX's private encoder names. There is no public scaler label property. CPU-readable outputs additionally show `.privateOutput`
 and `.outputCopy`; that copy belongs to the external pass's GPU timing. Graph dumps describe the
 declared external operation, not the vendor's private encoders. Use Xcode to inspect opaque encoder ordering or fence state when the decoded manifest cannot establish them.
@@ -162,8 +165,8 @@ performance claim. A missing optimized-away empty encoder is not a zero-duration
 ## Inspect local lighting
 
 `--local-lights off|direct|clustered` selects one shared point/spot shading loop; Clustered is the default and Direct remains the reference. The [default decision](../milestones/m7/m7.5-validation.md#default-decision) follows passed lossless-list/scoped exact-image gates, independently of cost and remaining obligations. Local lights are unshadowed and affect opaque/masked surfaces. Zero-enabled frames import no light table and declare no light-list/debug pass, even with retained disabled rows. Zero-enabled mode-only edits preserve temporal history; content/live-mode changes still reset it. The [follow-up](../milestones/m7/m7.5-followup.md) separates these causal invariants from pending temporal repeatability diagnosis and preserves the original F5 failure. Rendering > Lighting publishes requested/effective mode and retired counters at 250 ms; capacities, list memory and frame IDs are in Diagnostics. Details opens Performance for
-pass costs. Overflow/check warnings update immediately. LightLab accepts `--lab-lights 1..4096` (default 256) and `--lab-light-pile P` (default 0), with total ≤4096. Its 12-second rail and authored light orbits repeat deterministically with 0.25 m whole-orbit material-field clearance. Sponza authors 16 static point/spot lights and a 120-second two-level corridor/atrium tour. Its `--local-light-rig on|off` defaults on; explicit off disables the group, retaining identities and allocated rows. Both scene restrictions apply in every run mode. Hierarchy > Local lights uses clipped rows and full LightId selection. The Inspector header enables/disables the selected light without deleting its edits or orbit. Disabled lights remain editable and consume identity capacity; Enabled lights reports only contributors. Inspector edits position, sRGB color, relative intensity, range and spot direction/cones; stale IDs are rejected. Rendering has
-no rig toggle; Lighting Reset restores mode/diagnostics and clears the bounded pile before table preparation, preserving individual light edits. Pause to retain manual orbit-position edits. Shared punctual specular filtering broadens the normal footprint; authored roughness, directional light and IBL stay unchanged.
+pass costs. Overflow/check warnings update immediately. LightLab accepts `--lab-lights 1..4096` (default 256) and `--lab-light-pile P` (default 0), with total ≤4096. Its 12-second rail and authored light orbits repeat deterministically with 0.25 m whole-orbit material-field clearance. Sponza authors 16 stationary Movable point/spot lights and a 120-second two-level corridor/atrium tour. Its `--local-light-rig on|off` defaults on; explicit off disables the group, retaining identities and allocated rows. Both scene restrictions apply in every run mode. Hierarchy > Local lights uses clipped rows and full LightId selection. The Inspector header enables/disables the selected light without deleting its edits or orbit. Disabled lights remain editable and consume identity capacity; Enabled lights reports only contributors. Inspector edits position, sRGB color, relative intensity, range and spot direction/cones; stale IDs are rejected. Rendering has
+no rig toggle; Lighting Reset restores mode/diagnostics and clears the bounded pile before table preparation, preserving individual light edits. Pause retains manual generated-light orbit positions; later playback samples replace them. Authored Static/animated light poses use shared locks, while non-pose edits remain available. Shared punctual specular filtering broadens the normal footprint; authored roughness, directional light and IBL stay unchanged.
 
 ```sh
 xmake run App --scene light-lab --lab-lights 256 --local-lights clustered --light-check
@@ -274,14 +277,12 @@ the file differs from the bloom-off capture (`cmp` reports a byte offset) and op
 ### Editor UI scale
 
 View > UI Scale adjusts fonts and controls together; toolbar percentage/Cmd+0 resets to 100%.
-See [scale and fonts](editor-workspace.md#editor-ui-scale) for presets, shortcut suppression,
-Geist resources and font recovery.
+See [scale and fonts](editor-workspace.md#editor-ui-scale) for presets, shortcut suppression, Geist resources and font recovery.
 
 ### Editor appearance and density
 
 View > Appearance selects Auto (system), Light or Dark; View > Density selects Comfortable or
-Compact. Both persist in workspace schema 6. See [appearance and density](editor-workspace.md#appearance-and-density)
-for CLI override scope, native chrome, Reduce Motion and recovery.
+Compact. Both persist in workspace schema 6. See [appearance and density](editor-workspace.md#appearance-and-density) for CLI override scope, native chrome, Reduce Motion and recovery.
 
 ### Session evidence
 
@@ -291,5 +292,4 @@ Headless children require the clean loaded pair and use effective settings and c
 with temporal-off scale 1. One job runs at a time; Stop cancels session work. Output names stay in
 the build-local session directory; failed spawn logs are retained. GPU certification hashes each
 regular trace payload and schema sidecar; sequence certification hashes the manifest and log.
-Hash failures are explicit. Export retains the held Console search/severity view with Operator and
-Agent selected; its actual-write result appears after the write and in the next Export.
+Hash failures are explicit. Export retains the held Console search/severity view with Operator and Agent selected; its actual-write result appears after the write and in the next Export.

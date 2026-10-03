@@ -260,6 +260,7 @@ void EditorShell::prepareUIFrame() {
         m_activePalette = m_themeTransition.sample(now);
         applyImGuiColors(*m_baseUiStyle, m_activePalette);
         applyImGuiColors(style, m_activePalette);
+        applyViewportGizmoColors(m_activePalette);
         editor_style::setActivePalette(m_activePalette);
         m_themeTransitionPending = m_themeTransition.active(now);
     }
@@ -472,6 +473,9 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
     // Whether the Viewport is both visible and expanded this frame -- the condition under which a
     // look in progress may continue (spec section 8: closing or collapsing it must end one).
     bool viewportUsable = false;
+    m_selection = resolveSelection(m_selection, m_activeSceneId, m_session.scene());
+    ViewportGizmoContext gizmo{m_session,   m_selection,          m_session.camera(), m_gizmo,
+                               m_gizmoDrag, !m_playback.active(), &m_gizmoLifecycle};
     if (m_workspace.visibility.isVisible(EditorPanel::Viewport)) {
         bool open = true;
         const ViewportPanelResult result = drawViewportPanel(
@@ -484,7 +488,8 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
                                        .selection = m_selection,
                                        .effectiveReconstruction =
                                            effectiveReconstruction(renderer, device),
-                                       .visibilityDisplay = &m_visibilityDisplay});
+                                       .visibilityDisplay = &m_visibilityDisplay,
+                                       .gizmo = &gizmo});
         setPanelVisible(EditorPanel::Viewport, open);
         m_viewportHovered = result.hovered;
         m_viewportFocused = result.focused;
@@ -502,6 +507,7 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
             }
         }
     } else {
+        drawViewportGizmo(gizmo, {}, {});
         // A hidden Viewport measures nothing, so the last extent stands and the debounce neither
         // advances nor asks for a resize to a size no panel is showing.
         m_viewportHovered = false;

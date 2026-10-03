@@ -36,6 +36,8 @@ struct SceneTreeRow {
     bool generated = false; ///< Session-only generated subject.
     bool enabled = true;    ///< Authored or session-only own flag.
     bool effective = true;  ///< Ancestor AND including session masks.
+    bool movable = false;   ///< Saved subject permits pose edits when otherwise available.
+    bool edited = false;    ///< Saved fields differ from their loaded document baseline.
 };
 
 /// Visible rows plus counts before collapse: search counts include retained ancestors and every

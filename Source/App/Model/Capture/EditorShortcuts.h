@@ -13,6 +13,7 @@ enum class EditorShortcut {
     ResetCamera,   ///< Restore the scene camera.
     Capture,       ///< Request a GPU capture; an unavailable request reports its recovery.
     Document,      ///< Request a document action; workflow owns dirty and transport gates.
+    Gizmo,         ///< Choose transient transform tools or axes without editing the scene.
     Quit,          ///< Request quit from any focus; its workflow confirms unsaved changes.
 };
 

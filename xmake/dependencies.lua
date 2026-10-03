@@ -48,3 +48,11 @@ target("ImGuiNodeEditor")
               "../ThirdParty/imgui-node-editor/crude_json.cpp")
     add_includedirs("../ThirdParty/imgui-node-editor", {public = true})
     add_deps("ImGui")
+
+-- Editor-only transform handles; the pin and license are recorded by xmake/setup.lua and ADR 0032.
+target("ImGuizmo")
+    set_kind("static")
+    set_warnings("none")
+    add_files("../ThirdParty/ImGuizmo/src/ImGuizmo.cpp")
+    add_includedirs("../ThirdParty/ImGuizmo/src", {public = true})
+    add_deps("ImGui")

@@ -39,6 +39,7 @@
 #include "App/Panels/Graph/RenderGraphPanel.h"
 #include "App/Panels/Performance/PerformancePanel.h"
 #include "App/Panels/Session/SessionPanel.h"
+#include "App/Panels/Viewport/ViewportGizmo.h"
 #include "App/Shell/ChildRun.h"
 #include "App/Shell/NativeMenu.h"
 #include "Engine/View/Camera.h"
@@ -375,6 +376,9 @@ private:
     // including the failed-switch retain path; healed with resolveSelection() once per frame,
     // before panels draw, so a stale scene id or out-of-range index never reaches the Inspector.
     EditorSelection m_selection;
+    GizmoState m_gizmo;    ///< Transient viewport tool and axes; never serialized.
+    GizmoDrag m_gizmoDrag; ///< Original pose while the viewport owns a drag.
+    ViewportGizmoLifecycle m_gizmoLifecycle; ///< Held-button suppression survives drag completion.
     std::string m_sceneFilter;
     SceneTreeState m_sceneTree; ///< Hierarchy collapse choices and cached tree.
     SceneLoadState m_sceneLoading;

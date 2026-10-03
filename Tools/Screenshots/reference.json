@@ -21,9 +21,9 @@
   },
   "evidenceLimit": "All fifteen hashes were captured on the same device, release build and fixed 1280x720/32-frame BMP settings: ten lab hashes after fixture integration, five Sponza hashes re-captured from the integrated head on 2026-09-29 after two identical rounds, because no current build, including the parent, reproduced the historical schema-1 values. The re-baseline and the normalized directional rig were authorized by the owner on 2026-09-29. Original schema-1 reference and eight documents remain frozen for explicit-path replay; neither historical failures nor tolerances are erased.",
   "documents": {
-    "sponza": "fce4c430a537e1cb2e97d6aa2a597f6cf481aab2d55ecb028308657ebaf0d2dc",
-    "material-lab": "46924032cc023d36f662286fd1149958ff23de671c5abac302f93e0860d856a6",
-    "temporal-lab": "4eda44f54b3000353e2cb783bb49892af67760f878b7204b130500e3ef884114"
+    "sponza": "a5d680c622431f52022e68ceb3995f7db030cda7f52789d132e99865503647f9",
+    "material-lab": "679fc66845e4ccccbdd3aedfdea6b6f6fffb252472be4708a9d5ee78faa1bfc9",
+    "temporal-lab": "80e6e41517c7697331c573fb89ef7e199471ab508be8299ac4689f9168a21dfa"
   },
   "images": [
     {
@@ -66,35 +66,35 @@
       "scene": "material-lab",
       "temporal": "off",
       "renderScale": 1,
-      "sha256": "227dc4bef138821a23857ccec7f280555bcae89e645944d2d753e0fa306ec622"
+      "sha256": "94ef7be272f935edc5f1422b43972c05381ff6421aa63822a5edf06e59ab80ce"
     },
     {
       "name": "material-lab-taa-1",
       "scene": "material-lab",
       "temporal": "taa",
       "renderScale": 1,
-      "sha256": "a6386adf9bb7b7ae9651bf7dca89b12cc881863d5db60230e705411bdab26646"
+      "sha256": "eb88439dee8df5547503ae066b5f356e98c2c8412d1d50e862ffbb97562078a0"
     },
     {
       "name": "material-lab-taa-0.5",
       "scene": "material-lab",
       "temporal": "taa",
       "renderScale": 0.5,
-      "sha256": "ef7cfb3ff64ba0b1ef9b18b6428fc3fed96609655446d154a90412f1ad5d6166"
+      "sha256": "bfb0ecd30f63176e38522fe7426d030c665f62095da32ece2f90ccc681bbc68f"
     },
     {
       "name": "material-lab-vendor-1",
       "scene": "material-lab",
       "temporal": "metalfx",
       "renderScale": 1,
-      "sha256": "dc8e2bdd3ea024d676402e583d1fe12570e7648fdda71c47fdcebead50c7ff15"
+      "sha256": "04b51903a3b73b6fa669bffb03d0a5ce68ac7cf43ca7fa33055dac972a169bbd"
     },
     {
       "name": "material-lab-vendor-0.5",
       "scene": "material-lab",
       "temporal": "metalfx",
       "renderScale": 0.5,
-      "sha256": "f55237e7b197a88bd211bc4889f519ef28bf1b8426efbb2613b850957a0cf319"
+      "sha256": "6f64e56c35cb04411aab1014cab13307ef30bf9a04e6fe143311d84876e42f2f"
     },
     {
       "name": "temporal-lab-off",
@@ -131,5 +131,13 @@
       "renderScale": 0.5,
       "sha256": "6e547b4d39ed9c8e5f60b6b00552925753c8ad130ece99ca97ea8436510fc43a"
     }
-  ]
+  ],
+  "ux6ReferenceUpdate": {
+    "date": "2026-10-03",
+    "authorization": "Owner accepted Task12 MaterialLab five reference updates and authorized resuming native verification. This is image-reference acceptance only, not milestone acceptance or merge.",
+    "evidence": "../Luminex-evidence/ux6/task12-image-review/metrics.json",
+    "previousReferenceSha256": "b37bb9b89919b35a354c99945e0603547d6240a260823f707862b6296d2fe20e",
+    "scope": "Five MaterialLab image hashes and three loaded-document pins only; Sponza and TemporalLab image hashes unchanged.",
+    "retainedFailure": "Original standing gate10/15; Sponza MetalFX1 paired39/40 total Sponza, one parent-only second hash; no tolerance added."
+  }
 }

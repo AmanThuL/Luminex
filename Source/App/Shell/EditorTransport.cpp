@@ -82,6 +82,7 @@ void EditorShell::buildPlaybackTransport() {
                                          .active = m_playback.active(),
                                          .measurementActive = m_measurement.active(),
                                          .hasCameraRail = !scene.animation.cameraTrack.empty(),
+                                         .gizmo = &m_gizmo,
                                          .readout = readout};
     ActivityInputs inputs{.capturePending =
                               m_actions.captureResult().status == ActionStatus::Pending,
@@ -161,10 +162,11 @@ void EditorShell::buildPlaybackTransport() {
                                zoomWidth,
                                spacing,
                                activity ? editor_style::activityStripWidth(*activity) : 0,
-                               activity ? editor_style::activityStripWidth(*activity, false) : 0};
+                               activity ? editor_style::activityStripWidth(*activity, false) : 0,
+                               playbackToolbarGizmoWidth(context)};
     const auto fit = fitMenuBar(available, widths);
     ImGui::SetCursorPosX(fit.transportX);
-    const auto action = drawPlaybackToolbar(context, fit.showReadout);
+    const auto action = drawPlaybackToolbar(context, fit.showReadout, fit.showGizmo);
     bool activityStop = false;
     if (activity) {
         ImGui::SameLine(0.0f, spacing);

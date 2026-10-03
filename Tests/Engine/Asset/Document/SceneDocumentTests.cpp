@@ -6,17 +6,23 @@
 #include "Core/Util/Sha256.h"
 #include "Engine/Asset/Model/JsonTokens.h"
 #include "Support/GoldenFile.h"
+#include "Support/SceneDocumentFixtures.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <bit>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <limits>
+#include <ranges>
 #include <string>
 
 using namespace lmx::asset;
+using lmx::test::animatedDocument;
+using lmx::test::completeDocument;
 namespace fs = std::filesystem;
 
 namespace {
@@ -40,23 +46,6 @@ std::string readText(const fs::path& path) {
     const auto bytes = lmx::readWholeFile(path);
     REQUIRE(bytes);
     return {reinterpret_cast<const char*>(bytes->data()), bytes->size()};
-}
-
-//======================================================================================================================
-SceneDocument animatedDocument() {
-    SceneDocument doc;
-    doc.name = "Document test";
-    doc.nodes = {{.name = "Camera", .camera = 0}};
-    doc.rootNodes = {0};
-    doc.cameras = {{.name = "Perspective"}};
-    DocAnimation animation;
-    animation.name = "Camera rail";
-    animation.keyCount = 2;
-    animation.channels = {{.node = 0,
-                           .path = DocChannelPath::Translation,
-                           .values = {{0.0f, 1.0f, 2.0f, 0.0f}, {1.0f, 2.0f, 3.0f, 0.0f}}}};
-    doc.animations.push_back(animation);
-    return doc;
 }
 
 //======================================================================================================================
@@ -89,24 +78,6 @@ void copyJson(lmx::JsonWriter& writer, const JsonNode& node, std::string_view ta
         writer.number(*node.asDouble());
     else
         FAIL("unexpected null in fixture");
-}
-
-//======================================================================================================================
-SceneDocument completeDocument() {
-    auto doc = animatedDocument();
-    doc.look.environment.hdri =
-        SceneLook::Hdri{.uri = "Fetched/studio.hdr", .sha256 = std::string(64, 'a')};
-    DocNode source;
-    source.name = "Asset";
-    source.asset = DocAsset{"Fetched/model.gltf", std::string(64, 'b')};
-    source.overrides = {{.node = 7, .name = "Mesh", .enabled = false, .pose = ObjectPose{}}};
-    doc.nodes.push_back(source);
-    doc.nodes.push_back(
-        {.name = "Lab", .generator = DocGenerator{"MaterialLab", {{"first", 1.25}, {"a/b", 5.0}}}});
-    doc.lights = {{.name = "Key"}};
-    doc.nodes.push_back({.name = "Key node", .light = 0, .role = "key", .castsShadow = true});
-    doc.rootNodes = {0, 1, 2, 3};
-    return doc;
 }
 
 //======================================================================================================================
@@ -339,11 +310,13 @@ TEST_CASE("candidate buffer path decodes the glTF URI before its file exists",
 //======================================================================================================================
 TEST_CASE("every required LMX field rejects missing and mistyped values at its exact pointer",
           "[asset][scene-document]") {
-    const auto doc = completeDocument();
+    const auto doc = sceneDocumentSaveForm(completeDocument());
     const auto path = outputPath("complete.scene.gltf");
     REQUIRE(saveSceneDocument(doc, path));
     const auto text = sceneDocumentJson(doc, "complete.scene.bin");
-    const auto parsed = JsonTokens::parse(text);
+    // Legacy validation inputs retain their independently named animation buffer.
+    const auto parsed =
+        JsonTokens::parse(sceneDocumentJson(completeDocument(), "complete.scene.bin"));
     REQUIRE(parsed);
     const std::string root = "/extensions/LMX_scene";
     std::vector<std::string> fields = {
@@ -455,6 +428,7 @@ TEST_CASE("invalid hierarchy and model saves fail without replacing existing doc
 TEST_CASE("node transform serialization retains signed zero and exact quaternion components",
           "[asset][scene-document]") {
     auto doc = animatedDocument();
+    doc.schemaVersion = kSceneDocumentSchema;
     doc.nodes[0].translation.x = -0.0f;
     doc.nodes[0].rotation.y = -0.0f;
     const auto path = outputPath("signed-zero.scene.gltf");
@@ -805,4 +779,288 @@ TEST_CASE("Save As refuses to overwrite a companion the target document does not
     fs::remove(binPath);
     REQUIRE(saveSceneDocument(doc, path));
     REQUIRE(saveSceneDocument(doc, path));
+}
+
+//======================================================================================================================
+TEST_CASE("emissive animation pointer reads beside a mesh rotation channel",
+          "[asset][scene-document][ux6-emissive]") {
+    auto doc = lmx::test::contentDocument();
+    doc.animations = {
+        {.name = "Object and sign",
+         .keyCount = 2,
+         .channels = {
+             {.node = 1, .path = DocChannelPath::Rotation, .values = {{0, 0, 0, 1}, {0, 1, 0, 0}}},
+             {.node = 2, .step = true, .values = {{1, 0, 0, 0}, {3, 0, 0, 0}}}}}};
+    const auto path = outputPath("emissive-pointer.scene.gltf");
+    REQUIRE(saveSceneDocument(doc, path));
+    auto json = readText(path);
+    const auto replace = [&](std::string_view pointer, std::string_view replacement) {
+        const auto parsed = JsonTokens::parse(json);
+        REQUIRE(parsed);
+        const auto root = parsed->root();
+        std::function<std::optional<JsonNode>(const JsonNode&)> find;
+        find = [&](const JsonNode& node) -> std::optional<JsonNode> {
+            if (node.path() == pointer)
+                return node;
+            if (node.isObject() || node.isArray())
+                for (size_t i = 0; i < node.size(); ++i)
+                    if (auto found = find(node.isObject() ? node.memberValue(i) : node.at(i)))
+                        return found;
+            return std::nullopt;
+        };
+        const auto value = find(root);
+        REQUIRE(value);
+        const auto old = value->sourceJson();
+        json.replace(size_t(old.data() - root.sourceJson().data()), old.size(), replacement);
+    };
+    replace(
+        "/animations/0/channels/1/target",
+        R"({"path":"pointer","extensions":{"KHR_animation_pointer":{"pointer":"/materials/0/extensions/KHR_materials_emissive_strength/emissiveStrength"}}})");
+    replace("/buffers/0/byteLength", "48");
+    replace("/bufferViews/2/byteLength", "8");
+    replace("/accessors/2/type", R"("SCALAR")");
+    replace("/extensionsUsed",
+            R"(["LMX_scene","KHR_materials_emissive_strength","KHR_animation_pointer"])");
+    writeText(path, json);
+    auto bytes = sceneDocumentBuffer(doc);
+    std::copy_n(bytes.begin() + 52, 4, bytes.begin() + 44);
+    bytes.resize(48);
+    {
+        std::ofstream file(outputPath("emissive-pointer.scene.bin"),
+                           std::ios::binary | std::ios::trunc);
+        file.write(reinterpret_cast<const char*>(bytes.data()), std::streamsize(bytes.size()));
+        REQUIRE(file.good());
+    }
+    const auto read = readSceneDocument(path);
+    REQUIRE(read);
+    REQUIRE(read->animations[0].channels.size() == 2);
+    CHECK(read->animations[0].channels[1].path == DocChannelPath::EmissiveStrength);
+    CHECK(read->animations[0].channels[1].material == 0);
+    CHECK(read->animations[0].channels[1].step);
+    CHECK_FALSE(read->animations[0].channels[0].material);
+    CHECK(read->animations[0].channels[0].values == doc.animations[0].channels[0].values);
+    CHECK(read->animations[0].channels[1].values == doc.animations[0].channels[1].values);
+    REQUIRE(saveSceneDocument(*read, outputPath("emissive-roundtrip.scene.gltf")));
+    const auto roundtrip = readSceneDocument(outputPath("emissive-roundtrip.scene.gltf"));
+    REQUIRE(roundtrip);
+    CHECK(sceneDocumentBuffer(*roundtrip) == bytes);
+    CHECK(sceneDocumentJson(*roundtrip, "emissive-roundtrip.scene.bin") ==
+          readText(outputPath("emissive-roundtrip.scene.gltf")));
+    const auto originalJson = json;
+    const std::pair<std::string, std::string> failures[]{
+        {"/animations/0/channels/1/target/extensions/KHR_animation_pointer/pointer",
+         R"("/materials/0/emissiveFactor")"},
+        {"/animations/0/channels/1/target/extensions/KHR_animation_pointer/pointer",
+         R"("/materials/2/extensions/KHR_materials_emissive_strength/emissiveStrength")"},
+        {"/animations/0/channels/1/target/extensions/KHR_animation_pointer/pointer",
+         R"("/materials/00/extensions/KHR_materials_emissive_strength/emissiveStrength")"},
+        {"/animations/0/samplers/1/interpolation", R"("LINEAR")"},
+        {"/animations/0/extensions/LMX_scene/sampleRate", "30"},
+        {"/accessors/2/type", R"("VEC3")"},
+        {"/extensionsUsed", R"(["LMX_scene","KHR_materials_emissive_strength"])"},
+        {"/extensionsUsed", R"(["LMX_scene","KHR_animation_pointer"])"},
+        {"/animations/0/channels/1/target",
+         R"({"node":2,"path":"translation","extensions":{"KHR_animation_pointer":{"pointer":"/materials/0/emissiveFactor"}}})"}};
+    for (const auto& [pointer, replacement] : std::views::reverse(failures)) {
+        INFO(pointer);
+        json = originalJson;
+        replace(pointer, replacement);
+        writeText(path, json);
+        const auto invalid = readSceneDocument(path);
+        REQUIRE_FALSE(invalid);
+        CHECK(invalid.error().message.contains(
+            pointer.ends_with("/sampleRate") ? "/animations/0"
+            : pointer.ends_with("/target")   ? pointer + "/extensions/KHR_animation_pointer/pointer"
+                                             : pointer));
+    }
+    writeText(path, originalJson);
+}
+
+//======================================================================================================================
+TEST_CASE("emissive material targets remain independent of unused node identities",
+          "[asset][scene-document][ux6-emissive]") {
+    auto doc = lmx::test::contentDocument();
+    doc.animations = {{.name = "Two signs",
+                       .keyCount = 2,
+                       .channels = {{.path = DocChannelPath::EmissiveStrength,
+                                     .material = 0,
+                                     .step = true,
+                                     .values = {{1, 0, 0, 0}, {3, 0, 0, 0}}},
+                                    {.path = DocChannelPath::EmissiveStrength,
+                                     .material = 1,
+                                     .step = true,
+                                     .values = {{2, 0, 0, 0}, {4, 0, 0, 0}}}}}};
+    const auto path = outputPath("emissive-materials.scene.gltf");
+    REQUIRE(saveSceneDocument(doc, path));
+    const auto read = readSceneDocument(path);
+    REQUIRE(read);
+    CHECK(read->animations[0].channels[0].material == 0);
+    CHECK(read->animations[0].channels[1].material == 1);
+    doc.animations[0].channels[1].material = 0;
+    writeText(path, sceneDocumentJson(doc, "emissive-materials.scene.bin"));
+    const auto duplicate = readSceneDocument(path);
+    REQUIRE_FALSE(duplicate);
+    CHECK(duplicate.error().message.contains("/animations/0/channels/1/target"));
+    CHECK(duplicate.error().message.contains("duplicate"));
+    doc.animations[0].channels[1].material = 1;
+    writeText(path, sceneDocumentJson(doc, "emissive-materials.scene.bin"));
+    SECTION("missing material") {
+        doc.animations[0].channels[0].material.reset();
+    }
+    SECTION("out of range material") {
+        doc.animations[0].channels[0].material = 2;
+    }
+    SECTION("LINEAR material") {
+        doc.animations[0].channels[0].step = false;
+    }
+    SECTION("non 60 Hz material") {
+        doc.animations[0].sampleRate = 30;
+    }
+    SECTION("negative strength") {
+        doc.animations[0].channels[0].values[0].x = -1;
+    }
+    SECTION("material on transform") {
+        doc.animations[0].channels[0].path = DocChannelPath::Translation;
+    }
+    REQUIRE_FALSE(validateSceneDocumentModel(doc));
+}
+
+//======================================================================================================================
+TEST_CASE("schema one saves migrate to schema two without changing scene values",
+          "[asset][scene-document][ux6-mobility]") {
+    const auto source = lmx::test::goldenPath("scene-document-min.scene.gltf");
+    const auto legacy = readSceneDocument(source);
+    REQUIRE(legacy);
+    CHECK(legacy->schemaVersion == 1);
+    const auto path = outputPath("mobility-migration.scene.gltf");
+    REQUIRE(saveSceneDocument(*legacy, path));
+    const auto migrated = readSceneDocument(path);
+    REQUIRE(migrated);
+    CHECK(migrated->schemaVersion == 2);
+    CHECK(migrated->nodes[0].translation == legacy->nodes[0].translation);
+    CHECK(migrated->nodes[0].rotation == legacy->nodes[0].rotation);
+    CHECK(migrated->nodes[0].scale == legacy->nodes[0].scale);
+    CHECK(sceneDocumentBuffer(*migrated) == sceneDocumentBuffer(*legacy));
+}
+
+//======================================================================================================================
+TEST_CASE("mobility rejects invalid values and unsupported node kinds with its pointer",
+          "[asset][scene-document][ux6-mobility]") {
+    auto doc = animatedDocument();
+    doc.schemaVersion = 2;
+    const auto kind = GENERATE(0, 1, 2, 3);
+    if (kind == 1) {
+        doc.nodes.push_back({.name = "Group"});
+        doc.rootNodes.push_back(1);
+    } else if (kind == 2) {
+        doc.nodes.push_back({.name = "Generator", .generator = DocGenerator{"visibility-lab", {}}});
+        doc.rootNodes.push_back(1);
+    } else if (kind == 3) {
+        doc.nodes.push_back(
+            {.name = "Asset", .asset = DocAsset{"model.gltf", std::string(64, 'a')}});
+        doc.rootNodes.push_back(1);
+    }
+    auto json = sceneDocumentJson(doc, "mobility-invalid.scene.bin");
+    const size_t first = json.find("\"enabled\": true");
+    const size_t at = kind == 0 ? first : json.find("\"enabled\": true", first + 1);
+    REQUIRE(at != std::string::npos);
+    json.insert(at, kind == 3 ? "\"mobility\": \"dynamic\",\n" : "\"mobility\": \"static\",\n");
+    const auto path = outputPath("mobility-invalid.scene.gltf");
+    writeText(path, json);
+    writeBuffer(doc, outputPath("mobility-invalid.scene.bin"));
+    const auto read = readSceneDocument(path);
+    REQUIRE_FALSE(read);
+    CHECK(read.error().message.contains("/nodes/" + std::to_string(kind == 0 ? 0 : 1) +
+                                        "/extensions/LMX_scene/mobility"));
+}
+
+//======================================================================================================================
+TEST_CASE("schema two mobility round trips and override static stays explicit",
+          "[asset][scene-document][ux6-mobility]") {
+    auto doc = completeDocument();
+    doc.schemaVersion = 2;
+    doc.nodes[1].mobility = DocMobility::Movable;
+    doc.nodes[1].overrides[0].mobility = DocMobility::Static;
+    doc.nodes[3].mobility = DocMobility::Movable;
+    const auto path = outputPath("mobility-roundtrip.scene.gltf");
+    REQUIRE(saveSceneDocument(doc, path));
+    const auto read = readSceneDocument(path);
+    REQUIRE(read);
+    CHECK(read->nodes[0].mobility == DocMobility::Static);
+    CHECK(read->nodes[1].mobility == DocMobility::Movable);
+    CHECK(read->nodes[1].overrides[0].mobility == DocMobility::Static);
+    CHECK(read->nodes[3].mobility == DocMobility::Movable);
+    CHECK(sceneDocumentJson(*read, "mobility-roundtrip.scene.bin") == readText(path));
+    auto mobilityOnly = doc;
+    mobilityOnly.nodes[1].overrides[0].pose.reset();
+    mobilityOnly.nodes[1].overrides[0].enabled.reset();
+    REQUIRE(saveSceneDocument(mobilityOnly, outputPath("mobility-only.scene.gltf")));
+    REQUIRE(readSceneDocument(outputPath("mobility-only.scene.gltf")));
+}
+
+//======================================================================================================================
+TEST_CASE("schema one migration keeps every authored light movable and objects static",
+          "[asset][scene-document][ux6-mobility]") {
+    auto doc = completeDocument();
+    doc.schemaVersion = 1;
+    const auto oldPath = outputPath("mobility-legacy.scene.gltf");
+    writeText(oldPath, sceneDocumentJson(doc, "mobility-legacy.scene.bin"));
+    writeBuffer(doc, outputPath("mobility-legacy.scene.bin"));
+    const auto legacy = readSceneDocument(oldPath);
+    REQUIRE(legacy);
+    CHECK(legacy->schemaVersion == 1);
+    for (const auto& node : legacy->nodes)
+        CHECK(node.mobility == (node.light ? DocMobility::Movable : DocMobility::Static));
+    const auto newPath = outputPath("mobility-upgraded.scene.gltf");
+    REQUIRE(saveSceneDocument(*legacy, newPath));
+    const auto upgraded = readSceneDocument(newPath);
+    REQUIRE(upgraded);
+    CHECK(upgraded->schemaVersion == 2);
+    for (size_t i = 0; i < legacy->nodes.size(); ++i)
+        CHECK(upgraded->nodes[i].mobility == legacy->nodes[i].mobility);
+    CHECK(sceneDocumentBuffer(*upgraded) == sceneDocumentBuffer(*legacy));
+    auto expected = *legacy;
+    expected.schemaVersion = 2;
+    CHECK(sceneDocumentJson(*upgraded, "mobility-upgraded.scene.bin") ==
+          sceneDocumentJson(expected, "mobility-upgraded.scene.bin"));
+}
+
+//======================================================================================================================
+TEST_CASE("legacy save validates mobility before schema migration",
+          "[asset][scene-document][ux6-mobility][ux6-mobility-invalid]") {
+    auto doc = animatedDocument();
+    doc.schemaVersion = 1;
+    SECTION("invalid node enum") {
+        doc.nodes[0].mobility = static_cast<DocMobility>(255);
+    }
+    SECTION("movable camera") {
+        doc.nodes[0].mobility = DocMobility::Movable;
+    }
+    SECTION("movable group") {
+        doc.nodes.push_back({.name = "Group", .mobility = DocMobility::Movable});
+        doc.rootNodes.push_back(1);
+    }
+    SECTION("movable generator") {
+        doc.nodes.push_back({.name = "Generator",
+                             .mobility = DocMobility::Movable,
+                             .generator = DocGenerator{"visibility-lab", {}}});
+        doc.rootNodes.push_back(1);
+    }
+    SECTION("invalid override enum") {
+        doc = completeDocument();
+        doc.schemaVersion = 1;
+        doc.nodes[1].overrides[0].mobility = static_cast<DocMobility>(255);
+    }
+    const auto path = outputPath("mobility-invalid-legacy-save.scene.gltf");
+    auto bin = path;
+    bin.replace_extension(".bin");
+    fs::remove(path);
+    fs::remove(bin);
+    writeText(path, "unchanged target");
+    const auto result = saveSceneDocument(doc, path);
+    REQUIRE_FALSE(result);
+    CHECK(result.error().message.contains("mobility"));
+    CHECK(readText(path) == "unchanged target");
+    CHECK_FALSE(fs::exists(bin));
+    fs::remove(path);
 }

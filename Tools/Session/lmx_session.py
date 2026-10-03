@@ -212,7 +212,7 @@ def _buffer_path(document: Path, uri: str) -> Path:
 
 
 def document_hash(document: Path) -> str:
-    """Match sceneDocumentHash over raw glTF bytes followed by referenced buffer bytes."""
+    """Match JSON plus animation identity, retaining legacy single-buffer URI handling."""
     try:
         gltf = document.read_bytes()
     except OSError as error:
@@ -256,26 +256,48 @@ def document_hash(document: Path) -> str:
     if not isinstance(parsed, dict):
         raise ValueError("glTF JSON must be an object")
 
+    extensions = parsed.get("extensions")
+    scene = extensions.get("LMX_scene") if isinstance(extensions, dict) else None
+    schema2 = (isinstance(scene, dict) and type(scene.get("schemaVersion")) is int
+               and scene["schemaVersion"] == 2)
     buffers = parsed.get("buffers")
     if buffers is None and "buffers" not in parsed:
         return hashlib.sha256(gltf).hexdigest()
-    if not isinstance(buffers, list) or len(buffers) != 1 or not isinstance(buffers[0], dict):
+    if schema2:
+        if (not isinstance(buffers, list) or not 1 <= len(buffers) <= 2
+                or any(not isinstance(entry, dict) for entry in buffers)):
+            raise ValueError("buffers must contain the named animation and/or geometry buffers")
+    elif not isinstance(buffers, list) or len(buffers) != 1 or not isinstance(buffers[0], dict):
         raise ValueError("buffers must contain exactly one external buffer")
-    entry = buffers[0]
-    if not isinstance(entry.get("uri"), str):
-        raise ValueError("buffer uri must be a string")
-    buffer = _buffer_path(document, entry["uri"])
-    length = entry.get("byteLength")
-    if isinstance(length, bool) or not isinstance(length, int) or length <= 0:
-        raise ValueError("buffer byteLength must be a positive integer")
-    try:
-        binary = buffer.read_bytes()
-    except OSError as error:
-        raise ValueError(f"cannot read buffer '{buffer}': {error.strerror}") from error
-    if len(binary) != length:
-        raise ValueError(f"buffer byteLength is {len(binary)}, expected {length}")
     digest = hashlib.sha256(gltf)
-    digest.update(binary)
+    seen = set()
+    for entry in buffers:
+        if not isinstance(entry.get("uri"), str):
+            raise ValueError("buffer uri must be a string")
+        buffer = _buffer_path(document, entry["uri"])
+        geometry = False
+        if schema2:
+            # Compare decoded text before Path can normalize a leading './'.
+            decoded = unquote_to_bytes(entry["uri"]).decode("utf-8")
+            geometry = decoded == document.stem + ".geometry.bin"
+            if not geometry and decoded != document.stem + ".bin":
+                raise ValueError("buffer URI must match the document's named animation or geometry")
+            if decoded in seen:
+                raise ValueError("duplicate buffer URI")
+            seen.add(decoded)
+        length = entry.get("byteLength")
+        if isinstance(length, bool) or not isinstance(length, int) or length <= 0:
+            raise ValueError("buffer byteLength must be a positive integer")
+        # Immutable geometry identity is in JSON; C++ sceneDocumentHash does not read its file.
+        if geometry:
+            continue
+        try:
+            binary = buffer.read_bytes()
+        except OSError as error:
+            raise ValueError(f"cannot read buffer '{buffer}': {error.strerror}") from error
+        if len(binary) != length:
+            raise ValueError(f"buffer byteLength is {len(binary)}, expected {length}")
+        digest.update(binary)
     return digest.hexdigest()
 
 

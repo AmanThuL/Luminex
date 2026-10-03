@@ -1,6 +1,7 @@
 #include "Engine/Asset/Document/SceneDocument.h"
 
 #include "Core/IO/File.h"
+#include "Support/SceneDocumentFixtures.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -99,4 +100,51 @@ TEST_CASE("every catalog scene document equals its canonical rewrite",
         REQUIRE(doc);
         CHECK(canonicalBytesMatch(*doc, path));
     }
+}
+
+//======================================================================================================================
+TEST_CASE("schema 2 content and animation documents equal their canonical rewrite",
+          "[scene-document][canonical][ux6-write]") {
+    const fs::path root = "SceneDocuments/canonical-content";
+    fs::remove_all(root);
+    fs::create_directories(root);
+    const auto path = root / "cube.scene.gltf";
+    auto doc = lmx::test::contentDocument();
+    SECTION("geometry alone") {}
+    SECTION("animation and geometry") {
+        doc.animations = lmx::test::animatedDocument().animations;
+    }
+    REQUIRE(saveSceneDocument(doc, path));
+    const auto read = readSceneDocument(path);
+    REQUIRE(read);
+    CHECK(canonicalBytesMatch(*read, path));
+    CHECK(*lmx::readWholeFile(root / "cube.scene.geometry.bin") ==
+          lmx::asset::sceneDocumentGeometry(*read));
+}
+
+//======================================================================================================================
+TEST_CASE("catalog mobility authors only the helmet and every light movable",
+          "[scene-document][canonical][ux6-mobility]") {
+    const fs::path catalog = fs::path(LMX_REPO_ROOT) / "Assets/Scenes";
+    size_t scenes = 0, helmets = 0, lights = 0;
+    for (const auto& entry : fs::directory_iterator(catalog)) {
+        if (!entry.path().filename().string().ends_with(".scene.gltf"))
+            continue;
+        const auto doc = readSceneDocument(entry.path());
+        INFO(entry.path().string());
+        REQUIRE(doc);
+        CHECK(doc->schemaVersion == 2);
+        ++scenes;
+        for (const auto& node : doc->nodes) {
+            const bool helmet = node.asset && node.asset->uri.contains("DamagedHelmet");
+            const bool movable = node.light || helmet;
+            CHECK(node.mobility ==
+                  (movable ? lmx::asset::DocMobility::Movable : lmx::asset::DocMobility::Static));
+            helmets += helmet;
+            lights += node.light.has_value();
+        }
+    }
+    CHECK(scenes == 6);
+    CHECK(helmets == 1);
+    CHECK(lights == 34);
 }

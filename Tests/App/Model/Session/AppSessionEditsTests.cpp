@@ -1,4 +1,5 @@
 #include "App/Model/Session/SessionEdits.h"
+#include "App/Model/Session/SessionQueries.h"
 
 #include "Engine/Asset/Document/Orientation.h"
 #include "Engine/Asset/Model/JsonTokens.h"
@@ -33,11 +34,15 @@ bool dirty(const app::SceneSession& session) {
 engine::LoadedScene editableFixture(engine::LightId& lightId) {
     engine::LoadedScene loaded{.scene = std::make_unique<engine::Scene>()};
     loaded.document.name = "Bridge fixture";
+    loaded.objectMobility = {asset::DocMobility::Movable};
+    loaded.lightMobility = {asset::DocMobility::Movable};
     loaded.document.nodes = {
         {.name = "Camera", .translation = {0, 1, 4}, .camera = 0},
         {.name = "Asset",
          .asset = asset::DocAsset{.uri = "fixture.gltf", .sha256 = std::string(64, '0')}},
         {.name = "Lamp", .light = 0}};
+    loaded.document.nodes[1].mobility = asset::DocMobility::Movable;
+    loaded.document.nodes[2].mobility = asset::DocMobility::Movable;
     loaded.document.cameras = {{.name = "Lens"}};
     loaded.document.lights = {{.name = "Lamp",
                                .type = asset::DocLightType::Spot,
@@ -543,5 +548,239 @@ TEST_CASE("an orbiting light's position cannot be proposed while playback runs",
         app::SceneSession other;
         other.activate(resting, app::SceneActivationMotion::Reset);
         CHECK_FALSE(app::animationOwnedEditRefusal(other, editableTree(still), position, false));
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("bridge pose refusal leaves every object in a mixed batch unchanged",
+          "[app][session-edits][ux6-pose-batch]") {
+    engine::LightId id;
+    auto loaded = editableFixture(id);
+    loaded.document.nodes.push_back({.name = "Static asset", .mesh = 0});
+    loaded.document.rootNodes.push_back(3);
+    loaded.binding.nodes.push_back({.objects = {1}});
+    loaded.binding.objectNode.push_back(3);
+    loaded.binding.objectImportedNode.push_back(engine::kGeneratedNode);
+    loaded.binding.objectGeneratorNode.push_back(engine::kGeneratedNode);
+    loaded.objectMobility.push_back(asset::DocMobility::Static);
+    loaded.scene->objects.emplace_back();
+    app::SceneSession session;
+    session.activate(loaded, app::SceneActivationMotion::Reset);
+    auto tree = editableTree(id);
+    tree.rows.push_back(
+        {.subject = app::EditorSubject::Object, .index = 1, .node = 3, .label = "Static mesh"});
+    std::string expected = "node:3/position: Static: mobility is authored in the scene file";
+    SECTION("the selected static mesh refuses the batch") {}
+    SECTION("a hidden imported primitive refuses the batch") {
+        expected = "Static: mobility is authored in the scene file";
+        loaded.objectMobility[1] = asset::DocMobility::Movable;
+        loaded.binding.objectImportedNode[1] = 1;
+        loaded.binding.importedNodes.push_back({.assetRoot = 3, .objects = {1, 2}});
+        loaded.scene->objects.emplace_back();
+        loaded.objectMobility.push_back(asset::DocMobility::Static);
+        loaded.binding.objectNode.push_back(3);
+        loaded.binding.objectImportedNode.push_back(1);
+        loaded.binding.objectGeneratorNode.push_back(engine::kGeneratedNode);
+    }
+    const auto before = loaded.scene->objects;
+    const auto generation = session.editGeneration();
+    const std::vector<app::ProposalEdit> edits{{"imported:0", "position", "[2,3,4]"},
+                                               {"node:3", "position", "[5,6,7]"}};
+    const auto result = app::applyEdits(session, tree, edits);
+    REQUIRE_FALSE(result);
+    CHECK(result.error().message == expected);
+    for (size_t i = 0; i < before.size(); ++i) {
+        CHECK(loaded.scene->objects[i].position == before[i].position);
+        CHECK(loaded.scene->objects[i].previousModel == before[i].previousModel);
+    }
+    CHECK(session.editGeneration() == generation);
+}
+
+//======================================================================================================================
+TEST_CASE("bridge light pose refusal precedes earlier object mutation",
+          "[app][session-edits][ux6-pose-batch]") {
+    engine::LightId id;
+    auto loaded = editableFixture(id);
+    loaded.document.nodes[2].mobility = asset::DocMobility::Static;
+    loaded.lightMobility[0] = asset::DocMobility::Static;
+    app::SceneSession session;
+    session.activate(loaded, app::SceneActivationMotion::Reset);
+    const auto before = loaded.scene->objects[0];
+    const auto lightBefore = *loaded.scene->light(id);
+    const auto generation = session.editGeneration();
+    const std::vector<app::ProposalEdit> edits{{"imported:0", "position", "[2,3,4]"},
+                                               {"node:2", "position", "[5,6,7]"}};
+    const auto result = app::applyEdits(session, editableTree(id), edits);
+    REQUIRE_FALSE(result);
+    CHECK(result.error().message ==
+          "node:2/position: Static: mobility is authored in the scene file");
+    CHECK(loaded.scene->objects[0].position == before.position);
+    CHECK(loaded.scene->objects[0].previousModel == before.previousModel);
+    CHECK(loaded.scene->light(id)->position == lightBefore.position);
+    CHECK(loaded.scene->light(id)->direction == lightBefore.direction);
+    CHECK(session.editGeneration() == generation);
+}
+
+//======================================================================================================================
+TEST_CASE("bridge pose previews name the subject field and shared lock reason",
+          "[app][session-edits][ux6-bridge-lock]") {
+    for (const bool object : {true, false}) {
+        const auto locks = object ? std::vector{app::PoseLock::Static, app::PoseLock::Generated,
+                                                app::PoseLock::Animated, app::PoseLock::Measuring}
+                                  : std::vector{app::PoseLock::Static, app::PoseLock::Animated,
+                                                app::PoseLock::Measuring};
+        for (const auto lock : locks) {
+            for (const std::string& field :
+                 object ? std::vector<std::string>{"position", "eulerDegrees", "scale"}
+                        : std::vector<std::string>{"position", "direction"}) {
+                DYNAMIC_SECTION(object << "/" << static_cast<int>(lock) << "/" << field) {
+                    engine::LightId id;
+                    auto loaded = editableFixture(id);
+                    auto tree = editableTree(id);
+                    if (lock == app::PoseLock::Static) {
+                        (object ? loaded.objectMobility : loaded.lightMobility)[0] =
+                            asset::DocMobility::Static;
+                        if (object) {
+                            loaded.document.nodes[1].asset.reset();
+                            loaded.document.nodes[1].mesh = 0;
+                            loaded.binding.objectImportedNode[0] = engine::kGeneratedNode;
+                            tree.rows[1].node = engine::kGeneratedNode;
+                            tree.rows[2].importedNode = engine::kGeneratedNode;
+                        }
+                    } else if (lock == app::PoseLock::Generated) {
+                        loaded.binding.objectGeneratorNode[0] = 1;
+                        loaded.binding.objectImportedNode[0] = engine::kGeneratedNode;
+                        tree.rows[2].generated = true;
+                        tree.rows[2].importedNode = engine::kGeneratedNode;
+                    } else if (lock == app::PoseLock::Animated) {
+                        if (object)
+                            loaded.binding.importedNodes[0].animated = true;
+                        else
+                            loaded.scene->animation.lightTracks.push_back({.light = 0});
+                    }
+                    app::SceneSession session;
+                    session.activate(loaded, app::SceneActivationMotion::Reset);
+                    session.setMeasurementActive(lock == app::PoseLock::Measuring);
+                    REQUIRE((object ? session.objectPoseLock(0)
+                                    : session.lightPoseLock(app::EditorSubject::LocalLight, 0,
+                                                            id)) == lock);
+                    const auto subject = app::sceneTreeSubjectId(tree.rows[object ? 2 : 3]);
+                    const auto beforeObject = session.scene().objects[0];
+                    const auto beforeLight = *session.scene().light(id);
+                    const auto beforeLook = session.look();
+                    const auto generation = session.editGeneration();
+                    const std::vector<app::ProposalEdit> edits{
+                        {"environment", "shadowFilter", R"("pcss")"}, {subject, field, "[2,3,4]"}};
+                    const auto expected =
+                        subject + "/" + field + ": " + std::string(app::poseLockReason(lock));
+                    const auto preview = app::previewEdits(session, tree, edits);
+                    REQUIRE_FALSE(preview);
+                    CHECK(preview.error() == expected);
+                    const auto applied = app::applyEdits(session, tree, edits);
+                    REQUIRE_FALSE(applied);
+                    CHECK(applied.error().message == expected);
+                    CHECK(session.scene().objects[0].position == beforeObject.position);
+                    CHECK(session.scene().objects[0].eulerDegrees == beforeObject.eulerDegrees);
+                    CHECK(session.scene().objects[0].scale == beforeObject.scale);
+                    CHECK(session.scene().light(id)->position == beforeLight.position);
+                    CHECK(session.scene().light(id)->direction == beforeLight.direction);
+                    CHECK(session.look() == beforeLook);
+                    CHECK(session.editGeneration() == generation);
+                }
+            }
+        }
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("bridge mobility proposals refuse the complete batch for objects and lights",
+          "[app][session-edits][ux6-bridge-lock]") {
+    engine::LightId id;
+    auto loaded = editableFixture(id);
+    app::SceneSession session;
+    session.activate(loaded, app::SceneActivationMotion::Reset);
+    const auto tree = editableTree(id);
+    const auto look = session.look();
+    const auto generation = session.editGeneration();
+    for (const std::string subject : {"imported:0", "node:2"}) {
+        const std::vector<app::ProposalEdit> edits{{"environment", "shadowFilter", R"("pcss")"},
+                                                   {subject, "mobility", R"("movable")"}};
+        const auto preview = app::previewEdits(session, tree, edits);
+        REQUIRE_FALSE(preview);
+        CHECK(preview.error() == subject + "/mobility: Mobility is authored in the scene file");
+        const auto applied = app::applyEdits(session, tree, edits);
+        REQUIRE_FALSE(applied);
+        CHECK(applied.error().message == preview.error());
+        CHECK(session.look() == look);
+        CHECK(session.editGeneration() == generation);
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("static bridge subjects retain enabled and nonpose light edits",
+          "[app][session-edits][ux6-bridge-lock]") {
+    engine::LightId id;
+    auto loaded = editableFixture(id);
+    loaded.objectMobility[0] = asset::DocMobility::Static;
+    loaded.lightMobility[0] = asset::DocMobility::Static;
+    app::SceneSession session;
+    session.activate(loaded, app::SceneActivationMotion::Reset);
+    const auto tree = editableTree(id);
+    const std::vector<app::ProposalEdit> edits{
+        {"imported:0", "enabled", "false"},   {"node:2", "enabled", "false"},
+        {"node:2", "intensity", "2"},         {"node:2", "range", "9"},
+        {"node:2", "color", "[0.5,0.6,0.7]"}, {"node:2", "innerCone", "15"},
+        {"node:2", "outerCone", "50"}};
+    REQUIRE(app::previewEdits(session, tree, edits));
+    REQUIRE(app::applyEdits(session, tree, edits));
+    CHECK_FALSE(session.scene().objects[0].enabled);
+    CHECK_FALSE(session.localLightEnabled(id));
+    CHECK(session.scene().light(id)->intensity == 2);
+    session.setMeasurementActive(true);
+    const std::vector<app::ProposalEdit> enabled{{"imported:0", "enabled", "true"}};
+    const auto refused = app::previewEdits(session, tree, enabled);
+    REQUIRE_FALSE(refused);
+    CHECK(refused.error() == "Scene edits require a document and no active measurement");
+}
+
+//======================================================================================================================
+TEST_CASE("stale light pose proposals retain identity refusal before mobility",
+          "[app][session-edits][ux6-bridge-stale]") {
+    for (const int identity : {0, 1, 2}) {
+        DYNAMIC_SECTION(identity) {
+            engine::LightId id;
+            auto loaded = editableFixture(id);
+            app::SceneSession session;
+            session.activate(loaded, app::SceneActivationMotion::Reset);
+            auto tree = editableTree(id);
+            if (identity == 0)
+                REQUIRE(session.scene().removeLight(id));
+            else if (identity == 1)
+                ++tree.rows[3].lightId.store;
+            else
+                ++tree.rows[3].lightId.generation;
+            const auto look = session.look();
+            const auto position = session.scene().objects[0].position;
+            const auto generation = session.editGeneration();
+            for (const std::string field : {"position", "direction"}) {
+                const std::vector<app::ProposalEdit> edits{
+                    {"environment", "shadowFilter", R"("pcss")"}, {"node:2", field, "[2,3,4]"}};
+                const auto preview = app::previewEdits(session, tree, edits);
+                REQUIRE_FALSE(preview);
+                CHECK(preview.error() == "Stale local-light identity node:2");
+                const auto applied = app::applyEdits(session, tree, edits);
+                REQUIRE_FALSE(applied);
+                CHECK(applied.error().message == preview.error());
+                CHECK(session.look() == look);
+                CHECK(session.scene().objects[0].position == position);
+                CHECK(session.editGeneration() == generation);
+                session.setMeasurementActive(true);
+                const auto measuring = app::previewEdits(session, tree, edits);
+                REQUIRE_FALSE(measuring);
+                CHECK(measuring.error() ==
+                      "Scene edits require a document and no active measurement");
+                session.setMeasurementActive(false);
+            }
+        }
     }
 }

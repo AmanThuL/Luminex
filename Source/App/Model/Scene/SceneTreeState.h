@@ -56,6 +56,7 @@ public:
 private:
     struct Expansion {
         std::set<uint32_t> collapsed;
+        std::set<uint32_t> initialized;
         bool rootCollapsed = false;
         uint64_t version = 0;
     };

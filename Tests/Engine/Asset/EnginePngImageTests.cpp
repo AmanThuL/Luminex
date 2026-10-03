@@ -177,3 +177,38 @@ TEST_CASE("PNG boundary rejects malformed pixels, text, chunks and inaccessible 
     REQUIRE_FALSE(readPng(path));
     REQUIRE_FALSE(writePng(path / "missing" / "out.png", pixels, 1, 1));
 }
+
+//======================================================================================================================
+TEST_CASE("PNG byte decoding keeps one verified snapshot after file replacement", "[asset][png]") {
+    const auto path = std::filesystem::temp_directory_path() / "lmx-png-snapshot.png";
+    const std::array<uint8_t, 4> pixels{3, 7, 11, 255};
+    const std::array<PngTextChunk, 1> text{PngTextChunk{"snapshot", "original"}};
+    REQUIRE(writePng(path, pixels, 1, 1, text));
+    const auto encoded = fileBytes(path);
+    const auto fromPath = readPng(path);
+    REQUIRE(fromPath);
+    const std::array<uint8_t, 4> replacement{20, 30, 40, 255};
+    REQUIRE(writePng(path, replacement, 1, 1));
+    const auto fromBytes = readPng(std::as_bytes(std::span(encoded)));
+    REQUIRE(fromBytes);
+    CHECK(fromBytes->width == fromPath->width);
+    CHECK(fromBytes->height == fromPath->height);
+    CHECK(fromBytes->rgba == fromPath->rgba);
+    REQUIRE(fromBytes->text.size() == fromPath->text.size());
+    CHECK(fromBytes->text[0].keyword == fromPath->text[0].keyword);
+    CHECK(fromBytes->text[0].text == fromPath->text[0].text);
+    for (const size_t length : {size_t{0}, size_t{7}, encoded.size() - 1}) {
+        const auto bytes = std::span(encoded).first(length);
+        CHECK_FALSE(readPng(std::as_bytes(bytes)));
+        putBytes(path, bytes);
+        const auto invalid = readPng(path);
+        REQUIRE_FALSE(invalid);
+        CHECK(invalid.error().message.starts_with("PNG '" + path.string() + "': "));
+    }
+    auto corrupt = encoded;
+    corrupt[29] ^= 1;
+    const auto invalid = readPng(std::as_bytes(std::span(corrupt)));
+    REQUIRE_FALSE(invalid);
+    CHECK(invalid.error().message.contains("CRC mismatch"));
+    std::filesystem::remove(path);
+}

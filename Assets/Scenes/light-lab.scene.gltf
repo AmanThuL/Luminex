@@ -2,15 +2,192 @@
   "asset": {
     "version": "2.0"
   },
-  "extensionsUsed": ["LMX_scene", "KHR_lights_punctual"],
+  "extensionsUsed": ["LMX_scene", "KHR_lights_punctual", "KHR_materials_emissive_strength"],
   "scene": 0,
   "scenes": [
     {
       "name": "LightLab",
-      "nodes": [0, 1, 2, 3, 4]
+      "nodes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 22]
     }
   ],
   "nodes": [
+    {
+      "name": "Floor",
+      "mesh": 0,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Pillar 0",
+      "translation": [-8.75, 1.6, 3.5],
+      "scale": [1.2, 3.2, 1.2],
+      "mesh": 1,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Sphere 0",
+      "translation": [-8.75, 0.9, -3.5],
+      "mesh": 2,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Pillar 1",
+      "translation": [-6.25, 1.6, 3.5],
+      "scale": [1.2, 3.2, 1.2],
+      "mesh": 3,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Sphere 1",
+      "translation": [-6.25, 0.9, -3.5],
+      "mesh": 4,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Pillar 2",
+      "translation": [-3.75, 1.6, 3.5],
+      "scale": [1.2, 3.2, 1.2],
+      "mesh": 5,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Sphere 2",
+      "translation": [-3.75, 0.9, -3.5],
+      "mesh": 6,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Pillar 3",
+      "translation": [-1.25, 1.6, 3.5],
+      "scale": [1.2, 3.2, 1.2],
+      "mesh": 7,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Sphere 3",
+      "translation": [-1.25, 0.9, -3.5],
+      "mesh": 8,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Pillar 4",
+      "translation": [1.25, 1.6, 3.5],
+      "scale": [1.2, 3.2, 1.2],
+      "mesh": 9,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Sphere 4",
+      "translation": [1.25, 0.9, -3.5],
+      "mesh": 10,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Pillar 5",
+      "translation": [3.75, 1.6, 3.5],
+      "scale": [1.2, 3.2, 1.2],
+      "mesh": 11,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Sphere 5",
+      "translation": [3.75, 0.9, -3.5],
+      "mesh": 12,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Pillar 6",
+      "translation": [6.25, 1.6, 3.5],
+      "scale": [1.2, 3.2, 1.2],
+      "mesh": 13,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Sphere 6",
+      "translation": [6.25, 0.9, -3.5],
+      "mesh": 14,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Pillar 7",
+      "translation": [8.75, 1.6, 3.5],
+      "scale": [1.2, 3.2, 1.2],
+      "mesh": 15,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Sphere 7",
+      "translation": [8.75, 0.9, -3.5],
+      "mesh": 16,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
     {
       "name": "LightLab",
       "extensions": {
@@ -46,6 +223,7 @@
         },
         "LMX_scene": {
           "enabled": true,
+          "mobility": "movable",
           "role": "key",
           "castsShadow": true
         }
@@ -60,6 +238,7 @@
         },
         "LMX_scene": {
           "enabled": true,
+          "mobility": "movable",
           "role": "fill",
           "castsShadow": false
         }
@@ -74,8 +253,18 @@
         },
         "LMX_scene": {
           "enabled": true,
+          "mobility": "movable",
           "role": "rim",
           "castsShadow": false
+        }
+      }
+    },
+    {
+      "name": "Lights",
+      "children": [19, 20, 21],
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
         }
       }
     }
@@ -98,14 +287,14 @@
         {
           "sampler": 0,
           "target": {
-            "node": 1,
+            "node": 18,
             "path": "translation"
           }
         },
         {
           "sampler": 1,
           "target": {
-            "node": 1,
+            "node": 18,
             "path": "rotation"
           }
         }
@@ -133,6 +322,10 @@
     {
       "uri": "light-lab.scene.bin",
       "byteLength": 23072
+    },
+    {
+      "uri": "light-lab.scene.geometry.bin",
+      "byteLength": 28248
     }
   ],
   "bufferViews": [
@@ -150,6 +343,45 @@
       "buffer": 0,
       "byteOffset": 11536,
       "byteLength": 11536
+    },
+    {
+      "buffer": 1,
+      "byteOffset": 0,
+      "byteLength": 192,
+      "byteStride": 48,
+      "target": 34962
+    },
+    {
+      "buffer": 1,
+      "byteOffset": 192,
+      "byteLength": 24,
+      "target": 34963
+    },
+    {
+      "buffer": 1,
+      "byteOffset": 216,
+      "byteLength": 1152,
+      "byteStride": 48,
+      "target": 34962
+    },
+    {
+      "buffer": 1,
+      "byteOffset": 1368,
+      "byteLength": 144,
+      "target": 34963
+    },
+    {
+      "buffer": 1,
+      "byteOffset": 1512,
+      "byteLength": 18096,
+      "byteStride": 48,
+      "target": 34962
+    },
+    {
+      "buffer": 1,
+      "byteOffset": 19608,
+      "byteLength": 8640,
+      "target": 34963
     }
   ],
   "accessors": [
@@ -172,6 +404,529 @@
       "componentType": 5126,
       "count": 721,
       "type": "VEC4"
+    },
+    {
+      "bufferView": 3,
+      "byteOffset": 0,
+      "componentType": 5126,
+      "count": 4,
+      "type": "VEC3",
+      "min": [-32, 0, -32],
+      "max": [32, 0, 32]
+    },
+    {
+      "bufferView": 3,
+      "byteOffset": 12,
+      "componentType": 5126,
+      "count": 4,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 3,
+      "byteOffset": 24,
+      "componentType": 5126,
+      "count": 4,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 3,
+      "byteOffset": 40,
+      "componentType": 5126,
+      "count": 4,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 4,
+      "byteOffset": 0,
+      "componentType": 5125,
+      "count": 6,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 5,
+      "byteOffset": 0,
+      "componentType": 5126,
+      "count": 24,
+      "type": "VEC3",
+      "min": [-0.5, -0.5, -0.5],
+      "max": [0.5, 0.5, 0.5]
+    },
+    {
+      "bufferView": 5,
+      "byteOffset": 12,
+      "componentType": 5126,
+      "count": 24,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 5,
+      "byteOffset": 24,
+      "componentType": 5126,
+      "count": 24,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 5,
+      "byteOffset": 40,
+      "componentType": 5126,
+      "count": 24,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 6,
+      "byteOffset": 0,
+      "componentType": 5125,
+      "count": 36,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 7,
+      "byteOffset": 0,
+      "componentType": 5126,
+      "count": 377,
+      "type": "VEC3",
+      "min": [-0.9, -0.9, -0.9],
+      "max": [0.9, 0.9, 0.9]
+    },
+    {
+      "bufferView": 7,
+      "byteOffset": 12,
+      "componentType": 5126,
+      "count": 377,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 7,
+      "byteOffset": 24,
+      "componentType": 5126,
+      "count": 377,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 7,
+      "byteOffset": 40,
+      "componentType": 5126,
+      "count": 377,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 8,
+      "byteOffset": 0,
+      "componentType": 5125,
+      "count": 2160,
+      "type": "SCALAR"
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Floor",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 3,
+            "NORMAL": 4,
+            "TANGENT": 5,
+            "TEXCOORD_0": 6
+          },
+          "indices": 7,
+          "material": 0
+        }
+      ]
+    },
+    {
+      "name": "Pillar 0",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 8,
+            "NORMAL": 9,
+            "TANGENT": 10,
+            "TEXCOORD_0": 11
+          },
+          "indices": 12,
+          "material": 1
+        }
+      ]
+    },
+    {
+      "name": "Sphere 0",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 13,
+            "NORMAL": 14,
+            "TANGENT": 15,
+            "TEXCOORD_0": 16
+          },
+          "indices": 17,
+          "material": 8
+        }
+      ]
+    },
+    {
+      "name": "Pillar 1",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 8,
+            "NORMAL": 9,
+            "TANGENT": 10,
+            "TEXCOORD_0": 11
+          },
+          "indices": 12,
+          "material": 2
+        }
+      ]
+    },
+    {
+      "name": "Sphere 1",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 13,
+            "NORMAL": 14,
+            "TANGENT": 15,
+            "TEXCOORD_0": 16
+          },
+          "indices": 17,
+          "material": 7
+        }
+      ]
+    },
+    {
+      "name": "Pillar 2",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 8,
+            "NORMAL": 9,
+            "TANGENT": 10,
+            "TEXCOORD_0": 11
+          },
+          "indices": 12,
+          "material": 3
+        }
+      ]
+    },
+    {
+      "name": "Sphere 2",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 13,
+            "NORMAL": 14,
+            "TANGENT": 15,
+            "TEXCOORD_0": 16
+          },
+          "indices": 17,
+          "material": 6
+        }
+      ]
+    },
+    {
+      "name": "Pillar 3",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 8,
+            "NORMAL": 9,
+            "TANGENT": 10,
+            "TEXCOORD_0": 11
+          },
+          "indices": 12,
+          "material": 4
+        }
+      ]
+    },
+    {
+      "name": "Sphere 3",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 13,
+            "NORMAL": 14,
+            "TANGENT": 15,
+            "TEXCOORD_0": 16
+          },
+          "indices": 17,
+          "material": 5
+        }
+      ]
+    },
+    {
+      "name": "Pillar 4",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 8,
+            "NORMAL": 9,
+            "TANGENT": 10,
+            "TEXCOORD_0": 11
+          },
+          "indices": 12,
+          "material": 5
+        }
+      ]
+    },
+    {
+      "name": "Sphere 4",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 13,
+            "NORMAL": 14,
+            "TANGENT": 15,
+            "TEXCOORD_0": 16
+          },
+          "indices": 17,
+          "material": 4
+        }
+      ]
+    },
+    {
+      "name": "Pillar 5",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 8,
+            "NORMAL": 9,
+            "TANGENT": 10,
+            "TEXCOORD_0": 11
+          },
+          "indices": 12,
+          "material": 6
+        }
+      ]
+    },
+    {
+      "name": "Sphere 5",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 13,
+            "NORMAL": 14,
+            "TANGENT": 15,
+            "TEXCOORD_0": 16
+          },
+          "indices": 17,
+          "material": 3
+        }
+      ]
+    },
+    {
+      "name": "Pillar 6",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 8,
+            "NORMAL": 9,
+            "TANGENT": 10,
+            "TEXCOORD_0": 11
+          },
+          "indices": 12,
+          "material": 7
+        }
+      ]
+    },
+    {
+      "name": "Sphere 6",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 13,
+            "NORMAL": 14,
+            "TANGENT": 15,
+            "TEXCOORD_0": 16
+          },
+          "indices": 17,
+          "material": 2
+        }
+      ]
+    },
+    {
+      "name": "Pillar 7",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 8,
+            "NORMAL": 9,
+            "TANGENT": 10,
+            "TEXCOORD_0": 11
+          },
+          "indices": 12,
+          "material": 8
+        }
+      ]
+    },
+    {
+      "name": "Sphere 7",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 13,
+            "NORMAL": 14,
+            "TANGENT": 15,
+            "TEXCOORD_0": 16
+          },
+          "indices": 17,
+          "material": 1
+        }
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "name": "Material 0",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [0.21404114, 0.21404114, 0.23302203, 1],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.85
+      },
+      "emissiveFactor": [0, 0, 0],
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5,
+      "doubleSided": false,
+      "extensions": {
+        "KHR_materials_emissive_strength": {
+          "emissiveStrength": 1
+        }
+      }
+    },
+    {
+      "name": "Material 1",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [1, 0.71056664, 0.3931232, 1],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.08
+      },
+      "emissiveFactor": [0, 0, 0],
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5,
+      "doubleSided": false,
+      "extensions": {
+        "KHR_materials_emissive_strength": {
+          "emissiveStrength": 1
+        }
+      }
+    },
+    {
+      "name": "Material 2",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [0.26327342, 0.5382356, 1, 1],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.38666666
+      },
+      "emissiveFactor": [0, 0, 0],
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5,
+      "doubleSided": false,
+      "extensions": {
+        "KHR_materials_emissive_strength": {
+          "emissiveStrength": 1
+        }
+      }
+    },
+    {
+      "name": "Material 3",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [1, 0.26327342, 0.10048152, 1],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.6933333
+      },
+      "emissiveFactor": [0, 0, 0],
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5,
+      "doubleSided": false,
+      "extensions": {
+        "KHR_materials_emissive_strength": {
+          "emissiveStrength": 1
+        }
+      }
+    },
+    {
+      "name": "Material 4",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [0.47699985, 0.19599415, 1, 1],
+        "metallicFactor": 0,
+        "roughnessFactor": 1
+      },
+      "emissiveFactor": [0, 0, 0],
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5,
+      "doubleSided": false,
+      "extensions": {
+        "KHR_materials_emissive_strength": {
+          "emissiveStrength": 1
+        }
+      }
+    },
+    {
+      "name": "Material 5",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [1, 0.71056664, 0.3931232, 1],
+        "metallicFactor": 1,
+        "roughnessFactor": 0.08
+      },
+      "emissiveFactor": [0, 0, 0],
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5,
+      "doubleSided": false,
+      "extensions": {
+        "KHR_materials_emissive_strength": {
+          "emissiveStrength": 1
+        }
+      }
+    },
+    {
+      "name": "Material 6",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [0.26327342, 0.5382356, 1, 1],
+        "metallicFactor": 1,
+        "roughnessFactor": 0.38666666
+      },
+      "emissiveFactor": [0, 0, 0],
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5,
+      "doubleSided": false,
+      "extensions": {
+        "KHR_materials_emissive_strength": {
+          "emissiveStrength": 1
+        }
+      }
+    },
+    {
+      "name": "Material 7",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [1, 0.26327342, 0.10048152, 1],
+        "metallicFactor": 1,
+        "roughnessFactor": 0.6933333
+      },
+      "emissiveFactor": [0, 0, 0],
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5,
+      "doubleSided": false,
+      "extensions": {
+        "KHR_materials_emissive_strength": {
+          "emissiveStrength": 1
+        }
+      }
+    },
+    {
+      "name": "Material 8",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [0.47699985, 0.19599415, 1, 1],
+        "metallicFactor": 1,
+        "roughnessFactor": 1
+      },
+      "emissiveFactor": [0, 0, 0],
+      "alphaMode": "OPAQUE",
+      "alphaCutoff": 0.5,
+      "doubleSided": false,
+      "extensions": {
+        "KHR_materials_emissive_strength": {
+          "emissiveStrength": 1
+        }
+      }
     }
   ],
   "extensions": {
@@ -198,8 +953,8 @@
       ]
     },
     "LMX_scene": {
-      "schemaVersion": 1,
-      "camera": 1,
+      "schemaVersion": 2,
+      "camera": 18,
       "look": {
         "exposure": {
           "ev": 0,
@@ -225,7 +980,14 @@
           "skySrgb8": [149, 170, 196]
         }
       },
-      "loop": true
+      "loop": true,
+      "bounds": {
+        "min": [-32, 0, -32],
+        "max": [32, 3.2, 32]
+      },
+      "contentHashes": {
+        "light-lab.scene.geometry.bin": "67a9f4633ed83d311ce884521f68d983659980825ae08d270a1c44d58910789f"
+      }
     }
   }
 }

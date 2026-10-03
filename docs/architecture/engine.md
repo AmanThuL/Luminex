@@ -91,14 +91,19 @@ own environment through it.
 `Asset/Document/SceneDocument` is a GPU-free glTF 2.0 model with `KHR_lights_punctual` and the
 optional `LMX_scene` extension. It references fetched assets under `Assets/`, records their file
 hashes, and owns the look, cameras, rails, own-enabled flags and imported-node overrides.
-`SceneDocumentRead` validates fields and buffer access; `SceneDocumentWrite` uses Core's
+`SceneDocumentContent` defines shared immutable `DocContent` geometry/PNG snapshots and saved
+mesh/material/texture references. `DocMobility` is file-authored pose permission, separate from
+enabled state and renderer motion class. Schema 2 absent mobility is Static; schema 1 objects stay
+Static and authored lights Movable when Save upgrades them. Imported overrides inherit placement
+mobility, then the nearest source ancestor override wins; animated source overrides reject mobility.
+`SceneDocumentRead` validates fields, `contentHashes` and buffer access; `SceneDocumentWrite` uses Core's
 `JsonWriter` for canonical JSON plus an external animation buffer, written only when the document has animations. `Orientation` searches exact
 float quaternion encodings with contraction disabled. `Model/CgltfImplementation` owns the single
 cgltf implementation and `JsonTokens`; `GltfLoader` retains source nodes, primitive bindings and
 all animation clips. The [document guide](../guides/scene-documents.md) describes the file form.
 
-`Scene/SceneInstantiate` preflights asset hashes, overrides, cameras, lights and required HDRI
-content before GPU creation, then constructs a replacement `LoadedScene`. It carries the scene,
+`Scene/SceneInstantiate` preflights asset/content hashes, saved mesh/material/image bindings,
+overrides, cameras, lights and required HDRI content before GPU creation, then constructs a replacement `LoadedScene`. It carries the scene,
 loaded document, path/hash and `SceneBinding`. Bindings distinguish document nodes, imported
 source nodes (including empty ancestors), primitive instances and generated subjects. Imported
 node pose/enabled edits fan out to every primitive of that source node. Resource creation retains
@@ -110,8 +115,9 @@ an injected generator lookup; it names no Scenes symbol.
 `SceneId` holds a catalog key or supplied document path. San Miguel still requires
 `xmake setup --san-miguel`; its document owns the 12-second rail. Sponza's document owns sixteen
 local lights and its 120-second tour. MaterialLab references Damaged Helmet, and TemporalLab
-references Milk Truck; their former standalone catalog IDs have retired. Generated lab geometry,
-emissive step tracks and closed-form light orbits stay in Scenes. CLI generator parameters and
+references Milk Truck; their former standalone catalog IDs have retired. MaterialLab, TemporalLab and LightLab save
+object meshes/materials/images in schema 2 documents. VisibilityLab retains generated geometry,
+and LightLab retains generated lights and closed-form orbits in Scenes. CLI generator parameters and
 `--local-light-rig` apply session overrides without changing authored document values.
 
 `SessionDocumentState` retains own flags, the immutable imported-pose baseline and an explicitly
@@ -121,12 +127,20 @@ inconsistent primitive poses, pose overrides on nodes without meshes and non-fin
 edits, animation preview and ordinary editor-camera movement do not participate. Save adoption
 replaces the document baseline only after write, canonical reread/equality and hash succeed.
 
-Runtime document animation currently accepts LINEAR translation/rotation of the selected camera.
-Referenced asset clips loop on their own durations using retained local hierarchy/channels;
-generators own their other motion. Unsupported document channels and transformed generator roots
+Runtime document animation accepts saved mesh LINEAR/STEP TRS, material emissive-strength
+`KHR_animation_pointer` channels and LINEAR translation/rotation of the selected camera.
+Referenced asset clips loop on retained local hierarchy/channels; generators own their other motion. Unsupported document channels and transformed generator roots
 fail preflight. STEP scale keys are validated, and an indecomposable sampled pose holds the previous pose with one
 warning. The [validation record](../milestones/ux/ux3-validation.md#parity-root-cause) retains the
 failed migration image gates and their cause.
+
+Geometry and images use separate immutable companions from the mutable animation buffer.
+The reader verifies and decodes one byte snapshot; save/export preserve that content without
+regeneration. Save installs absent files, refuses conflicting hashes and includes created content
+in ordinary rollback. Save As copies content under a new stem and refuses active aliases.
+Loaded-document provenance hashes raw JSON then animation only; JSON `contentHashes` covers
+geometry/images. [Proposed ADR 0031](../decisions/0031-scene-document-content-and-mobility.md)
+amends still-Proposed ADR 0028; [UX6 validation](../milestones/ux/ux6-validation.md) retains failures.
 
 ## Authored enabled state
 

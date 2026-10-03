@@ -7,7 +7,7 @@
   "scenes": [
     {
       "name": "San Miguel",
-      "nodes": [0, 1, 2, 3, 4]
+      "nodes": [0, 1, 5]
     }
   ],
   "nodes": [
@@ -43,6 +43,7 @@
         },
         "LMX_scene": {
           "enabled": true,
+          "mobility": "movable",
           "role": "key",
           "castsShadow": true
         }
@@ -57,6 +58,7 @@
         },
         "LMX_scene": {
           "enabled": true,
+          "mobility": "movable",
           "role": "fill",
           "castsShadow": false
         }
@@ -71,8 +73,18 @@
         },
         "LMX_scene": {
           "enabled": true,
+          "mobility": "movable",
           "role": "rim",
           "castsShadow": false
+        }
+      }
+    },
+    {
+      "name": "Lights",
+      "children": [2, 3, 4],
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
         }
       }
     }
@@ -195,7 +207,7 @@
       ]
     },
     "LMX_scene": {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "camera": 1,
       "look": {
         "exposure": {

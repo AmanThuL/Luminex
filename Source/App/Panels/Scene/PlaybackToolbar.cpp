@@ -6,9 +6,51 @@
 
 #include "App/Panels/Shared/EditorStyle.h"
 
+#include <algorithm>
+#include <array>
 #include <string>
 
 namespace lmx::app {
+
+namespace {
+struct ToolButton {
+    GizmoTool tool;
+    EditorIcon icon;
+    const char* id;
+    const char* tooltip;
+};
+constexpr std::array kToolButtons{
+    ToolButton{GizmoTool::View, EditorIcon::View, "gizmo-view",
+               "View (Q): hide transform handles."},
+    ToolButton{GizmoTool::Move, EditorIcon::Movable, "gizmo-move",
+               "Move (W): translate the subject."},
+    ToolButton{GizmoTool::Rotate, EditorIcon::Rotate, "gizmo-rotate",
+               "Rotate (E): rotate the subject."},
+    ToolButton{GizmoTool::Scale, EditorIcon::Scale, "gizmo-scale", "Scale (R): scale the object."},
+    ToolButton{GizmoTool::Combined, EditorIcon::Transform, "gizmo-transform",
+               "Transform (Y): combine supported operations."}};
+
+//======================================================================================================================
+void drawGizmoTools(GizmoState& state) {
+    for (const auto& button : kToolButtons) {
+        ImGui::SameLine();
+        const bool selected = state.tool == button.tool;
+        if (selected)
+            ImGui::PushStyleColor(ImGuiCol_Button, editor_style::color(ThemeRole::SelectionBg));
+        if (editor_style::iconButton(button.id, button.icon, true, button.tooltip,
+                                     button.tool == GizmoTool::Move ? "Move" : nullptr))
+            state.tool = button.tool;
+        if (selected)
+            ImGui::PopStyleColor();
+    }
+    ImGui::SameLine();
+    const bool world = state.space == GizmoSpace::World;
+    if (editor_style::iconButton("gizmo-space", world ? EditorIcon::World : EditorIcon::Local, true,
+                                 world ? "World axes (X): switch to Local."
+                                       : "Local axes (X): switch to World."))
+        state.space = world ? GizmoSpace::Local : GizmoSpace::World;
+}
+} // namespace
 
 //======================================================================================================================
 float playbackToolbarButtonsWidth(const PlaybackToolbarContext& context) {
@@ -23,7 +65,21 @@ float playbackToolbarButtonsWidth(const PlaybackToolbarContext& context) {
 }
 
 //======================================================================================================================
-PlaybackToolbarAction drawPlaybackToolbar(const PlaybackToolbarContext& context, bool showReadout) {
+float playbackToolbarGizmoWidth(const PlaybackToolbarContext& context) {
+    if (!context.gizmo)
+        return 0;
+    float width = std::max(editor_style::iconButtonWidth(EditorIcon::World),
+                           editor_style::iconButtonWidth(EditorIcon::Local));
+    for (const auto& button : kToolButtons)
+        width += editor_style::iconButtonWidth(button.icon,
+                                               button.tool == GizmoTool::Move ? "Move" : nullptr) +
+                 ImGui::GetStyle().ItemSpacing.x;
+    return width;
+}
+
+//======================================================================================================================
+PlaybackToolbarAction drawPlaybackToolbar(const PlaybackToolbarContext& context, bool showReadout,
+                                          bool showGizmo) {
     PlaybackToolbarAction action = PlaybackToolbarAction::None;
     const bool showPause = context.playing || context.measurementActive;
     std::string playHelp =
@@ -51,6 +107,8 @@ PlaybackToolbarAction drawPlaybackToolbar(const PlaybackToolbarContext& context,
                 ? "Pause scene playback before stepping."
                 : "Step: advance scene time by exactly 1/60 second, then stay paused."))
         action = PlaybackToolbarAction::Step;
+    if (showGizmo && context.gizmo)
+        drawGizmoTools(*context.gizmo);
     if (showReadout) {
         ImGui::SameLine();
         ImGui::AlignTextToFramePadding();

@@ -18,6 +18,7 @@ bool shortcutAllowed(EditorShortcut shortcut, const ShortcutContext& context) {
     case EditorShortcut::ResetCamera:
     case EditorShortcut::Capture:
     case EditorShortcut::Document:
+    case EditorShortcut::Gizmo:
     case EditorShortcut::Quit:
         return true;
     }

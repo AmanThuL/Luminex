@@ -8,12 +8,15 @@
 #include "Core/Diagnostics/Assert.h"
 
 #include <glm/gtc/constants.hpp>
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/euler_angles.hpp>
 
 #include <algorithm>
 #include <array>
 #include <bit>
 #include <cmath>
 #include <limits>
+#include <span>
 
 namespace lmx::asset {
 namespace {
@@ -24,11 +27,12 @@ bool sameBits(float a, float b) {
 }
 
 //======================================================================================================================
-template <typename Predicate>
+template <bool IncludeSignedZero = false, typename Predicate>
 std::optional<glm::quat> search(glm::quat seed, Predicate&& matches) {
     if (matches(seed))
         return seed;
-    std::array<std::array<float, 9>, 4> neighbours;
+    std::array<std::array<float, IncludeSignedZero ? 10 : 9>, 4> neighbours;
+    std::array<size_t, 4> counts{9, 9, 9, 9};
     for (int component = 0; component < 4; ++component) {
         neighbours[component][0] = seed[component];
         float lower = seed[component];
@@ -39,11 +43,17 @@ std::optional<glm::quat> search(glm::quat seed, Predicate&& matches) {
             neighbours[component][distance * 2 - 1] = lower;
             neighbours[component][distance * 2] = upper;
         }
+        if constexpr (IncludeSignedZero) {
+            if (seed[component] == 0.0f) {
+                neighbours[component][9] = -seed[component];
+                counts[component] = 10;
+            }
+        }
     }
-    for (const float x : neighbours[0])
-        for (const float y : neighbours[1])
-            for (const float z : neighbours[2])
-                for (const float w : neighbours[3]) {
+    for (const float x : std::span(neighbours[0]).first(counts[0]))
+        for (const float y : std::span(neighbours[1]).first(counts[1]))
+            for (const float z : std::span(neighbours[2]).first(counts[2]))
+                for (const float w : std::span(neighbours[3]).first(counts[3])) {
                     const glm::quat candidate(w, x, y, z);
                     if (matches(candidate))
                         return candidate;
@@ -75,6 +85,42 @@ glm::quat rotationForDirection(glm::vec3 direction) {
 glm::quat rotationForCamera(float yaw, float pitch) {
     return glm::angleAxis(-yaw, glm::vec3(0.0f, 1.0f, 0.0f)) *
            glm::angleAxis(pitch, glm::vec3(1.0f, 0.0f, 0.0f));
+}
+
+//======================================================================================================================
+glm::vec3 eulerDegreesForRotation(glm::quat rotation) {
+    const glm::dquat q(rotation);
+    const auto matrix = glm::mat4_cast(q);
+    double yaw, pitch, roll;
+    glm::extractEulerAngleYXZ(matrix, yaw, pitch, roll);
+    // The equivalent -(2*(yz-wx)) loses the distinction between q.x = +0 and -0 at identity.
+    // Evaluating sin(pitch) directly preserves both signs without changing yaw or roll extraction.
+    const double cosine = std::sqrt(matrix[0][1] * matrix[0][1] + matrix[1][1] * matrix[1][1]);
+    pitch = std::atan2(2.0 * (q.w * q.x - q.y * q.z), cosine);
+    return glm::vec3(glm::degrees(glm::dvec3(pitch, yaw, roll)));
+}
+
+//======================================================================================================================
+glm::quat rotationForEulerDegrees(glm::vec3 eulerDegrees) {
+    LMX_ASSERT(std::isfinite(eulerDegrees.x) && std::isfinite(eulerDegrees.y) &&
+                   std::isfinite(eulerDegrees.z),
+               "Euler degrees must be finite");
+    const auto angles = glm::radians(eulerDegrees);
+    return glm::angleAxis(angles.y, glm::vec3(0, 1, 0)) *
+           glm::angleAxis(angles.x, glm::vec3(1, 0, 0)) *
+           glm::angleAxis(angles.z, glm::vec3(0, 0, 1));
+}
+
+//======================================================================================================================
+std::optional<glm::quat> exactRotationForEulerDegrees(glm::vec3 eulerDegrees) {
+    for (int k = 0; k < 3; ++k)
+        if (!std::isfinite(eulerDegrees[k]))
+            return std::nullopt;
+    return search<true>(rotationForEulerDegrees(eulerDegrees), [=](glm::quat candidate) {
+        const auto decoded = eulerDegreesForRotation(candidate);
+        return sameBits(decoded.x, eulerDegrees.x) && sameBits(decoded.y, eulerDegrees.y) &&
+               sameBits(decoded.z, eulerDegrees.z);
+    });
 }
 
 //======================================================================================================================

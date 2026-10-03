@@ -7,7 +7,7 @@
   "scenes": [
     {
       "name": "Sponza",
-      "nodes": [0, 1, 2, 3, 4, 5]
+      "nodes": [0, 1, 5, 22]
     }
   ],
   "nodes": [
@@ -43,6 +43,7 @@
         },
         "LMX_scene": {
           "enabled": true,
+          "mobility": "movable",
           "role": "key",
           "castsShadow": true
         }
@@ -57,6 +58,7 @@
         },
         "LMX_scene": {
           "enabled": true,
+          "mobility": "movable",
           "role": "fill",
           "castsShadow": false
         }
@@ -71,6 +73,7 @@
         },
         "LMX_scene": {
           "enabled": true,
+          "mobility": "movable",
           "role": "rim",
           "castsShadow": false
         }
@@ -93,7 +96,8 @@
           "light": 3
         },
         "LMX_scene": {
-          "enabled": true
+          "enabled": true,
+          "mobility": "movable"
         }
       }
     },
@@ -105,7 +109,8 @@
           "light": 4
         },
         "LMX_scene": {
-          "enabled": true
+          "enabled": true,
+          "mobility": "movable"
         }
       }
     },
@@ -117,7 +122,8 @@
           "light": 5
         },
         "LMX_scene": {
-          "enabled": true
+          "enabled": true,
+          "mobility": "movable"
         }
       }
     },
@@ -129,7 +135,8 @@
           "light": 6
         },
         "LMX_scene": {
-          "enabled": true
+          "enabled": true,
+          "mobility": "movable"
         }
       }
     },
@@ -141,7 +148,8 @@
           "light": 7
         },
         "LMX_scene": {
-          "enabled": true
+          "enabled": true,
+          "mobility": "movable"
         }
       }
     },
@@ -153,7 +161,8 @@
           "light": 8
         },
         "LMX_scene": {
-          "enabled": true
+          "enabled": true,
+          "mobility": "movable"
         }
       }
     },
@@ -165,7 +174,8 @@
           "light": 9
         },
         "LMX_scene": {
-          "enabled": true
+          "enabled": true,
+          "mobility": "movable"
         }
       }
     },
@@ -177,7 +187,8 @@
           "light": 10
         },
         "LMX_scene": {
-          "enabled": true
+          "enabled": true,
+          "mobility": "movable"
         }
       }
     },
@@ -190,7 +201,8 @@
           "light": 11
         },
         "LMX_scene": {
-          "enabled": true
+          "enabled": true,
+          "mobility": "movable"
         }
       }
     },
@@ -203,7 +215,8 @@
           "light": 12
         },
         "LMX_scene": {
-          "enabled": true
+          "enabled": true,
+          "mobility": "movable"
         }
       }
     },
@@ -216,7 +229,8 @@
           "light": 13
         },
         "LMX_scene": {
-          "enabled": true
+          "enabled": true,
+          "mobility": "movable"
         }
       }
     },
@@ -229,7 +243,8 @@
           "light": 14
         },
         "LMX_scene": {
-          "enabled": true
+          "enabled": true,
+          "mobility": "movable"
         }
       }
     },
@@ -242,7 +257,8 @@
           "light": 15
         },
         "LMX_scene": {
-          "enabled": true
+          "enabled": true,
+          "mobility": "movable"
         }
       }
     },
@@ -255,7 +271,8 @@
           "light": 16
         },
         "LMX_scene": {
-          "enabled": true
+          "enabled": true,
+          "mobility": "movable"
         }
       }
     },
@@ -268,7 +285,8 @@
           "light": 17
         },
         "LMX_scene": {
-          "enabled": true
+          "enabled": true,
+          "mobility": "movable"
         }
       }
     },
@@ -280,6 +298,16 @@
         "KHR_lights_punctual": {
           "light": 18
         },
+        "LMX_scene": {
+          "enabled": true,
+          "mobility": "movable"
+        }
+      }
+    },
+    {
+      "name": "Lights",
+      "children": [2, 3, 4],
+      "extensions": {
         "LMX_scene": {
           "enabled": true
         }
@@ -548,7 +576,7 @@
       ]
     },
     "LMX_scene": {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "camera": 1,
       "look": {
         "exposure": {

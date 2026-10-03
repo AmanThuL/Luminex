@@ -148,6 +148,7 @@ MenuContext EditorShell::menuContext(const render::Renderer& renderer,
         .outlineReady = m_selectionOutline->target().width() == renderer.width() &&
                         m_selectionOutline->target().height() == renderer.height(),
         .showOutline = m_showSelectionOutline,
+        .gizmo = m_gizmo,
         .debug = activeDebugView(m_settings),
         .debugEntries = debugViewEntries(m_settings, viewportHzbLevels(renderer),
                                          effectiveReconstruction(renderer, device)),
@@ -218,6 +219,12 @@ void EditorShell::runMenuCommand(MenuCommand command, uint32_t argument) {
         m_selection = initialSelection(m_activeSceneId);
         setPanelVisible(EditorPanel::Inspector, true);
         ImGui::SetWindowFocus(kInspectorPanelWindowName);
+        break;
+    case MenuCommand::GizmoTool:
+        m_gizmo.tool = static_cast<GizmoTool>(argument);
+        break;
+    case MenuCommand::GizmoSpace:
+        m_gizmo.space = m_gizmo.space == GizmoSpace::World ? GizmoSpace::Local : GizmoSpace::World;
         break;
     case MenuCommand::DebugView:
         selectDebugView(m_settings, menuDebugView(argument));

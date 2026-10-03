@@ -111,7 +111,7 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-curs
 ├─ 11. lmx.pass.ui          → swapchain drawable
 │       Dear ImGui: display-referred sRGB, straight-alpha blending in encoded space, SDR white;
 │       the Viewport samples display color at 1:1 backing pixels once resize settles. App
-│       declares this pass and reads the display output to join it; detached windows stay SDR.
+│       declares this pass and reads display output; ViewportGizmo draws clipped UI handles, detached windows stay SDR.
 └─ graph.execute(commands) → endFrame → present (or endFrame(nullptr) for the offscreen
      --screenshot / test path, which stops at lmx.pass.display and reads that target back)
 ```
@@ -205,7 +205,7 @@ false edges from foreground cuts and expansion onto foreground surfaces. A separ
 holds the soft border and display for UI sampling. Its GPU costs remain visible in the compiled record and timing observations.
 It writes neither scene targets nor temporal histories. Ordinary Renderer and offscreen capture paths do not declare the passes; View > Selection Outline controls the editor cue.
 
-Console shares the bottom dock with Performance summary; Rendering tabs beside Inspector. Detailed Performance/Graph are detached, initially closed. Schema 4 restores eight visibilities/scale and bounds; schema 3 migration preserves its six visibilities, scale and detached bounds while rebuilding main docks once.
+Console shares the bottom dock with Performance summary/Session; Rendering tabs beside Inspector. Detailed Performance/Graph are detached, initially closed. Workspace schema 6 stores nine visibilities, scale, appearance/density and bounds; schema 5 restores with Session hidden, schema 4 with Auto/Comfortable, schema 3 keeps six visibilities/scale/detached bounds and rebuilds docks once.
 Window > Performance toggles the detailed window; summary Details opens/focuses Live, and its Measure tab owns runs. ImGui vertex/index uploads stay in per-slot used lists until the next paced visit, so native windows cannot overwrite main-frame GPU reads. Log ingestion remains independent of GPU/panel freeze; see the [guide](../guides/gpu-debugging.md).
 
 Neutral interfaces/capture schema live in `RojoRHI/Include/rojoRHI/`, shared implementation in `RojoRHI/Source/`,
@@ -265,20 +265,20 @@ and the backend in `RojoRHI/Backends/Metal4/Source/`; optional `RojoRHIMetal4ImG
 
 ## Scenes
 
-File > Open Scene and `--scene` share eight IDs: **Sponza** (`sponza`, default, 120-second two-level corridor/atrium tour), **Damaged Helmet**
-(`damaged-helmet`), **Milk Truck** (`milk-truck`, rigid animation), **MaterialLab** (`material-lab`),
-**TemporalLab** (`temporal-lab`, motion/emissive diagnostics), **San Miguel** (`san-miguel`, masked
-courtyard with a 12-second rail), and **VisibilityLab** (`visibility-lab`, seeded cube/icosphere grid,
-four materials and a 12-second rail), plus **LightLab** (`light-lab`, point/spot grid and 12-second rail).
-`--lab-instances` accepts 1..1,048,576 only for VisibilityLab (default 4,096, including boundary probes).
-`--lab-lights` defaults to 256 (1..4096); `--lab-light-pile` defaults to 0 and their sum is at most 4096, both LightLab-only. Sponza authors 16 static lights; its `--local-light-rig on|off` defaults on. Explicit off retains disabled identities/rows; the Inspector's enable checkbox preserves per-light edits. Only enabled lights count toward rendering participation.
+File > Open Scene and `--scene` share six document IDs: **Sponza** (`sponza`, default, 120-second tour),
+**MaterialLab** (`material-lab`, saved objects plus Damaged Helmet), **TemporalLab** (`temporal-lab`,
+saved animated meshes plus Milk Truck), **San Miguel** (`san-miguel`, masked courtyard, 12-second rail),
+**VisibilityLab** (`visibility-lab`, generated cube/icosphere grid, 12-second rail), and **LightLab**
+(`light-lab`, saved objects, generated point/spot lights, 12-second rail). Saved geometry/images are
+immutable companions covered by JSON `contentHashes`, separate from animation bytes. `--lab-instances` is VisibilityLab-only, 1..1,048,576, default 4,096 including boundary probes.
+`--lab-lights` defaults 256, `--lab-light-pile` 0; both LightLab-only, total ≤4096. Sponza's 16 authored Movable lights retain identities/rows under `--local-light-rig off`; enabled flags and non-pose edits stay independent of mobility. Only enabled lights contribute.
 San Miguel requires `xmake setup --san-miguel`; the procedural labs are always available. MaterialLab uses the fetched CC0 Studio Small 09 HDRI for sky/IBL, logging a neutral fallback
 otherwise. Other scenes retain the shared neutral cubemap/IBL. Missing glTF assets disable catalog
 entries with setup guidance; unavailable explicit CLI scenes fail rather than falling back.
 
 `--capture-sequence <directory> --frames N --warmup W` saves N frames after W unsaved frames at
 60 Hz as PNG by default (`--capture-format bmp` preserves BMP), with camera/settings/status
-metadata. Manifest v2 names the display domain, container and absence of UI. PNG carries sRGB,
+metadata. Manifest v3 names display/container/UI domains and loaded document path/hash: JSON then animation bytes, immutable geometry/images through `contentHashes`. PNG carries sRGB,
 gAMA and cHRM plus `lmx:display` and `lmx:frame` text; screenshots select PNG/BMP by extension. The [offline comparison guide](../guides/temporal-comparison.md)
 covers synchronized reports and optional LDR-FLIP differences against Native TAA, not ground truth.
 
@@ -296,4 +296,4 @@ Cross-references: [render graph](../decisions/0005-render-graph.md), [scene-line
 [vendor reconstruction](../decisions/0017-vendor-reconstruction-capability.md); `Shaders/Passes/<family>/` holds entries,
 `Shaders/Common/` shared math and `Shaders/Tests/` oracles; runtime shader basenames stay unchanged.
 
-UI zoom applies before NewFrame; debounced resize preserves camera, render scale and saved layouts.
+UI zoom applies before NewFrame; resize preserves camera, scale and layouts. Gizmos add only UI drawing, absent from scene-only captures. Native scene-encoder verification remains limited; see [gizmo evidence](../milestones/ux/ux6-validation-gizmo.md).

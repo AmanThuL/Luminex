@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "App/Model/Scene/InspectorSubject.h"
 #include "App/Model/Workspace/Provenance.h"
 #include "App/Panels/Inspector/InspectorPanel.h"
 
@@ -16,9 +17,8 @@ namespace lmx::app {
 /// when `changed` reports something to restore. Returns whether reset was clicked.
 bool drawInspectorHeader(const char* name, const char* kind, const char* resetTooltip, bool changed,
                          bool* enabled = nullptr, const std::optional<ProvenanceMark>& mark = {},
-                         const std::optional<ProvenanceMark>& enabledMark = {});
-/// Compares this subject's editable values with its existing reset baseline, excluding playback.
-bool inspectorSubjectEdited(const SceneSession& session, const EditorSelection& selection);
+                         const std::optional<ProvenanceMark>& enabledMark = {},
+                         std::optional<bool> isStatic = {});
 /// Classifies current generated, preview, edited and effective CLI-mask sources without mutation.
 /// enabled includes inherited CLI masking; preview applies only to unsaved animation-owned edits.
 std::optional<ProvenanceMark> inspectorProvenance(const SceneSession& session,

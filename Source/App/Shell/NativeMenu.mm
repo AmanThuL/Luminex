@@ -38,8 +38,24 @@ struct QueuedCommand {
 };
 
 //======================================================================================================================
-ImGuiKey shortcutKey(MenuCommand command, NSEvent* event) {
+ImGuiKey shortcutKey(MenuCommand command, uint32_t argument, NSEvent* event) {
     switch (command) {
+    case MenuCommand::GizmoTool:
+        switch (static_cast<GizmoTool>(argument)) {
+        case GizmoTool::View:
+            return ImGuiKey_Q;
+        case GizmoTool::Move:
+            return ImGuiKey_W;
+        case GizmoTool::Rotate:
+            return ImGuiKey_E;
+        case GizmoTool::Scale:
+            return ImGuiKey_R;
+        case GizmoTool::Combined:
+            return ImGuiKey_Y;
+        }
+        return ImGuiKey_None;
+    case MenuCommand::GizmoSpace:
+        return ImGuiKey_X;
     case MenuCommand::FrameSelected:
         return ImGuiKey_F;
     case MenuCommand::ResetCamera:
@@ -442,7 +458,7 @@ std::string commandName(const std::vector<MenuItem>& items,
         shortcutEvent = event;
         shortcutCommand = QueuedCommand{
             .command = {*item->command, item->argument},
-            .key = shortcutKey(*item->command, event),
+            .key = shortcutKey(*item->command, item->argument, event),
             .modifiers =
                 ((event.modifierFlags & NSEventModifierFlagCommand)
                      ? (ImGui::GetIO().ConfigMacOSXBehaviors ? ImGuiMod_Ctrl : ImGuiMod_Super)

@@ -5,8 +5,7 @@
 Use Window > Session to review external scene files, inspect the editor through a local client,
 and approve evidence jobs. The panel stays closed until opened and never opens itself for a
 proposal. Session visibility persists in workspace schema 6; Listen, connection and tier do not.
-[App Session](../architecture/app-session.md) explains ownership;
-[ADR 0030](../decisions/0030-session-protocol-and-trust.md) remains Proposed. The
+[App Session](../architecture/app-session.md) explains ownership; [ADR 0030](../decisions/0030-session-protocol-and-trust.md) remains Proposed. The
 [validation record](../milestones/ux/ux5-validation.md) retains failed gates and unverified gestures;
 the [review record](../milestones/ux/ux5-review-validation.md) lists what no native run has exercised.
 
@@ -43,8 +42,7 @@ ceiling Propose or Apply; Apply also requires a separate Approve click. No autom
 Accept, ceiling flag or environment bypass exists. The client exits 0 for success, 2 for an error
 response or invalid input and 3 for transport failure, printing JSON on stdout. A `busy` answer
 from an editor that already serves a client is an error response (exit 2); an invalid `--timeout`
-exits 2 before connecting. Sidecar failures exit 1. A timeout closes the connection; inspect logs
-before retrying a possibly completed job.
+exits 2 before connecting. Sidecar failures exit 1. A timeout closes the connection; inspect logs before retrying a possibly completed job.
 
 ## Wire protocol and commands
 
@@ -58,8 +56,7 @@ A custom client sends UTF-8 JSON followed by a newline. Its first request and re
 Then send `{"id":2,"command":"query.status","args":{}}`. IDs are nonnegative integers;
 arguments are objects (omission means `{}`). Responses are either `{"id":2,"ok":true,"result":...}`
 or `{"id":2,"ok":false,"error":{"code":"tier","message":"..."}}`. Approval/jobs answer when
-finished, not when queued. Malformed envelopes use response ID 0. Hello is separate from the 22
-commands below; the Python client sends it automatically.
+finished, not when queued. Malformed envelopes use response ID 0. Hello is separate from the 22 commands below; the Python client sends it automatically.
 
 Arguments are checked before any member is read. An unknown member, a member repeated in any
 object at any depth, more than 64 members in one object and nesting deeper than 32 levels each
@@ -104,13 +101,11 @@ python3 Tools/Session/lmx_session.py query log --after-sequence 0
 `query.camera` reports `farZ` as a JSON number for a finite far plane, or the string `"infinite"`
 when the authored perspective camera omits `zfar`. Querying either lens leaves the view unchanged.
 Any non-finite float in `query.camera`, `query.performance` or a proposal change row is one of the
-strings `"infinite"`, `"-infinite"` or `"nan"`. Actor values are `"Operator"`, `"System"` and
-`"Agent"`.
+strings `"infinite"`, `"-infinite"` or `"nan"`. Actor values are `"Operator"`, `"System"` and `"Agent"`.
 
 `query.log` takes an optional `afterSequence` and returns `nextSequence`, `dropped`, `omitted` and
 `actions`. The reply is capped just under 1 MiB and holds the newest rows that fit; `omitted`
-counts older matching rows left out, which no later query returns. `dropped` counts actions the
-editor no longer retains.
+counts older matching rows left out, which no later query returns. `dropped` counts actions the editor no longer retains.
 
 Propose commands create or withdraw review cards. Replace example IDs with current hierarchy or
 proposal IDs; the sample environment edit applies to a saved look:
@@ -128,8 +123,7 @@ changes. Withdraw stales a pending proposal from its submitting connection or, o
 from a client of the same name. While playing or paused, an edit to an orbiting light's `position`
 answers `unavailable`. A pending proposal is never evicted: `propose.edits` answers `busy` while 64
 bridge proposals await review. Save and Save As keep pending bridge cards; scene replacement, an
-accepted file proposal and a ceiling lowered to ReadOnly stale them. No client command accepts or
-rejects.
+accepted file proposal and a ceiling lowered to ReadOnly stale them. No client command accepts or rejects.
 
 Apply commands each show their arguments/output in an approval card. The operator chooses Approve or
 Deny; execution rechecks availability at the safe point. Approve and Deny are ignored for 0.5 s
@@ -171,15 +165,17 @@ Object/light selection is refused because it cannot survive replacement without 
 `measure.run` uses nonnegative warmup and positive frames (32-bit total), stopped playback and
 dynamic resolution off. It uses the interactive unscored measurement path with its own warmup,
 frames and output; the Performance panel's Warmup, Frames and export path and an active mouse look
-stay as the operator left them. `capture.gpu` needs
-`MTL_CAPTURE_ENABLED=1` at startup; its trace name is generated. Graph dump exports the displayed
+stay as the operator left them. `capture.gpu` needs `MTL_CAPTURE_ENABLED=1` at startup; its trace name is generated. Graph dump exports the displayed
 frame, including Freeze. Screenshot names receive `.png`; sequence names denote new directories.
-Frames are positive 32-bit counts; sequence warmup is nonnegative. A capture refuses dirty documents,
+Frames are positive 32-bit counts; sequence warmup is nonnegative. Screenshot/sequence requests refuse dirty documents,
 pending file proposals, a disk hash different from the loaded pair, measurement or another job.
-It spawns headless App with the clean loaded document, effective settings and lab overrides, no
+Only these requests spawn headless App with the clean loaded document, effective settings and lab overrides, no
 `LMX_*` environment variable and no editor descriptor beyond its own log:
 temporal off emits scale 1, rather than a dormant retained scale. Diagnostic views and dynamic
-resolution are not replayed as dormant settings. The live viewport is not read back.
+resolution are not replayed as dormant settings. The live viewport is not read back; headless
+children omit gizmos and editor cues. `capture.gpu` captures the live editor, including UI; scene-encoder isolation
+requires separate inspection. [Gizmo validation](../milestones/ux/ux6-validation-gizmo.md) retains
+passing screenshot pairs and incomplete native drag/encoder verification, without certifying them.
 
 Save a plan as `plan.json`, then use the command above:
 
@@ -193,23 +189,21 @@ Save a plan as `plan.json`, then use the command above:
 
 A plan has a summary and 1–32 Apply steps with object `args`. Queries, Propose and nested plans are
 refused. One approval covers the immutable steps in order; the first failed step ends the plan.
-Disconnect cancels pending approvals (`cancelled: client disconnected`); a running job finishes.
-Listen off or quit cancels work.
+Disconnect cancels pending approvals (`cancelled: client disconnected`); a running job finishes. Listen off or quit cancels work.
 
 ## Proposal subjects and units
 
 Use `query.hierarchy` IDs verbatim: `node:<n>`, `imported:<n>`, `object:<i>`,
 `light:<index>:<generation>`, `dirlight:<i>`, `environment`, `camera`. IDs describe the current
 scene, not portable references; stale generations fail. The query includes read-only subjects too.
-Authored cameras use their document-node ID (`node:1` in the six checked-in scenes); literal
-`camera` is not an alias for that editable saved camera.
+Authored cameras use their document-node ID (`node:1` in the six checked-in scenes); literal `camera` is not an alias for that editable saved camera.
 
 | Editable subject | Fields / JSON values |
 |---|---|
 | Document/imported nodes, persistent objects/local lights | `enabled`: boolean |
-| Persistent, unanimated objects | `position`: XYZ meters; `eulerDegrees`: XYZ degrees; `scale`: XYZ factors 0.01–100 |
-| Authored local lights | `position`: XYZ meters; `color`: RGB sRGB 0–1; `intensity`: nonnegative relative scalar; `range`: positive meters |
-| Authored spot lights | `direction`: nonzero XYZ normalized on apply; `innerCone`, `outerCone`: degrees, 0 ≤ inner < outer ≤ 89 |
+| Movable, unanimated objects | `position`: XYZ meters; `eulerDegrees`: XYZ degrees; `scale`: XYZ factors 0.01–100 |
+| Authored local lights | Movable unanimated `position`: XYZ meters; `color`: RGB sRGB 0–1; `intensity`: nonnegative relative scalar; `range`: positive meters |
+| Authored spot lights | Movable unanimated `direction`: nonzero XYZ normalized on apply; `innerCone`, `outerCone`: degrees, 0 ≤ inner < outer ≤ 89 |
 | `environment` | `exposure`, `bloom`: partial objects; `shadowFilter`: `"pcf"` or `"pcss"` |
 | Saved scene camera `node:<n>` from `query.hierarchy` | `position`: XYZ meters; `yaw`, `pitch`: radians, pitch within ±π/2 |
 
@@ -219,8 +213,13 @@ Exposure keys are `autoEnabled`, `ev`, `lowPercentile`, `highPercentile`, `targe
 ranges: 0 ≤ `lowPercentile` < `highPercentile` ≤ 100, `targetGrey` > 0, `evMin` ≤ `evMax`,
 nonnegative adaptation speeds and nonnegative bloom threshold and intensity. One value out of range
 answers `invalid` and refuses the whole batch. Camera edits change the saved scene camera, never the
-editor camera. Generated subjects and unsavable animated transforms are refused. Directional lights,
-structural create/delete/duplicate/reparent, selection and playback have no proposal edit operation.
+editor camera. Pose refusals use `<subject>/<field>: <poseLockReason>`; mobility refusals use
+`<subject>/mobility: Mobility is authored in the scene file`. Shared reasons include
+`Static: mobility is authored in the scene file`, `Generated objects are placed by their generator`,
+`Animation owns this transform` and `Pose edits are unavailable during measurement`. Static locks
+pose only; enabled/non-pose light fields remain editable. Generated lights retain session-only
+Inspector edits with Pause retaining manual orbit positions; bridge proposals require persistent subjects.
+Directional lights and structural, selection or playback edits remain unavailable.
 
 ## External file proposals and sidecars
 
@@ -232,7 +231,9 @@ python3 Tools/Session/lmx_session.py sidecar Assets/Scenes/temporal-lab.scene.gl
 
 This example writes beside the named document; use the copy you intend to edit. Schema 1 has
 `actor`, `summary`, `evidence` paths relative to the sidecar and `documentSha256`. The hash is raw
-glTF bytes followed by its referenced external buffer bytes. `x.scene.gltf` maps to
+glTF bytes followed only by its external animation buffer bytes. Schema 2 immutable geometry/PNG
+hashes enter through JSON `contentHashes`; the watcher/hash helper does not reread those files.
+Loading verifies immutable content. Keep geometry/images alongside JSON and animation when copying. `x.scene.gltf` maps to
 `x.scene.proposal.json`. The client atomically publishes the sidecar after validating the pair.
 
 The editor polls the pair twice a second, except during Measure. A stamp holds size, modification
@@ -292,8 +293,7 @@ write afterward and appears in the next Export. Copy path/Reveal notices locate 
 | `cancelled` | Inspect Stop/shutdown outcome before retrying |
 
 Lines are limited to 1 MiB, the inbox to 64 requests, hello names to 128 bytes and plan summaries
-to 1,024 bytes. Resolved proposals beyond 64 retained are evicted oldest first. A second client
-gets busy and closes. Oversized lines
+to 1,024 bytes. Resolved proposals beyond 64 retained are evicted oldest first. A second client gets busy and closes. Oversized lines
 close the connection after a protocol error; a full inbox gets busy. Console remains bounded at
 2,000 entries/2 MiB with 16 KiB messages. Restarting does not restore connection, tier, proposals or
 session jobs. Export retained evidence before ending a run. For controlled GPU evidence, see

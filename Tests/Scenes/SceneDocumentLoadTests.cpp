@@ -2,6 +2,7 @@
 #include "App/Model/Scene/SceneSession.h"
 #include "Scenes/SceneLibrary.h"
 #include "Support/GpuTestSupport.h"
+#include "Support/SceneDocumentTestSupport.h"
 #include <fstream>
 
 //======================================================================================================================
@@ -39,7 +40,8 @@ TEST_CASE("document reload failure preserves activation and success invalidates 
     scenes::SceneLibrary library(**device);
     auto document = scenes::readCatalogDocument("light-lab");
     REQUIRE(document);
-    document->nodes[0].generator->params = {{"lights", 1}, {"pile", 0}};
+    const auto generatorNode = test::documentGeneratorNode(*document, "light-lab");
+    document->nodes[generatorNode].generator->params = {{"lights", 1}, {"pile", 0}};
     const auto path = std::filesystem::current_path() / "SceneDocuments" / "reload.scene.gltf";
     std::filesystem::create_directories(path.parent_path());
     // Files left by an interrupted run must not look like a foreign companion.
@@ -70,9 +72,9 @@ TEST_CASE("document reload failure preserves activation and success invalidates 
     REQUIRE(library.loaded(id)->hash == oldHash);
     REQUIRE(library.get(id).value() == oldScene);
     auto overflow = *document;
-    overflow.nodes[0].generator->params = {{"lights", 4096}, {"pile", 0}};
+    overflow.nodes[generatorNode].generator->params = {{"lights", 4096}, {"pile", 0}};
     const auto extraNode = static_cast<uint32_t>(overflow.nodes.size());
-    auto extra = overflow.nodes[0];
+    auto extra = overflow.nodes[generatorNode];
     extra.generator->params = {{"lights", 1}, {"pile", 0}};
     overflow.nodes.push_back(extra);
     overflow.rootNodes.push_back(extraNode);
@@ -112,7 +114,8 @@ TEST_CASE("document assets append with distinct handles, source nodes, clips and
     REQUIRE(device);
     auto document = scenes::readCatalogDocument("temporal-lab");
     REQUIRE(document);
-    constexpr uint32_t firstIndex = 5;
+    const auto firstIndex =
+        test::documentAssetNode(*document, "Fetched/CesiumMilkTruck/CesiumMilkTruck.glb");
     const auto secondIndex = static_cast<uint32_t>(document->nodes.size());
     auto second = document->nodes[firstIndex];
     second.name = "Second truck";
@@ -129,7 +132,7 @@ TEST_CASE("document assets append with distinct handles, source nodes, clips and
     const auto& binding = loaded->binding;
     REQUIRE(binding.assets.size() == 2);
     const auto firstBase = binding.assets[0].objectBase;
-    REQUIRE(firstBase > 0); // TemporalLab's generated motion comes before both asset nodes.
+    REQUIRE(firstBase > 0); // TemporalLab's saved motion comes before both asset nodes.
     const auto count = binding.assets[1].objectBase - firstBase;
     const auto secondBase = binding.assets[1].objectBase;
     REQUIRE(count > 0);

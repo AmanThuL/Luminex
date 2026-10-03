@@ -18,6 +18,7 @@ struct MenuBarWidths {
     float activity = 0; ///< Full strip width including mark, verb, progress and optional Stop.
     /// Contracted strip width: mark, progress and optional Stop; zero only when activity is absent.
     float activityCompact = 0;
+    float gizmo = 0; ///< Optional tool group width including its internal spacing.
 };
 
 /// A single-row placement; transport buttons always remain present.
@@ -25,10 +26,11 @@ struct MenuBarFit {
     bool showReadout;      ///< Whether the transport has room for time or progress text.
     bool showZoom;         ///< Whether the right edge has room for the zoom percentage.
     bool showActivityVerb; ///< False when absent or contracted; an active mark always remains.
+    bool showGizmo;        ///< Tool group fits without dropping activity, readout or zoom.
     float transportX;      ///< Left edge of the transport, after the menus and minimum gap.
 };
 
-/// Centers transport and activity together; drops activity verb, readout, then zoom when tight.
+/// Centers transport, tools and activity together; drops tools, activity verb, readout, then zoom.
 /// activity >= activityCompact >= 0; both are zero when absent. Buttons and the contracted strip
 /// always remain, even if their mandatory minimum exceeds available. Widths use common units.
 MenuBarFit fitMenuBar(float available, const MenuBarWidths& widths);

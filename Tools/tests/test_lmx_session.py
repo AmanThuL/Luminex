@@ -13,7 +13,7 @@ import tempfile
 import threading
 import time
 import unittest
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 
 
 REPOSITORY = Path(__file__).resolve().parents[2]
@@ -52,8 +52,8 @@ class SidecarTests(unittest.TestCase):
                 "documentSha256": hashlib.sha256(gltf + buffer.read_bytes()).hexdigest(),
             })
 
-    def test_temporal_lab_pair_uses_buffer_uri(self):
-        document = REPOSITORY / "Assets/Scenes/temporal-lab.scene.gltf"
+    def test_historical_temporal_lab_pair_uses_buffer_uri(self):
+        document = REPOSITORY / "Tests/Golden/ux6-schema1-catalog/temporal-lab.scene.gltf"
         gltf = document.read_bytes()
         uri = json.loads(gltf)["buffers"][0]["uri"]
         buffer = document.parent / unquote(uri)
@@ -124,6 +124,151 @@ class SidecarTests(unittest.TestCase):
     def test_selftest(self):
         result = self.run_client("--selftest")
         self.assertEqual(result.returncode, 0, result.stderr)
+
+
+class Schema2SidecarTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
+        self.document = self.root / "sample.scene.gltf"
+        self.animation = self.root / "sample.scene.bin"
+        self.geometry = self.root / "sample.scene.geometry.bin"
+        self.animation.write_bytes(b"animation")
+        self.geometry.write_bytes(b"geometry")
+
+    def write_document(self, **fields):
+        data = {"extensions": {"LMX_scene": {"schemaVersion": 2}}, **fields}
+        raw = json.dumps(data).encode()
+        self.document.write_bytes(raw)
+        return raw
+
+    def entry(self, path):
+        return {"uri": path.name, "byteLength": path.stat().st_size}
+
+    def run_sidecar(self):
+        return subprocess.run([sys.executable, str(CLIENT), "sidecar", str(self.document),
+                               "--actor", "Schema 2 client", "--summary", "Hash document"],
+                              text=True, capture_output=True, check=False)
+
+    def assert_hash(self, expected):
+        result = self.run_sidecar()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        sidecar = self.document.with_suffix(".proposal.json")
+        self.assertEqual(json.loads(sidecar.read_text())["documentSha256"], expected)
+
+    def assert_refused(self, marker):
+        sidecar = self.document.with_suffix(".proposal.json")
+        sidecar.unlink(missing_ok=True)
+        result = self.run_sidecar()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(marker, result.stderr)
+        self.assertFalse(sidecar.exists())
+
+    def test_installed_catalog_sidecars_hash_named_animation_only(self):
+        catalog = REPOSITORY / "Assets/Scenes"
+        documents = sorted(catalog.glob("*.scene.gltf"))
+        self.assertEqual(len(documents), 6)
+        for document in documents:
+            with self.subTest(document=document.name):
+                raw = document.read_bytes()
+                parsed = json.loads(raw)
+                self.assertEqual(parsed["extensions"]["LMX_scene"]["schemaVersion"], 2)
+                self.document = self.root / document.name
+                self.document.write_bytes(raw)
+                animation = b""
+                for entry in parsed.get("buffers", []):
+                    decoded = unquote(entry["uri"])
+                    if decoded == document.stem + ".bin":
+                        animation = (document.parent / decoded).read_bytes()
+                        (self.root / decoded).write_bytes(animation)
+                # Geometry and images are deliberately absent: identity reads only animation.
+                self.assert_hash(hashlib.sha256(raw + animation).hexdigest())
+
+    def test_schema2_buffer_orders_and_geometry_only(self):
+        animation, geometry = self.entry(self.animation), self.entry(self.geometry)
+        for buffers, binary in (([animation, geometry], b"animation"),
+                                ([geometry, animation], b"animation"),
+                                ([animation], b"animation"), ([geometry], b"")):
+            with self.subTest(buffers=buffers):
+                raw = self.write_document(buffers=buffers)
+                self.assert_hash(hashlib.sha256(raw + binary).hexdigest())
+
+    def test_schema2_absent_buffers_hash_json_only(self):
+        raw = self.write_document()
+        self.assert_hash(hashlib.sha256(raw).hexdigest())
+
+    def test_schema2_percent_decoded_roles_keep_document_spaces(self):
+        self.document = self.root / "scene name.scene.gltf"
+        self.animation = self.root / "scene name.scene.bin"
+        self.animation.write_bytes(b"animation")
+        entry = {"uri": quote(self.animation.name), "byteLength": 9}
+        raw = self.write_document(buffers=[entry])
+        self.assert_hash(hashlib.sha256(raw + b"animation").hexdigest())
+        duplicate = {**entry, "uri": entry["uri"].replace(".bin", "%2Ebin")}
+        self.write_document(buffers=[entry, duplicate])
+        self.assert_refused("duplicate")
+
+    def test_schema2_geometry_is_not_read_and_animation_changes_identity(self):
+        raw = self.write_document(buffers=[self.entry(self.geometry), self.entry(self.animation)])
+        expected = hashlib.sha256(raw + b"animation").hexdigest()
+        self.assert_hash(expected)
+        self.geometry.write_bytes(b"changed geometry with a different size")
+        self.assert_hash(expected)
+        self.geometry.unlink()
+        self.assert_hash(expected)
+        self.animation.write_bytes(b"ANIMATION")
+        changed = hashlib.sha256(raw + b"ANIMATION").hexdigest()
+        self.assertNotEqual(changed, expected)
+        self.assert_hash(changed)
+
+    def test_schema2_buffer_shape_role_and_length_refusals(self):
+        animation, geometry = self.entry(self.animation), self.entry(self.geometry)
+        cases = [([], "buffers"), ({}, "buffers"), (None, "buffers"), ([1], "buffers"),
+                 ([animation, geometry, animation], "buffers"),
+                 ([animation, animation], "duplicate"), ([geometry, geometry], "duplicate"),
+                 ([{}], "uri"), ([{"uri": 7, "byteLength": 1}], "uri")]
+        for uri in ("other.bin", "./sample.scene.bin", "nested/sample.scene.bin"):
+            cases.append(([{**animation, "uri": uri}], "named"))
+        for uri in ("../sample.scene.bin", "%2E%2E/sample.scene.bin", "bad%GG.bin",
+                    "/sample.scene.bin", "https://host/sample.scene.bin"):
+            cases.append(([{**animation, "uri": uri}], "URI"))
+        for length in (0, -1, True, 1.5, "9", None):
+            for entry in (animation, geometry):
+                cases.append(([{**entry, "byteLength": length}], "byteLength"))
+        for buffers, marker in cases:
+            with self.subTest(buffers=buffers):
+                self.write_document(buffers=buffers)
+                self.assert_refused(marker)
+
+    def test_schema2_animation_missing_or_wrong_length_never_writes_sidecar(self):
+        entry = self.entry(self.animation)
+        self.write_document(buffers=[{**entry, "byteLength": 10}])
+        self.assert_refused("byteLength")
+        self.write_document(buffers=[entry])
+        self.animation.unlink()
+        self.assert_refused("cannot read buffer")
+
+    def test_only_explicit_integer_schema2_changes_legacy_uri_rules(self):
+        path = self.root / "arbitrary legacy.bin"
+        path.write_bytes(b"legacy")
+        for extensions in (None, [], "ignored", {}, {"LMX_scene": None},
+                           {"LMX_scene": {"schemaVersion": True}},
+                           {"LMX_scene": {"schemaVersion": 2.0}},
+                           {"LMX_scene": {"schemaVersion": "2"}},
+                           {"LMX_scene": {"schemaVersion": 1}},
+                           {"LMX_scene": {"schemaVersion": 3}}):
+            with self.subTest(extensions=extensions):
+                raw = json.dumps({"extensions": extensions,
+                                  "buffers": [{"uri": quote(path.name), "byteLength": 6}]}).encode()
+                self.document.write_bytes(raw)
+                self.assert_hash(hashlib.sha256(raw + b"legacy").hexdigest())
+
+    def test_legacy_empty_and_multiple_buffers_still_refuse(self):
+        for buffers in ([], [self.entry(self.animation), self.entry(self.geometry)]):
+            with self.subTest(buffers=buffers):
+                self.document.write_text(json.dumps({"buffers": buffers}))
+                self.assert_refused("exactly one")
 
 
 class BridgeClientTests(unittest.TestCase):

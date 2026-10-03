@@ -12,11 +12,13 @@
 #include "Engine/Asset/Document/Orientation.h"
 #include "Support/EngineTestSupport.h"
 #include "Support/GraphTestSupport.h"
+#include "Support/SceneDocumentFixtures.h"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
 #include <bit>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -86,6 +88,7 @@ asset::SceneDocument exportFixture(const fs::path& root) {
     REQUIRE(staticBytes);
     REQUIRE(animatedBytes);
     asset::SceneDocument doc;
+    doc.schemaVersion = asset::kSceneDocumentSchema;
     doc.name = "Export fixture";
     doc.cameras = {{.name = "Saved lens", .farZ = {}, .aspectRatio = 1.6f}};
     doc.lights = {{.name = "Spot",
@@ -116,8 +119,13 @@ asset::SceneDocument exportFixture(const fs::path& root) {
         {.name = "Lab",
          .generator = asset::DocGenerator{"light-lab", {{"lights", 1}, {"pile", 0}}}},
         {.name = "Animated asset",
-         .asset = asset::DocAsset{"animated/quad.gltf", sha256Hex(*animatedBytes)}}};
-    doc.rootNodes = {0, 1, 2, 3, 6, 7, 8};
+         .asset = asset::DocAsset{"animated/quad.gltf", sha256Hex(*animatedBytes)}},
+        {.name = "Generated objects",
+         .generator = asset::DocGenerator{"visibility-lab", {{"instances", 1}, {"occluders", 0}}}}};
+    doc.nodes[1].mobility = asset::DocMobility::Movable;
+    for (uint32_t node : {4u, 6u})
+        doc.nodes[node].mobility = asset::DocMobility::Movable;
+    doc.rootNodes = {0, 1, 2, 3, 6, 7, 8, 9};
     // Redundant authored values remain byte-stable instead of being cleaned up during export.
     doc.nodes[2].overrides = {{.node = 0, .name = "Empty parent", .enabled = true},
                               {.node = 1,
@@ -217,10 +225,10 @@ TEST_CASE("persistent edits then exact restoration become clean despite generati
     const auto object = loaded.binding.importedNodes[source].objects.front();
     const auto lightId = *loaded.binding.nodes[4].light;
     SECTION("object pose") {
-        session.editObject(
-            object, {.position = {3, 4, 5}, .eulerDegrees = {10, 20, 30}, .scale = {2, 1, 1}});
+        REQUIRE(session.editObject(
+            object, {.position = {3, 4, 5}, .eulerDegrees = {10, 20, 30}, .scale = {2, 1, 1}}));
         REQUIRE(dirty(loaded, session));
-        session.resetObject(object);
+        REQUIRE(session.resetObject(object));
     }
     SECTION("object own flag") {
         REQUIRE(session.setObjectEnabled(object, false));
@@ -279,7 +287,7 @@ TEST_CASE("saved object group light and look edits survive reader and reinstanti
     const auto objects = loaded.binding.importedNodes[source].objects;
     REQUIRE(objects.size() == 2);
     const DecomposedTransform pose{{-4, 5, 6}, {10, 20, 30}, {2, 1, 1}};
-    session.editObject(objects.back(), pose);
+    REQUIRE(session.editObject(objects.back(), pose));
     REQUIRE(session.setObjectEnabled(objects.front(), false));
     REQUIRE(session.setImportedNodeEnabled(importedIndex(loaded, 2, 0), false));
     REQUIRE(session.setNodeEnabled(3, true));
@@ -359,9 +367,15 @@ TEST_CASE("generated and animated previews never enter the saved document", "[sc
     auto loaded = loadFixture(device, root, exportFixture(root));
     app::SceneSession session;
     session.activate(loaded, app::SceneActivationMotion::Reset);
-    const auto generated = loaded.binding.nodes[7].objects.front();
+    REQUIRE(loaded.binding.nodes[9].objects.size() == 1);
+    const auto generated = loaded.binding.nodes[9].objects.front();
     const auto generatedLight = loaded.scene->lightLabPopulations.front().grid.front();
-    session.editObject(generated, {.position = {8, 9, 10}});
+    const auto generatedPose = loaded.scene->objects[generated];
+    const auto refusedGenerated = session.editObject(generated, {.position = {8, 9, 10}});
+    REQUIRE_FALSE(refusedGenerated);
+    CHECK(refusedGenerated.error().message == "Generated objects are placed by their generator");
+    CHECK(loaded.scene->objects[generated].position == generatedPose.position);
+    CHECK(loaded.scene->objects[generated].previousModel == generatedPose.previousModel);
     REQUIRE(session.setObjectEnabled(generated, false));
     auto light = *session.scene().light(generatedLight);
     light.position = {4, 5, 6};
@@ -370,7 +384,12 @@ TEST_CASE("generated and animated previews never enter the saved document", "[sc
     REQUIRE(session.editLocalLight(generatedLight, light));
     REQUIRE(session.setLightLabPile(2));
     const auto animated = loaded.binding.importedNodes[importedIndex(loaded, 8, 1)].objects.front();
-    session.editObject(animated, {.position = {30, 40, 50}});
+    const auto animatedPose = loaded.scene->objects[animated];
+    const auto refusedAnimated = session.editObject(animated, {.position = {30, 40, 50}});
+    REQUIRE_FALSE(refusedAnimated);
+    CHECK(refusedAnimated.error().message == "Animation owns this transform");
+    CHECK(loaded.scene->objects[animated].position == animatedPose.position);
+    CHECK(loaded.scene->objects[animated].previousModel == animatedPose.previousModel);
     CHECK_FALSE(dirty(loaded, session));
     CHECK(session.editGeneration() == 0);
     app::EditorPlayback playback;
@@ -669,7 +688,7 @@ TEST_CASE("successful save adoption uses the new override before the immutable p
     const auto object = loaded.binding.importedNodes[importedIndex(loaded, 1, 1)].objects.front();
     const auto original = session.objectDefault(object);
     const DecomposedTransform changed{{4, 5, 6}, {10, 20, 30}, {1, 2, 1}};
-    session.editObject(object, changed);
+    REQUIRE(session.editObject(object, changed));
     REQUIRE(session.setObjectEnabled(object, false));
     auto saved = exported(loaded, session);
     const auto path = root / "adopted.scene.gltf";
@@ -683,12 +702,248 @@ TEST_CASE("successful save adoption uses the new override before the immutable p
     loaded.hash = *hash;
     session.adoptDocumentResetBaseline();
     CHECK_FALSE(dirty(loaded, session));
-    session.editObject(object, original);
+    REQUIRE(session.editObject(object, original));
     CHECK(dirty(loaded, session));
-    session.resetObject(object);
+    REQUIRE(session.resetObject(object));
     CHECK_FALSE(dirty(loaded, session));
     REQUIRE(session.setObjectEnabled(object, true));
     CHECK(dirty(loaded, session));
     REQUIRE(session.setObjectEnabled(object, false));
     CHECK_FALSE(dirty(loaded, session));
+}
+
+//======================================================================================================================
+TEST_CASE("saved mesh export preserves loaded bits and independently persists edits",
+          "[gpu][scene-export][ux6-mesh-export]") {
+    auto device = rojoRHI::createDevice();
+    REQUIRE(device);
+    auto doc = test::contentDocument();
+    doc.nodes[1].mobility = asset::DocMobility::Movable;
+    doc.nodes[1].rotation = glm::quat(-.5f, -.5f, -.5f, -.5f);
+    doc.nodes[1].translation.x = -0.f;
+    const auto path = fixtureRoot() / "mesh-export.scene.gltf";
+    REQUIRE(asset::saveSceneDocument(doc, path));
+    auto read = asset::readSceneDocument(path);
+    REQUIRE(read);
+    auto loaded = engine::instantiateSceneDocument(**device, *read, path, {});
+    REQUIRE(loaded);
+    app::SceneSession session;
+    session.activate(*loaded, app::SceneActivationMotion::Reset);
+    auto result = exported(*loaded, session);
+    CHECK_FALSE(scenes::documentDirty(loaded->document, result));
+    CHECK(result.content == loaded->document.content);
+    CHECK(asset::sceneDocumentJson(result, "same.bin") ==
+          asset::sceneDocumentJson(loaded->document, "same.bin"));
+    const auto object = loaded->binding.nodes[1].objects.front();
+    SECTION("position and signed nonuniform scale retain the loaded quaternion") {
+        auto pose = session.objectDefault(object);
+        pose.position = {5.f, -0.f, 7.f};
+        pose.scale = {-2.f, .125f, 3.f};
+        REQUIRE(session.editObject(object, pose));
+        result = exported(*loaded, session);
+        CHECK(std::memcmp(&result.nodes[1].rotation, &loaded->document.nodes[1].rotation,
+                          sizeof(glm::quat)) == 0);
+    }
+    SECTION("rotation and pose export exactly") {
+        auto pose = session.objectDefault(object);
+        pose.position = {5.f, -0.f, 7.f};
+        pose.eulerDegrees = {0.f, 30.f, 0.f};
+        pose.scale = {-2.f, .125f, 3.f};
+        REQUIRE(session.editObject(object, pose));
+        result = exported(*loaded, session);
+        const auto decoded = asset::eulerDegreesForRotation(result.nodes[1].rotation);
+        for (int k = 0; k < 3; ++k)
+            CHECK(std::bit_cast<uint32_t>(decoded[k]) ==
+                  std::bit_cast<uint32_t>(pose.eulerDegrees[k]));
+    }
+    SECTION("enabled exports the own node flag") {
+        REQUIRE(session.setObjectEnabled(object, false));
+        CHECK_FALSE(session.nodeEnabled(1));
+        CHECK_FALSE(session.scene().objects[object].enabled);
+        result = exported(*loaded, session);
+        CHECK_FALSE(result.nodes[1].enabled);
+    }
+    CHECK(scenes::documentDirty(loaded->document, result));
+    auto onlyEditedNode = loaded->document;
+    onlyEditedNode.nodes[1] = result.nodes[1];
+    CHECK_FALSE(scenes::documentDirty(onlyEditedNode, result));
+    CHECK(result.content == loaded->document.content);
+    REQUIRE(asset::saveSceneDocument(result, path));
+    read = asset::readSceneDocument(path);
+    REQUIRE(read);
+    auto reloaded = engine::instantiateSceneDocument(**device, *read, path, {});
+    REQUIRE(reloaded);
+    const auto& before = session.scene().objects[object];
+    const auto& after = reloaded->scene->objects[reloaded->binding.nodes[1].objects.front()];
+    for (int k = 0; k < 3; ++k) {
+        CHECK(std::bit_cast<uint32_t>(before.position[k]) ==
+              std::bit_cast<uint32_t>(after.position[k]));
+        CHECK(std::bit_cast<uint32_t>(before.eulerDegrees[k]) ==
+              std::bit_cast<uint32_t>(after.eulerDegrees[k]));
+        CHECK(std::bit_cast<uint32_t>(before.scale[k]) == std::bit_cast<uint32_t>(after.scale[k]));
+    }
+    CHECK(after.enabled == before.enabled);
+    device->get()->waitIdle();
+}
+
+//======================================================================================================================
+TEST_CASE("mesh TRS animation excludes pose export but emissive animation does not",
+          "[gpu][scene-export][ux6-mesh-export]") {
+    auto device = rojoRHI::createDevice();
+    REQUIRE(device);
+    auto doc = test::contentDocument();
+    bool rigid = false;
+    SECTION("rigid track owns pose") {
+        rigid = true;
+        doc.animations = {{.keyCount = 2,
+                           .channels = {{.node = 1,
+                                         .path = asset::DocChannelPath::Translation,
+                                         .values = {{1, 2, 3, 0}, {4, 5, 6, 0}}}}}};
+    }
+    SECTION("emissive track leaves pose editable") {
+        doc.nodes[1].mobility = asset::DocMobility::Movable;
+        doc.animations = {{.keyCount = 2,
+                           .channels = {{.node = 0,
+                                         .path = asset::DocChannelPath::EmissiveStrength,
+                                         .material = 0,
+                                         .step = true,
+                                         .values = {{1, 0, 0, 0}, {2, 0, 0, 0}}}}}};
+    }
+    const auto path = fixtureRoot() / "animated-mesh-export.scene.gltf";
+    REQUIRE(asset::saveSceneDocument(doc, path));
+    auto loaded = engine::instantiateSceneDocument(**device, doc, path, {});
+    INFO((loaded ? "ok" : loaded.error().message));
+    REQUIRE(loaded);
+    app::SceneSession session;
+    session.activate(*loaded, app::SceneActivationMotion::Reset);
+    const auto object = loaded->binding.nodes[1].objects.front();
+    auto pose = session.objectDefault(object);
+    pose.position.x = 9.f;
+    const auto before = session.scene().objects[object];
+    const auto generation = session.editGeneration();
+    const auto edit = session.editObject(object, pose);
+    if (rigid) {
+        REQUIRE_FALSE(edit);
+        CHECK(edit.error().message == "Animation owns this transform");
+        CHECK(session.scene().objects[object].position == before.position);
+        CHECK(session.scene().objects[object].previousModel == before.previousModel);
+        CHECK(session.editGeneration() == generation);
+    } else
+        REQUIRE(edit);
+    auto result = exported(*loaded, session);
+    if (rigid)
+        CHECK_FALSE(scenes::documentDirty(loaded->document, result));
+    else {
+        CHECK(scenes::documentDirty(loaded->document, result));
+        CHECK(result.nodes[1].translation.x == 9.f);
+    }
+    REQUIRE(session.setNodeEnabled(1, false));
+    result = exported(*loaded, session);
+    CHECK_FALSE(result.nodes[1].enabled);
+    CHECK(result.nodes[1].translation.x == (rigid ? doc.nodes[1].translation.x : 9.f));
+    device->get()->waitIdle();
+}
+
+//======================================================================================================================
+TEST_CASE("mesh export saves the nearest quaternion for unrepresentable Euler edits",
+          "[scene-export][ux6-mesh-export]") {
+    engine::LoadedScene loaded{.scene = std::make_unique<engine::Scene>()};
+    loaded.document = test::contentDocument();
+    loaded.binding.nodes.resize(3);
+    loaded.binding.nodes[1].objects = {0};
+    loaded.scene->objects.push_back({.position = loaded.document.nodes[1].translation});
+    loaded.binding.nodes[2].objects = {1};
+    loaded.scene->objects.push_back({.scale = loaded.document.nodes[2].scale});
+    auto state = scenes::initialDocumentState(loaded);
+    for (const auto angles : {glm::vec3(0, 360, 0), glm::vec3(100, 0, 0)}) {
+        loaded.scene->objects[0].eulerDegrees = angles;
+        scenes::ExportReport report;
+        auto result = scenes::exportSceneDocument(loaded, *loaded.scene, state, &report);
+        REQUIRE(result);
+        REQUIRE(report.approximations.size() == 1);
+        CHECK(report.approximations[0].node == 1);
+        CHECK(report.approximations[0].what == "object rotation");
+        CHECK(result->nodes[1].rotation == asset::rotationForEulerDegrees(angles));
+        // After Save adopts the saved node and its decoded value, the next export keeps the
+        // saved quaternion unchanged.
+        const auto original = loaded.document.nodes[1].rotation;
+        loaded.document.nodes[1].rotation = result->nodes[1].rotation;
+        loaded.scene->objects[0].eulerDegrees =
+            asset::eulerDegreesForRotation(result->nodes[1].rotation);
+        scenes::ExportReport again;
+        const auto adopted = scenes::exportSceneDocument(loaded, *loaded.scene, state, &again);
+        REQUIRE(adopted);
+        CHECK(again.approximations.empty());
+        CHECK(adopted->nodes[1].rotation == result->nodes[1].rotation);
+        loaded.document.nodes[1].rotation = original;
+    }
+    loaded.scene->objects[0].eulerDegrees = {0, std::numeric_limits<float>::quiet_NaN(), 0};
+    scenes::ExportReport report;
+    auto result = scenes::exportSceneDocument(loaded, *loaded.scene, state, &report);
+    REQUIRE_FALSE(result);
+    CHECK(result.error().message.contains("/nodes/1/pose"));
+    CHECK(report.approximations.empty());
+}
+
+//======================================================================================================================
+TEST_CASE("mesh export keeps own enabled state under a disabled ancestor",
+          "[scene-export][ux6-mesh-export]") {
+    engine::LoadedScene loaded{.scene = std::make_unique<engine::Scene>()};
+    loaded.document = test::contentDocument();
+    loaded.document.nodes.push_back({.name = "Disabled parent", .children = {1}, .enabled = false});
+    loaded.document.rootNodes = {0, 2, 3};
+    loaded.binding.nodes.resize(4);
+    for (uint32_t n = 1; n <= 2; ++n) {
+        loaded.binding.nodes[n].objects = {n - 1};
+        const auto& node = loaded.document.nodes[n];
+        loaded.scene->objects.push_back(
+            {.position = node.translation,
+             .eulerDegrees = asset::eulerDegreesForRotation(node.rotation),
+             .scale = node.scale,
+             .enabled = false});
+    }
+    const auto state = scenes::initialDocumentState(loaded);
+    const auto result = scenes::exportSceneDocument(loaded, *loaded.scene, state);
+    REQUIRE(result);
+    CHECK(result->nodes[1].enabled);
+    CHECK_FALSE(result->nodes[3].enabled);
+    CHECK_FALSE(scenes::documentDirty(loaded.document, *result));
+}
+
+//======================================================================================================================
+TEST_CASE("mobility follows nearest source override and export preserves authored values",
+          "[scene-export][ux6-mobility]") {
+    FakeDevice device;
+    const auto root = fixtureRoot();
+    auto doc = exportFixture(root);
+    doc.schemaVersion = 2;
+    doc.nodes[1].mobility = asset::DocMobility::Movable;
+    doc.nodes[2].mobility = asset::DocMobility::Static;
+    doc.nodes[2].overrides[0].mobility = asset::DocMobility::Movable;
+    doc.nodes[4].mobility = asset::DocMobility::Movable;
+    doc.nodes[6].mobility = asset::DocMobility::Movable;
+    SECTION("nearest child override wins") {
+        doc.nodes[2].overrides[1].mobility = asset::DocMobility::Static;
+    }
+    auto loaded = loadFixture(device, root, doc, "mobility-bound");
+    REQUIRE(loaded.objectMobility.size() == loaded.scene->objects.size());
+    for (auto object : loaded.binding.nodes[1].objects)
+        CHECK(loaded.objectMobility[object] == asset::DocMobility::Movable);
+    const auto expected = doc.nodes[2].overrides[1].mobility.value_or(asset::DocMobility::Movable);
+    for (auto object : loaded.binding.nodes[2].objects)
+        CHECK(loaded.objectMobility[object] == expected);
+    for (auto object : loaded.binding.nodes[9].objects)
+        CHECK(loaded.objectMobility[object] == asset::DocMobility::Static);
+    CHECK(loaded.lightMobility == std::vector<asset::DocMobility>{asset::DocMobility::Movable,
+                                                                  asset::DocMobility::Static,
+                                                                  asset::DocMobility::Movable});
+    app::SceneSession session;
+    session.activate(loaded, app::SceneActivationMotion::Reset);
+    const auto result = exported(loaded, session);
+    CHECK_FALSE(scenes::documentDirty(loaded.document, result));
+    CHECK(asset::sceneDocumentJson(result, "same.bin") ==
+          asset::sceneDocumentJson(loaded.document, "same.bin"));
+    auto reread = loadFixture(device, root, result, "mobility-exported");
+    CHECK(reread.objectMobility == loaded.objectMobility);
+    CHECK(reread.lightMobility == loaded.lightMobility);
 }

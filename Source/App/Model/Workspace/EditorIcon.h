@@ -25,6 +25,13 @@ enum class EditorIcon : char32_t {
     Lock = 0xEA75,         ///< Freeze a diagnostic snapshot.
     Unlock = 0xEB74,       ///< Resume diagnostic publication.
     Rail = 0xEADA,         ///< Follow the authored camera rail.
+    Movable = 0xEB22,      ///< Subject mobility permits pose editing; also the Move tool glyph.
+    View = 0xEA70,         ///< Hide the transform gizmo.
+    Rotate = 0xEB37,       ///< Rotate the selected subject.
+    Scale = 0xEA99,        ///< Scale the selected object.
+    Transform = 0xEBB6,    ///< Combine the supported transform operations.
+    World = 0xEB01,        ///< Use world transform axes.
+    Local = 0xEB63,        ///< Use local transform axes.
 };
 
 /// A font glyph and a readable label used when the icon font is unavailable.

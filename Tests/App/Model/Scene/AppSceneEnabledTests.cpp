@@ -30,6 +30,10 @@ engine::LoadedScene enabledFixture() {
     loaded.binding.objectGeneratorNode = {engine::kGeneratedNode, engine::kGeneratedNode,
                                           engine::kGeneratedNode, 2, 2};
     loaded.binding.generatedObjectEnabled = {true, true, true, true, false};
+    loaded.objectMobility = {asset::DocMobility::Movable, asset::DocMobility::Movable,
+                             asset::DocMobility::Static, asset::DocMobility::Static,
+                             asset::DocMobility::Static};
+    loaded.document.nodes[1].mobility = asset::DocMobility::Movable;
     loaded.scene->objects.resize(5);
     loaded.scene->objects[3].enabled = false;
     loaded.scene->objects[4].enabled = false;
@@ -110,7 +114,12 @@ TEST_CASE("Generated own flags survive masked activation and new pile identities
     auto edited = *loaded.scene->light(pile[1]);
     edited.intensity = 9;
     REQUIRE(session.editLocalLight(pile[1], edited));
-    session.editObject(3, {.position = {5, 0, 0}});
+    const auto before = loaded.scene->objects[3];
+    const auto refused = session.editObject(3, {.position = {5, 0, 0}});
+    REQUIRE_FALSE(refused);
+    CHECK(refused.error().message == "Generated objects are placed by their generator");
+    CHECK(loaded.scene->objects[3].position == before.position);
+    CHECK(loaded.scene->objects[3].previousModel == before.previousModel);
     CHECK(session.editGeneration() == 1);
     CHECK(loaded.document.nodes[2].enabled == false);
 }
@@ -142,17 +151,21 @@ TEST_CASE("Bound pose edits fan out and persistent mutations notify exactly on c
     SceneSession session;
     session.activate(loaded, SceneActivationMotion::Reset);
     const DecomposedTransform pose{.position = {8, 2, 1}};
-    session.editObject(0, pose);
+    REQUIRE(session.editObject(0, pose));
     CHECK(loaded.scene->objects[1].position == pose.position);
     CHECK(loaded.scene->objects[2].position != pose.position);
     CHECK(session.editGeneration() == 1);
-    session.editObject(1, pose);
+    REQUIRE(session.editObject(1, pose));
     CHECK(session.editGeneration() == 1);
-    session.resetObject(1);
+    REQUIRE(session.resetObject(1));
     CHECK(loaded.scene->objects[0].position == glm::vec3(0));
     CHECK(session.editGeneration() == 2);
     loaded.binding.importedNodes[1].animated = true;
-    session.editObject(0, pose);
+    const auto refused = session.editObject(0, pose);
+    REQUIRE_FALSE(refused);
+    CHECK(refused.error().message == "Animation owns this transform");
+    CHECK(loaded.scene->objects[0].position == glm::vec3(0));
+    CHECK(loaded.scene->objects[1].position == glm::vec3(0));
     CHECK(session.editGeneration() == 2);
 }
 
@@ -237,14 +250,17 @@ TEST_CASE("Saved reset adoption preserves generation and generated session defau
     auto loaded = enabledFixture();
     SceneSession session;
     session.activate(loaded, SceneActivationMotion::Reset);
-    session.editObject(0, {.position = {4, 5, 6}});
-    session.editObject(3, {.position = {9, 9, 9}});
+    REQUIRE(session.editObject(0, {.position = {4, 5, 6}}));
+    const auto refused = session.editObject(3, {.position = {9, 9, 9}});
+    REQUIRE_FALSE(refused);
+    CHECK(refused.error().message == "Generated objects are placed by their generator");
+    CHECK(loaded.scene->objects[3].position == glm::vec3(0));
     session.adoptDocumentResetBaseline();
     CHECK(session.editGeneration() == 1);
     CHECK_FALSE(session.objectChanged(0));
-    CHECK(session.objectChanged(3));
-    session.editObject(0, {.position = {1, 1, 1}});
-    session.resetObject(1);
+    CHECK_FALSE(session.objectChanged(3));
+    REQUIRE(session.editObject(0, {.position = {1, 1, 1}}));
+    REQUIRE(session.resetObject(1));
     CHECK(loaded.scene->objects[0].position == glm::vec3(4, 5, 6));
     CHECK(loaded.scene->objects[1].position == glm::vec3(4, 5, 6));
     CHECK(session.editGeneration() == 3);
@@ -275,13 +291,19 @@ TEST_CASE("Measurement refuses imported and generated edits without notification
 //======================================================================================================================
 TEST_CASE("Instantiation captures generated own flags before an off ancestor masks them",
           "[app][scene-enabled]") {
-    auto document = scenes::readCatalogDocument("light-lab");
-    REQUIRE(document);
-    document->nodes[0].enabled = false;
+    asset::SceneDocument document;
+    document.name = "Generated own flags";
+    document.cameras.emplace_back();
+    document.camera = 1;
+    document.nodes = {{.name = "Disabled generator",
+                       .enabled = false,
+                       .generator = asset::DocGenerator{.name = "test-own-flags"}},
+                      {.name = "Camera", .camera = 0}};
+    document.rootNodes = {0, 1};
     const auto path =
         std::filesystem::current_path() / "SceneDocuments" / "generated-own-flags.scene.gltf";
     std::filesystem::create_directories(path.parent_path());
-    REQUIRE(asset::saveSceneDocument(*document, path));
+    REQUIRE(asset::saveSceneDocument(document, path));
     FakeDevice device;
     const engine::SceneGenerator generator =
         [](engine::Scene& scene, const asset::DocGenerator&,
@@ -298,7 +320,7 @@ TEST_CASE("Instantiation captures generated own flags before an off ancestor mas
         }
         return {};
     };
-    auto loaded = engine::instantiateSceneDocument(device, *document, path,
+    auto loaded = engine::instantiateSceneDocument(device, document, path,
                                                    [&](std::string_view) { return &generator; });
     REQUIRE(loaded);
     REQUIRE(loaded->scene->objects.size() == 2);

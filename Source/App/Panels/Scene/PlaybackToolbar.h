@@ -4,6 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
+#include "App/Model/Scene/GizmoModel.h"
+
 #include <string_view>
 
 namespace lmx::app {
@@ -24,13 +26,19 @@ struct PlaybackToolbarContext {
     bool active = false;            ///< A run retains a starting-state snapshot until Stop.
     bool measurementActive = false; ///< A fixed, uninterrupted measurement sequence is running.
     bool hasCameraRail = false;     ///< The scene provides an authored camera path.
+    GizmoState* gizmo = nullptr;    ///< Borrowed transient tool choices; null omits the group.
     std::string_view readout;       ///< Scene time or measurement progress, also used in tooltips.
 };
 
 /// Measures all visible buttons with the shared glyph or fallback-label widths and spacing.
 float playbackToolbarButtonsWidth(const PlaybackToolbarContext& context);
 
+/// Measures the optional tool group, excluding its leading gap; zero without gizmo state.
+float playbackToolbarGizmoWidth(const PlaybackToolbarContext& context);
+
 /// Draws in the current menu row without reserving a sidebar or wrapping controls.
-PlaybackToolbarAction drawPlaybackToolbar(const PlaybackToolbarContext& context, bool showReadout);
+/// showGizmo draws choices after Step; measurement restricts transport, not tool choice.
+PlaybackToolbarAction drawPlaybackToolbar(const PlaybackToolbarContext& context, bool showReadout,
+                                          bool showGizmo);
 
 } // namespace lmx::app

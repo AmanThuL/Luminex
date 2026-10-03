@@ -1,0 +1,228 @@
+{
+  "asset": {
+    "version": "2.0"
+  },
+  "extensionsUsed": ["LMX_scene", "KHR_lights_punctual"],
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "San Miguel",
+      "nodes": [0, 1, 2, 3, 4]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "San Miguel",
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true,
+          "asset": {
+            "uri": "Fetched/SanMiguel/SanMiguel.gltf",
+            "sha256": "9e04ecdef92d66fe929ef912d7f655cb4f3ad13d33d441e5dc62a3b993fb6680"
+          }
+        }
+      }
+    },
+    {
+      "name": "Tour Camera",
+      "translation": [8, 1.8, 12],
+      "rotation": [0.03471998, 0.049783595, -0.0017316807, 0.9981547],
+      "camera": 0,
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true
+        }
+      }
+    },
+    {
+      "name": "Key",
+      "rotation": [-0.627963, -0.627963, 0, 0.45970085],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 0
+        },
+        "LMX_scene": {
+          "enabled": true,
+          "role": "key",
+          "castsShadow": true
+        }
+      }
+    },
+    {
+      "name": "Fill",
+      "rotation": [-0.627963, 0.627963, 0, 0.45970085],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 1
+        },
+        "LMX_scene": {
+          "enabled": true,
+          "role": "fill",
+          "castsShadow": false
+        }
+      }
+    },
+    {
+      "name": "Rim",
+      "rotation": [-0.38268346, -0, 0, 0.92387956],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 2
+        },
+        "LMX_scene": {
+          "enabled": true,
+          "role": "rim",
+          "castsShadow": false
+        }
+      }
+    }
+  ],
+  "cameras": [
+    {
+      "name": "Tour Camera",
+      "type": "perspective",
+      "perspective": {
+        "yfov": 0.9599311,
+        "znear": 0.05,
+        "zfar": 500
+      }
+    }
+  ],
+  "animations": [
+    {
+      "name": "Camera Rail",
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "node": 1,
+            "path": "translation"
+          }
+        },
+        {
+          "sampler": 1,
+          "target": {
+            "node": 1,
+            "path": "rotation"
+          }
+        }
+      ],
+      "samplers": [
+        {
+          "input": 0,
+          "output": 1,
+          "interpolation": "LINEAR"
+        },
+        {
+          "input": 0,
+          "output": 2,
+          "interpolation": "LINEAR"
+        }
+      ],
+      "extensions": {
+        "LMX_scene": {
+          "sampleRate": 60
+        }
+      }
+    }
+  ],
+  "buffers": [
+    {
+      "uri": "san-miguel.scene.bin",
+      "byteLength": 23072
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 2884
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 2884,
+      "byteLength": 8652
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 11536,
+      "byteLength": 11536
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 721,
+      "type": "SCALAR",
+      "min": [0],
+      "max": [12]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 721,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 721,
+      "type": "VEC4"
+    }
+  ],
+  "extensions": {
+    "KHR_lights_punctual": {
+      "lights": [
+        {
+          "name": "Key",
+          "type": "directional",
+          "color": [0.8959768414497375, 0.8959768414497375, 0.8959768414497375],
+          "intensity": 0.5
+        },
+        {
+          "name": "Fill",
+          "type": "directional",
+          "color": [0.5296761989593506, 0.5296761989593506, 0.5296761989593506],
+          "intensity": 0.0625
+        },
+        {
+          "name": "Rim",
+          "type": "directional",
+          "color": [0.5296761989593506, 0.5296761989593506, 0.5296761989593506],
+          "intensity": 0.0625
+        }
+      ]
+    },
+    "LMX_scene": {
+      "schemaVersion": 1,
+      "camera": 1,
+      "look": {
+        "exposure": {
+          "ev": 0,
+          "autoEnabled": false,
+          "lowPercentile": 50,
+          "highPercentile": 95,
+          "targetGrey": 0.18,
+          "evMin": -8,
+          "evMax": 8,
+          "compensationEv": 0,
+          "adaptUpStopsPerSecond": 3,
+          "adaptDownStopsPerSecond": 1.5
+        },
+        "bloom": {
+          "enabled": true,
+          "threshold": 1,
+          "intensity": 0.2
+        },
+        "shadow": {
+          "filter": "pcf"
+        },
+        "environment": {
+          "skySrgb8": [149, 170, 196]
+        }
+      },
+      "loop": true
+    }
+  }
+}

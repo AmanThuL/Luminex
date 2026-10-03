@@ -592,28 +592,31 @@ float fieldProvenanceWidth() {
 }
 
 //======================================================================================================================
-float iconButtonWidth(EditorIcon icon) {
+float iconButtonWidth(EditorIcon icon, const char* fallbackLabel) {
     const ScopedType type(TypeRole::Body);
     const auto info = editorIconInfo(icon);
     const bool hasGlyph = iconFontAvailable && ImGui::GetFontBaked()->FindGlyphNoFallback(
                                                    static_cast<ImWchar>(info.codepoint));
     return hasGlyph
                ? ImGui::GetFrameHeight()
-               : std::max(ImGui::GetFrameHeight(), ImGui::CalcTextSize(info.label.data()).x +
-                                                       2.0f * ImGui::GetStyle().FramePadding.x);
+               : std::max(ImGui::GetFrameHeight(),
+                          ImGui::CalcTextSize(fallbackLabel ? fallbackLabel : info.label.data()).x +
+                              2.0f * ImGui::GetStyle().FramePadding.x);
 }
 
 //======================================================================================================================
-bool iconButton(const char* id, EditorIcon icon, bool enabled, const char* tooltip) {
+bool iconButton(const char* id, EditorIcon icon, bool enabled, const char* tooltip,
+                const char* fallbackLabel) {
     const ScopedType type(TypeRole::Body);
     const auto info = editorIconInfo(icon);
     const float height = ImGui::GetFrameHeight();
-    const float width = iconButtonWidth(icon);
+    const float width = iconButtonWidth(icon, fallbackLabel);
     const bool hasGlyph = iconFontAvailable && ImGui::GetFontBaked()->FindGlyphNoFallback(
                                                    static_cast<ImWchar>(info.codepoint));
     ImGui::PushID(id);
     ImGui::BeginDisabled(!enabled);
-    const bool clicked = ImGui::Button(hasGlyph ? "##glyph" : info.label.data(), {width, height});
+    const char* label = fallbackLabel ? fallbackLabel : info.label.data();
+    const bool clicked = ImGui::Button(hasGlyph ? "##glyph" : label, {width, height});
     if (hasGlyph && ImGui::IsItemVisible()) {
         auto* baked = ImGui::GetFontBaked();
         const auto glyph = *baked->FindGlyph(static_cast<ImWchar>(info.codepoint));

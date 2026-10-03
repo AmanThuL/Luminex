@@ -3,7 +3,7 @@ target("App")
     add_files("Shell/*.cpp", "Headless/*.cpp", "Panels/*/*.cpp")
     add_files("Shell/*.mm")
     add_frameworks("AppKit")
-    add_deps("Core", "RojoRHI", "RojoRHIMetal4ImGui", "Render", "Asset", "AppModel", "ImGui", "ImGuiNodeEditor", "Engine", "Scenes")
+    add_deps("Core", "RojoRHI", "RojoRHIMetal4ImGui", "Render", "Asset", "AppModel", "ImGui", "ImGuiNodeEditor", "ImGuizmo", "Engine", "Scenes")
     add_packages("libsdl3", "glm")
     -- Compile every shader for App so test-only entries cannot silently drift out of build health.
     add_rules("slang2metallib")

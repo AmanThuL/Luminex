@@ -7,6 +7,8 @@
 
 #include "App/Model/Scene/DocumentWorkflow.h"
 
+#include <tuple>
+
 namespace lmx::app {
 
 //======================================================================================================================
@@ -146,6 +148,18 @@ MenuItem viewMenu(const MenuContext& context) {
     if (context.measuring)
         for (auto& child : children)
             disable(child, "Stop measurement before changing the view.");
+    std::vector<MenuItem> tools;
+    for (const auto& [tool, label, key] : {std::tuple{GizmoTool::View, "View", "Q"},
+                                           {GizmoTool::Move, "Move", "W"},
+                                           {GizmoTool::Rotate, "Rotate", "E"},
+                                           {GizmoTool::Scale, "Scale", "R"},
+                                           {GizmoTool::Combined, "Transform", "Y"}})
+        tools.push_back(item(label, MenuCommand::GizmoTool, static_cast<uint32_t>(tool),
+                             context.gizmo.tool == tool, {}, Shortcut{key}));
+    tools.push_back(item(
+        context.gizmo.space == GizmoSpace::World ? "World/Local (World)" : "World/Local (Local)",
+        MenuCommand::GizmoSpace, 0, context.gizmo.space == GizmoSpace::World, {}, Shortcut{"X"}));
+    children.push_back(submenu("Gizmo", std::move(tools)));
     children.push_back(submenu(
         "Appearance",
         {item("Auto (system)", MenuCommand::Appearance, static_cast<uint32_t>(Appearance::Auto),
@@ -242,6 +256,9 @@ EditorShortcut shortcutPolicy(MenuCommand command) {
         return EditorShortcut::Capture;
     case MenuCommand::Quit:
         return EditorShortcut::Quit;
+    case MenuCommand::GizmoTool:
+    case MenuCommand::GizmoSpace:
+        return EditorShortcut::Gizmo;
     default:
         return EditorShortcut::Document;
     }

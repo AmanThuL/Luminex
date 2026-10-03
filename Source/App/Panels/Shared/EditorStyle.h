@@ -103,9 +103,12 @@ float fieldProvenanceWidth();
 inline constexpr float kPropertyGridMinWidth = 260.0f;
 
 /// Width of an icon button at the current font and scale, including its labelled fallback.
-float iconButtonWidth(EditorIcon icon);
+/// fallbackLabel overrides the action text when the glyph is unavailable; null uses the icon label.
+float iconButtonWidth(EditorIcon icon, const char* fallbackLabel = nullptr);
 /// Draws a square glyph button, or a label-sized fallback, with delayed help when disabled too.
-bool iconButton(const char* id, EditorIcon icon, bool enabled, const char* tooltip);
+/// fallbackLabel uses the same width policy as iconButtonWidth and is borrowed only for this call.
+bool iconButton(const char* id, EditorIcon icon, bool enabled, const char* tooltip,
+                const char* fallbackLabel = nullptr);
 /// Draws an accent-filled primary action in the strong body face; true when activated.
 bool primaryButton(const char* label);
 /// Draws a neutral topic header; does not use the selected-row background.

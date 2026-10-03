@@ -105,8 +105,11 @@ TEST_CASE("menu has exactly one of every action and option identity", "[app][men
           MenuCommand::ResetCamera, MenuCommand::FrameSelected, MenuCommand::SelectionOutline,
           MenuCommand::EditorCamera, MenuCommand::ZoomOut, MenuCommand::ZoomIn,
           MenuCommand::ResetUiScale, MenuCommand::StyleGallery, MenuCommand::ResetLayout,
-          MenuCommand::Capture})
+          MenuCommand::Capture, MenuCommand::GizmoSpace})
         expected.emplace(command, 0);
+    for (auto tool : {GizmoTool::View, GizmoTool::Move, GizmoTool::Rotate, GizmoTool::Scale,
+                      GizmoTool::Combined})
+        expected.emplace(MenuCommand::GizmoTool, static_cast<uint32_t>(tool));
     for (uint32_t index = 0; index < context.scenes.size(); ++index)
         expected.emplace(MenuCommand::OpenCatalog, index);
     for (auto value : {Appearance::Auto, Appearance::Light, Appearance::Dark})
@@ -153,7 +156,8 @@ TEST_CASE("menu shortcut keys and modifiers equal the existing bindings", "[app]
     const auto items = buildMenuModel(ready());
     size_t count = 0;
     for (const auto* item : flatten(items)) {
-        if (!item->shortcut)
+        if (!item->shortcut || item->command == MenuCommand::GizmoTool ||
+            item->command == MenuCommand::GizmoSpace)
             continue;
         REQUIRE(item->command);
         REQUIRE(expected.contains(*item->command));
@@ -474,4 +478,76 @@ TEST_CASE("plain typing in a text field leaves no refused-chord record",
         CHECK(keyboardRecord(KeyboardOutcome::Run, {}, command) == KeyboardRecord::None);
         CHECK(keyboardRecord(KeyboardOutcome::Report, {}, command) == KeyboardRecord::None);
     }
+}
+
+//======================================================================================================================
+TEST_CASE("gizmo menu exposes Unity tools and one space toggle", "[app][menu-model][gizmo-tools]") {
+    const auto items = buildMenuModel(ready());
+    const auto& gizmo = named(items, "Gizmo");
+    REQUIRE(gizmo.children.size() == 6);
+    const std::pair<const char*, const char*> expected[] = {
+        {"View", "Q"},  {"Move", "W"},      {"Rotate", "E"},
+        {"Scale", "R"}, {"Transform", "Y"}, {"World/Local (World)", "X"}};
+    const GizmoTool tools[] = {GizmoTool::View, GizmoTool::Move, GizmoTool::Rotate,
+                               GizmoTool::Scale, GizmoTool::Combined};
+    for (size_t index = 0; index < gizmo.children.size(); ++index) {
+        const auto& entry = gizmo.children[index];
+        CHECK(entry.command == (index < 5 ? MenuCommand::GizmoTool : MenuCommand::GizmoSpace));
+        CHECK(entry.argument == (index < 5 ? static_cast<uint32_t>(tools[index]) : 0));
+        CHECK(entry.label == expected[index].first);
+        REQUIRE(entry.shortcut);
+        CHECK(entry.shortcut->key == expected[index].second);
+        CHECK_FALSE(entry.shortcut->command);
+        CHECK_FALSE(entry.shortcut->shift);
+        CHECK(entry.enabled);
+        CHECK(entry.checked == (index == 1 || index == 5));
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("gizmo choices reflect session state and stay available during measurement",
+          "[app][menu-model][gizmo-tools]") {
+    auto context = ready();
+    context.measuring = true;
+    context.stopped = false;
+    for (auto tool : {GizmoTool::View, GizmoTool::Move, GizmoTool::Rotate, GizmoTool::Scale,
+                      GizmoTool::Combined}) {
+        for (auto space : {GizmoSpace::World, GizmoSpace::Local}) {
+            context.gizmo = {tool, space};
+            const auto items = buildMenuModel(context);
+            const auto& gizmo = named(items, "Gizmo");
+            CHECK(gizmo.enabled);
+            size_t checkedTools = 0;
+            for (const auto& entry : gizmo.children) {
+                CHECK(entry.enabled);
+                if (entry.command == MenuCommand::GizmoTool) {
+                    CHECK(entry.checked == (entry.argument == static_cast<uint32_t>(tool)));
+                    checkedTools += entry.checked;
+                    CHECK(shortcutPolicy(*entry.command) == EditorShortcut::Gizmo);
+                    CHECK(keyboardDecision(items, *entry.command, entry.argument, {}).outcome ==
+                          KeyboardOutcome::Run);
+                }
+            }
+            CHECK(checkedTools == 1);
+            const auto& toggle = action(items, MenuCommand::GizmoSpace);
+            CHECK(toggle.label ==
+                  (space == GizmoSpace::World ? "World/Local (World)" : "World/Local (Local)"));
+            CHECK(toggle.checked == (space == GizmoSpace::World));
+            CHECK(shortcutPolicy(MenuCommand::GizmoSpace) == EditorShortcut::Gizmo);
+            CHECK(keyboardDecision(items, MenuCommand::GizmoSpace, 0, {}).outcome ==
+                  KeyboardOutcome::Run);
+            for (unsigned flags = 1; flags < 16; ++flags) {
+                const ShortcutContext focus{bool(flags & 1), bool(flags & 2), bool(flags & 4),
+                                            bool(flags & 8)};
+                for (const auto& entry : gizmo.children)
+                    CHECK(keyboardDecision(items, *entry.command, entry.argument, focus).outcome ==
+                          (flags & 7 ? KeyboardOutcome::Focus : KeyboardOutcome::OtherSurface));
+            }
+        }
+    }
+    context.documentIdle = false;
+    const auto busy = buildMenuModel(context);
+    CHECK_FALSE(named(busy, "Gizmo").enabled);
+    for (const auto& entry : named(busy, "Gizmo").children)
+        CHECK_FALSE(entry.enabled);
 }

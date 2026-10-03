@@ -23,7 +23,7 @@ constexpr uint32_t kLightLabReferenceLightCount = 256;
 /// overlap without one light's range spanning the whole field.
 constexpr float kLightLabReferenceRange = 5.0f;
 
-/// Half the side length, metres, of the fixed square footprint the light grid occupies for every
+/// Half the side length, metres, of the saved field footprint the light grid occupies for every
 /// `n`; only spacing between lights shrinks as `n` grows.
 constexpr float kLightLabGridHalfExtent = 20.0f;
 

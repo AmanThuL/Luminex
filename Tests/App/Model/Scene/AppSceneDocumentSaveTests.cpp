@@ -10,8 +10,10 @@
 #include "Scenes/SceneDocumentExport.h"
 #include "Support/EngineTestSupport.h"
 #include "Support/GraphTestSupport.h"
+#include "Support/SceneDocumentFixtures.h"
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <fstream>
 #include <limits>
 
@@ -515,8 +517,15 @@ TEST_CASE("Save preserves immutable imported poses and generated session default
     doc.nodes.push_back(
         {.name = "Generator",
          .generator = asset::DocGenerator{"light-lab", {{"lights", 1}, {"pile", 0}}}});
+    doc.nodes.push_back(
+        {.name = "Generated objects",
+         .generator = asset::DocGenerator{"visibility-lab", {{"instances", 1}, {"occluders", 0}}}});
+    doc.schemaVersion = asset::kSceneDocumentSchema;
+    doc.nodes[3].mobility = asset::DocMobility::Movable;
+    doc.nodes[2].mobility = asset::DocMobility::Movable;
     doc.rootNodes.push_back(3);
     doc.rootNodes.push_back(4);
+    doc.rootNodes.push_back(5);
     REQUIRE(asset::saveSceneDocument(doc, path));
     const auto oldCwd = fs::current_path();
     FakeDevice device;
@@ -530,6 +539,7 @@ TEST_CASE("Save preserves immutable imported poses and generated session default
     app::SceneSession session;
     session.activate(*library.loaded(id), app::SceneActivationMotion::Reset);
     const auto& bindings = session.loadedScene()->binding;
+    REQUIRE(bindings.nodes[5].objects.size() == 1);
     const auto imported = std::find_if(bindings.importedNodes.begin(), bindings.importedNodes.end(),
                                        [](const auto& node) { return !node.objects.empty(); });
     REQUIRE(imported != bindings.importedNodes.end());
@@ -540,7 +550,7 @@ TEST_CASE("Save preserves immutable imported poses and generated session default
     const auto immutable = *session.documentState().importedPoseBaseline[importedIndex];
     auto edited = original;
     edited.position.x += 5;
-    session.editObject(object, edited);
+    REQUIRE(session.editObject(object, edited));
     REQUIRE(session.setObjectEnabled(object, false));
     REQUIRE(session.setNodeEnabled(3, false));
     const auto generated = std::find_if(
@@ -553,7 +563,14 @@ TEST_CASE("Save preserves immutable imported poses and generated session default
     const auto generatedDefault = session.objectDefault(generatedIndex);
     auto generatedEdit = generatedDefault;
     generatedEdit.position.x += 10;
-    session.editObject(generatedIndex, generatedEdit);
+    const auto generation = session.editGeneration();
+    const auto generatedPose = session.scene().objects[generatedIndex];
+    const auto refused = session.editObject(generatedIndex, generatedEdit);
+    REQUIRE_FALSE(refused);
+    CHECK(refused.error().message == "Generated objects are placed by their generator");
+    CHECK(session.scene().objects[generatedIndex].position == generatedPose.position);
+    CHECK(session.scene().objects[generatedIndex].previousModel == generatedPose.previousModel);
+    CHECK(session.editGeneration() == generation);
     REQUIRE(app::saveSessionDocument(library, session, id, path, false));
     REQUIRE_FALSE(dirty(session));
     CHECK_FALSE(session.objectEnabled(object));
@@ -562,9 +579,9 @@ TEST_CASE("Save preserves immutable imported poses and generated session default
           immutable.translation);
     CHECK(session.objectDefault(object).position == edited.position);
     CHECK(session.objectDefault(generatedIndex).position == generatedDefault.position);
-    session.editObject(object, original);
+    REQUIRE(session.editObject(object, original));
     REQUIRE(dirty(session));
-    session.resetObject(object);
+    REQUIRE(session.resetObject(object));
     CHECK_FALSE(dirty(session));
     auto destination = path.parent_path() / "imported-copy.scene.gltf";
     REQUIRE(app::saveSessionDocument(library, session, id, destination, true));
@@ -1094,4 +1111,237 @@ TEST_CASE("a formatting-only disk change adopts its hash and a real change does 
     CHECK(loaded.hash == "reformatted");
     CHECK(loaded.document.sourceBufferUri == "renamed.bin");
     CHECK(asset::diffSceneDocuments(loaded.document, saveFixture()).empty());
+}
+
+//======================================================================================================================
+TEST_CASE("content Save As rejects geometry and texture aliases before invoking the writer",
+          "[app][document-save][ux6-write]") {
+    FakeDevice device;
+    scenes::SceneLibrary library(device);
+    const auto path = savePath("content-alias");
+    auto id = scenes::sceneIdFromPath(path);
+    REQUIRE(library.get(id));
+    app::SceneSession session;
+    session.activate(*library.loaded(id), app::SceneActivationMotion::Reset);
+    auto& doc = session.loadedScene()->document;
+    doc.content = test::contentDocument().content;
+    const auto geometry = path.parent_path() / "content-alias.scene.geometry.bin";
+    const auto textures = path.parent_path() / "content-alias.scene.textures";
+    fs::create_directories(textures);
+    std::ofstream(geometry) << "source geometry";
+    auto target = path.parent_path() / "content-copy.scene.gltf";
+    const auto targetGeometry = path.parent_path() / "content-copy.scene.geometry.bin";
+    const auto targetTextures = path.parent_path() / "content-copy.scene.textures";
+    std::error_code ignored;
+    fs::remove(targetGeometry, ignored);
+    fs::remove(targetTextures, ignored);
+    SECTION("geometry hard link") {
+        fs::create_hard_link(geometry, targetGeometry);
+    }
+    SECTION("geometry symlink") {
+        fs::create_symlink(geometry, targetGeometry);
+    }
+    SECTION("texture directory symlink") {
+        fs::create_directory_symlink(textures, targetTextures);
+    }
+    SECTION("document inside active texture folder") {
+        target = textures / "copy.scene.gltf";
+    }
+    SECTION("document inside symlinked active texture folder") {
+        fs::create_directory_symlink(textures, targetTextures);
+        target = targetTextures / "copy.scene.gltf";
+    }
+    bool called = false;
+    app::SceneDocumentSaveIO io;
+    io.write = [&](const auto&, const auto&) -> asset::AssetResult<void> {
+        called = true;
+        return std::unexpected(asset::AssetError{asset::AssetErrorCode::Io, "unexpected writer"});
+    };
+    const auto result = app::saveSessionDocument(library, session, id, target, true, io);
+    REQUIRE_FALSE(result);
+    CHECK_FALSE(called);
+    CHECK(result.error().message.contains("Save As requires"));
+    fs::remove(targetGeometry, ignored);
+    fs::remove(targetTextures, ignored);
+}
+
+//======================================================================================================================
+TEST_CASE("document probe ignores geometry and an unrelated bin beside geometry-only JSON",
+          "[app][document-save][ux6-write]") {
+    const auto root = fs::current_path() / "DocumentProbeFixtures/content";
+    fs::remove_all(root);
+    fs::create_directories(root);
+    const auto path = root / "cube.scene.gltf";
+    std::ofstream(path)
+        << R"({"extensions":{"LMX_scene":{"schemaVersion":2}},"buffers":[{"uri":"cube.scene.geometry.bin","byteLength":3}]})";
+    std::ofstream(root / "cube.scene.geometry.bin") << "geo";
+    std::ofstream(root / "cube.scene.bin") << "foreign";
+    app::DocumentProbe probe;
+    const auto before = probe.observe(path);
+    CHECK(before.bufferSize == 0);
+    CHECK(before.bufferTime == 0);
+    std::ofstream(root / "cube.scene.bin") << "foreign changed";
+    std::ofstream(root / "cube.scene.geometry.bin") << "geometry changed";
+    CHECK(probe.observe(path) == before);
+}
+
+//======================================================================================================================
+TEST_CASE("content save receipt covers JSON and animation only and adopts a clean document",
+          "[app][document-save][ux6-write]") {
+    FakeDevice device;
+    scenes::SceneLibrary library(device);
+    const auto path = savePath("content-receipt");
+    auto id = scenes::sceneIdFromPath(path);
+    REQUIRE(library.get(id));
+    app::SceneSession session;
+    session.activate(*library.loaded(id), app::SceneActivationMotion::Reset);
+    auto& doc = session.loadedScene()->document;
+    const auto content = test::contentDocument();
+    doc.schemaVersion = 2;
+    doc.content = content.content;
+    doc.meshes = content.meshes;
+    doc.materials = content.materials;
+    SECTION("animation and geometry") {}
+    SECTION("geometry alone") {
+        doc.animations.clear();
+    }
+    app::SceneDocumentWrite receipt;
+    REQUIRE(app::saveSessionDocument(library, session, id, path, false, {}, &receipt));
+    auto expected = *readWholeFile(path);
+    const auto animation = asset::sceneDocumentBuffer(doc);
+    expected.insert(expected.end(), animation.begin(), animation.end());
+    CHECK(receipt.hash == sha256Hex(expected));
+    CHECK(receipt.hash == *asset::sceneDocumentHash(path));
+    CHECK_FALSE(dirty(session));
+    CHECK(doc.sourceBufferUri.has_value() == !animation.empty());
+}
+
+//======================================================================================================================
+TEST_CASE("a mesh rotation without an exact quaternion saves, adopts and stays clean",
+          "[gpu][app][document-save][ux6-mesh-export]") {
+    auto device = rojoRHI::createDevice();
+    REQUIRE(device);
+    scenes::SceneLibrary library(**device);
+    auto doc = test::contentDocument();
+    doc.nodes[1].mobility = asset::DocMobility::Movable;
+    const auto path = savePath("mesh-rotation", doc);
+    auto id = scenes::sceneIdFromPath(path);
+    REQUIRE(library.get(id));
+    app::SceneSession session;
+    session.activate(*library.loaded(id), app::SceneActivationMotion::Reset);
+    const auto index = session.loadedScene()->binding.nodes[1].objects.front();
+    const glm::vec3 angles(100, 0, 0);
+    REQUIRE_FALSE(asset::exactRotationForEulerDegrees(angles));
+    auto pose = session.objectDefault(index);
+    pose.eulerDegrees = angles;
+    REQUIRE(session.editObject(index, pose));
+    REQUIRE(dirty(session));
+    REQUIRE(app::saveSessionDocument(library, session, id, path, false));
+    CHECK_FALSE(dirty(session));
+    const auto reloaded = asset::readSceneDocument(path);
+    REQUIRE(reloaded);
+    CHECK(reloaded->nodes[1].rotation == asset::rotationForEulerDegrees(angles));
+    CHECK(session.scene().objects[index].eulerDegrees ==
+          asset::eulerDegreesForRotation(reloaded->nodes[1].rotation));
+    (*device)->waitIdle();
+}
+
+//======================================================================================================================
+TEST_CASE("saved mesh selection survives Save and verified proposal reload",
+          "[gpu][app][document-save][ux6-mesh-export]") {
+    auto device = rojoRHI::createDevice();
+    REQUIRE(device);
+    scenes::SceneLibrary library(**device);
+    auto doc = test::contentDocument();
+    doc.nodes[1].mobility = asset::DocMobility::Movable;
+    const auto path = savePath("mesh-selection", doc);
+    auto id = scenes::sceneIdFromPath(path);
+    REQUIRE(library.get(id));
+    app::SceneSession session;
+    session.activate(*library.loaded(id), app::SceneActivationMotion::Reset);
+    const auto index = session.loadedScene()->binding.nodes[1].objects.front();
+    app::EditorSelection selection{.sceneId = id,
+                                   .subject = app::EditorSubject::Object,
+                                   .index = static_cast<uint32_t>(index),
+                                   .node = 1};
+    auto pose = session.objectDefault(index);
+    pose.position.x = 5.f;
+    REQUIRE(session.editObject(index, pose));
+    REQUIRE(app::saveSessionDocument(library, session, id, path, false));
+    CHECK_FALSE(dirty(session));
+    CHECK(session.objectDefault(index).position.x == 5.f);
+    auto proposal = session.loadedScene()->document;
+    CHECK(app::canPreserveSessionSelection(selection, *session.loadedScene(), proposal));
+    SECTION("same identity reloads with new saved pose") {
+        proposal.nodes[1].translation.y = 6.f;
+        REQUIRE(asset::saveSceneDocument(proposal, path));
+        const auto expectedHash = asset::sceneDocumentHash(path);
+        REQUIRE(expectedHash);
+        const auto replacement = app::replaceSessionDocumentPreservingView(
+            library, session, id, selection, proposal, *expectedHash);
+        INFO((replacement ? "ok" : replacement.error().message));
+        REQUIRE(replacement);
+        CHECK(selection.subject == app::EditorSubject::Object);
+        CHECK(selection.index == index);
+        CHECK(selection.node == 1);
+        CHECK(selection.importedNode == engine::kGeneratedNode);
+        CHECK(session.scene().objects[index].position.y == 6.f);
+        CHECK_FALSE(dirty(session));
+    }
+    SECTION("mesh replacement is refused") {
+        proposal.nodes[1].mesh = 1;
+        CHECK_FALSE(app::canPreserveSessionSelection(selection, *session.loadedScene(), proposal));
+    }
+    SECTION("group replacement is refused") {
+        proposal.nodes[1].mesh.reset();
+        CHECK_FALSE(app::canPreserveSessionSelection(selection, *session.loadedScene(), proposal));
+    }
+    SECTION("renamed subject is refused") {
+        proposal.nodes[1].name = "Different";
+        CHECK_FALSE(app::canPreserveSessionSelection(selection, *session.loadedScene(), proposal));
+    }
+    SECTION("imported selection cannot be treated as a mesh") {
+        selection.importedNode = 0;
+        CHECK_FALSE(app::canPreserveSessionSelection(selection, *session.loadedScene(), proposal));
+    }
+    (*device)->waitIdle();
+}
+
+//======================================================================================================================
+TEST_CASE("schema one native Save and Save As adopt schema two with matching receipts",
+          "[app][document-save][ux6-mobility]") {
+    FakeDevice device;
+    auto doc = saveFixture();
+    doc.schemaVersion = 1;
+    const auto path = savePath("legacy-native", doc);
+    // Install actual schema-one bytes; savePath uses the current disk writer.
+    std::ofstream(path, std::ios::binary | std::ios::trunc)
+        << asset::sceneDocumentJson(doc, "legacy-native.scene.bin");
+    scenes::SceneLibrary library(device);
+    auto id = scenes::sceneIdFromPath(path);
+    REQUIRE(library.get(id));
+    app::SceneSession session;
+    session.activate(*library.loaded(id), app::SceneActivationMotion::Reset);
+    REQUIRE(session.loadedScene()->document.schemaVersion == 1);
+    CHECK_FALSE(dirty(session));
+    const auto destination = path.parent_path() / "legacy-native-as.scene.gltf";
+    const bool saveAs = GENERATE(false, true);
+    const auto target = saveAs ? destination : path;
+    app::SceneDocumentWrite receipt;
+    const auto saved = app::saveSessionDocument(library, session, id, target, saveAs, {}, &receipt);
+    INFO((saved ? "ok" : saved.error().message));
+    REQUIRE(saved);
+    CHECK(session.loadedScene()->document.schemaVersion == 2);
+    CHECK(session.loadedScene()->document.nodes[2].mobility == asset::DocMobility::Movable);
+    CHECK(session.loadedScene()->hash == receipt.hash);
+    REQUIRE(asset::sceneDocumentHash(target));
+    CHECK(*asset::sceneDocumentHash(target) == receipt.hash);
+    app::DocumentWatch watch;
+    const app::FileStamp observed{100, 200, 1, 1, false};
+    watch.reset(observed);
+    CHECK(watch.adoptSave(observed, observed, target, receipt.path, receipt.hash,
+                          *asset::sceneDocumentHash(target), true));
+    CHECK(watch.poll(observed, 1.0) == app::WatchDecision::Wait);
+    CHECK_FALSE(watch.ready());
+    CHECK_FALSE(dirty(session));
 }

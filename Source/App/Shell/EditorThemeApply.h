@@ -16,6 +16,8 @@ namespace lmx::app {
 void applyImGuiColors(ImGuiStyle& style, const ThemePalette& palette);
 /// Copies every mapped encoded-sRGB graph color without changing canvas geometry.
 void applyNodeEditorColors(ax::NodeEditor::Style& style, const ThemePalette& palette);
+/// Maps editor semantic roles into the viewport gizmo's independent color adapter.
+void applyViewportGizmoColors(const ThemePalette& palette);
 /// Asserts the pinned ImGui color names match the generated ordered table. Needs no context.
 void verifyImGuiSlotNames();
 /// Asserts the pinned node-editor color names match the generated ordered table.

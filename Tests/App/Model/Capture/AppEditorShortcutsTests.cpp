@@ -62,3 +62,14 @@ TEST_CASE("quit ignores every focus gate", "[app][shortcuts]") {
                                                        bool(flags & 4), bool(flags & 8)}));
     }
 }
+
+//======================================================================================================================
+TEST_CASE("gizmo shortcuts require free keyboard ownership without a selection prerequisite",
+          "[app][shortcuts][gizmo-tools]") {
+    for (unsigned flags = 0; flags < 16; ++flags) {
+        const ShortcutContext context{bool(flags & 1), bool(flags & 2), bool(flags & 4),
+                                      bool(flags & 8)};
+        CHECK(shortcutAllowed(EditorShortcut::Gizmo, context) == (flags == 0));
+    }
+    CHECK(shortcutAllowed(EditorShortcut::Gizmo, {.hasSelection = true}));
+}
