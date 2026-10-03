@@ -439,7 +439,7 @@
       }
     },
     {
-      "name": "Damaged Helmet · axis station",
+      "name": "Damaged Helmet",
       "translation": [6.2, 0, 0],
       "extensions": {
         "LMX_scene": {

@@ -22,7 +22,7 @@
   "evidenceLimit": "All fifteen hashes were captured on the same device, release build and fixed 1280x720/32-frame BMP settings: ten lab hashes after fixture integration, five Sponza hashes re-captured from the integrated head on 2026-09-29 after two identical rounds, because no current build, including the parent, reproduced the historical schema-1 values. The re-baseline and the normalized directional rig were authorized by the owner on 2026-09-29. Original schema-1 reference and eight documents remain frozen for explicit-path replay; neither historical failures nor tolerances are erased.",
   "documents": {
     "sponza": "a5d680c622431f52022e68ceb3995f7db030cda7f52789d132e99865503647f9",
-    "material-lab": "679fc66845e4ccccbdd3aedfdea6b6f6fffb252472be4708a9d5ee78faa1bfc9",
+    "material-lab": "b605c28c247f29cdae6eac55aa6ec28336a65a5857e73f30872488abc85cdbc3",
     "temporal-lab": "80e6e41517c7697331c573fb89ef7e199471ab508be8299ac4689f9168a21dfa"
   },
   "images": [
