@@ -39,8 +39,8 @@ void drawObjectSection(const InspectorPanelContext& context, size_t index) {
                             "Enabled", true));
     bool enabled = enabledState->own;
     if (drawInspectorHeader(enabledState->label.c_str(), enabledState->kind.c_str(),
-                            "Restore this object's authored transform and own enabled state. "
-                            "Animated objects use their track at the current time.",
+                            "Restore this object's own enabled state and, when pose edits are "
+                            "allowed, its authored transform.",
                             (poseLock == PoseLock::None && session.objectChanged(index)) ||
                                 enabledState->own != enabledState->baseline,
                             &enabled, headerMark, enabledMark,

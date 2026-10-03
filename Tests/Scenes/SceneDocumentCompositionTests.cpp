@@ -243,7 +243,9 @@ TEST_CASE("document missing directional roles stay inert in the rendered view",
         node.light.reset();
         node.role.reset();
         node.castsShadow = false;
+        node.mobility = asset::DocMobility::Static;
     }
+    REQUIRE(asset::validateSceneDocumentModel(*document));
     const auto path =
         std::filesystem::current_path() / "SceneDocuments" / "missing-roles.scene.gltf";
     std::filesystem::create_directories(path.parent_path());

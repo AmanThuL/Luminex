@@ -1,16 +1,14 @@
 # UX6 — Execution validation
 
-**Status:** In progress
-**Date:** 2026-10-03. The milestone remains `Accepted`; no owner acceptance or merge occurred.
+**Status:** Implemented — separate milestone review pending
+**Date:** 2026-10-03. No milestone owner acceptance or merge occurred.
 
-Tasks 1–16 are complete; Task 8 is `c888541` and tag `ux6-exporter`.
-Task 17 is also complete after isolated and combined gates plus separate review. Task 12 automatic
-checks and images ran. After the required image/native stop, the owner accepted the five
-MaterialLab reference updates and authorized native retries. Sphere edit/Save/relaunch and generic
-glTF import now pass as observed below. Task 13 adds document mobility; Task 14 adds shared pose locks; Task 15 adds Inspector/Hierarchy presentation; Task 18 is complete after model tests, all gates and separate/ROOT review. Task 19 is complete after all gates and separate review; Task 20 passes wrapper tests, full gates and native screenshot isolation; Task 21 documents the shipped contracts; Task 22 remains. The owner requested parallel work and explicitly approved reusing the idle
-Task 1 reviewer as Task 17's implementer after the agent interface refused a fresh thread.
-Task 9 and Task 17 have independent checkouts and reviewers. The owner also approved reusing
-Task 19 for Task 21 with separate review; other implementation tasks use fresh agents.
+Tasks 1–22 have implementation and validation records with separate reviews. Task 22 includes
+complete automatic/image runs and partial native verification; the incomplete completion gate
+and measured failures remain in [final measurements and native limits](ux6-validation-final.md).
+The owner approved the five-MaterialLab reference update, retries, two agent-reuse exceptions
+and continuation with unverified native gestures after input failure. None accepts the milestone.
+Publication uses `ux6-integration-chain` and one feature-branch PR after final review.
 
 ## Source and evidence
 
@@ -55,6 +53,8 @@ commands and assertions are unchanged, with distinct logs and no previous-eviden
 | 18 | `dbd946a` | 12/12 passed; 628 focused assertions | `task18-final-gates.json` |
 | 19 | `343f87a` | 12/12 passed; 27,306 focused assertions | `task19-final-gates.json` |
 | 20 | `9711874` | 13/13 passed; 17/17 actual-wrapper cases | `task20-final-gates.json` |
+| 21 | `afc3bf4` | 12/12 passed; 144/144 documentation checks | `task21-final-gates.json` |
+| 22 | `ux6-integration-chain` | 13/13 passed; GPU passed; validator 91/91; native incomplete | [Final measurements](ux6-validation-final.md) |
 
 ## Retained failures and resumptions
 
@@ -86,19 +86,14 @@ These expand the Task 8 file list and are separately reviewed. [Exporter validat
 records earlier helper-file additions and schema 2 representation limits. No RojoRHI, pass,
 shader, instance ABI, MotionClass or workspace/capture/measurement schema changed.
 
-## Gates and gestures still unverified
+## Current gate status
 
-The unchanged pinned glTF validator passed 107 documents after export (six installed catalog
-and 101 writer fixtures). This does not certify full animation-pointer extension semantics.
-Task 12's measurements below supersede the formerly unrun image/GPU gate status.
-Tasks 16 and 22, completion-gate tasks and gizmo screenshot/GPU capture checks remain unverified.
-The scoped MaterialLab reference acceptance is recorded below; original failed gates remain failed.
-
-Task 12 exercised a saved sphere pose edit, Save, fresh launch/reload and Blender glTF import.
-Static fields/reasons/Enabled persistence, each gizmo tool and space, Inspector synchronization,
-Escape and drag-state transitions, point/spot light operations, shortcuts, RMB flight and final
-persistence remain unverified.
-Document mobility is implemented; pose locks, mobility UI and the gizmo remain unimplemented. No integration tag, push or PR exists.
+The final pinned validator passes 91/91 discovered documents; earlier 107-document runs remain
+historical measurements. Final parent parity is 10/15 (all five MaterialLab cases fail), accepted
+candidate-reference parity is 15/15, and LightLab is 5/5 across eight rounds. Full GPU and all 13
+source gates pass after the recorded valid-fixture repair. Mobility, pose locks and gizmos are
+implemented. Native held drags, Escape/RMB combinations, complete scene-only GPU inventory and
+several completion-gate gestures remain unverified; the linked final page enumerates them.
 
 ## Task 9 — Generator retirement
 
@@ -251,14 +246,15 @@ and all 18 targeted tests. Task 12 is complete; original failed measurements rem
 [Mobility validation](ux6-validation-mobility.md) preserves Task 13–16 reader/writer/migration, pose-lock and presentation
 measurements, failed attempts, scope additions and independent review. Task 16 passed all 12 gates,
 880 bridge assertions, 15/15 actual byte comparisons against Task 12, and the native Static/Enabled/Save
-checkpoint. Static-tooltip hover and fresh reload were not exercised; Task 22 remains pending.
+checkpoint. Task 22 observed the static-tooltip hover; fresh LightLab reload remains unverified.
 
 
 ## Gizmo validation
 
 [Gizmo validation](ux6-validation-gizmo.md) preserves Tasks 18–20 model, tool and viewport measurements, original failures,
 activation-generation scope addition, independent tests and ROOT design review. Native gizmo and
-remaining native gestures, scene-only GPU capture and completion gates remain unverified until Task 22.
+remaining native gestures and scene-only GPU inventory are enumerated in the final Task 22 page;
+the native completion gate remains incomplete.
 
 ## Task 21 documents
 
@@ -270,3 +266,22 @@ and budgets passed 144/144 checks after 68 original RED failures; retained inter
 failures are in `task21/`. The owner approved reusing Task 19 for this documentation task;
 Task 20 supplies separate review. All 12 per-commit commands passed (`task21-final-gates.json`); separate review confirms
 the exact documentation and execution-record boundary.
+
+## Task 22 retained stops and continuation
+
+Three native Go To Folder path-entry approaches failed: `typeText` produced a truncated path,
+`setValue` left `/`, then Cmd+A with `paste` left `/` unchanged. Execution stopped for the owner
+under the explicit three-attempt rule. No workaround or publication preceded owner direction.
+Evidence: `task22-required-stop.json`, `task22-native/observations.json`;
+[final measured gates and completion inventory](ux6-validation-final.md).
+
+The owner then instructed "resume". Escape dismissed the path sheet and the ordinary Open panel
+opened TemporalLab successfully. On the following resumed turn, three input attempts failed
+`noWindowsAvailable`, despite read-only AX/screenshot confirmation of its window. Execution stopped
+again; no further UI, implementation, tag, push or PR followed. The final page and
+`task22-input-required-stop.json` preserve the exact attempts. Automatic measurements are unchanged.
+
+The owner next authorized retry, recording any continuing failure and proceeding. Display-name
+binding recovered input; TemporalLab’s animation lock and Play/Pause/Step/Stop were then observed.
+The exact retained failures, all native limits and the imported Wheels `not saved` wording
+deviation remain in the final page. Implementation status does not accept or waive any gate.
