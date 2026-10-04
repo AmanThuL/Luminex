@@ -113,6 +113,15 @@ struct Fixture {
     }
 
     //==================================================================================================================
+    // Cases leave deliberately broken documents here, and Catch2 runs them in random order, so the
+    // directory goes with the case rather than reaching the glTF validator in whatever state it
+    // ended.
+    ~Fixture() {
+        std::error_code ignored;
+        fs::remove_all(directory, ignored);
+    }
+
+    //==================================================================================================================
     AssetResult<SceneDocument> read() {
         writeBytes(path, std::as_bytes(std::span(json)));
         return readSceneDocument(path);
