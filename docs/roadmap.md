@@ -14,7 +14,7 @@ that decomposes the accepted boundary without expanding it.
 | [Rendering Foundations](roadmap/rendering-foundations.md) | M4–M6.5 and interface gate B | Establish image formation, execution, inspection, temporal and display contracts; retain acceptance limits |
 | [GPU-Driven Hybrid Rendering](roadmap/gpu-driven-hybrid-rendering.md) | M7, M8, M10, M11 and independent research | Scale scene data, visibility and lighting, then add shadows and composition, transport, GI and residency |
 | [Codebase Refactoring](roadmap/codebase-module-boundaries.md) | R1 between M6.5 and gate B; [R2–R4](roadmap/codebase-restructuring.md) between M7 and UX2 | Restructure modules and large units between rendering milestones without changing output; move the RHI to its own repository |
-| [Editor Experience](roadmap/editor-experience.md) | UX1 after gate B and before M7.1; UX2–UX5 after R4 and before N1 | Make scene inspection, controls and diagnostic data understandable and reliable for a human operator; give each control one home; make scenes saved documents; give the editor one design system with light, dark and system-following themes; let agents' work reach the operator as reviewable proposals |
+| [Editor Experience](roadmap/editor-experience.md) | UX1 after gate B and before M7.1; UX2–UX6 after R4 and before N1 | Make scene inspection, controls and diagnostic data understandable and reliable for a human operator; give each control one home; make scenes saved documents; give the editor one design system with light, dark and system-following themes; let agents' work reach the operator as reviewable proposals; save lab objects in scene documents and edit transforms in the viewport |
 | [Neural and Learned Rendering](roadmap/neural-rendering.md) | N1–N4 interleaved after M7 | Evaluate learned techniques as bounded experimental features with oracles, fallbacks and hardware gates |
 | [Cluster Geometry](roadmap/cluster-geometry.md) | G1 and G2 after N1; G3 after M8 | Build, select, cull and draw a crack-free cluster hierarchy, then decide the surface path for pixel-scale triangles |
 
@@ -27,7 +27,7 @@ approved entry to M7.1 in its [separate review](milestones/m6/interface-gate-b.m
 ## Execution sequence
 
 This section owns the cross-part delivery order. Each part still owns its slices' boundaries and
-gates; a row here changes priority, never a gate. Starting a row requires the preceding rows to be
+gates; a row here sets priority and leaves every gate unchanged. Starting a row requires the preceding rows to be
 accepted unless its entry column names an earlier technical prerequisite, and only one
 implementation plan is active at a time. Slices inside one row deliver in numerical order unless
 the row says otherwise.
@@ -43,7 +43,7 @@ the row says otherwise.
 | 7 | [M7.3](roadmap/gpu-driven-hybrid-rendering.md#m73--gpu-visibility-and-work-generation) GPU visibility and work generation | II | Owner-accepted for integration | M7.2 |
 | 8 | [M7.4](roadmap/gpu-driven-hybrid-rendering.md#m74--conservative-occlusion) conservative occlusion | II | Implemented, owner-accepted 2026-09-18; image gate failed 13/15 | M7.3 |
 | 9 | [M7.5](roadmap/gpu-driven-hybrid-rendering.md#m75--clustered-local-lighting) clustered local lighting | II | Owner-accepted for integration 2026-09-19; historical image failures retained | M7.1; may run before steps 6–8 |
-| 10 | [R2.1–R2.4](roadmap/codebase-restructuring.md#r2--rhi-becomes-rojorhi) RHI becomes RojoRHI | III | R2.1 accepted 2026-09-19; R2.2 accepted 2026-09-19; R2.3 accepted 2026-09-20; R2.4 implemented 2026-09-20, pull request pending owner review; [proposed record](milestones/r/r2.md) | M7 complete |
+| 10 | [R2.1–R2.4](roadmap/codebase-restructuring.md#r2--rhi-becomes-rojorhi) RHI becomes RojoRHI | III | R2.1 accepted 2026-09-19; R2.2 accepted 2026-09-19; R2.3 accepted 2026-09-20; R2.4 implemented and merged 2026-09-20; [record](milestones/r/r2.md) | M7 complete |
 | 11 | [R3.1–R3.7](roadmap/codebase-restructuring.md#r3--subsystems-and-tree-restructure) Donut-style subsystems and tree restructure | III | R3.1–R3.5 implemented; R3.5 owner-accepted 2026-09-22 with a scoped part A parity exception and plan closed; R3.6 implemented, implementation plan closed; A retains its scoped parity exception; B gates pass with [automatic integration in PR #54](https://github.com/AmanThuL/Luminex/pull/54); R3.7 implemented 2026-09-24, plan closed, [validation](milestones/r/r3.7-validation.md); [series record](milestones/r/r3.md) | R2 |
 | 12 | [R4.1–R4.2](roadmap/codebase-restructuring.md#r4--shader-source-deduplication) shader source deduplication | III | Closed 2026-09-25 as DEFER ([ADR 0027](decisions/0027-scene-pass-deduplication-defer.md)): R4.1 implemented 2026-09-24, exit gate held ([validation](milestones/r/r4.1-validation.md), [follow-up](milestones/r/r4.1-followup.md)); R4.2 not opened; [record](milestones/r/r4.md) | R3 |
 | 13 | [UX2.1–UX2.4](roadmap/editor-experience.md#ux2--editor-surfaces) editor surfaces | IV | Implemented and owner-accepted 2026-09-27; plan closed, integrated by squash merge; [record](milestones/ux/ux2.md), [validation and limits](milestones/ux/ux2-validation.md) | R4 |
@@ -74,15 +74,20 @@ Rows that interleave when their own prerequisites exist, without a fixed step:
 
 The order puts visible cluster geometry and the learned-rendering entry before the shadow and
 composition work while preserving every M-slice gate. On 2026-09-19 the owner placed R2, R3, R4
-and scene documents between M7 and N1: the RHI moves to its own repository, the tree takes Donut's core/engine/render/app subsystems, the scene
-shader variants are deduplicated if the experiment supports it, and scenes become saved documents
-before new rendering work starts. On 2026-09-25 the owner inserted editor surfaces as UX2 and
-renumbered scene documents to UX3; records and ADRs dated earlier call scene documents UX2. On
-2026-09-29 the owner asked for a design-system and theme overhaul as UX4 before N1; the owner accepted its
-record on 2026-09-30 after adding native macOS chrome to it, and proposed UX5, an agent session,
-in three slices. UX4 was owner-accepted for integration on 2026-10-01; the same day the owner placed
-all three UX5 slices before N1. The owner authorized UX5's integration on 2026-10-02.
-The same day the owner asked for a [UX6](roadmap/editor-experience.md#ux6--scene-authoring) scene-authoring proposal, and on 2026-10-03 placed it before N1; the owner accepted its record and authorized the executor plan on 2026-10-03; after a milestone review and its fixes, the owner authorized its integration on 2026-10-04, with failed original image parity and incomplete native completion retained.
+and scene documents between M7 and N1. The RHI moves to its own repository, the tree takes Donut's
+core/engine/render/app subsystems, the scene shader variants are deduplicated if the experiment
+supports it, and scenes become saved documents before new rendering work starts. On 2026-09-25 the
+owner inserted editor surfaces as UX2 and renumbered scene documents to UX3; records and ADRs dated
+earlier call scene documents UX2. On 2026-09-29 the owner asked for a design-system and theme
+overhaul as UX4 before N1. The owner accepted its record on 2026-09-30 after adding native macOS
+chrome to it, and proposed UX5, an agent session, in three slices. UX4 was owner-accepted for
+integration on 2026-10-01, and the same day the owner placed all three UX5 slices before N1. The
+owner authorized UX5's integration on 2026-10-02.
+The same day the owner asked for a [UX6](roadmap/editor-experience.md#ux6--scene-authoring)
+scene-authoring proposal, and on 2026-10-03 placed it before N1. The owner accepted its record and
+authorized the executor plan on 2026-10-03. After a milestone review and its fixes, the owner
+authorized its integration on 2026-10-04, with failed original image parity and incomplete native
+completion retained.
 On 2026-10-01 the owner retired M9 after the
 [geometry direction review](research/2026-10-01-geometry-direction-review.md): its scope became
 G1–G3 in Part VI, with G1 and G2 before M8 and G3 after it. M8, M10 and M11 keep their identifiers,
@@ -92,7 +97,10 @@ Identifiers are names, not ordinals; the Step column carries the order.
 M7.1 is implemented and owner-accepted after manual verification on 2026-09-15. Xcode Replay
 and validation pass; the original image criterion passes 11/15 and the accepted scoped MetalFX
 profile passes 15/15. [The record](milestones/m7/m7.1.md) retains both results and limits. Its executor
-plan is closed; [M7.2 acceptance](milestones/m7/m7.2-validation.md#owner-acceptance-and-integration) authorizes integration on 2026-09-15 after manual review, retaining original/revised image-gate failures (13/15 and 9/15). Its plan is closed; no new tolerance or performance adoption follows. Gate B is preserved.
+plan is closed. [M7.2 acceptance](milestones/m7/m7.2-validation.md#owner-acceptance-and-integration)
+authorizes integration on 2026-09-15 after manual review and retains the original and revised
+image-gate failures (13/15 and 9/15). Its plan is closed, and no new tolerance or performance
+adoption follows. Gate B is preserved.
 
 ## Current baseline
 
@@ -138,7 +146,10 @@ The [UX1 milestone](milestones/ux/ux1.md) records implemented P1–P3 behavior, 
 after manual review, and retained validation limits. Its [design](milestones/ux/ux1-design.md)
 is implemented and its executor plan is closed. M7.1 implements shared identities, geometry and
 paced scene tables through retained CPU drawing; its [record](milestones/m7/m7.1.md) owns evidence
-and retained evidence limits. M7.2 CPU visibility and indirect submission are owner-accepted for integration on 2026-09-15 with failed image gates retained; M7.3 GPU visibility is implemented with [validation](milestones/m7/m7.3-validation.md) and failed exact-image gates retained; owner acceptance and integration authorization were recorded on 2026-09-16.
+and retained evidence limits. M7.2 CPU visibility and indirect submission are owner-accepted for integration on 2026-09-15 with
+failed image gates retained. M7.3 GPU visibility is implemented with
+[validation](milestones/m7/m7.3-validation.md) and failed exact-image gates retained; owner
+acceptance and integration authorization were recorded on 2026-09-16.
 
 ## Project direction and delivery
 
@@ -162,13 +173,13 @@ accepted post-M7 order and the hardware floor, which the geometry review correct
 and ray tracing run on every Metal 4 device, M3/A17 Pro adds their hardware acceleration and
 M5/A19 Pro adds neural acceleration. CUDA is a training substrate, never a backend.
 
-Each milestone has one recognizable completion outcome. Use a few independently accepted slices;
-implementation steps belong in a just-in-time plan or PR, not an expanding series of milestone IDs.
+Each milestone has one recognizable completion outcome. Use a few independently accepted slices,
+and put implementation steps in a just-in-time plan or PR instead of new milestone IDs.
 M6's five slices, M7's five and M8's five are fixed in Parts I and II; M10 and M11 retain bounded
-work areas until planned. Part VI fixes G1's four slices, G2's two and G3's three. R milestones in Part III restructure code between rendering milestones and add no
-rendering scope; R2 has four slices, R3 seven and R4 two. Part IV owns editor experience and its completion
-criteria independently of the rendering and structural milestones; UX2 has four slices, UX3 five,
-UX4 five and UX5 three. Part V owns the four learned-rendering slices, each an
+work areas until planned. Part VI fixes G1's four slices, G2's two and G3's three. R milestones in Part III restructure code
+between rendering milestones and add no rendering scope; R2 has four slices, R3 seven and R4 two.
+Part IV owns editor experience and its completion criteria independently of the rendering and
+structural milestones; UX2 has four slices, UX3 five, UX4 five, UX5 three and UX6 three. Part V owns the four learned-rendering slices, each an
 independently accepted study that never becomes a correctness dependency of the shared frame; N1
 is itself four slices. The [execution sequence](#execution-sequence) and stated prerequisites,
 rather than numerical order, determine entry. Only one
@@ -177,7 +188,7 @@ implementation plan is active at a time; independent entry does not start anothe
 Every rendering slice includes a diagnostic fixture, relevant intermediate views, deterministic
 seeds/camera tracks and declared temporal warmup, plus raw/reference and final captures. Retain
 Sponza and MaterialLab integration checks. Freeze a device, resolution, content and CPU/GPU/memory
-budget before measuring; 60 real frames/s is a planning target, not an unmeasured performance claim.
+budget before measuring; 60 real frames/s is a planning target and makes no performance claim until measured.
 Report full update/render/reconstruction/composite cost, timing variation and unavailable counters.
 Track pipeline variants, cache misses and compilation stalls when a slice introduces them. Grow
 depth, normal, roughness, motion and identity outputs only for real consumers with shared meaning;
