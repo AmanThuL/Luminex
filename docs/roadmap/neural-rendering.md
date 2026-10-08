@@ -7,8 +7,8 @@ features over the shared scene, material, light and temporal contracts. The
 [2026-09-14 direction review](../research/2026-09-14-rendering-direction-review.md) motivates it:
 Metal 4 ships first-party in-shader tensor operations and an ML command encoder, vendor
 reconstruction and denoising are default on every platform, and the shading-language toolchain
-does not yet reach Apple's path. These are accepted study boundaries, not shipped capabilities and
-not a commitment to every idea.
+does not yet reach Apple's path. These are accepted study boundaries. They are neither shipped
+capabilities nor a commitment to every idea.
 
 ## Placement and ownership
 
@@ -19,7 +19,7 @@ order: after [UX1](editor-experience.md) and the five
 exist; the structural and editor steps before N1 add no technical prerequisite to it.
 Only one implementation plan is active at a time, so N-slices interleave with M-slices rather
 than run beside them. Part II's dependency map still governs the M-slices; this order changes
-priority, not their gates. N1 delivers through the four slices N1.1–N1.4 below.
+priority and does not change their gates. N1 delivers through the four slices N1.1–N1.4 below.
 
 Rendering Foundations owns the temporal, exposure and display contracts every learned pass
 consumes. GPU-Driven Hybrid Rendering owns the raster, query and cache paths that supply signals.
@@ -63,7 +63,7 @@ acceleration as unavailable until an M5-class device exists.
 
 | Slice | Required foundation | Independent ordering |
 |---|---|---|
-| N1 inference lab | Gate B; no M-slice | First N-slice, after M7, R2–R4 and UX2–UX5 in the accepted order; N1.1 → N1.2 → N1.3 → N1.4 on the recorded machine; acceleration gate needs an M5-class device |
+| N1 inference lab | Gate B; no M-slice | First N-slice, after M7, R2–R4 and UX2–UX6 in the accepted order; N1.1 → N1.2 → N1.3 → N1.4 on the recorded machine; acceleration gate needs an M5-class device |
 | N2 learned reconstruction | N1; M6 temporal/capture contracts | Does not wait for M7–M11 or G1–G3; training needs a rented or local GPU |
 | N3 denoiser and reconstruction adapters | N1; M6.4 adapter pattern; M10 noisy signal for the denoiser | The reconstruction adapter part can precede M10 |
 | N4 learned materials, compression and caches | N1; per candidate: MaterialLab, TextureBake, M10 oracle | Candidates are accepted separately; the material residual can precede M7 |
@@ -183,7 +183,7 @@ an online-trained radiance cache after M10 on an M5-class device.
 
 **Exit gate:** each candidate reports absolute and relative error, energy behavior, memory,
 training accounting and whole-pass cost against its baseline, and closes with adopt, retain or
-defer; a result that the analytic or baked path wins is published, not hidden.
+defer; a result where the analytic or baked path wins is published.
 
 **Defer:** broad material-graph coverage, architecture search and a budget-aware compiler until
 one approximation shows a useful tradeoff; RT-gated neural geometry until M10 exists.
@@ -196,8 +196,8 @@ one approximation shows a useful tradeoff; RT-gated neural geometry until M10 ex
 | Rented CUDA GPU | Training at hourly cost | With the first trained consumer |
 | Windows GPU host | D3D12 backend validation; a Linear Algebra port of N1 | Only when the D3D12 backend is scheduled under ADR 0007 |
 
-A D3D12 implementation targets the Linear Algebra feature, not the superseded cooperative-vector
-proposal, and only after the backend passes checkpoint A. Vulkan remains design evidence.
+A D3D12 implementation targets the Linear Algebra feature (the cooperative-vector proposal is
+superseded), and only after the backend passes checkpoint A. Vulkan remains design evidence.
 
 ## Boundaries and deferrals
 

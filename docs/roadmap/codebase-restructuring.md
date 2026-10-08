@@ -9,7 +9,7 @@ scene documents (now [UX3](editor-experience.md#ux3--scene-documents-and-hierarc
 They add no rendering scope. Unless a section states otherwise they use the
 [R1 comparison protocol](codebase-module-boundaries.md#r1--module-boundaries-and-shared-foundations)
 unchanged, and earlier parity exceptions relax nothing here. Records hold design detail:
-[R2](../milestones/r/r2.md) and [R3](../milestones/r/r3.md) (Proposed), [R4](../milestones/r/r4.md) (closed as DEFER).
+[R2](../milestones/r/r2.md) and [R3](../milestones/r/r3.md) (implemented), [R4](../milestones/r/r4.md) (closed as DEFER).
 
 ## R2 — RHI becomes RojoRHI
 
@@ -95,9 +95,9 @@ anonymously in CI; `Tools/check_submodule_pin.py` enforces the pin is reachable 
 (Render depends on Engine, never the reverse) and its division of responsibility: Core owns the
 math and data structures that carry no domain meaning. Every tree has a second level matching its
 responsibilities, and no leaf folder holds one file or more than about sixteen. Rendered output
-and shipped behaviour do not change.
+and shipped behavior do not change.
 
-**Scope:** this is refactoring, not only moving. Header extractions, function relocations, a
+**Scope:** R3 refactors code as well as moving it. Header extractions, function relocations, a
 dependency reversal, target and namespace renames, extraction into Core, removal of duplicated
 implementations and decompositions by responsibility are in scope, each as its own commit under the
 comparison protocol; from R3.4 on, a unit that reaches its folder still mixing responsibilities has
@@ -264,8 +264,8 @@ the twin rule demands today.
 
 **Scope:** the `ScenePass` family, four files of 320 to 346 lines that differ by exposure source and alpha
 coverage. Thin entry-point files over one shared implementation module, with compile-time choices and no
-runtime branch: the runtime-branch regression behind the twin files justifies separate pipelines, not
-whole-file duplication. `TemporalResolve` and `TemporalUpscale` are not merged for overlap alone; each keeps
+runtime branch: the runtime-branch regression behind the twin files justifies separate pipelines but
+not whole-file duplication. `TemporalResolve` and `TemporalUpscale` are not merged for overlap alone; each keeps
 its kernel, and only a helper with one contract moves into the temporal family's shared module.
 
 **Sequence:** R4.1 → R4.2, after R3. R4 changes generated shader source, so R3.2's identical-MSL gate does not
