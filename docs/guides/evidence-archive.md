@@ -2,45 +2,51 @@
 
 **Status**: Implemented
 
-The sibling `../Luminex-evidence/` checkout owns the private evidence index, small reports,
+The sibling `../Luminex-evidence/` checkout holds the private evidence index, small reports,
 file checksums and recovery scripts. Its private GitHub repository is
 [AmanThuL/Luminex-evidence](https://github.com/AmanThuL/Luminex-evidence).
-Large historical artifacts are stored in a private Google Drive folder; per-archive
-locations and verification state are recorded in `manifests/archives.json` in that repository.
+Large historical artifacts live in a private Google Drive folder, and `manifests/archives.json`
+in that repository records each archive's location and verification state.
 
-Paths such as `../Luminex-evidence/m7.3` in milestone records are relative to the renderer
-repository root and identify the original evidence layout, not a promise of resident files.
-Archived directories are materialized only when requested. Small readable copies live
-under `../Luminex-evidence/reports/`, preserving their original relative paths.
-Historical absolute paths embedded in raw logs and JSON remain unchanged as provenance.
+Milestone records cite paths such as `../Luminex-evidence/m7.3` relative to the renderer
+repository root. They name the original evidence layout; the files themselves are not kept
+on disk and appear only when restored. Every evidence group through `ux6` is archived, including the
+`m7.4`/`m7.5` dated groups, `r2.2`–`r4.1` and the two 2026-09-23 history groups.
+Raw logs and JSON keep their historical absolute paths as provenance.
+
+Small readable copies live under `../Luminex-evidence/reports/` at their original relative
+paths. The 13 initial groups keep every readable file up to 1 MB. Later groups keep summaries
+and every path a milestone record cites, while their bulk per-run logs and dumps exist only in
+the archives. The raw BMP frames of the three `m7.4-2026-09-18` attempt1 sequence and
+controller-rail folders were deleted without archiving; their reports remain, and the evidence
+README records the count and the receipt.
 
 ## Recover evidence
 
-From the evidence checkout, run `python3 scripts/restore.py` to list archives and transfer status.
-Choose a `verified` archive for recovery. The authenticated rclone remote `personal:` on the
-authoring machine is rooted at the private evidence Drive folder. Run:
+From the evidence checkout, `python3 scripts/restore.py` lists archives and their transfer
+status. Recover from a `verified` archive. On the authoring machine, the authenticated rclone
+remote `personal:` is rooted at the private evidence Drive folder:
 
 ```sh
 python3 scripts/restore.py m7.3 --remote personal:
 ```
 
-The script requires Python 3.9+, `tar` and `zstd`. It verifies archive SHA-256 before extraction
-and checks extracted files against the inventory. It restores into a new
-`.restored/m7.3/` directory; the original `m7.3/` layout is nested inside it.
-Existing destinations are rejected. `--verify-only` checks just the archive.
+The script needs Python 3.9+, `tar` and `zstd`. It checks the archive's SHA-256 before
+extracting, then checks every extracted file against the inventory. It restores into a new
+`.restored/m7.3/` directory with the original `m7.3/` layout nested inside, and rejects an
+existing destination. `--verify-only` checks the archive alone.
 
-The target storage layout uses one `.tar.zst` per archive group. To restore a manually downloaded
-complete archive, use `--archive /path/to/m7.3.tar.zst` instead. During consolidation, the same
-rclone command also handles groups still listed as multipart in the active manifest. Historical
-partition records remain in `manifests/archives-before-consolidation.json` for provenance.
+Each archive group is stored as one `.tar.zst`. To restore a complete archive downloaded by
+hand, pass `--archive /path/to/m7.3.tar.zst` instead. Seven of the initial archives, `m7.3`
+among them, are still stored as multipart uploads; the same rclone command handles them from the
+active manifest, and a manual restore needs every part with `--parts-dir`.
+`manifests/archives-before-consolidation.json` keeps the original partition records for provenance.
 
-Consolidation is paused after shared-client Google Drive API request-quota errors; verified
-original parts remain available. The evidence README records current progress and the required
-owner OAuth client setup. Credentials stay outside Git. The active `m7.4-2026-09-18/`
-evidence directory is outside the historical inventory and remains untouched.
+Merging those multipart uploads into single archives stopped when rclone's shared client hit the
+Google Drive API request quota. The verified parts remain available. The evidence README records
+progress and the owner OAuth client setup needed to resume; credentials stay outside Git.
 
-The `m7.2-validation-isolation-trace` archive contains the complete standalone Instruments
-trace package and is separate from the remaining `m7.2` evidence. Full source/build snapshots
-are retained in cloud archives for provenance; they are not part of the renderer source tree.
-The M5.6 GitHub Release archive workflow remains separate; see
-[gpu-submission-archive.md](gpu-submission-archive.md).
+The `m7.2-validation-isolation-trace` archive holds the complete standalone Instruments trace
+package, separate from the rest of the `m7.2` evidence. Full source and build snapshots are kept
+in the cloud archives for provenance and are not part of the renderer source tree. The M5.6
+GitHub Release archive workflow is separate; see [gpu-submission-archive.md](gpu-submission-archive.md).
