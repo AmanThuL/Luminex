@@ -37,14 +37,13 @@ extracting, then checks every extracted file against the inventory. It restores 
 existing destination. `--verify-only` checks the archive alone.
 
 Each archive group is stored as one `.tar.zst`. To restore a complete archive downloaded by
-hand, pass `--archive /path/to/m7.3.tar.zst` instead. Seven of the initial archives, `m7.3`
-among them, are still stored as multipart uploads; the same rclone command handles them from the
-active manifest, and a manual restore needs every part with `--parts-dir`.
+hand, pass `--archive /path/to/m7.3.tar.zst` instead. Eight of the initial groups were first
+uploaded in numbered parts; all of them were merged into single verified archives by 2026-10-09.
 `manifests/archives-before-consolidation.json` keeps the original partition records for provenance.
 
-Merging those multipart uploads into single archives stopped when rclone's shared client hit the
-Google Drive API request quota. The verified parts remain available. The evidence README records
-progress and the owner OAuth client setup needed to resume; credentials stay outside Git.
+The rclone remote uses the owner's own Google OAuth client, not rclone's shared client, which
+hit the Google Drive API request quota and is being retired. The evidence README records how to
+set it up on another machine; credentials stay outside Git.
 
 The `m7.2-validation-isolation-trace` archive holds the complete standalone Instruments trace
 package, separate from the rest of the `m7.2` evidence. Full source and build snapshots are kept
