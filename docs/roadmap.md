@@ -13,7 +13,7 @@ that decomposes the accepted boundary without expanding it.
 |---|---|---|
 | [Rendering Foundations](roadmap/rendering-foundations.md) | M4–M6.5 and interface gate B | Establish image formation, execution, inspection, temporal and display contracts; retain acceptance limits |
 | [GPU-Driven Hybrid Rendering](roadmap/gpu-driven-hybrid-rendering.md) | M7, M8, M10, M11 and independent research | Scale scene data, visibility and lighting, then add shadows and composition, transport, GI and residency |
-| [Codebase Refactoring](roadmap/codebase-module-boundaries.md) | R1 between M6.5 and gate B; [R2–R4](roadmap/codebase-restructuring.md) between M7 and UX2 | Restructure modules and large units between rendering milestones without changing output; move the RHI to its own repository |
+| [Codebase Refactoring](roadmap/codebase-module-boundaries.md) | R1 between M6.5 and gate B; [R2–R4](roadmap/codebase-restructuring.md) between M7 and UX2; [R5](roadmap/codebase-rojorhi-port.md) proposed after UX6 | Restructure modules and large units between rendering milestones without changing output; move the RHI to its own repository |
 | [Editor Experience](roadmap/editor-experience.md) | UX1 after gate B and before M7.1; UX2–UX6 after R4 and before N1 | Make scene inspection, controls and diagnostic data understandable and reliable for a human operator; give each control one home; make scenes saved documents; give the editor one design system with light, dark and system-following themes; let agents' work reach the operator as reviewable proposals; save lab objects in scene documents and edit transforms in the viewport |
 | [Neural and Learned Rendering](roadmap/neural-rendering.md) | N1–N4 interleaved after M7 | Evaluate learned techniques as bounded experimental features with oracles, fallbacks and hardware gates |
 | [Cluster Geometry](roadmap/cluster-geometry.md) | G1 and G2 after N1; G3 after M8 | Build, select, cull and draw a crack-free cluster hierarchy, then decide the surface path for pixel-scale triangles |
@@ -51,13 +51,14 @@ the row says otherwise.
 | 15 | [UX4.1–UX4.5](roadmap/editor-experience.md#ux4--design-system-and-themes) design system and themes | IV | Implemented and owner-accepted for integration 2026-10-01; plan closed, integrated by squash merge; image matrix and Compact cost gates failed as measured, native gate incomplete, ADR 0029 proposed; [record](milestones/ux/ux4.md), [validation and retained limits](milestones/ux/ux4-review-validation.md#owner-acceptance-and-integration) | UX3 |
 | 16 | [UX5.1–UX5.3](roadmap/editor-experience.md#ux5--agent-session) agent session | IV | Implemented; owner authorized integration 2026-10-02; plan closed, integrated by squash merge; Gallery exact comparison (Light and Dark 0/16), four of five original CLI rejection pairs, the initial standing matrix (14/15) and native GPU capture certification (0/4) failed as measured, the original five-case Off gate is incomplete, ADR 0030 proposed; [record](milestones/ux/ux5.md), [validation](milestones/ux/ux5-validation.md), [review, authorization and retained limits](milestones/ux/ux5-review-validation.md#owner-authorization-and-integration) | UX4 |
 | 17 | [UX6.1–UX6.3](roadmap/editor-experience.md#ux6--scene-authoring) scene authoring | IV | Implemented; owner authorized integration 2026-10-04 after milestone review; plan closed, integrated by squash merge; original parent parity (10/15) failed as measured, native completion incomplete, ADRs 0031–0032 proposed; [record](milestones/ux/ux6.md), [review and retained limits](milestones/ux/ux6-review-validation.md) | UX5 |
-| 18 | [N1.1–N1.4](roadmap/neural-rendering.md#n1--in-shader-inference-lab) in-shader inference lab | V | Inactive | UX6; technically gate B |
-| 19 | [G1.1–G1.4](roadmap/cluster-geometry.md#g1--cluster-geometry) cluster geometry | VI | Inactive | M7 and N1 |
-| 20 | [G2.1–G2.2](roadmap/cluster-geometry.md#g2--scalable-visibility) scalable visibility | VI | Inactive | G1 |
-| 21 | [M8.1–M8.5](roadmap/gpu-driven-hybrid-rendering.md#m8--shadows-indirect-lighting-floor-and-environment) shadows, indirect floor and environment | II | Inactive | G2; technically G1.3 for M8.1–M8.2 and M7 for M8.3–M8.4 |
-| 22 | [G3.1–G3.3](roadmap/cluster-geometry.md#g3--surface-path-for-pixel-scale-triangles) surface path for pixel-scale triangles | VI | Inactive | M8; technically G1 |
-| 23 | [M10](roadmap/gpu-driven-hybrid-rendering.md#m10--hybrid-scene-query-and-reference-transport) scene query, transport and reflections | II | Inactive | G3; query/reference work needs only M7 |
-| 24 | [M11](roadmap/gpu-driven-hybrid-rendering.md#m11--dynamic-gi-and-content-residency) dynamic GI and residency | II | Inactive | M10 for GI; M7 for residency, G1 for geometry pages |
+| 18 | [R5.1–R5.7](roadmap/codebase-rojorhi-port.md#r5--luminex-runs-on-the-rojorhi-v2-interface) port to the RojoRHI v2 interface | III | Proposed 2026-10-22; [record](milestones/r/r5.md) | UX6 |
+| 19 | [N1.1–N1.4](roadmap/neural-rendering.md#n1--in-shader-inference-lab) in-shader inference lab | V | Inactive | R5; technically gate B |
+| 20 | [G1.1–G1.4](roadmap/cluster-geometry.md#g1--cluster-geometry) cluster geometry | VI | Inactive | M7 and N1 |
+| 21 | [G2.1–G2.2](roadmap/cluster-geometry.md#g2--scalable-visibility) scalable visibility | VI | Inactive | G1 |
+| 22 | [M8.1–M8.5](roadmap/gpu-driven-hybrid-rendering.md#m8--shadows-indirect-lighting-floor-and-environment) shadows, indirect floor and environment | II | Inactive | G2; technically G1.3 for M8.1–M8.2 and M7 for M8.3–M8.4 |
+| 23 | [G3.1–G3.3](roadmap/cluster-geometry.md#g3--surface-path-for-pixel-scale-triangles) surface path for pixel-scale triangles | VI | Inactive | M8; technically G1 |
+| 24 | [M10](roadmap/gpu-driven-hybrid-rendering.md#m10--hybrid-scene-query-and-reference-transport) scene query, transport and reflections | II | Inactive | G3; query/reference work needs only M7 |
+| 25 | [M11](roadmap/gpu-driven-hybrid-rendering.md#m11--dynamic-gi-and-content-residency) dynamic GI and residency | II | Inactive | M10 for GI; M7 for residency, G1 for geometry pages |
 
 Rows that interleave when their own prerequisites exist, without a fixed step:
 
@@ -88,6 +89,8 @@ scene-authoring proposal, and on 2026-10-03 placed it before N1. The owner accep
 authorized the executor plan on 2026-10-03. After a milestone review and its fixes, the owner
 authorized its integration on 2026-10-04, with failed original image parity and incomplete native
 completion retained.
+R5, the port to the RojoRHI v2 interface, was proposed on 2026-10-22 as step 18, before N1;
+Luminex `main` takes no other work until it integrates.
 On 2026-10-01 the owner retired M9 after the
 [geometry direction review](research/2026-10-01-geometry-direction-review.md): its scope became
 G1–G3 in Part VI, with G1 and G2 before M8 and G3 after it. M8, M10 and M11 keep their identifiers,
@@ -177,7 +180,7 @@ Each milestone has one recognizable completion outcome. Use a few independently 
 and put implementation steps in a just-in-time plan or PR instead of new milestone IDs.
 M6's five slices, M7's five and M8's five are fixed in Parts I and II; M10 and M11 retain bounded
 work areas until planned. Part VI fixes G1's four slices, G2's two and G3's three. R milestones in Part III restructure code
-between rendering milestones and add no rendering scope; R2 has four slices, R3 seven and R4 two.
+between rendering milestones and add no rendering scope; R2 has four slices, R3 seven, R4 two and R5 seven.
 Part IV owns editor experience and its completion criteria independently of the rendering and
 structural milestones; UX2 has four slices, UX3 five, UX4 five, UX5 three and UX6 three. Part V owns the four learned-rendering slices, each an
 independently accepted study that never becomes a correctness dependency of the shared frame; N1
