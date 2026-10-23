@@ -82,8 +82,9 @@ counts use `[gpu]~[.]`. Hidden diagnostics are tracked separately.
 
 ## Totals
 
-Full-source baseline: **1256 CPU / 229 ordinary GPU** cases. Excluded: **26 CPU / 177 GPU**.
-Kept: **1230 CPU / 52 GPU**. Thus 1230+26=1256 CPU and 52+177=229 GPU.
+The measured phase-A baseline is **1256 CPU / 229 ordinary GPU** cases. Two retained detached-window
+CLI cases make the full-source equivalent **1258 CPU / 229 ordinary GPU**. Excluded: **26 CPU / 177 GPU**.
+Kept: **1232 CPU / 52 GPU**. Thus 1232+26=1258 CPU and 52+177=229 GPU.
 The excluded files also contain 1 hidden diagnostic case; it is outside the ordinary totals.
 
 All nine pure FrameData families/tests remain compiled, as do the three checkpoint cases and
@@ -93,8 +94,10 @@ The mixed inspector file needs Native TAA history alternation and waits for TEMP
 frame-declaration file requires bloom transients and waits for POST. Mixed scene pixel files wait
 for SCENE. Their complete registered file inventories are counted above; assertions are unchanged.
 
-The optional detached-window CLI change adds two retained CPU cases when integrated; update the
-full-source equivalent to 1256+2=1258 and kept CPU by two at that point.
+The two added retained cases in `Tests/App/Model/Options/AppOptionsTests.cpp` are
+"--open-window opens a detached tool window" and
+"--open-window rejects unknown names and headless runs". The measured excluded-file inventories
+above remain unchanged.
 
 The original seven-case CaptureSchemaTests file was split without changing a case block: four
 generic schema API cases remain kept, and three full-renderer registration cases move to

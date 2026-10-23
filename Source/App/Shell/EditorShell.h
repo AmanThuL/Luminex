@@ -140,6 +140,8 @@ public:
     void onSystemThemeChanged(SystemTheme theme);
     /// Seeds a session-only appearance override before the first UI frame.
     void primeAppearance(std::optional<Appearance> appearance);
+    /// Opens requested tools after workspace loading and before the first UI frame.
+    void primeWindows(std::span<const DetachedWindow> windows);
     /// Returns the current preference, including a session override, for native window themes.
     Appearance effectiveAppearance() const { return m_workspace.appearance.effective(); }
     /// Returns the current UI canvas clear in encoded SDR sRGB, with straight alpha.
