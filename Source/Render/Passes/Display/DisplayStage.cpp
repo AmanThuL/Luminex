@@ -6,6 +6,7 @@
 #include "Render/Passes/Display/DisplayStage.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Common/StageSetup.h"
+#include "Render/Passes/Display/DisplayFrameData.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Engine/Gpu/GpuOwned.h"
@@ -17,12 +18,6 @@
 
 namespace lmx::render {
 namespace {
-
-// Mirrors Shaders/Passes/Display/DisplayTransform.slang's DisplayParams.
-struct DisplayParams {
-    float bloomIntensity;
-};
-static_assert(sizeof(DisplayParams) == 4, "must match DisplayTransform.slang's DisplayParams");
 
 // DisplayTransform.slang's own resource set: unrelated to the scene pass's slots above.
 constexpr uint32_t kSceneColorTextureSlot = 0;
@@ -114,7 +109,7 @@ void DisplayStage::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
             } else {
                 commands.bindTexture(kDisplayBloomTextureSlot, m_blackBloomFallback.rhi());
             }
-            const DisplayParams params{.bloomIntensity = bloomEnabled ? bloomIntensity : 0.0f};
+            const DisplayParams params = buildDisplayParams(bloomEnabled, bloomIntensity);
             commands.bindFrameData(kDisplayParamsSlot, params);
             commands.draw(3);
         });

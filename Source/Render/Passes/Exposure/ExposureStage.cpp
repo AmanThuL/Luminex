@@ -7,6 +7,7 @@
 #include "Render/Common/Dispatch.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Common/PacedSlots.h"
+#include "Render/Passes/Exposure/ExposureFrameData.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"
@@ -19,43 +20,6 @@
 
 namespace lmx::render {
 namespace {
-
-// Mirrors Shaders/Passes/Exposure/HistogramAccumulate.slang's HistogramParams. Every field is a
-// scalar, so HLSL cbuffer packing (which Slang's Metal path still follows) leaves them contiguous
-// -- no vector field ever forces a gap here.
-struct HistogramParams {
-    float logLuminanceMin;
-    float logLuminanceMax;
-    uint32_t width;
-    uint32_t height;
-};
-static_assert(sizeof(HistogramParams) == 16,
-              "must match HistogramAccumulate.slang's HistogramParams");
-
-// Mirrors Shaders/Passes/Exposure/ExposureSeed.slang's ExposureSeedParams.
-struct ExposureSeedParams {
-    float exposure;
-};
-static_assert(sizeof(ExposureSeedParams) == 4,
-              "must match ExposureSeed.slang's ExposureSeedParams");
-
-// Mirrors Shaders/Passes/Exposure/ExposureResolve.slang's ExposureResolveParams.
-struct ExposureResolveParams {
-    float lowPercentile;
-    float highPercentile;
-    float targetGrey;
-    float evMin;
-    float evMax;
-    float compensationEv;
-    float logLuminanceMin;
-    float logLuminanceMax;
-    float adaptUp;
-    float adaptDown;
-    float deltaSeconds;
-    float pad;
-};
-static_assert(sizeof(ExposureResolveParams) == 48,
-              "must match ExposureResolve.slang's ExposureResolveParams");
 
 // HistogramAccumulate.slang's slot map.
 constexpr uint32_t kHistogramSceneColorSlot = 0; // texture
@@ -74,17 +38,6 @@ constexpr uint32_t kSeedParamsSlot = 1;
 
 constexpr uint32_t kHistogramBins = 256;
 constexpr uint64_t kHistogramBufferSize = uint64_t{kHistogramBins} * sizeof(uint32_t);
-// Wide enough to cover everything from near-black shadow detail to a strongly overexposed
-// highlight without the metering formula ever needing to know a scene's real range in advance;
-// HistogramAccumulate.slang and ExposureResolve.slang must agree on both.
-constexpr float kExposureLogLuminanceMin = -12.0f;
-constexpr float kExposureLogLuminanceMax = 4.0f;
-// The seconds one declared frame advances the scene by, which is what exposure adaptation steps
-// against. The App's clock is a fixed step per frame rather than wall time -- asset::
-// kAnimationBakeRate -- and this restates the number because Render cannot depend on Asset. A
-// renderer that stepped by wall time would resolve a different exposure for the same frame on a
-// different machine, which is not something a frozen stability tolerance can survive.
-constexpr float kExposureFrameSeconds = 1.0f / 60.0f;
 
 } // namespace
 
@@ -199,19 +152,18 @@ GraphBuffer ExposureStage::declareSeed(RenderGraph& graph, rojoRHI::CommandList&
     // keeps the pre-temporal frame's declaration exact.
     const bool seedExposure = view.autoExposureEnabled ? view.exposureReset : view.temporal.enabled;
     if (seedExposure) {
-        const float manualExposure = std::exp2(view.exposureEv);
+        const ExposureSeedParams seedParams = buildExposureSeedParams(view.exposureEv);
         ComputePassDesc seedDesc;
         seedDesc.bufferWrites.push_back(exposureImport);
         graph.addComputePass(
             "lmx.pass.exposure.seed", std::move(seedDesc),
-            [this, &commands, exposureImport, manualExposure](const PassResources& resources) {
+            [this, &commands, exposureImport, seedParams](const PassResources& resources) {
                 auto& exposure = lmx::render::buffer(resources, exposureImport);
-                const ExposureSeedParams params{.exposure = manualExposure};
                 commands.bindComputePipeline(*m_exposureSeedPipeline);
                 // Read-write, not write: the kernel shifts index 0 into index 1 before it sets it.
                 commands.bindStorageBuffer(kSeedExposureSlot, exposure,
                                            rojoRHI::StorageAccess::ReadWrite);
-                commands.bindFrameData(kSeedParamsSlot, params);
+                commands.bindFrameData(kSeedParamsSlot, seedParams);
                 commands.dispatch(1, 1, 1);
             });
         exposureCurrent = nextVersion(exposureImport);
@@ -265,11 +217,8 @@ void ExposureStage::declareMetering(RenderGraph& graph, rojoRHI::CommandList& co
                              auto& histogram = lmx::render::buffer(resources, histogramCleared);
                              auto& exposure = lmx::render::buffer(resources, exposureCurrent);
 
-                             const HistogramParams params{
-                                 .logLuminanceMin = kExposureLogLuminanceMin,
-                                 .logLuminanceMax = kExposureLogLuminanceMax,
-                                 .width = meterWidth,
-                                 .height = meterHeight};
+                             const HistogramParams params =
+                                 buildHistogramParams(meterWidth, meterHeight);
                              commands.bindComputePipeline(*m_histogramPipeline);
                              commands.bindTexture(kHistogramSceneColorSlot, scene);
                              commands.bindStorageBuffer(kHistogramBufferSlot, histogram,
@@ -294,18 +243,15 @@ void ExposureStage::declareMetering(RenderGraph& graph, rojoRHI::CommandList& co
             auto& histogram = lmx::render::buffer(resources, histogramFinal);
             auto& exposure = lmx::render::buffer(resources, exposureCurrent);
 
-            const ExposureResolveParams params{.lowPercentile = view.exposureLowPercentile,
-                                               .highPercentile = view.exposureHighPercentile,
-                                               .targetGrey = view.exposureTargetGrey,
-                                               .evMin = view.exposureEvMin,
-                                               .evMax = view.exposureEvMax,
-                                               .compensationEv = view.exposureCompensationEv,
-                                               .logLuminanceMin = kExposureLogLuminanceMin,
-                                               .logLuminanceMax = kExposureLogLuminanceMax,
-                                               .adaptUp = view.exposureAdaptUpStopsPerSecond,
-                                               .adaptDown = view.exposureAdaptDownStopsPerSecond,
-                                               .deltaSeconds = kExposureFrameSeconds,
-                                               .pad = 0.0f};
+            const ExposureResolveParams params = buildExposureResolveParams(
+                {.lowPercentile = view.exposureLowPercentile,
+                 .highPercentile = view.exposureHighPercentile,
+                 .targetGrey = view.exposureTargetGrey,
+                 .evMin = view.exposureEvMin,
+                 .evMax = view.exposureEvMax,
+                 .compensationEv = view.exposureCompensationEv,
+                 .adaptUpStopsPerSecond = view.exposureAdaptUpStopsPerSecond,
+                 .adaptDownStopsPerSecond = view.exposureAdaptDownStopsPerSecond});
             commands.bindComputePipeline(*m_exposureResolvePipeline);
             commands.bindStorageBuffer(kResolveHistogramSlot, histogram,
                                        rojoRHI::StorageAccess::Read);
