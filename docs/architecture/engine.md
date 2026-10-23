@@ -79,6 +79,10 @@ rendered frame. The scene plays back Asset's rigid animation tracks and follows 
 one is authored. The glTF loader, `loadGltfScene`, takes an optional `SceneAuthoring` callback that
 adds content, such as lights, before `finalize` runs.
 
+## GPU layer
+
+`Gpu/` holds the GPU layer. `gpuError` is the one place a RojoRHI error becomes a `lmx::Error`.
+
 ## GPU uploads
 
 `Upload/` holds `DdsUpload.h`, `IblUpload.h` and the shared `SceneEnvironment.h` sky/light rig.

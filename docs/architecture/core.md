@@ -11,7 +11,7 @@ domain meaning; nothing in it names a scene, a pass, or a panel.
 
 Core has five folders:
 
-- `Diagnostics/`: logging, log sinks, and assertions.
+- `Diagnostics/`: logging, log sinks, assertions, and the project result and error types.
 - `IO/`: whole-file reads and JSON escaping.
 - `Math/`: alignment and dispatch division; colour transfer; finite AABBs with their eight-corner
   transform (`Aabb.h`); spheres; frusta; reversed-infinite-Z and orthographic-fit projections;
