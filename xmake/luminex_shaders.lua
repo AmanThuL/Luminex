@@ -56,7 +56,7 @@ function lmx_configure_shader_library(target)
     end
 
     local includedirs = {path.join(repository_root, "Shaders/Common")}
-    if kind == "tests" then
+    if kind == "tests" or kind == "app" then
         local passes = os.dirs(path.join(repository_root, "Shaders/Passes/*"))
         table.sort(passes)
         table.join2(includedirs, passes)
@@ -65,6 +65,19 @@ function lmx_configure_shader_library(target)
         os.host() == "windows" and "ThirdParty/slang/bin/slangc.exe" or "ThirdParty/slang/bin/slangc"))
     target:values_set("slang.moduledir", path.join(repository_root, "RojoRHI/Shaders/RojoRHI"))
     target:values_set("slang.includedirs", table.unpack(includedirs))
+    if kind == "app" then
+        target:values_set("slang.layout_probe", path.join(repository_root, "Shaders/Layout/LuminexLayout.slang"))
+        local layout_map = {
+            "DisplayRoot=lmx::render::DisplayRoot",
+            -- ---- scene ----
+            -- ---- visibility ----
+            -- ---- lights ----
+            -- ---- post ----
+            -- ---- temporal ----
+        }
+        target:values_set("slang.layout_map", table.unpack(layout_map))
+        target:values_set("slang.layout_include", "Render/Passes/Display/DisplayRoots.h")
+    end
     local entries = lmx_shader_entries(kind)
     target:values_set("lmx.shader.entries", table.unpack(entries))
     target:add("files", table.unpack(entries))
@@ -72,6 +85,7 @@ end
 
 function lmx_apply_shader_rule(kind)
     add_rules("rojorhi.slang")
+    if kind == "app" then add_rules("rojorhi.shader_layout") end
     set_values("lmx.shader.kind", kind)
     on_load(lmx_configure_shader_library)
 end

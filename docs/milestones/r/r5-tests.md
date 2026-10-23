@@ -135,3 +135,16 @@ The case `toTextureMips points each level at its payload offset with its row pit
 upload adapter. Payload identity, level order and row pitches remain asserted; exact byte-span
 sizes and zero bytesPerImage for these 2D subresources are also checked. This is a rename with no
 case-count change.
+
+## Preserving readback coverage
+
+Nine additive readback cases cover padded texture rows, submitted-frame resolution, mapped Upload
+regions, mapped Readback destinations, empty versus unexecuted operations, causal failures,
+initialized depth, mixed-mip preservation and initialized-color sampling. Six require actual GPU
+copy/fill or shader execution and carry `[render][device][gpu]`; three mapped-Upload/empty/error
+cases carry `[render][device]`. Null validates commands but does not execute GPU byte payloads.
+One additional `[render][device]` case checks actual replacement identity and fresh physical state
+for both different and unchanged renderer extents; unchanged extent still replaces its targets.
+The existing CPU cases retain their names and remain for conversion with the shared test support.
+These additions are separate from the measured prep inventories above; integrated inventories
+are measured after the retained test and oracle sources compile together.

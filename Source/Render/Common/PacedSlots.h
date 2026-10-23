@@ -13,10 +13,12 @@
 
 namespace lmx::render {
 
-inline GraphBuffer importPaced(RenderGraph& graph, rojoRHI::Buffer& buffer, std::string_view name,
-                               BufferUse use, bool used) {
+/// Imports an owned paced buffer, retaining the previous use only when that slot was used.
+inline GraphBuffer importPaced(RenderGraph& graph, const engine::GpuBuffer& buffer,
+                               std::string_view name, BufferUse use, bool used) {
     return used ? graph.importBuffer(buffer, name, use) : graph.importBuffer(buffer, name);
 }
+/// Declares a word-aligned zero fill; target must be Gpu memory with ShaderWrite usage.
 inline void declareZeroFill(RenderGraph& graph, rojoRHI::CommandList& commands,
                             std::string_view passName, GraphBuffer target, uint64_t bytes) {
     CopyPassDesc reset;
@@ -26,8 +28,8 @@ inline void declareZeroFill(RenderGraph& graph, rojoRHI::CommandList& commands,
                           commands.fillBuffer(lmx::render::buffer(resources, target), 0, bytes, 0);
                       });
 }
-// Process in insertion order, then erase the completed entries; projection remains valid after
-// the callback (including when that callback moves the owned payload out of an entry).
+/// Processes in insertion order, then erases the completed entries; projection remains valid after
+/// the callback (including when that callback moves the owned payload out of an entry).
 template <class Pending, class FrameOf, class Retire>
 void retireThrough(std::vector<Pending>& pending, uint64_t completedFrame, FrameOf frameOf,
                    Retire retire) {
@@ -40,6 +42,7 @@ void retireThrough(std::vector<Pending>& pending, uint64_t completedFrame, Frame
         return frameOf(entry) <= completedFrame;
     });
 }
+/// Moves every retired payload out, leaving the retirement collection empty.
 template <class Retired>
 std::vector<Retired> takeRetired(std::vector<Retired>& retired) {
     auto result = std::move(retired);

@@ -9,7 +9,7 @@
 namespace lmx::render {
 
 void seedReplacement(TextureStateTable& states, const engine::GpuTexture& previous,
-                     const rojoRHI::Texture& replacement, TextureUse initial);
+                     const engine::GpuTexture& replacement, TextureUse initial);
 
 #ifndef LMX_PENDING_TEMPORAL
 // The temporal slots' entries, depth then colour per slot, as forgetTemporalSlots() found them.

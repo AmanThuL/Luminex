@@ -61,17 +61,20 @@ constexpr std::array<uint16_t, 2> kZeroDfgTexel = {0, 0};
 } // namespace
 
 //======================================================================================================================
-// Seeds a target resize() allocates. A replacement starts from the use its predecessor was left
-// in, so a resize changes none of the barriers the next frame records; the first allocation starts
-// from `initial`. The predecessor's entry goes with it, so its address carries nothing forward.
+// Only the diagnostic use survives replacement. Physical cells come from the new identity's
+// immutable creation layout; equal identity retains every existing subresource frontier.
 void seedReplacement(TextureStateTable& states, const engine::GpuTexture& previous,
-                     const rojoRHI::Texture& replacement, TextureUse initial) {
-    TextureUse use = initial;
+                     const engine::GpuTexture& replacement, TextureUse initial) {
+    if (previous && previous.rhi() == replacement.rhi()) {
+        return;
+    }
+    const TextureUse use = previous ? states.logicalUse(previous.rhi()).value_or(initial) : initial;
+    states.setLogicalUse(replacement.rhi(), use);
+    states.seedPhysical(replacement.rhi(), replacement.desc().mips, replacement.desc().layers,
+                        replacement.initialLayout());
     if (previous) {
-        use = states.find(previous.rhi()).value_or(initial);
         states.forget(previous.rhi());
     }
-    states.set(replacement, use);
 }
 
 //======================================================================================================================
@@ -96,7 +99,7 @@ void registerUniformLayoutsForCapture() {
 
 //======================================================================================================================
 Renderer::Renderer(engine::GpuContext& gpu, bool cpuReadback)
-    : m_gpu(gpu), m_transientPool(gpu.device()),
+    : m_gpu(gpu), m_transientPool(gpu),
 #ifndef LMX_PENDING_SCENE
       m_drawSubmission(gpu.device()),
 #endif
@@ -114,7 +117,7 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
     // Registration is idempotent and keeps capture startup independent of Renderer state.
     registerUniformLayoutsForCapture();
 
-    rojoRHI::Device& device = gpu.device();
+    [[maybe_unused]] rojoRHI::Device& device = gpu.device();
     std::unique_ptr<Renderer> self(new Renderer(gpu, cpuReadback));
 
 #ifndef LMX_PENDING_SCENE
@@ -281,31 +284,32 @@ lmx::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
     // pass. Readable on the same terms as the display target, because a caller that wants to
     // inspect radiance rather than the picture has nowhere else to read it from.
     auto hdrColor =
-        engine::GpuTexture::create(m_gpu.device(), {.width = width,
-                                                    .height = height,
-                                                    .format = kSceneColorFormat,
-                                                    .renderTarget = true,
-                                                    .sampled = true,
-                                                    .cpuReadback = m_cpuReadback,
+        engine::GpuTexture::create(m_gpu.device(), {.format = kSceneColorFormat,
+                                                    .extent = {width, height, 1},
+                                                    .usage = rojoRHI::TextureUsage::RenderTarget |
+                                                             rojoRHI::TextureUsage::Sampled,
                                                     .label = "lmx.render.sceneColorHdr"});
     if (!hdrColor) {
         return std::unexpected(hdrColor.error());
     }
     // The display transform's output: what the viewport samples and a screenshot reads back.
-    auto color = engine::GpuTexture::create(m_gpu.device(), {.width = width,
-                                                             .height = height,
-                                                             .format = kDisplayFormat,
-                                                             .renderTarget = true,
-                                                             .sampled = true,
-                                                             .cpuReadback = m_cpuReadback,
-                                                             .label = "lmx.render.displayColor"});
+    auto color =
+        engine::GpuTexture::create(m_gpu.device(), {.format = kDisplayFormat,
+                                                    .extent = {width, height, 1},
+                                                    .usage = rojoRHI::TextureUsage::RenderTarget |
+                                                             rojoRHI::TextureUsage::Sampled,
+                                                    .label = "lmx.render.displayColor"});
     if (!color) {
         return std::unexpected(color.error());
     }
-    // Swap the targets only after every allocation succeeds. The scene colour starts as the display
-    // transform's read left it; the display target as the sampled image it always ends as.
-    seedReplacement(m_textureStates, m_hdrColor, hdrColor->rhi(), TextureUse::ShaderRead);
-    seedReplacement(m_textureStates, m_color, color->rhi(), TextureUse::ShaderRead);
+    auto standIns = createRendererStandIns(m_gpu.device(), width, height);
+    if (!standIns) {
+        return std::unexpected(standIns.error());
+    }
+    // Allocate every retained target before committing state. Failed creation keeps each old
+    // identity and frontier; successful replacements begin from their own creation layout.
+    seedReplacement(m_textureStates, m_hdrColor, *hdrColor, TextureUse::ShaderRead);
+    seedReplacement(m_textureStates, m_color, *color, TextureUse::ShaderRead);
     m_hdrColor = std::move(*hdrColor);
     m_color = std::move(*color);
     m_width = width;
@@ -358,12 +362,7 @@ lmx::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
         }
     }
 #endif
-    auto standIns = createRendererStandIns(m_gpu.device(), width, height);
-    if (!standIns) {
-        return std::unexpected(standIns.error());
-    }
-    seedReplacement(m_textureStates, m_standIns.depth, standIns->depth.rhi(),
-                    TextureUse::ShaderRead);
+    seedReplacement(m_textureStates, m_standIns.depth, standIns->depth, TextureUse::ShaderRead);
     m_standIns = std::move(*standIns);
     return {};
 }

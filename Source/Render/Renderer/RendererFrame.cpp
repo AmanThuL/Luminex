@@ -167,8 +167,8 @@ RendererFrameState Renderer::deriveFrameState(const engine::Camera& camera, cons
 
 //======================================================================================================================
 RendererFrameImports Renderer::importFrameResources(RenderGraph& graph,
-                                                    rojoRHI::CommandList& commands,
-                                                    const SceneView& view,
+                                                    [[maybe_unused]] rojoRHI::CommandList& commands,
+                                                    [[maybe_unused]] const SceneView& view,
                                                     const RendererFrameState& state) {
     // The graph snapshots formats at import for attachment validation; these named constants are
     // the same ones resize() and create() used to build the persistent targets.
@@ -182,19 +182,15 @@ RendererFrameImports Renderer::importFrameResources(RenderGraph& graph,
 #else
     const GraphTexture shadowMap;
 #endif
-    const GraphTexture sceneColor = graph.importPersistentTexture(
-        m_hdrColor.rhi(), kSceneColorFormat, "lmx.render.sceneColorHdr");
+    const GraphTexture sceneColor =
+        graph.importPersistentTexture(m_hdrColor, "lmx.render.sceneColorHdr");
     if (state.temporalEnabled && !state.nativeTaa && !state.vendorTemporal && !state.upscaled) {
-        // The one override that states no access after the graph: it keeps the earlier
-        // hand-tracked CopySource state solely so the gpu golden dump stays unchanged. That state
-        // is likely under-synchronised: the derived last use is ShaderRead, because the commit copy
-        // is scheduled before the bloom and display reads of the same version, so the next frame's
-        // first barrier does not wait on those reads. Correcting it changes that golden, so it
-        // stays a deliberate, open decision.
+        // Keep the diagnostic CopySource terminal use. The physical export transition runs
+        // after every scheduled reader, independently of the unchanged logical transition rows.
         graph.setFinalUse(sceneColor, TextureUse::CopySource);
     }
     const GraphTexture displayColor =
-        graph.importPersistentTexture(m_color.rhi(), kDisplayFormat, "lmx.render.displayColor");
+        graph.importPersistentTexture(m_color, "lmx.render.displayColor");
     // colorTarget() is sampled after the graph -- by the viewport, a screenshot, or a pass the
     // caller encodes by hand -- so the display target is left as a shader read whatever its last
     // pass was.
@@ -208,8 +204,8 @@ RendererFrameImports Renderer::importFrameResources(RenderGraph& graph,
             : graph.importPersistentTexture(m_temporalResolve->depthTexture(0).rhi(),
                                             rojoRHI::Format::D32Float, "lmx.render.sceneDepth");
 #else
-    const GraphTexture sceneDepth = graph.importPersistentTexture(
-        m_standIns.depth.rhi(), rojoRHI::Format::D32Float, "lmx.render.sceneDepth");
+    const GraphTexture sceneDepth =
+        graph.importPersistentTexture(m_standIns.depth, "lmx.render.sceneDepth");
 #endif
     // depthTexture() is public and a caller may sample it after this graph, so the frame's depth is
     // left as a shader read, a stage set that also covers the attachment work the scene pass does
@@ -272,7 +268,7 @@ RendererFrameImports Renderer::importFrameResources(RenderGraph& graph,
         m_exposureStage->declareSeed(graph, commands, view, exposureImport);
 #else
     const GraphBuffer exposureCurrent =
-        graph.importBuffer(m_standIns.exposure.rhi(), "lmx.render.exposureBuffer");
+        graph.importBuffer(m_standIns.exposure, "lmx.render.exposureBuffer");
 #endif
 
     std::vector<GraphBuffer> sceneBuffers;
