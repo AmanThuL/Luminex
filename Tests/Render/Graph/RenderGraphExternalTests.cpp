@@ -7,7 +7,7 @@ TEST_CASE("external passes order inputs and outputs without opening an RHI scope
     FakeTexture output{64, 64, "output"};
     FakeTexture display{64, 64, "display"};
     RecordingCommandList commands;
-    FakeDevice::FakeTemporalScaler scaler;
+    FakeTemporalScaler scaler;
     RenderGraph graph;
     const auto a = graph.importTexture(input, rojoRHI::Format::RGBA16Float, "input");
     const auto b = graph.importTexture(output, rojoRHI::Format::RGBA16Float, "output");
@@ -140,8 +140,8 @@ TEST_CASE("external declarations enforce texture versions and ranges",
 //======================================================================================================================
 TEST_CASE("external consumers bound transient lifetimes and unused work is culled",
           "[render][graph][external]") {
-    FakeDevice device;
-    TransientPool pool{device};
+    FakeTransientBackend backend;
+    TransientPool pool{backend};
     FakeTexture output{64, 64};
     RenderGraph graph{pool};
     const auto packed = graph.createTexture(kTransientColor, "packed");
@@ -160,5 +160,5 @@ TEST_CASE("external consumers bound transient lifetimes and unused work is culle
     REQUIRE(record->debug.transients[0].firstPass == 0);
     REQUIRE(record->debug.transients[0].lastPass == 1);
     REQUIRE_FALSE(record->debug.transients[1].used);
-    REQUIRE(record->debug.memory.requested == FakeDevice::kTextureAlignment);
+    REQUIRE(record->debug.memory.requested == FakeTransientBackend::kTextureAlignment);
 }

@@ -1,3 +1,4 @@
+#include "Support/GraphTestSupport.h"
 #include "Support/RenderGraphTestSupport.h"
 
 //======================================================================================================================

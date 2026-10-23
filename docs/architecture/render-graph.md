@@ -152,7 +152,9 @@ accepted `CompiledFrameRecord`, which the caller retains for its own frame-recor
   across `GpuAppFrameDeclaration`, `GpuRenderGraph`, `GpuTransient`, `GraphDump`, `RenderGraph`,
   `RenderGraphAttachment`, `RenderGraphExecution`, `RenderGraphExternal`, `RenderGraphLowering`,
   `RenderGraphRecord`, `RenderGraphTransient`, `RenderGraphTransition`, `RenderTransientPool` and
-  `TextureStateTable`.
+  `TextureStateTable`. Graph cases run on the transient backend fake and assert ordering on the
+  lowered frame; only the emitter cases record on a command list, and imports borrow
+  `FakeTexture` and `FakeBuffer`.
 - `Tests/App/Model/Graph/` covers the editor's graph models built on this contract (frame-record
   retention, node model and layout, snapshots and the graph inspector), described in
   [App](app.md).

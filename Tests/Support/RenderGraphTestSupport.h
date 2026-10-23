@@ -5,7 +5,6 @@
 #include "Render/Graph/LoweredFrame.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Graph/TransientPool.h"
-#include "Support/GraphTestSupport.h"
 #include "Support/TransientBackendTestSupport.h"
 
 #include <algorithm>
@@ -20,7 +19,14 @@
 using namespace lmx;
 using namespace lmx::render;
 
+// The graph tests run on Luminex seams: the transient backend fake, assertions on the lowered
+// frame, and the recording list only in cases that exercise the emitter. The v1 subclasses that
+// remain, here and elsewhere in the test support, are listed in Support/GraphTestSupport.h.
+
 namespace {
+// A scaler the recording list can be handed; it carries no state.
+struct FakeTemporalScaler final : rojoRHI::TemporalScaler {};
+
 // Passes here are declarations and nothing else: this layer stores the body without running it, so
 // every pass gets the same empty one.
 [[maybe_unused]] const ExecuteFn kNoWork = [](const PassResources&) {};
