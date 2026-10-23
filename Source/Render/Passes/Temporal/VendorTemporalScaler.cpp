@@ -5,6 +5,7 @@
 #include "Render/Passes/Temporal/VendorTemporalScaler.h"
 #include "Render/Common/Dispatch.h"
 #include "Render/Common/GraphResources.h"
+#include "Render/Passes/Temporal/TemporalFrameData.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"
@@ -18,14 +19,6 @@
 #include <utility>
 
 namespace lmx::render {
-namespace {
-struct VendorPackParams {
-    uint32_t width;
-    uint32_t height;
-};
-static_assert(sizeof(VendorPackParams) == 8);
-static_assert(offsetof(VendorPackParams, height) == 4);
-} // namespace
 
 //======================================================================================================================
 ReconstructionSelection resolveReconstruction(ReconstructionMode requested,
@@ -220,8 +213,7 @@ VendorTemporalPacked VendorTemporalScaler::declarePack(RenderGraph& graph,
                              commands.bindStorageTexture(4, *texture(packed.exposure), {},
                                                          rojoRHI::StorageAccess::Write);
                              commands.bindStorageBuffer(0, exposure, rojoRHI::StorageAccess::Read);
-                             const VendorPackParams params{inputs.extents.renderWidth,
-                                                           inputs.extents.renderHeight};
+                             const auto params = buildVendorPackParams(inputs.extents);
                              commands.bindFrameData(1, params);
                              const auto groups = dispatchGroups2D(params.width, params.height);
                              commands.dispatch(groups[0], groups[1], 1);

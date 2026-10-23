@@ -17,36 +17,10 @@
 #include <utility>
 
 namespace lmx::render {
-using temporal_detail::SpatialUpscaleParams;
-using temporal_detail::spatialUpscaleParams;
 using temporal_detail::viewReadsRejection;
 using temporal_detail::viewReadsReprojected;
 
 namespace {
-
-// Mirrors Shaders/Passes/Temporal/TemporalReproject.slang's TemporalReprojectParams.
-struct TemporalReprojectParams {
-    uint32_t width = 0; // The output extent: the pass's dispatch bound.
-    uint32_t height = 0;
-    uint32_t renderWidth = 0; // The active rectangle of the scene colour and the motion target.
-    uint32_t renderHeight = 0;
-    uint32_t allocatedWidth = 0; // The allocation of those two, which their UVs are taken over.
-    uint32_t allocatedHeight = 0;
-    glm::vec2 jitterOffset{0.0f};
-};
-static_assert(sizeof(TemporalReprojectParams) == 32,
-              "must match TemporalReproject.slang's TemporalReprojectParams");
-
-// Mirrors Shaders/Passes/Temporal/TemporalDebugView.slang's TemporalDebugViewParams.
-struct TemporalDebugViewParams {
-    uint32_t view = 0;
-    uint32_t renderWidth = 0; // The motion target's active rectangle; every other input is output.
-    uint32_t renderHeight = 0;
-    uint32_t outputWidth = 0;
-    uint32_t outputHeight = 0;
-};
-static_assert(sizeof(TemporalDebugViewParams) == 20,
-              "must match TemporalDebugView.slang's TemporalDebugViewParams");
 
 // TemporalReproject.slang's slot map.
 constexpr uint32_t kReprojectHistorySlot = 0;    // texture
@@ -63,28 +37,6 @@ constexpr uint32_t kDebugViewRejectionSlot = 2;   // texture
 constexpr uint32_t kDebugViewReprojectedSlot = 3; // texture
 constexpr uint32_t kDebugViewResolvedSlot = 4;    // texture
 constexpr uint32_t kDebugViewParamsSlot = 0;      // buffer
-
-//======================================================================================================================
-// The view selector Shaders/Passes/Temporal/TemporalDebugView.slang branches on. Off never reaches
-// the shader -- the pass is not declared in that mode -- so it maps to the same value MotionVectors
-// does rather than to a code the fragment has no branch for.
-uint32_t debugViewSelector(TemporalDebugView view) {
-    return view == TemporalDebugView::Off ? 1u : static_cast<uint32_t>(view);
-}
-
-//======================================================================================================================
-// Shaders/Passes/Temporal/TemporalReproject.slang's block: the pass runs over the output extent and
-// resamples the render extent's active rectangle to meet it, on spatialUpscaleParams()' terms.
-TemporalReprojectParams reprojectParams(const TemporalInputs& inputs) {
-    const SpatialUpscaleParams resampling = spatialUpscaleParams(inputs);
-    return TemporalReprojectParams{.width = resampling.outputWidth,
-                                   .height = resampling.outputHeight,
-                                   .renderWidth = resampling.renderWidth,
-                                   .renderHeight = resampling.renderHeight,
-                                   .allocatedWidth = resampling.allocatedWidth,
-                                   .allocatedHeight = resampling.allocatedHeight,
-                                   .jitterOffset = resampling.jitterOffset};
-}
 
 } // namespace
 
@@ -126,26 +78,27 @@ GraphTexture TemporalResolve::declareReprojection(RenderGraph& graph,
     reprojectDesc.shaderTextureReads.push_back(inputs.sceneColor);
     reprojectDesc.shaderTextureReads.push_back(inputs.motion);
     reprojectDesc.textureWrites.push_back(diagnostic);
-    graph.addComputePass("lmx.pass.temporal.reproject", std::move(reprojectDesc),
-                         [this, &commands, inputs, diagnostic,
-                          params = reprojectParams(inputs)](const PassResources& resources) {
-                             auto& historyTexture = lmx::render::texture(resources, inputs.history);
-                             auto& sceneTexture =
-                                 lmx::render::texture(resources, inputs.sceneColor);
-                             auto& motionTexture = lmx::render::texture(resources, inputs.motion);
-                             auto& target = lmx::render::texture(resources, diagnostic);
+    graph.addComputePass(
+        "lmx.pass.temporal.reproject", std::move(reprojectDesc),
+        [this, &commands, inputs, diagnostic,
+         params = buildTemporalReprojectParams(inputs.extents, inputs.camera.jitterPixels)](
+            const PassResources& resources) {
+            auto& historyTexture = lmx::render::texture(resources, inputs.history);
+            auto& sceneTexture = lmx::render::texture(resources, inputs.sceneColor);
+            auto& motionTexture = lmx::render::texture(resources, inputs.motion);
+            auto& target = lmx::render::texture(resources, diagnostic);
 
-                             commands.bindComputePipeline(*m_reprojectPipeline);
-                             commands.bindTexture(kReprojectHistorySlot, historyTexture);
-                             commands.bindTexture(kReprojectSceneColorSlot, sceneTexture);
-                             commands.bindTexture(kReprojectMotionSlot, motionTexture);
-                             commands.bindStorageTexture(kReprojectDiagnosticSlot, target, {},
-                                                         rojoRHI::StorageAccess::Write);
-                             commands.bindSampler(kReprojectSamplerSlot, *m_sampler);
-                             commands.bindFrameData(kReprojectParamsSlot, params);
-                             const auto groups = dispatchGroups2D(params.width, params.height);
-                             commands.dispatch(groups[0], groups[1], 1);
-                         });
+            commands.bindComputePipeline(*m_reprojectPipeline);
+            commands.bindTexture(kReprojectHistorySlot, historyTexture);
+            commands.bindTexture(kReprojectSceneColorSlot, sceneTexture);
+            commands.bindTexture(kReprojectMotionSlot, motionTexture);
+            commands.bindStorageTexture(kReprojectDiagnosticSlot, target, {},
+                                        rojoRHI::StorageAccess::Write);
+            commands.bindSampler(kReprojectSamplerSlot, *m_sampler);
+            commands.bindFrameData(kReprojectParamsSlot, params);
+            const auto groups = dispatchGroups2D(params.width, params.height);
+            commands.dispatch(groups[0], groups[1], 1);
+        });
     return nextVersion(diagnostic);
 }
 
@@ -210,11 +163,7 @@ GraphTexture TemporalResolve::declareDebugView(RenderGraph& graph, rojoRHI::Comm
                       bindOptional(kDebugViewReprojectedSlot, readsReprojected, reprojected);
                       bindOptional(kDebugViewResolvedSlot, readsResolved, resolved);
 
-                      const TemporalDebugViewParams params{.view = debugViewSelector(debugView),
-                                                           .renderWidth = extents.renderWidth,
-                                                           .renderHeight = extents.renderHeight,
-                                                           .outputWidth = extents.outputWidth,
-                                                           .outputHeight = extents.outputHeight};
+                      const auto params = buildTemporalDebugViewParams(debugView, extents);
                       commands.bindFrameData(kDebugViewParamsSlot, params);
                       commands.draw(3);
                   });
