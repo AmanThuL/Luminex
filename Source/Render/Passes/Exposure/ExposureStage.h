@@ -28,6 +28,8 @@ public:
                                                               bool cpuReadback);
     // The frame composition root imports the persistent pair before scene declaration.
     rojoRHI::Buffer& buffer() { return m_exposureBuffer.rhi(); }
+    /// Borrows the persistent exposure owner until the stage is destroyed.
+    const engine::GpuBuffer& bufferOwner() const { return m_exposureBuffer; }
     // Seeds manual/reset exposure before the scene reads it; callbacks live through execution.
     GraphBuffer declareSeed(RenderGraph& graph, rojoRHI::CommandList& commands,
                             const SceneView& view, GraphBuffer exposureImport);

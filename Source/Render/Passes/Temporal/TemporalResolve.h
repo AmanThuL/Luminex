@@ -151,6 +151,11 @@ public:
     /// The colour history of `slot`, which holds that frame's output whichever mode produced it.
     rojoRHI::Texture& colorSlot(uint32_t slot);
 
+    /// Borrows the depth owner of slot 0 or 1 until resize replaces both pairs.
+    const engine::GpuTexture& depthTexture(uint32_t slot) const;
+    /// Borrows the colour-history owner of slot 0 or 1 on depthTexture() lifetime terms.
+    const engine::GpuTexture& colorTexture(uint32_t slot) const;
+
     /// Imports the depth of `slot` with the use the last frame to touch it left it in, read from
     /// the graph's texture state table. The renderer leaves the frame's own slot as a shader read,
     /// because the depth is public through Renderer::depthTarget() and a caller may sample it after

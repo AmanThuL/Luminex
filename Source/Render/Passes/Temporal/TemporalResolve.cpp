@@ -257,6 +257,20 @@ rojoRHI::Texture& TemporalResolve::colorSlot(uint32_t slot) {
 }
 
 //======================================================================================================================
+const engine::GpuTexture& TemporalResolve::depthTexture(uint32_t slot) const {
+    LMX_ASSERT(slot < 2 && m_depth[slot],
+               "TemporalResolve::depthSlot: no such slot -- create() or resize() failed");
+    return m_depth[slot];
+}
+
+//======================================================================================================================
+const engine::GpuTexture& TemporalResolve::colorTexture(uint32_t slot) const {
+    LMX_ASSERT(slot < 2 && m_color[slot],
+               "TemporalResolve::colorSlot: no such slot -- create() or resize() failed");
+    return m_color[slot];
+}
+
+//======================================================================================================================
 GraphTexture TemporalResolve::importDepth(RenderGraph& graph, uint32_t slot) {
     static constexpr const char* kNames[2] = {"lmx.render.sceneDepth0", "lmx.render.sceneDepth1"};
     return graph.importPersistentTexture(depthSlot(slot), rojoRHI::Format::D32Float, kNames[slot]);

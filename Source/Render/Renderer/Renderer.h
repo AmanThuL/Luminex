@@ -6,6 +6,7 @@
 #pragma once
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Geometry/Mesh.h"
+#include "Engine/Gpu/GpuBuffer.h"
 #include "Engine/Gpu/GpuContext.h"
 #include "Engine/Gpu/GpuTexture.h"
 #include "Engine/View/Camera.h"
@@ -121,6 +122,8 @@ public:
     /// allocation. The texels outside that rectangle are whatever an earlier frame left there, so a
     /// reader at a render scale below 1 has to crop to the active rectangle.
     rojoRHI::Texture& hdrColorTarget();
+    /// Borrows the scene-linear target and its descriptor on hdrColorTarget() ownership terms.
+    const engine::GpuTexture& hdrColorTexture();
 
     /// The last declared frame's depth buffer, D32Float and reversed (near = 1, falling toward 0
     /// with distance). Held past the scene pass and sampled rather than discarded, so a caller can
@@ -133,6 +136,8 @@ public:
     /// colour, it is allocated at the output extent and written only inside the origin-anchored
     /// rectangle of TemporalStatus::extents' render extent.
     rojoRHI::Texture& depthTarget();
+    /// Borrows the last declared frame's depth owner on depthTarget() ownership terms.
+    const engine::GpuTexture& depthTexture();
 
     /// What the last declared frame decided about its history. Advanced by declarePasses(), so it
     /// describes the frame just declared rather than the one about to be.
@@ -158,12 +163,18 @@ public:
     rojoRHI::Texture* motionTarget() { return m_motion ? &m_motion.rhi() : nullptr; }
     /// Returns the borrowed reactive attachment, with motionTarget ownership and readback terms.
     rojoRHI::Texture* reactiveTarget() { return m_reactive ? &m_reactive.rhi() : nullptr; }
+    /// Borrows the motion owner, or null when no motion target exists; resize replaces it.
+    const engine::GpuTexture* motionTexture() const { return m_motion ? &m_motion : nullptr; }
+    /// Borrows the reactive owner on motionTexture() ownership terms.
+    const engine::GpuTexture* reactiveTexture() const { return m_reactive ? &m_reactive : nullptr; }
 
     /// The colour history slot the frame just declared wrote, in kSceneColorFormat: the resolve's
     /// output under NativeTaa and the raw copy under Raw, so it always holds that frame's output.
     /// Borrowed on motionTarget()'s terms; a frame with temporal off leaves slot 0 untouched and
     /// this reports it anyway.
     rojoRHI::Texture* historyTarget();
+    /// Borrows the colour-history owner selected by historyTarget(); resize replaces it.
+    const engine::GpuTexture* historyTexture();
 
     /// The use each persistent target was left in by the last frame that touched it. Bound to every
     /// graph declarePasses() is given, so a pass declared into that graph after the renderer's own
@@ -176,6 +187,8 @@ public:
     /// create() was given cpuReadback -- the tests and the offscreen path; the windowed App never
     /// reads it back, which is the whole point of keeping the feedback GPU-resident.
     rojoRHI::Buffer& exposureBuffer();
+    /// Borrows the persistent exposure pair and its descriptor on exposureBuffer() terms.
+    const engine::GpuBuffer& exposureBufferOwner();
 
     /// Returns the current target width in pixels.
     uint32_t width() const { return m_width; }

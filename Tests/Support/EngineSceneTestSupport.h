@@ -133,6 +133,24 @@ inline std::vector<uint8_t> readMipLevel1(rojoRHI::Device& device, rojoRHI::Text
                               **destination);
 }
 
+//======================================================================================================================
+inline std::vector<uint8_t> readMipLevel1(GpuContext& gpu, const GpuTexture& texture) {
+    auto destination = makeProbeTarget(gpu, "lmx.test.fallbackMipDestination");
+    REQUIRE(destination.has_value());
+    auto library = gpu.loadShaderLibrary("SamplerSmoke");
+    REQUIRE(library.has_value());
+    auto pipeline = gpu.device().createGraphicsPipeline({.library = library->get(),
+                                                         .vertexEntry = "vertexMain",
+                                                         .fragmentEntry = "fragmentMipLevel1",
+                                                         .colorFormat = rojoRHI::Format::BGRA8Unorm,
+                                                         .label = "lmx.test.fallbackMipPipeline"});
+    REQUIRE(pipeline.has_value());
+    auto sampler = gpu.device().createSampler(
+        {.addressMode = rojoRHI::AddressMode::Clamp, .label = "lmx.test.fallbackMipSampler"});
+    REQUIRE(sampler.has_value());
+    return renderSampledImage(gpu, **pipeline, /*textureSlot=*/0, texture, **sampler, *destination);
+}
+
 } // namespace
 
 namespace {

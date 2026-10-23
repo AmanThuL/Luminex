@@ -102,6 +102,14 @@ inline std::vector<uint8_t> readMotion(Renderer& renderer) {
 }
 
 //======================================================================================================================
+inline std::vector<uint8_t> readMotion(lmx::engine::GpuContext& gpu, Renderer& renderer,
+                                       lmx::render::TextureUse current) {
+    const auto* motion = renderer.motionTexture();
+    REQUIRE(motion != nullptr);
+    return lmx::render::readbackNow(gpu, *motion, current);
+}
+
+//======================================================================================================================
 // The world point the ray through pixel (x, y)'s centre meets a fronto-parallel plane at world
 // `planeZ` on, for a camera at the origin looking down -Z. It is what turns a probe texel into the
 // surface point the motion oracle needs, without inverting a projection matrix in the test.
@@ -149,6 +157,23 @@ inline void renderFrameInFlight(rojoRHI::Device& device, Renderer& renderer, con
 }
 
 //======================================================================================================================
+inline void renderFrame(lmx::engine::GpuContext& gpu, Renderer& renderer, const Camera& camera,
+                        const FixtureSceneView& view) {
+    auto frame = gpu.beginFrame();
+    renderer.render(frame.commands, camera, lmx::test::prepareSceneView(view, gpu));
+    gpu.submitAndEndFrame(frame);
+    gpu.waitIdle();
+}
+
+//======================================================================================================================
+inline void renderFrameInFlight(lmx::engine::GpuContext& gpu, Renderer& renderer,
+                                const Camera& camera, const FixtureSceneView& view) {
+    auto frame = gpu.beginFrame();
+    renderer.render(frame.commands, camera, lmx::test::prepareSceneView(view, gpu));
+    gpu.submitAndEndFrame(frame);
+}
+
+//======================================================================================================================
 // The world-space direction the ray through pixel (x, y)'s centre travels in, for a square render
 // extent. It stands in for the sky sphere's local vertex position: the sphere is drawn centred on
 // the eye, so the view transform cancels the translation and only the direction reaches clip space
@@ -184,6 +209,21 @@ using lmx::render::TemporalDebugView;
 inline std::vector<glm::vec4> readHalf4(rojoRHI::Texture& texture) {
     std::vector<uint8_t> bytes(kScenarioPixels * 8);
     texture.readback(bytes.data(), bytes.size());
+    std::vector<glm::vec4> pixels(kScenarioPixels);
+    for (size_t i = 0; i < pixels.size(); ++i) {
+        uint16_t texel[4] = {0, 0, 0, 0};
+        std::memcpy(texel, bytes.data() + i * 8, sizeof(texel));
+        pixels[i] = {halfToFloat(texel[0]), halfToFloat(texel[1]), halfToFloat(texel[2]),
+                     halfToFloat(texel[3])};
+    }
+    return pixels;
+}
+
+//======================================================================================================================
+inline std::vector<glm::vec4> readHalf4(lmx::engine::GpuContext& gpu,
+                                        const lmx::engine::GpuTexture& texture,
+                                        lmx::render::TextureUse current) {
+    const auto bytes = lmx::render::readbackNow(gpu, texture, current);
     std::vector<glm::vec4> pixels(kScenarioPixels);
     for (size_t i = 0; i < pixels.size(); ++i) {
         uint16_t texel[4] = {0, 0, 0, 0};
@@ -285,6 +325,45 @@ renderSequence(rojoRHI::Device& device, Renderer& renderer, uint32_t frames,
         record.display.resize(kScenarioPixels * 4);
         renderer.colorTarget().rhi().readback(record.display.data(), record.display.size());
         record.status = renderer.temporalStatus();
+        result.push_back(std::move(record));
+    }
+    return result;
+}
+
+//======================================================================================================================
+inline std::vector<ScenarioFrame>
+renderSequence(lmx::engine::GpuContext& gpu, Renderer& renderer, uint32_t frames,
+               ReconstructionMode mode, const FixtureSceneView& base, const Camera& baseCamera,
+               TemporalDebugView debugView, const PerFrame& perFrame) {
+    std::vector<ScenarioFrame> result;
+    result.reserve(frames);
+    for (uint32_t frame = 1; frame <= frames; ++frame) {
+        FixtureSceneView view = base;
+        Camera camera = baseCamera;
+        view.temporal.enabled = true;
+        view.temporal.jitterEnabled = true;
+        view.temporal.reconstruction = mode;
+        view.temporal.debugView = debugView;
+        if (perFrame) {
+            perFrame(frame, view, camera);
+        }
+        renderFrame(gpu, renderer, camera, view);
+
+        ScenarioFrame record;
+        record.status = renderer.temporalStatus();
+        const bool rawCopy =
+            record.status.reconstruction == ReconstructionMode::Raw && !record.status.upscaled;
+        const auto rawUse = record.status.reconstruction == ReconstructionMode::VendorTemporal
+                                ? lmx::render::TextureUse::ExternalRead
+                            : rawCopy ? lmx::render::TextureUse::CopySource
+                                      : lmx::render::TextureUse::ShaderRead;
+        const auto historyUse = rawCopy && view.temporal.debugView != TemporalDebugView::HistoryAge
+                                    ? lmx::render::TextureUse::CopyDestination
+                                    : lmx::render::TextureUse::ShaderRead;
+        record.history = readHalf4(gpu, *renderer.historyTexture(), historyUse);
+        record.raw = readHalf4(gpu, renderer.hdrColorTexture(), rawUse);
+        record.display = lmx::render::readbackNow(gpu, renderer.colorTarget(),
+                                                  lmx::render::TextureUse::RenderTarget);
         result.push_back(std::move(record));
     }
     return result;
