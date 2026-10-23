@@ -297,12 +297,9 @@
         "RojoRHITests"
       ],
       "includeRoots": [
-        "RojoRHI/Legacy/Include"
+        "RojoRHI/Include"
       ],
       "consumers": {
-        "asset": [
-          "rojoRHI/Format.h"
-        ],
         "engine": [
           "*"
         ],
@@ -317,13 +314,10 @@
         ],
         "app-shell": [
           "*",
-          "rojoRHI/Metal4/Metal4ImGui.h"
+          "rojoRHI/ImGuiAdapter.h"
         ],
         "tests": [
           "*"
-        ],
-        "texture-bake": [
-          "rojoRHI/Format.h"
         ],
         "benchmarks": [
           "*"
@@ -361,7 +355,7 @@
     "Render": {
       "deps": [
         "Core",
-        "RojoRHILegacy",
+        "RojoRHI",
         "RojoRHIMetalCpp",
         "Engine",
         "Asset"
@@ -370,9 +364,9 @@
     "App": {
       "deps": [
         "Core",
-        "RojoRHILegacy",
+        "RojoRHI",
         "RojoRHIMetalCpp",
-        "RojoRHILegacyMetal4ImGui",
+        "RojoRHIImGui",
         "Render",
         "ImGui",
         "ImGuiNodeEditor",
@@ -386,7 +380,7 @@
     "Tests": {
       "deps": [
         "Core",
-        "RojoRHILegacy",
+        "RojoRHI",
         "RojoRHIMetalCpp",
         "Render",
         "Asset",
@@ -443,7 +437,7 @@
     "FrameDataBench": {
       "deps": [
         "Core",
-        "RojoRHILegacy",
+        "RojoRHI",
         "RojoRHIMetalCpp"
       ]
     },
@@ -456,7 +450,7 @@
     "Engine": {
       "deps": [
         "Core",
-        "RojoRHILegacy",
+        "RojoRHI",
         "RojoRHIMetalCpp",
         "Asset"
       ],
@@ -468,7 +462,7 @@
     "Scenes": {
       "deps": [
         "Core",
-        "RojoRHILegacy",
+        "RojoRHI",
         "RojoRHIMetalCpp",
         "Asset",
         "Engine"
@@ -477,7 +471,7 @@
     "AppModel": {
       "deps": [
         "Core",
-        "RojoRHILegacy",
+        "RojoRHI",
         "RojoRHIMetalCpp",
         "Render",
         "Asset",

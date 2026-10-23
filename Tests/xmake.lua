@@ -9,13 +9,12 @@ target("Tests")
     add_includedirs(".")
     remove_files(lmx_pending_files("tests"))
     add_defines(lmx_pending_defines())
-    add_deps("Core", "RojoRHILegacy", "Render", "Asset", "AppModel", "Engine", "Scenes")
+    add_deps("Core", "RojoRHI", "Render", "Asset", "AppModel", "Engine", "Scenes")
     add_packages("catch2", "glm")
     -- ToolsTests needs a stable path to the Python suite when launched from the test build dir.
     add_defines('LMX_REPO_ROOT="$(projectdir)"')
     -- GPU tests load shaders relative to the test binary and do not depend on an App build.
-    add_rules("slang2metallib")
-    add_files("../Shaders/**.slang")
+    lmx_apply_shader_rule("tests")
     add_tests("unit", {runargs = {"~[gpu]"}})
     -- Hidden diagnostics have explicit reproduction commands and are not ordinary regression gates.
     add_tests("gpu", {runargs = {"[gpu]~[.]"}})
