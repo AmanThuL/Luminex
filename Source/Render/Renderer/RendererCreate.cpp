@@ -14,7 +14,7 @@
 #include <chrono>
 
 #include "Core/Diagnostics/Assert.h"
-#include "Engine/Gpu/GpuError.h"
+#include "Engine/Gpu/GpuOwned.h"
 
 #include <array>
 #include <cmath>
@@ -154,12 +154,13 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
         self->m_zeroDfgTexture = std::move(*texture);
     }
     {
-        auto sampler = device.createSampler({.filter = rojoRHI::FilterMode::Linear,
-                                             .addressMode = rojoRHI::AddressMode::Wrap,
-                                             .maxAnisotropy = 16,
-                                             .label = "lmx.render.linearSampler"});
+        auto sampler =
+            engine::adoptGpu(device.createSampler({.filter = rojoRHI::FilterMode::Linear,
+                                                   .addressMode = rojoRHI::AddressMode::Wrap,
+                                                   .maxAnisotropy = 16,
+                                                   .label = "lmx.render.linearSampler"}));
         if (!sampler) {
-            return std::unexpected(engine::gpuError(sampler.error()));
+            return std::unexpected(sampler.error());
         }
         self->m_linearSampler = std::move(*sampler);
     }
@@ -168,13 +169,14 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
     // Clamp extends the 0.0 clear outside the fitted shadow footprint, and every receiver depth
     // clears that bar, so that region stays lit exactly as it did under the 1.0 clear before.
     {
-        auto sampler = device.createSampler({.filter = rojoRHI::FilterMode::Linear,
-                                             .addressMode = rojoRHI::AddressMode::Clamp,
-                                             .maxAnisotropy = 16,
-                                             .compare = rojoRHI::CompareFunc::GreaterEqual,
-                                             .label = "lmx.render.shadowSampler"});
+        auto sampler =
+            engine::adoptGpu(device.createSampler({.filter = rojoRHI::FilterMode::Linear,
+                                                   .addressMode = rojoRHI::AddressMode::Clamp,
+                                                   .maxAnisotropy = 16,
+                                                   .compare = rojoRHI::CompareFunc::GreaterEqual,
+                                                   .label = "lmx.render.shadowSampler"}));
         if (!sampler) {
-            return std::unexpected(engine::gpuError(sampler.error()));
+            return std::unexpected(sampler.error());
         }
         self->m_shadowSampler = std::move(*sampler);
     }
@@ -185,11 +187,12 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
     // across; no anisotropy, because neither lookup has a screen-space footprint to be anisotropic
     // about.
     {
-        auto sampler = self->m_device.createSampler({.filter = rojoRHI::FilterMode::Linear,
-                                                     .addressMode = rojoRHI::AddressMode::Clamp,
-                                                     .label = "lmx.render.iblSampler"});
+        auto sampler = engine::adoptGpu(
+            self->m_device.createSampler({.filter = rojoRHI::FilterMode::Linear,
+                                          .addressMode = rojoRHI::AddressMode::Clamp,
+                                          .label = "lmx.render.iblSampler"}));
         if (!sampler) {
-            return std::unexpected(engine::gpuError(sampler.error()));
+            return std::unexpected(sampler.error());
         }
         self->m_iblSampler = std::move(*sampler);
     }

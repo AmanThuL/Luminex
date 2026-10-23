@@ -82,9 +82,9 @@ private:
     std::array<engine::GpuTexture, 2> m_textures;
     std::array<HzbSource, 2> m_sources;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_reduceLibrary;
-    std::unique_ptr<rojoRHI::ComputePipeline> m_reducePipeline;
+    engine::GpuOwned<rojoRHI::ComputePipeline> m_reducePipeline;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_publishLibrary;
-    std::unique_ptr<rojoRHI::ComputePipeline> m_publishPipeline;
+    engine::GpuOwned<rojoRHI::ComputePipeline> m_publishPipeline;
     engine::GpuBuffer m_publishBuffer;
     bool m_published = false;
 };

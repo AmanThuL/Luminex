@@ -35,7 +35,7 @@ lmx::Result<engine::GpuTexture> createTexel(rojoRHI::Device& device, rojoRHI::Fo
 // Libraries outlive the pipelines that were created from them, as in each stage owner.
 struct ComputePipelines {
     std::vector<engine::GpuOwned<rojoRHI::ShaderLibrary>> libraries;
-    std::vector<std::unique_ptr<rojoRHI::ComputePipeline>> pipelines;
+    std::vector<engine::GpuOwned<rojoRHI::ComputePipeline>> pipelines;
 };
 
 // Creates each named library followed by its pipeline, in the caller's order.

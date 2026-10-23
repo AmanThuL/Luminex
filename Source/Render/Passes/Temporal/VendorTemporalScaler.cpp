@@ -10,7 +10,7 @@
 #include "Core/Diagnostics/Log.h"
 #include "Core/Math/Scalar.h"
 #include "Engine/Gpu/GpuContext.h"
-#include "Engine/Gpu/GpuError.h"
+#include "Engine/Gpu/GpuOwned.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -114,26 +114,27 @@ ReconstructionSelection VendorTemporalScaler::prepare(ReconstructionMode request
         m_historyLibrary = std::move(*library);
     }
     if (!m_historyPipeline) {
-        auto pipeline = m_device.createComputePipeline(
+        auto pipeline = engine::adoptGpu(m_device.createComputePipeline(
             {.library = m_historyLibrary.get(),
              .computeEntry = "computeVendorTemporalHistory",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
-             .label = "lmx.pipeline.temporal.vendor.history"});
+             .label = "lmx.pipeline.temporal.vendor.history"}));
         if (!pipeline) {
-            return fail(engine::gpuError(pipeline.error()));
+            return fail(pipeline.error());
         }
         m_historyPipeline = std::move(*pipeline);
     }
     const std::string label = "lmx.temporal.vendor.scaler " + std::string(support.name);
-    auto scaler = m_device.createTemporalScaler({.inputWidth = width,
-                                                 .inputHeight = height,
-                                                 .outputWidth = width,
-                                                 .outputHeight = height,
-                                                 .minInputScale = support.minInputScale,
-                                                 .maxInputScale = support.maxInputScale,
-                                                 .label = label});
+    auto scaler =
+        engine::adoptGpu(m_device.createTemporalScaler({.inputWidth = width,
+                                                        .inputHeight = height,
+                                                        .outputWidth = width,
+                                                        .outputHeight = height,
+                                                        .minInputScale = support.minInputScale,
+                                                        .maxInputScale = support.maxInputScale,
+                                                        .label = label}));
     if (!scaler) {
-        return fail(engine::gpuError(scaler.error()));
+        return fail(scaler.error());
     }
     m_scaler = std::move(*scaler);
     ++m_generation;
@@ -165,13 +166,13 @@ lmx::Result<void> VendorTemporalScaler::preparePacking() {
         m_packLibrary = std::move(*library);
     }
     if (!m_packPipeline) {
-        auto pipeline = m_device.createComputePipeline(
+        auto pipeline = engine::adoptGpu(m_device.createComputePipeline(
             {.library = m_packLibrary.get(),
              .computeEntry = "computeVendorTemporalPack",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
-             .label = "lmx.pipeline.temporal.vendor.pack"});
+             .label = "lmx.pipeline.temporal.vendor.pack"}));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         m_packPipeline = std::move(*pipeline);
     }

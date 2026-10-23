@@ -100,21 +100,21 @@ private:
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_sceneLibrary;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_sceneAutoLibrary;
     std::array<engine::GpuOwned<rojoRHI::ShaderLibrary>, 2> m_maskSceneLibraries;
-    std::array<std::unique_ptr<rojoRHI::GraphicsPipeline>, 16> m_maskScenePipelines;
+    std::array<engine::GpuOwned<rojoRHI::GraphicsPipeline>, 16> m_maskScenePipelines;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_skyLibrary;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_skyAutoLibrary;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_scenePipeline;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_sceneWireframePipeline;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_scenePipelineAuto;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_sceneWireframePipelineAuto;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_skyPipeline;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_skyPipelineAuto;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_scenePipelineMotion;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_sceneWireframePipelineMotion;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_scenePipelineAutoMotion;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_sceneWireframePipelineAutoMotion;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_skyPipelineMotion;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_skyPipelineAutoMotion;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_scenePipeline;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_sceneWireframePipeline;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_scenePipelineAuto;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_sceneWireframePipelineAuto;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_skyPipeline;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_skyPipelineAuto;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_scenePipelineMotion;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_sceneWireframePipelineMotion;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_scenePipelineAutoMotion;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_sceneWireframePipelineAutoMotion;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_skyPipelineMotion;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_skyPipelineAutoMotion;
 };
 
 } // namespace lmx::render

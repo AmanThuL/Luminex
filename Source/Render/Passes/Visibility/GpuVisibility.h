@@ -72,7 +72,7 @@ private:
     engine::GpuContext& m_gpu;
     rojoRHI::Device& m_device;
     std::array<engine::GpuOwned<rojoRHI::ShaderLibrary>, 5> m_libraries;
-    std::array<std::unique_ptr<rojoRHI::ComputePipeline>, 5> m_pipelines;
+    std::array<engine::GpuOwned<rojoRHI::ComputePipeline>, 5> m_pipelines;
     engine::GpuBuffer m_emptyInstances, m_emptyMeshes;
     std::array<Slot, 3> m_slots;
     std::vector<Pending> m_pending;

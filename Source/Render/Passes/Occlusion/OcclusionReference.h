@@ -58,8 +58,8 @@ private:
     engine::GpuContext& m_gpu;
     rojoRHI::Device& m_device;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_library;
-    std::array<std::unique_ptr<rojoRHI::GraphicsPipeline>, 8> m_pipelines;
-    std::unique_ptr<rojoRHI::Sampler> m_sampler;
+    std::array<engine::GpuOwned<rojoRHI::GraphicsPipeline>, 8> m_pipelines;
+    engine::GpuOwned<rojoRHI::Sampler> m_sampler;
     engine::GpuTexture m_white;
     std::array<Slot, 3> m_slots;
     std::vector<Pending> m_pending, m_retired;

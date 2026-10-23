@@ -5,7 +5,7 @@
 
 #include "Render/Common/StageSetup.h"
 
-#include "Engine/Gpu/GpuError.h"
+#include "Engine/Gpu/GpuOwned.h"
 
 #include <array>
 #include <string>
@@ -55,13 +55,13 @@ lmx::Result<ComputePipelines> createComputePipelines(engine::GpuContext& gpu,
             return std::unexpected(library.error());
         }
         result.libraries.push_back(std::move(*library));
-        auto pipeline =
+        auto pipeline = engine::adoptGpu(
             gpu.device().createComputePipeline({.library = result.libraries.back().get(),
                                                 .computeEntry = "computeMain",
                                                 .threadsPerThreadgroup = {threadsFor(index), 1, 1},
-                                                .label = std::string(labelPrefix) + names[index]});
+                                                .label = std::string(labelPrefix) + names[index]}));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         result.pipelines.push_back(std::move(*pipeline));
     }

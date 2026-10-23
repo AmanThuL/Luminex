@@ -35,9 +35,9 @@ private:
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_bloomThresholdLibrary;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_bloomDownsampleLibrary;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_bloomUpsampleLibrary;
-    std::unique_ptr<rojoRHI::ComputePipeline> m_bloomThresholdPipeline;
-    std::unique_ptr<rojoRHI::ComputePipeline> m_bloomDownsamplePipeline;
-    std::unique_ptr<rojoRHI::ComputePipeline> m_bloomUpsamplePipeline;
+    engine::GpuOwned<rojoRHI::ComputePipeline> m_bloomThresholdPipeline;
+    engine::GpuOwned<rojoRHI::ComputePipeline> m_bloomDownsamplePipeline;
+    engine::GpuOwned<rojoRHI::ComputePipeline> m_bloomUpsamplePipeline;
 };
 
 } // namespace lmx::render

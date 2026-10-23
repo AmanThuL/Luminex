@@ -76,8 +76,8 @@ private:
     ShadowStage() = default;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_shadowLibrary;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_maskShadowLibrary;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_shadowPipeline;
-    std::array<std::unique_ptr<rojoRHI::GraphicsPipeline>, 2> m_maskShadowPipelines;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_shadowPipeline;
+    std::array<engine::GpuOwned<rojoRHI::GraphicsPipeline>, 2> m_maskShadowPipelines;
 };
 
 } // namespace lmx::render

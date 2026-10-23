@@ -7,7 +7,7 @@
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Projection.h"
-#include "Engine/Gpu/GpuError.h"
+#include "Engine/Gpu/GpuOwned.h"
 #include "Render/Common/DrawEncoding.h"
 #include <rojoRHI/CaptureSchema.h>
 
@@ -92,7 +92,7 @@ lmx::Result<std::unique_ptr<ShadowStage>> ShadowStage::create(engine::GpuContext
     }
     // Unknown color format matches the depth-only pass and its void fragment output.
     {
-        auto pipeline =
+        auto pipeline = engine::adoptGpu(
             device.createGraphicsPipeline({.library = self->m_shadowLibrary.get(),
                                            .vertexEntry = "vertexMain",
                                            .fragmentEntry = "fragmentMain",
@@ -107,9 +107,9 @@ lmx::Result<std::unique_ptr<ShadowStage>> ShadowStage::create(engine::GpuContext
                                            // keeps what compares Greater against its 0 clear.
                                            .depthCompare = rojoRHI::DepthCompare::Greater,
                                            .depthBias = kShadowDepthBias,
-                                           .label = "lmx.render.shadowPipeline"});
+                                           .label = "lmx.render.shadowPipeline"}));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_shadowPipeline = std::move(*pipeline);
     }
@@ -120,7 +120,7 @@ lmx::Result<std::unique_ptr<ShadowStage>> ShadowStage::create(engine::GpuContext
     }
     self->m_maskShadowLibrary = std::move(*shadowMaskLibrary);
     for (uint32_t doubleSided = 0; doubleSided < 2; ++doubleSided) {
-        auto pipeline = device.createGraphicsPipeline(
+        auto pipeline = engine::adoptGpu(device.createGraphicsPipeline(
             {.library = self->m_maskShadowLibrary.get(),
              .vertexEntry = "vertexMain",
              .fragmentEntry = "fragmentMain",
@@ -132,9 +132,9 @@ lmx::Result<std::unique_ptr<ShadowStage>> ShadowStage::create(engine::GpuContext
              .depthCompare = rojoRHI::DepthCompare::Greater,
              .depthBias = kShadowDepthBias,
              .label = doubleSided ? "lmx.render.maskShadowPipeline.doubleSided"
-                                  : "lmx.render.maskShadowPipeline"});
+                                  : "lmx.render.maskShadowPipeline"}));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_maskShadowPipelines[doubleSided] = std::move(*pipeline);
     }

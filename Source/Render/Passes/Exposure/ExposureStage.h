@@ -41,9 +41,9 @@ private:
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_histogramLibrary;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_exposureResolveLibrary;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_exposureSeedLibrary;
-    std::unique_ptr<rojoRHI::ComputePipeline> m_histogramPipeline;
-    std::unique_ptr<rojoRHI::ComputePipeline> m_exposureResolvePipeline;
-    std::unique_ptr<rojoRHI::ComputePipeline> m_exposureSeedPipeline;
+    engine::GpuOwned<rojoRHI::ComputePipeline> m_histogramPipeline;
+    engine::GpuOwned<rojoRHI::ComputePipeline> m_exposureResolvePipeline;
+    engine::GpuOwned<rojoRHI::ComputePipeline> m_exposureSeedPipeline;
     engine::GpuBuffer m_histogramBuffer;
     engine::GpuBuffer m_exposureBuffer;
 };

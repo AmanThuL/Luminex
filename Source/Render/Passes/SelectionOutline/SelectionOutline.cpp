@@ -9,7 +9,7 @@
 #include "Render/Common/StageSetup.h"
 
 #include "Core/Diagnostics/Assert.h"
-#include "Engine/Gpu/GpuError.h"
+#include "Engine/Gpu/GpuOwned.h"
 #include "Engine/View/Camera.h"
 
 #include <algorithm>
@@ -57,7 +57,7 @@ SelectionOutline::create(engine::GpuContext& gpu, uint32_t width, uint32_t heigh
     }
     self->m_outlineLibrary = std::move(*outlineLibrary);
     for (bool doubleSided : {false, true}) {
-        auto pipeline = device.createGraphicsPipeline(
+        auto pipeline = engine::adoptGpu(device.createGraphicsPipeline(
             {.library = self->m_maskLibrary.get(),
              .vertexEntry = "vertexMain",
              .fragmentEntry = "fragmentMain",
@@ -67,12 +67,12 @@ SelectionOutline::create(engine::GpuContext& gpu, uint32_t width, uint32_t heigh
              .depthWriteEnable = true,
              .cullMode = doubleSided ? rojoRHI::CullMode::None : rojoRHI::CullMode::Back,
              .depthCompare = rojoRHI::DepthCompare::Greater,
-             .label = doubleSided ? "lmx.selection.maskDoubleSided" : "lmx.selection.mask"});
+             .label = doubleSided ? "lmx.selection.maskDoubleSided" : "lmx.selection.mask"}));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         (doubleSided ? self->m_doubleSidedPipeline : self->m_maskPipeline) = std::move(*pipeline);
-        auto depthPipeline = device.createGraphicsPipeline(
+        auto depthPipeline = engine::adoptGpu(device.createGraphicsPipeline(
             {.library = self->m_maskLibrary.get(),
              .vertexEntry = "vertexMain",
              .fragmentEntry = "depthMain",
@@ -82,29 +82,30 @@ SelectionOutline::create(engine::GpuContext& gpu, uint32_t width, uint32_t heigh
              .depthWriteEnable = true,
              .cullMode = doubleSided ? rojoRHI::CullMode::None : rojoRHI::CullMode::Back,
              .depthCompare = rojoRHI::DepthCompare::Greater,
-             .label = doubleSided ? "lmx.selection.depthDoubleSided" : "lmx.selection.depth"});
+             .label = doubleSided ? "lmx.selection.depthDoubleSided" : "lmx.selection.depth"}));
         if (!depthPipeline) {
-            return std::unexpected(engine::gpuError(depthPipeline.error()));
+            return std::unexpected(depthPipeline.error());
         }
         (doubleSided ? self->m_doubleSidedDepthPipeline : self->m_depthPipeline) =
             std::move(*depthPipeline);
     }
-    auto outline = device.createGraphicsPipeline(fullscreenPipelineDesc(
-        self->m_outlineLibrary.get(), "fragmentMain", kDisplayFormat, "lmx.selection.outline"));
+    auto outline = engine::adoptGpu(device.createGraphicsPipeline(fullscreenPipelineDesc(
+        self->m_outlineLibrary.get(), "fragmentMain", kDisplayFormat, "lmx.selection.outline")));
     if (!outline) {
-        return std::unexpected(engine::gpuError(outline.error()));
+        return std::unexpected(outline.error());
     }
     self->m_outlinePipeline = std::move(*outline);
-    auto passthrough = device.createGraphicsPipeline(fullscreenPipelineDesc(
-        self->m_outlineLibrary.get(), "fragmentCopy", kDisplayFormat, "lmx.selection.passthrough"));
+    auto passthrough = engine::adoptGpu(device.createGraphicsPipeline(
+        fullscreenPipelineDesc(self->m_outlineLibrary.get(), "fragmentCopy", kDisplayFormat,
+                               "lmx.selection.passthrough")));
     if (!passthrough) {
-        return std::unexpected(engine::gpuError(passthrough.error()));
+        return std::unexpected(passthrough.error());
     }
     self->m_passthroughPipeline = std::move(*passthrough);
-    auto sampler =
-        device.createSampler({.maxAnisotropy = 16, .label = "lmx.selection.materialSampler"});
+    auto sampler = engine::adoptGpu(
+        device.createSampler({.maxAnisotropy = 16, .label = "lmx.selection.materialSampler"}));
     if (!sampler) {
-        return std::unexpected(engine::gpuError(sampler.error()));
+        return std::unexpected(sampler.error());
     }
     self->m_sampler = std::move(*sampler);
     const std::array<uint8_t, 4> white{255, 255, 255, 255};

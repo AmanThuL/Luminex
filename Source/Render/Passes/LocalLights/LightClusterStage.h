@@ -104,7 +104,7 @@ private:
 
     rojoRHI::Device& m_device;
     std::array<engine::GpuOwned<rojoRHI::ShaderLibrary>, 3> m_libraries;
-    std::array<std::unique_ptr<rojoRHI::ComputePipeline>, 3> m_pipelines;
+    std::array<engine::GpuOwned<rojoRHI::ComputePipeline>, 3> m_pipelines;
     std::array<Slot, 3> m_slots;
     std::vector<Pending> m_pending;
     std::vector<RetiredLightClusters> m_retired;

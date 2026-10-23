@@ -65,11 +65,11 @@ public:
 private:
     engine::GpuContext& m_gpu;
     rojoRHI::Device& m_device;
-    std::unique_ptr<rojoRHI::TemporalScaler> m_scaler;
+    engine::GpuOwned<rojoRHI::TemporalScaler> m_scaler;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_packLibrary;
-    std::unique_ptr<rojoRHI::ComputePipeline> m_packPipeline;
+    engine::GpuOwned<rojoRHI::ComputePipeline> m_packPipeline;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_historyLibrary;
-    std::unique_ptr<rojoRHI::ComputePipeline> m_historyPipeline;
+    engine::GpuOwned<rojoRHI::ComputePipeline> m_historyPipeline;
     uint32_t m_width = 0;
     uint32_t m_height = 0;
     uint32_t m_generation = 0;

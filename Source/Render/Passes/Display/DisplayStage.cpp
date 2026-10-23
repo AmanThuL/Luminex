@@ -8,7 +8,7 @@
 #include "Render/Common/StageSetup.h"
 
 #include "Core/Diagnostics/Assert.h"
-#include "Engine/Gpu/GpuError.h"
+#include "Engine/Gpu/GpuOwned.h"
 #include "Render/Renderer/Renderer.h"
 
 #include <array>
@@ -47,11 +47,11 @@ lmx::Result<std::unique_ptr<DisplayStage>> DisplayStage::create(engine::GpuConte
     // A fullscreen triangle over an already-rasterised image: no depth to test against and no
     // face to cull, since the one primitive covers the target by construction.
     {
-        auto pipeline = device.createGraphicsPipeline(
+        auto pipeline = engine::adoptGpu(device.createGraphicsPipeline(
             fullscreenPipelineDesc(self->m_displayLibrary.get(), "fragmentMain", kDisplayFormat,
-                                   "lmx.render.displayPipeline"));
+                                   "lmx.render.displayPipeline")));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_displayPipeline = std::move(*pipeline);
     }

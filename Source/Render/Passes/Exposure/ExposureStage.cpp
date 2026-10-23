@@ -10,7 +10,7 @@
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"
-#include "Engine/Gpu/GpuError.h"
+#include "Engine/Gpu/GpuOwned.h"
 #include "Render/Renderer/Renderer.h"
 
 #include <array>
@@ -117,34 +117,35 @@ lmx::Result<std::unique_ptr<ExposureStage>> ExposureStage::create(engine::GpuCon
     }
 
     {
-        auto pipeline = device.createComputePipeline(
+        auto pipeline = engine::adoptGpu(device.createComputePipeline(
             {.library = self->m_histogramLibrary.get(),
              .computeEntry = "computeHistogramAccumulate",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
-             .label = "lmx.render.histogramPipeline"});
+             .label = "lmx.render.histogramPipeline"}));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_histogramPipeline = std::move(*pipeline);
     }
     {
-        auto pipeline =
+        auto pipeline = engine::adoptGpu(
             device.createComputePipeline({.library = self->m_exposureResolveLibrary.get(),
                                           .computeEntry = "computeExposureResolve",
                                           .threadsPerThreadgroup = {1, 1, 1},
-                                          .label = "lmx.render.exposureResolvePipeline"});
+                                          .label = "lmx.render.exposureResolvePipeline"}));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_exposureResolvePipeline = std::move(*pipeline);
     }
     {
-        auto pipeline = device.createComputePipeline({.library = self->m_exposureSeedLibrary.get(),
-                                                      .computeEntry = "computeExposureSeed",
-                                                      .threadsPerThreadgroup = {1, 1, 1},
-                                                      .label = "lmx.render.exposureSeedPipeline"});
+        auto pipeline = engine::adoptGpu(
+            device.createComputePipeline({.library = self->m_exposureSeedLibrary.get(),
+                                          .computeEntry = "computeExposureSeed",
+                                          .threadsPerThreadgroup = {1, 1, 1},
+                                          .label = "lmx.render.exposureSeedPipeline"}));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_exposureSeedPipeline = std::move(*pipeline);
     }

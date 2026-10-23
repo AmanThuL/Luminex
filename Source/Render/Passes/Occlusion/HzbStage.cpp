@@ -9,7 +9,7 @@
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Align.h"
 #include "Core/Math/Scalar.h"
-#include "Engine/Gpu/GpuError.h"
+#include "Engine/Gpu/GpuOwned.h"
 
 #include <algorithm>
 #include <format>
@@ -64,13 +64,13 @@ lmx::Result<std::unique_ptr<HzbStage>> HzbStage::create(engine::GpuContext& gpu,
         return std::unexpected(reduceLibrary.error());
     }
     stage->m_reduceLibrary = std::move(*reduceLibrary);
-    auto reduce = device.createComputePipeline(
+    auto reduce = engine::adoptGpu(device.createComputePipeline(
         {.library = stage->m_reduceLibrary.get(),
          .computeEntry = "computeMain",
          .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
-         .label = "lmx.render.hzbReducePipeline"});
+         .label = "lmx.render.hzbReducePipeline"}));
     if (!reduce) {
-        return std::unexpected(engine::gpuError(reduce.error()));
+        return std::unexpected(reduce.error());
     }
     stage->m_reducePipeline = std::move(*reduce);
     auto publishLibrary = gpu.loadShaderLibrary("HzbPublish");
@@ -78,12 +78,13 @@ lmx::Result<std::unique_ptr<HzbStage>> HzbStage::create(engine::GpuContext& gpu,
         return std::unexpected(publishLibrary.error());
     }
     stage->m_publishLibrary = std::move(*publishLibrary);
-    auto publish = device.createComputePipeline({.library = stage->m_publishLibrary.get(),
-                                                 .computeEntry = "computeMain",
-                                                 .threadsPerThreadgroup = {1, 1, 1},
-                                                 .label = "lmx.render.hzbPublishPipeline"});
+    auto publish =
+        engine::adoptGpu(device.createComputePipeline({.library = stage->m_publishLibrary.get(),
+                                                       .computeEntry = "computeMain",
+                                                       .threadsPerThreadgroup = {1, 1, 1},
+                                                       .label = "lmx.render.hzbPublishPipeline"}));
     if (!publish) {
-        return std::unexpected(engine::gpuError(publish.error()));
+        return std::unexpected(publish.error());
     }
     stage->m_publishPipeline = std::move(*publish);
     auto buffer = engine::GpuBuffer::create(

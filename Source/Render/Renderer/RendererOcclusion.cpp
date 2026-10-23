@@ -3,6 +3,7 @@
 /// @brief Coordinates source-space depth evidence and independent retired visibility checks.
 //----------------------------------------------------------------------------------------------------------------------
 #include "Core/Diagnostics/Assert.h"
+#include "Engine/Gpu/GpuOwned.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Common/StageSetup.h"
 #include "Render/Passes/Occlusion/OcclusionReference.h"
@@ -99,9 +100,9 @@ void Renderer::declareOcclusion(RenderGraph& graph, rojoRHI::CommandList& comman
         auto library = m_gpu.loadShaderLibrary("HzbDebugView");
         LMX_ASSERT(library.has_value(), library.error().message);
         m_hzbDebugLibrary = std::move(*library);
-        auto pipeline = m_device.createGraphicsPipeline(
+        auto pipeline = engine::adoptGpu(m_device.createGraphicsPipeline(
             fullscreenPipelineDesc(m_hzbDebugLibrary.get(), "fragmentMain", kDisplayFormat,
-                                   "lmx.render.hzbDebugPipeline"));
+                                   "lmx.render.hzbDebugPipeline")));
         LMX_ASSERT(pipeline.has_value(), pipeline.error().message);
         m_hzbDebugPipeline = std::move(*pipeline);
     }

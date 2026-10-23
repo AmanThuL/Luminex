@@ -10,7 +10,7 @@
 #include "Render/Passes/Temporal/TemporalResolveInternal.h"
 
 #include "Core/Diagnostics/Assert.h"
-#include "Engine/Gpu/GpuError.h"
+#include "Engine/Gpu/GpuOwned.h"
 #include "Render/Passes/Temporal/VendorTemporalScaler.h"
 
 #include <glm/mat4x4.hpp>
@@ -97,65 +97,66 @@ lmx::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(engine::Gp
     }
 
     {
-        auto pipeline = device.createComputePipeline(
+        auto pipeline = engine::adoptGpu(device.createComputePipeline(
             {.library = self->m_reprojectLibrary.get(),
              .computeEntry = "computeTemporalReproject",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
-             .label = "lmx.render.temporalReprojectPipeline"});
+             .label = "lmx.render.temporalReprojectPipeline"}));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_reprojectPipeline = std::move(*pipeline);
     }
     {
-        auto pipeline = device.createComputePipeline(
+        auto pipeline = engine::adoptGpu(device.createComputePipeline(
             {.library = self->m_resolveLibrary.get(),
              .computeEntry = "computeTemporalResolve",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
-             .label = "lmx.render.temporalResolvePipeline"});
+             .label = "lmx.render.temporalResolvePipeline"}));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_resolvePipeline = std::move(*pipeline);
     }
     {
-        auto pipeline = device.createComputePipeline(
+        auto pipeline = engine::adoptGpu(device.createComputePipeline(
             {.library = self->m_spatialUpscaleLibrary.get(),
              .computeEntry = "computeSpatialUpscale",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
-             .label = "lmx.render.spatialUpscalePipeline"});
+             .label = "lmx.render.spatialUpscalePipeline"}));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_spatialUpscalePipeline = std::move(*pipeline);
     }
     {
-        auto pipeline = device.createComputePipeline(
+        auto pipeline = engine::adoptGpu(device.createComputePipeline(
             {.library = self->m_temporalUpscaleLibrary.get(),
              .computeEntry = "computeTemporalUpscale",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
-             .label = "lmx.render.temporalUpscalePipeline"});
+             .label = "lmx.render.temporalUpscalePipeline"}));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_temporalUpscalePipeline = std::move(*pipeline);
     }
     {
-        auto pipeline = device.createGraphicsPipeline(
+        auto pipeline = engine::adoptGpu(device.createGraphicsPipeline(
             fullscreenPipelineDesc(self->m_debugViewLibrary.get(), "fragmentMain", kDisplayFormat,
-                                   "lmx.render.temporalDebugViewPipeline"));
+                                   "lmx.render.temporalDebugViewPipeline")));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_debugViewPipeline = std::move(*pipeline);
     }
 
     {
-        auto sampler = device.createSampler({.filter = rojoRHI::FilterMode::Linear,
-                                             .addressMode = rojoRHI::AddressMode::Clamp,
-                                             .label = "lmx.render.temporalSampler"});
+        auto sampler =
+            engine::adoptGpu(device.createSampler({.filter = rojoRHI::FilterMode::Linear,
+                                                   .addressMode = rojoRHI::AddressMode::Clamp,
+                                                   .label = "lmx.render.temporalSampler"}));
         if (!sampler) {
-            return std::unexpected(engine::gpuError(sampler.error()));
+            return std::unexpected(sampler.error());
         }
         self->m_sampler = std::move(*sampler);
     }

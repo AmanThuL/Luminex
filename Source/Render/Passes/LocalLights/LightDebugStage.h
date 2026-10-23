@@ -38,6 +38,6 @@ private:
     LightDebugStage() = default;
 
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_library;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_pipeline;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_pipeline;
 };
 } // namespace lmx::render

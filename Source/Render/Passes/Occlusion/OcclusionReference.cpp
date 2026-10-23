@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Passes/Occlusion/OcclusionReference.h"
 #include "Core/Diagnostics/Assert.h"
-#include "Engine/Gpu/GpuError.h"
+#include "Engine/Gpu/GpuOwned.h"
 #include "Render/Common/DrawEncoding.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Common/StageSetup.h"
@@ -39,7 +39,7 @@ OcclusionReference::create(engine::GpuContext& gpu) {
         for (uint32_t masked = 0; masked < 2; ++masked) {
             for (uint32_t doubleSided = 0; doubleSided < 2; ++doubleSided) {
                 const uint32_t index = wireframe * 4 + masked * 2 + doubleSided;
-                auto pipeline = device.createGraphicsPipeline(
+                auto pipeline = engine::adoptGpu(device.createGraphicsPipeline(
                     {.library = self->m_library.get(),
                      .vertexEntry = "vertexMain",
                      .fragmentEntry = masked ? "fragmentMask" : "fragmentMain",
@@ -51,18 +51,18 @@ OcclusionReference::create(engine::GpuContext& gpu) {
                          wireframe ? rojoRHI::FillMode::Wireframe : rojoRHI::FillMode::Solid,
                      .cullMode = doubleSided ? rojoRHI::CullMode::None : rojoRHI::CullMode::Back,
                      .depthCompare = rojoRHI::DepthCompare::Greater,
-                     .label = std::format("lmx.occlusion.reference.pipeline.{}", index)});
+                     .label = std::format("lmx.occlusion.reference.pipeline.{}", index)}));
                 if (!pipeline) {
-                    return std::unexpected(engine::gpuError(pipeline.error()));
+                    return std::unexpected(pipeline.error());
                 }
                 self->m_pipelines[index] = std::move(*pipeline);
             }
         }
     }
-    auto sampler =
-        device.createSampler({.maxAnisotropy = 16, .label = "lmx.occlusion.reference.sampler"});
+    auto sampler = engine::adoptGpu(
+        device.createSampler({.maxAnisotropy = 16, .label = "lmx.occlusion.reference.sampler"}));
     if (!sampler) {
-        return std::unexpected(engine::gpuError(sampler.error()));
+        return std::unexpected(sampler.error());
     }
     self->m_sampler = std::move(*sampler);
     const std::array<uint8_t, 4> white{255, 255, 255, 255};

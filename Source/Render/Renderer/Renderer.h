@@ -261,9 +261,9 @@ private:
     engine::GpuTexture m_flatNormalTexture;
     engine::GpuTexture m_blackCubeTexture;
     engine::GpuTexture m_zeroDfgTexture;
-    std::unique_ptr<rojoRHI::Sampler> m_linearSampler;
-    std::unique_ptr<rojoRHI::Sampler> m_shadowSampler;
-    std::unique_ptr<rojoRHI::Sampler> m_iblSampler;
+    engine::GpuOwned<rojoRHI::Sampler> m_linearSampler;
+    engine::GpuOwned<rojoRHI::Sampler> m_shadowSampler;
+    engine::GpuOwned<rojoRHI::Sampler> m_iblSampler;
     // What the previous declared frame was, recorded every frame -- temporal on or off -- because
     // that is what makes re-enabling distinguishable from the first frame ever declared.
     std::optional<FrameSignature> m_previousSignature;
@@ -290,7 +290,7 @@ private:
     std::unique_ptr<HzbStage> m_hzbStage;
     std::unique_ptr<OcclusionReference> m_occlusionReference;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_hzbDebugLibrary;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_hzbDebugPipeline;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_hzbDebugPipeline;
     HzbSource m_occlusionSource;
     HzbSource m_currentOcclusionSource;
     OcclusionParams m_occlusionParams;
