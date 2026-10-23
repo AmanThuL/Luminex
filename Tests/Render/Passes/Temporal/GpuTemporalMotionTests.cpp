@@ -412,7 +412,7 @@ TEST_CASE("TemporalLab writes motion for its animated tracks", "[gpu][temporal]"
                                                 /*wireframe=*/false);
         view.temporal.enabled = true;
         view.temporal.debugView = lmx::render::TemporalDebugView::MotionVectors;
-        (*renderer)->render(commands, camera, view, false);
+        (*renderer)->render(commands, camera, view);
         gpu->device().endFrame(nullptr);
         gpu->device().waitIdle();
         (*scene)->commitFrame();

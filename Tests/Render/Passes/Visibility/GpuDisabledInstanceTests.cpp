@@ -28,7 +28,7 @@ ToggleFrame toggleFrame(rojoRHI::Device& device, engine::Scene& scene, render::R
     view.submission = submission;
     view.occlusionEnabled = occlusion;
     view.occlusionCheck = occlusion;
-    renderer.render(commands, camera, view, false);
+    renderer.render(commands, camera, view);
     device.endFrame(nullptr);
     scene.commitFrame();
     device.waitIdle();

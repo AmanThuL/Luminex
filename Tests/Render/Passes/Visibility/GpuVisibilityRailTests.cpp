@@ -35,7 +35,7 @@ TEST_CASE("GPU VisibilityLab states and canonical output equal the CPU at three 
             const auto planes = render::extractFrustumPlanes(camera.projectionMatrix(16.0f / 9.0f) *
                                                              camera.viewMatrix());
             const auto expected = render::classifyView(planes, items, view.tables);
-            (*renderer)->render(commands, camera, view, false);
+            (*renderer)->render(commands, camera, view);
             const auto declared = gpu->device().frameNumber();
             gpu->device().endFrame(nullptr);
             world.commitFrame();
@@ -75,7 +75,7 @@ TEST_CASE("Empty GPU view and classifier switches preserve final frame diagnosti
         view.classifyMode = classifier;
         view.classifyCheck = classifier == render::ClassifyMode::Gpu;
         view.submission = render::SubmissionMode::Batched;
-        (*renderer)->render(commands, engine::Camera{}, view, false);
+        (*renderer)->render(commands, engine::Camera{}, view);
         if (classifier == render::ClassifyMode::Gpu)
             gpuFrames.push_back(gpu->device().frameNumber());
         gpu->device().endFrame(nullptr);

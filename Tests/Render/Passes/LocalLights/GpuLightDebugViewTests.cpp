@@ -267,7 +267,7 @@ TEST_CASE("light diagnostics reuse actual temporal depth without contaminating h
                 view.bloomEnabled = false;
                 view.lightDebugView = debug && frame < 6 ? lmx::engine::LightDebugView::Missed
                                                          : lmx::engine::LightDebugView::Off;
-                (*renderer)->render(commands, camera, view, false);
+                (*renderer)->render(commands, camera, view);
                 gpu->device().endFrame(nullptr);
                 gpu->device().waitIdle();
                 if (debug && frame < 6) {

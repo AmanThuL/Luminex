@@ -26,8 +26,7 @@ TEST_CASE("renderer draws per-object uniforms in one pass", "[gpu]") {
 
     CommandList& commands = gpu->device().beginFrame();
     (*renderer)->render(commands, sceneCamera(),
-                        lmx::test::prepareSceneView(litSceneView(items), gpu->device()),
-                        /*barrierForSampling=*/false);
+                        lmx::test::prepareSceneView(litSceneView(items), gpu->device()));
     gpu->device().endFrame(nullptr);
     gpu->device().waitIdle();
 
@@ -71,8 +70,7 @@ TEST_CASE("renderer depth test beats draw order", "[gpu]") {
     for (size_t i = 0; i < orderings.size(); ++i) {
         CommandList& commands = gpu->device().beginFrame();
         (*renderer)->render(commands, sceneCamera(),
-                            lmx::test::prepareSceneView(litSceneView(orderings[i]), gpu->device()),
-                            /*barrierForSampling=*/false);
+                            lmx::test::prepareSceneView(litSceneView(orderings[i]), gpu->device()));
         gpu->device().endFrame(nullptr);
         gpu->device().waitIdle();
         (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
@@ -134,8 +132,10 @@ TEST_CASE("renderer scene survives a barrier into a sampling pass", "[gpu]") {
     CommandList& commands = gpu->device().beginFrame();
     const std::array<FixtureDrawItem, 2> items = twoCubeScene(*cube);
     (*renderer)->render(commands, sceneCamera(),
-                        lmx::test::prepareSceneView(litSceneView(items), gpu->device()),
-                        /*barrierForSampling=*/true);
+                        lmx::test::prepareSceneView(litSceneView(items), gpu->device()));
+    // The pass below is encoded by hand, so it declared no read the graph could order.
+    commands.textureBarrier((*renderer)->colorTarget().rhi(), TextureUse::RenderTarget,
+                            TextureUse::ShaderRead);
 
     commands.beginRenderPass({.colorTarget = destination->get(),
                               .clearColor = {1.0f, 0.0f, 1.0f, 1.0f},
@@ -181,8 +181,7 @@ TEST_CASE("a wireframe SceneView leaves the interior of a face unfilled", "[gpu]
         view.wireframe = wireframe;
         CommandList& commands = gpu->device().beginFrame();
         (*renderer)->render(commands, sceneCamera(),
-                            lmx::test::prepareSceneView(view, gpu->device()),
-                            /*barrierForSampling=*/false);
+                            lmx::test::prepareSceneView(view, gpu->device()));
         gpu->device().endFrame(nullptr);
         gpu->device().waitIdle();
         (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
@@ -258,8 +257,7 @@ TEST_CASE("the sky pass fills the background behind the scene", "[gpu]") {
     view.skyCubemap = &*skyCubemap;
 
     CommandList& commands = gpu->device().beginFrame();
-    (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, gpu->device()),
-                        /*barrierForSampling=*/false);
+    (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, gpu->device()));
     gpu->device().endFrame(nullptr);
     gpu->device().waitIdle();
 
@@ -310,8 +308,7 @@ TEST_CASE("pass timings name every pass the graph ran", "[gpu]") {
 
     CommandList& commands = gpu->device().beginFrame();
     (*renderer)->render(commands, sceneCamera(),
-                        lmx::test::prepareSceneView(litSceneView(items), gpu->device()),
-                        /*barrierForSampling=*/false);
+                        lmx::test::prepareSceneView(litSceneView(items), gpu->device()));
     gpu->device().endFrame(nullptr);
     gpu->device().waitIdle();
 

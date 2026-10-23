@@ -702,8 +702,7 @@ TEST_CASE("a manual temporal frame records the EV edit and the value before it",
         view.exposureEv = exposureEv;
         view.temporal.enabled = temporalEnabled;
         CommandList& commands = gpu->device().beginFrame();
-        (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, gpu->device()),
-                            /*barrierForSampling=*/false);
+        (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, gpu->device()));
         gpu->device().endFrame(nullptr);
         gpu->device().waitIdle();
 

@@ -188,7 +188,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& c
 
 //======================================================================================================================
 void Renderer::render(rojoRHI::CommandList& commands, const engine::Camera& camera,
-                      const SceneView& view, bool barrierForSampling) {
+                      const SceneView& view) {
     // declarePasses() always declares bloom's transients (spec 10: it is an ordinary graph pass
     // whether or not a caller's own graph has a pool), so this convenience path needs one of its
     // own -- the caller already opened this frame with Device::beginFrame() before calling here,
@@ -199,13 +199,6 @@ void Renderer::render(rojoRHI::CommandList& commands, const engine::Camera& came
     // The display-transformed image is this frame's whole result, so it is what the graph roots.
     graph.exportTexture(displayColor);
     graph.execute(commands, m_gpu.frameNumber());
-
-    if (barrierForSampling) {
-        // For a sampling pass outside this graph: a hand-encoded pass declares nothing, so there
-        // is no read for the graph to have derived the transition from.
-        commands.textureBarrier(m_color.rhi(), rojoRHI::TextureUse::RenderTarget,
-                                rojoRHI::TextureUse::ShaderRead);
-    }
 }
 
 } // namespace lmx::render

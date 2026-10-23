@@ -209,7 +209,7 @@ TEST_CASE("loadSponzaScene's full SceneView renders through Renderer without exh
     const render::SceneView view = render::buildSceneView(**scene, items, /*wireframe=*/false);
     REQUIRE(items.size() == 25);
 
-    (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
+    (*renderer)->render(commands, camera, view);
     gpu->device().endFrame(nullptr);
     gpu->device().waitIdle();
 
@@ -312,8 +312,7 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
                            spacing * static_cast<float>(distinctDiffuse.size()) + 2.0f};
 
     rojoRHI::CommandList& commands = gpu->device().beginFrame();
-    (*renderer)->render(commands, camera, view.prepare(gpu->device()),
-                        /*barrierForSampling=*/false);
+    (*renderer)->render(commands, camera, view.prepare(gpu->device()));
     gpu->device().endFrame(nullptr);
     gpu->device().waitIdle();
 

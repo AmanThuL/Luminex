@@ -103,15 +103,10 @@ public:
     /// else, compiled and executed on the spot. It is what a caller with no passes of its own wants
     /// -- the offscreen capture path and the tests; a caller that has its own pass declares against
     /// declarePasses instead, so the graph orders the whole frame rather than half of it.
-    ///
-    /// barrierForSampling covers the one case the graph cannot see: a caller that samples
-    /// colorTarget() from a pass it encodes by hand afterwards has declared nothing, so the
-    /// transition to a shader read is emitted on its behalf.
-    void render(rojoRHI::CommandList& commands, const engine::Camera& camera, const SceneView& view,
-                bool barrierForSampling = true);
+    void render(rojoRHI::CommandList& commands, const engine::Camera& camera,
+                const SceneView& view);
 
     /// The finished, display-encoded image: what the viewport shows and what a screenshot reads.
-    /// Barriered to ShaderRead when render() returned with barrierForSampling == true.
     const engine::GpuTexture& colorTarget();
 
     /// Colour domain of colorTarget(), shared by presentation, capture and diagnostics.

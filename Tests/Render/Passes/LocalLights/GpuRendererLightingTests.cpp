@@ -203,7 +203,7 @@ TEST_CASE("a point light shades the scene pass to its CPU mirror times pre-expos
     const glm::mat4 worldTransform = prepared.tables.instanceRows[0].model;
     const glm::mat4 normalTransform = prepared.tables.instanceRows[0].normalMatrix;
 
-    (*renderer)->render(commands, camera, prepared, /*barrierForSampling=*/false);
+    (*renderer)->render(commands, camera, prepared);
     gpu->device().endFrame(nullptr);
     gpu->device().waitIdle();
 
@@ -303,8 +303,7 @@ TEST_CASE("the masked and auto-exposure scene variants light a local light ident
         view.localLightMode = lmx::engine::LocalLightMode::Direct;
 
         CommandList& commands = gpu->device().beginFrame();
-        (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, gpu->device()),
-                            /*barrierForSampling=*/false);
+        (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, gpu->device()));
         gpu->device().endFrame(nullptr);
         gpu->device().waitIdle();
 
@@ -456,7 +455,7 @@ TEST_CASE("LightLab direct and clustered paths preserve all written scene attach
                 view.temporal.jitterEnabled = false;
                 view.temporal.reconstruction = ReconstructionMode::Raw;
                 view.bloomEnabled = false;
-                (*renderer)->render(commands, camera, view, false);
+                (*renderer)->render(commands, camera, view);
                 depthReadback = copyLightingDepth(gpu->device(), commands, **renderer);
                 gpu->device().endFrame(nullptr);
                 gpu->device().waitIdle();
@@ -546,7 +545,7 @@ TEST_CASE("lighting retirement keeps declaration modes through paced switches",
         view.lightCheck = true;
         view.temporal.enabled = false;
         view.temporal.sceneGeneration = 42 + gpu->device().frameNumber();
-        (*renderer)->render(commands, camera, view, false);
+        (*renderer)->render(commands, camera, view);
         check();
         REQUIRE(retiredCount == (step < 3 ? 0 : step - 2));
         gpu->device().endFrame(nullptr);
@@ -602,7 +601,7 @@ TEST_CASE("cluster overflow darkens only pixels in truncated froxels",
                                   .activeHeight = height,
                                   .sliceDepth = slices};
         mirror = buildLightClusters(prepared.tables.lightRows, params);
-        (*renderer)->render(commands, camera, prepared, false);
+        (*renderer)->render(commands, camera, prepared);
         auto depthReadback = copyLightingDepth(gpu->device(), commands, **renderer);
         gpu->device().endFrame(nullptr);
         gpu->device().waitIdle();

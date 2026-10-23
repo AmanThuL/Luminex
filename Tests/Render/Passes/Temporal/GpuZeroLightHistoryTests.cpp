@@ -172,7 +172,7 @@ void compareHistories(lmx::engine::GpuContext& gpu, const char* sceneName,
                     view.temporal.cameraCut = false;
                     view.autoExposureEnabled = false;
                     view.exposureEv = 0;
-                    renderer.render(commands, camera, view, false);
+                    renderer.render(commands, camera, view);
                     commands.textureBarrier(renderer.depthTarget(),
                                             rojoRHI::TextureUse::RenderTarget,
                                             rojoRHI::TextureUse::ShaderRead);

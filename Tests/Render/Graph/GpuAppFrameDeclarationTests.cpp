@@ -51,8 +51,7 @@ TEST_CASE("FrameDeclaration preserves headless rendering and retains its caller-
     for (uint32_t index = 0; index < 5; ++index) {
         CommandList& referenceCommands = gpu->device().beginFrame();
         (*reference)
-            ->render(referenceCommands, camera, lmx::test::prepareSceneView(view, gpu->device()),
-                     /*barrierForSampling=*/false);
+            ->render(referenceCommands, camera, lmx::test::prepareSceneView(view, gpu->device()));
         gpu->device().endFrame(nullptr);
         gpu->device().waitIdle();
         std::vector<uint8_t> expected(size_t{kSize} * kSize * 4);
