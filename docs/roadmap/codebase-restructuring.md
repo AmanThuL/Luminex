@@ -295,6 +295,6 @@ the convention as they are and closes R4 with its evidence.
 
 ## Opening a further R milestone
 
-No identifier beyond R4 is reserved. When a planned rendering slice would cross the checked
-layering or grow a unit past a review budget, the owner opens the next R milestone here with its
-own outcome and gates rather than widening the allowlist.
+R5 is proposed in [RojoRHI interface port](codebase-rojorhi-port.md); no identifier beyond R5 is
+reserved. When a rendering slice would cross the checked layering or grow a unit past a review
+budget, the owner opens the next R milestone with its own outcome and gates, not a wider allowlist.
