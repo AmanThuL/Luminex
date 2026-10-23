@@ -5,6 +5,9 @@
 
 #include "Engine/Scene/Scene.h"
 #include "Render/Renderer/SceneViewBuilder.h"
+#include "Support/GpuTestSupport.h"
+
+#include <cstring>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -15,23 +18,24 @@ using namespace lmx;
 
 namespace {
 //======================================================================================================================
-uint64_t prepareCoverage(rojoRHI::Device& device, engine::Scene& scene) {
-    device.beginFrame();
-    REQUIRE(scene.prepareFrame(device.frameNumber()));
+uint64_t prepareCoverage(engine::GpuContext& gpu, engine::Scene& scene) {
+    auto frame = gpu.beginFrame();
+    REQUIRE(scene.prepareFrame(gpu.frameNumber()));
     std::vector<engine::DrawItem> items;
     const auto view = render::buildSceneView(scene, items, false);
     REQUIRE(view.coverageEpoch == scene.coverageEpoch());
     const auto epoch = view.coverageEpoch;
-    device.endFrame(nullptr);
-    device.waitIdle();
+    gpu.submitAndEndFrame(frame);
+    gpu.waitIdle();
     return epoch;
 }
 } // namespace
 
 //======================================================================================================================
 TEST_CASE("Scene coverage invalidates every geometry and mask edit", "[gpu][scene][occlusion]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
     engine::Scene scene;
     const auto firstMesh = scene.addMesh(engine::makeCube(), "lmx.test.coverage.first");
     const auto secondMesh = scene.addMesh(engine::makeCube(), "lmx.test.coverage.second");
@@ -40,7 +44,7 @@ TEST_CASE("Scene coverage invalidates every geometry and mask edit", "[gpu][scen
     const auto id = scene.addObject({.mesh = firstMesh, .material = firstMaterial});
     const std::array<uint8_t, 4> pixels{255, 255, 255, 0};
     const rojoRHI::TextureMip mip{.data = pixels.data(), .bytesPerRow = 4};
-    auto texture = lmx::engine::GpuTexture::create(**device,
+    auto texture = lmx::engine::GpuTexture::create(*device,
                                                    {.width = 1,
                                                     .height = 1,
                                                     .format = rojoRHI::Format::RGBA8Unorm,
@@ -49,9 +53,9 @@ TEST_CASE("Scene coverage invalidates every geometry and mask edit", "[gpu][scen
                                                    std::span(&mip, 1));
     REQUIRE(texture);
     const auto textureId = scene.addTexture(std::move(*texture));
-    REQUIRE(scene.finalize(**device));
-    const auto before = prepareCoverage(**device, scene);
-    REQUIRE(prepareCoverage(**device, scene) == before);
+    REQUIRE(scene.finalize(*device));
+    const auto before = prepareCoverage(*gpu, scene);
+    REQUIRE(prepareCoverage(*gpu, scene) == before);
     SECTION("translation") {
         scene.tryObject(id)->position.x = 2.0f;
     }
@@ -97,23 +101,24 @@ TEST_CASE("Scene coverage invalidates every geometry and mask edit", "[gpu][scen
         REQUIRE(next.slot == id.slot);
         REQUIRE(next.generation != id.generation);
     }
-    const auto changed = prepareCoverage(**device, scene);
+    const auto changed = prepareCoverage(*gpu, scene);
     REQUIRE(changed > before);
-    REQUIRE(prepareCoverage(**device, scene) == changed);
+    REQUIRE(prepareCoverage(*gpu, scene) == changed);
 }
 
 //======================================================================================================================
 TEST_CASE("Scene coverage ignores motion history, lighting and object ordering",
           "[gpu][scene][occlusion]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
     engine::Scene scene;
     const auto mesh = scene.addMesh(engine::makeCube(), "lmx.test.coverage.exclusions");
     const auto material = scene.addMaterial({});
     scene.addObject({.mesh = mesh, .material = material});
     scene.addObject({.position = {2, 0, 0}, .mesh = mesh, .material = material});
-    REQUIRE(scene.finalize(**device));
-    const auto before = prepareCoverage(**device, scene);
+    REQUIRE(scene.finalize(*device));
+    const auto before = prepareCoverage(*gpu, scene);
     scene.objects[0].previousModel[3].x = 4.0f;
     scene.objects[0].emissiveStrength = 3.0f;
     scene.objects[0].motionClass = engine::MotionClass::Invalid;
@@ -122,11 +127,11 @@ TEST_CASE("Scene coverage ignores motion history, lighting and object ordering",
     scene.material(material).roughness = 0.8f;
     scene.lights[0].strength = {5, 5, 5};
     std::ranges::reverse(scene.objects);
-    REQUIRE(prepareCoverage(**device, scene) == before);
+    REQUIRE(prepareCoverage(*gpu, scene) == before);
     scene.commitFrame();
-    REQUIRE(prepareCoverage(**device, scene) == before);
+    REQUIRE(prepareCoverage(*gpu, scene) == before);
     scene.resetMotion();
-    REQUIRE(prepareCoverage(**device, scene) == before);
+    REQUIRE(prepareCoverage(*gpu, scene) == before);
 }
 
 //======================================================================================================================
@@ -189,26 +194,32 @@ TEST_CASE("object enabled edits keep identities and advance coverage only on cha
 //======================================================================================================================
 TEST_CASE("object enabled rows reach every paced slot and raw field edits invalidate coverage",
           "[gpu][scene][disabled-instance]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
     engine::Scene scene;
     const auto mesh = scene.addMesh(engine::makeCube(), "lmx.test.enabled.slots");
     const auto material = scene.addMaterial({});
     const auto id = scene.addObject({.mesh = mesh, .material = material});
-    REQUIRE(scene.finalize(**device));
-    prepareCoverage(**device, scene);
+    REQUIRE(scene.finalize(*device));
+    prepareCoverage(*gpu, scene);
     for (bool enabled : {false, true}) {
         scene.setObjectEnabled(0, enabled);
         for (uint32_t frame = 0; frame < 4; ++frame) {
-            prepareCoverage(**device, scene);
+            prepareCoverage(*gpu, scene);
             const auto tables = scene.tables();
             std::vector<engine::InstanceRow> rows(tables.instanceCapacity);
-            tables.instances->rhi().readback(rows.data(), rows.size() * sizeof(rows[0]));
+            {
+                const auto bytes = lmx::render::readbackNow(*gpu, *tables.instances,
+                                                            lmx::render::BufferUse::ShaderRead,
+                                                            {0, rows.size() * sizeof(rows[0])});
+                std::memcpy(rows.data(), bytes.data(), rows.size() * sizeof(rows[0]));
+            }
             REQUIRE(((rows[id.slot].flags & engine::kInstanceDisabled) == 0) == enabled);
             REQUIRE(scene.objects[0].id == id);
         }
     }
     const auto before = scene.coverageEpoch();
     scene.objects[0].enabled = false;
-    REQUIRE(prepareCoverage(**device, scene) > before);
+    REQUIRE(prepareCoverage(*gpu, scene) > before);
 }

@@ -4,6 +4,7 @@
 #include "Render/Passes/Occlusion/HzbStage.h"
 
 #include <algorithm>
+#include <cstring>
 #include <format>
 
 namespace {
@@ -32,7 +33,7 @@ void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
                                               .sampled = true,
                                               .label = "lmx.test.hzbDepth"});
     REQUIRE(depth);
-    auto depthLibrary = gpu->device().loadShaderLibrary("Shaders/HzbDepthFixture");
+    auto depthLibrary = gpu->loadShaderLibrary("HzbDepthFixture");
     REQUIRE(depthLibrary);
     auto raster =
         gpu->device().createGraphicsPipeline({.library = depthLibrary->get(),
@@ -47,7 +48,7 @@ void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
                                               .label = "lmx.test.hzbDepthPipeline"});
     INFO(errorOf(raster));
     REQUIRE(raster);
-    auto readLibrary = gpu->device().loadShaderLibrary("Shaders/HzbReadbackFixture");
+    auto readLibrary = gpu->loadShaderLibrary("HzbReadbackFixture");
     REQUIRE(readLibrary);
     auto reader = gpu->device().createComputePipeline({.library = readLibrary->get(),
                                                        .computeEntry = "computeMain",
@@ -56,11 +57,12 @@ void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
     REQUIRE(reader);
     const HzbLayout layout = (*stage)->layout();
     const uint64_t capacity = uint64_t{outputWidth} * outputHeight + layout.bytes / 8;
-    auto readback = gpu->device().createBuffer({.size = capacity * sizeof(float),
-                                                .storageWrite = true,
-                                                .cpuReadback = true,
-                                                .label = "lmx.test.hzbReadback"},
-                                               nullptr);
+    auto readback = lmx::engine::GpuBuffer::create(gpu->device(),
+                                                   {.size = capacity * sizeof(float),
+                                                    .storageWrite = true,
+                                                    .cpuReadback = true,
+                                                    .label = "lmx.test.hzbReadback"},
+                                                   nullptr);
     REQUIRE(readback);
     std::array<rojoRHI::Texture*, 2> identities{};
     for (uint32_t frame = 0; frame < 6; ++frame) {
@@ -72,7 +74,8 @@ void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
         INFO(std::format("output {}x{}, frame {}, active {}x{}, mask {}, sky {}", outputWidth,
                          outputHeight, frame, width, height, masked, sky));
         REQUIRE((*stage)->resize(outputWidth, outputHeight, states));
-        auto& commands = gpu->device().beginFrame();
+        auto gpuFrame1 = gpu->beginFrame();
+        auto& commands = gpuFrame1.commands;
         RenderGraph graph;
         graph.bindTextureStates(states);
         if (frame > 0) {
@@ -105,9 +108,10 @@ void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
         REQUIRE((*stage)->previousSource().frameNumber == frame);
         REQUIRE((*stage)->previousSource().activeWidth == width);
         REQUIRE((*stage)->previousSource().built);
-        GraphBuffer buffer = frame == 0 ? graph.importBuffer(**readback, "lmx.test.hzbReadback")
-                                        : graph.importBuffer(**readback, "lmx.test.hzbReadback",
-                                                             lmx::render::BufferUse::StorageWrite);
+        GraphBuffer buffer = frame == 0
+                                 ? graph.importBuffer(readback->rhi(), "lmx.test.hzbReadback")
+                                 : graph.importBuffer(readback->rhi(), "lmx.test.hzbReadback",
+                                                      lmx::render::BufferUse::StorageWrite);
         std::vector<uint32_t> offsets;
         uint32_t offset = 0;
         for (uint32_t input = 0; input <= layout.levelCount; ++input) {
@@ -147,10 +151,15 @@ void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
         INFO((compiled ? "" : compiled.error().message));
         REQUIRE(compiled);
         graph.execute(commands, frame);
-        gpu->device().endFrame(nullptr);
-        gpu->device().waitIdle();
+        gpu->submitAndEndFrame(gpuFrame1);
+        gpu->waitIdle();
         std::vector<float> values(capacity);
-        (*readback)->readback(values.data(), capacity * sizeof(float));
+        {
+            const auto readbackBytes =
+                lmx::render::readbackNow(*gpu, *readback, lmx::render::BufferUse::StorageWrite,
+                                         lmx::render::wholeBuffer(*readback));
+            std::memcpy(values.data(), readbackBytes.data(), capacity * sizeof(float));
+        }
         // The oracle derives each level from rasterized depth, never from another pyramid level.
         for (uint32_t level = 0; level < layout.levelCount; ++level) {
             const uint32_t levelWidth = hzbLevelExtent(width, level);

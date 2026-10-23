@@ -1,6 +1,7 @@
 #include "Support/GpuRendererTestSupport.h"
 #include "Support/SceneTableTestSupport.h"
 
+#include <cstring>
 using lmx::test::FixtureDrawItem;
 using lmx::test::FixtureMaterial;
 using lmx::test::FixtureMesh;
@@ -24,14 +25,19 @@ TEST_CASE("renderer draws per-object uniforms in one pass", "[gpu]") {
 
     const std::array<FixtureDrawItem, 2> items = twoCubeScene(*cube);
 
-    CommandList& commands = gpu->device().beginFrame();
+    auto gpuFrame1 = gpu->beginFrame();
+    auto& commands = gpuFrame1.commands;
     (*renderer)->render(commands, sceneCamera(),
-                        lmx::test::prepareSceneView(litSceneView(items), gpu->device()));
-    gpu->device().endFrame(nullptr);
-    gpu->device().waitIdle();
+                        lmx::test::prepareSceneView(litSceneView(items), *gpu));
+    gpu->submitAndEndFrame(gpuFrame1);
+    gpu->waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
-    (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
+    {
+        const auto readbackBytes = lmx::render::readbackNow(*gpu, (*renderer)->colorTarget(),
+                                                            lmx::render::TextureUse::RenderTarget);
+        std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
+    }
     requireTwoCubeImage(pixels, "clear");
 }
 
@@ -68,12 +74,17 @@ TEST_CASE("renderer depth test beats draw order", "[gpu]") {
 
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
     for (size_t i = 0; i < orderings.size(); ++i) {
-        CommandList& commands = gpu->device().beginFrame();
+        auto gpuFrame2 = gpu->beginFrame();
+        auto& commands = gpuFrame2.commands;
         (*renderer)->render(commands, sceneCamera(),
-                            lmx::test::prepareSceneView(litSceneView(orderings[i]), gpu->device()));
-        gpu->device().endFrame(nullptr);
-        gpu->device().waitIdle();
-        (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
+                            lmx::test::prepareSceneView(litSceneView(orderings[i]), *gpu));
+        gpu->submitAndEndFrame(gpuFrame2);
+        gpu->waitIdle();
+        {
+            const auto readbackBytes = lmx::render::readbackNow(
+                *gpu, (*renderer)->colorTarget(), lmx::render::TextureUse::RenderTarget);
+            std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
+        }
 
         INFO(std::string("ordering: ") + names[i]);
 
@@ -105,16 +116,17 @@ TEST_CASE("renderer scene survives a barrier into a sampling pass", "[gpu]") {
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
-    auto destination = gpu->device().createTexture({.width = kSize,
-                                                    .height = kSize,
-                                                    .format = Format::BGRA8Unorm,
-                                                    .renderTarget = true,
-                                                    .cpuReadback = true,
-                                                    .label = "lmx.test.barrierDestination"});
+    auto destination =
+        lmx::engine::GpuTexture::create(gpu->device(), {.width = kSize,
+                                                        .height = kSize,
+                                                        .format = Format::BGRA8Unorm,
+                                                        .renderTarget = true,
+                                                        .cpuReadback = true,
+                                                        .label = "lmx.test.barrierDestination"});
     INFO(errorOf(destination));
     REQUIRE(destination.has_value());
 
-    auto library = gpu->device().loadShaderLibrary("Shaders/FullscreenSample");
+    auto library = gpu->loadShaderLibrary("FullscreenSample");
     INFO(errorOf(library));
     REQUIRE(library.has_value());
 
@@ -129,15 +141,16 @@ TEST_CASE("renderer scene survives a barrier into a sampling pass", "[gpu]") {
 
     constexpr uint32_t kSourceTextureSlot = 0;
 
-    CommandList& commands = gpu->device().beginFrame();
+    auto gpuFrame3 = gpu->beginFrame();
+    auto& commands = gpuFrame3.commands;
     const std::array<FixtureDrawItem, 2> items = twoCubeScene(*cube);
     (*renderer)->render(commands, sceneCamera(),
-                        lmx::test::prepareSceneView(litSceneView(items), gpu->device()));
+                        lmx::test::prepareSceneView(litSceneView(items), *gpu));
     // The pass below is encoded by hand, so it declared no read the graph could order.
     commands.textureBarrier((*renderer)->colorTarget().rhi(), TextureUse::RenderTarget,
                             TextureUse::ShaderRead);
 
-    commands.beginRenderPass({.colorTarget = destination->get(),
+    commands.beginRenderPass({.colorTarget = &destination->rhi(),
                               .clearColor = {1.0f, 0.0f, 1.0f, 1.0f},
                               .clear = true,
                               .label = "lmx.test.rendererCopy"});
@@ -145,11 +158,15 @@ TEST_CASE("renderer scene survives a barrier into a sampling pass", "[gpu]") {
     commands.bindTexture(kSourceTextureSlot, (*renderer)->colorTarget().rhi());
     commands.draw(3);
     commands.endRenderPass();
-    gpu->device().endFrame(nullptr);
-    gpu->device().waitIdle();
+    gpu->submitAndEndFrame(gpuFrame3);
+    gpu->waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
-    (*destination)->readback(pixels.data(), pixels.size());
+    {
+        const auto readbackBytes =
+            lmx::render::readbackNow(*gpu, *destination, lmx::render::TextureUse::RenderTarget);
+        std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
+    }
 
     requireTwoCubeImage(pixels, "copied clear");
 }
@@ -179,12 +196,16 @@ TEST_CASE("a wireframe SceneView leaves the interior of a face unfilled", "[gpu]
     const auto renderWith = [&](bool wireframe) {
         FixtureSceneView view = litSceneView(items);
         view.wireframe = wireframe;
-        CommandList& commands = gpu->device().beginFrame();
-        (*renderer)->render(commands, sceneCamera(),
-                            lmx::test::prepareSceneView(view, gpu->device()));
-        gpu->device().endFrame(nullptr);
-        gpu->device().waitIdle();
-        (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
+        auto gpuFrame4 = gpu->beginFrame();
+        auto& commands = gpuFrame4.commands;
+        (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, *gpu));
+        gpu->submitAndEndFrame(gpuFrame4);
+        gpu->waitIdle();
+        {
+            const auto readbackBytes = lmx::render::readbackNow(
+                *gpu, (*renderer)->colorTarget(), lmx::render::TextureUse::RenderTarget);
+            std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
+        }
     };
 
     renderWith(false);
@@ -256,13 +277,18 @@ TEST_CASE("the sky pass fills the background behind the scene", "[gpu]") {
     view.skySphere = &*skySphere;
     view.skyCubemap = &*skyCubemap;
 
-    CommandList& commands = gpu->device().beginFrame();
-    (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, gpu->device()));
-    gpu->device().endFrame(nullptr);
-    gpu->device().waitIdle();
+    auto gpuFrame5 = gpu->beginFrame();
+    auto& commands = gpuFrame5.commands;
+    (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, *gpu));
+    gpu->submitAndEndFrame(gpuFrame5);
+    gpu->waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
-    (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
+    {
+        const auto readbackBytes = lmx::render::readbackNow(*gpu, (*renderer)->colorTarget(),
+                                                            lmx::render::TextureUse::RenderTarget);
+        std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
+    }
 
     // kSkyTexel is uploaded to a plain RGBA8Unorm cubemap, not an sRGB view, so the sampler hands
     // the shader (0, 0.502, 1.0) as linear radiance and the sky shader passes it through untouched
@@ -306,15 +332,16 @@ TEST_CASE("pass timings name every pass the graph ran", "[gpu]") {
 
     const std::array<FixtureDrawItem, 2> items = twoCubeScene(*cube);
 
-    CommandList& commands = gpu->device().beginFrame();
+    auto gpuFrame6 = gpu->beginFrame();
+    auto& commands = gpuFrame6.commands;
     (*renderer)->render(commands, sceneCamera(),
-                        lmx::test::prepareSceneView(litSceneView(items), gpu->device()));
-    gpu->device().endFrame(nullptr);
-    gpu->device().waitIdle();
+                        lmx::test::prepareSceneView(litSceneView(items), *gpu));
+    gpu->submitAndEndFrame(gpuFrame6);
+    gpu->waitIdle();
 
     // waitIdle retires the measured frame; the next beginFrame is what publishes its counters.
-    gpu->device().beginFrame();
-    gpu->device().endFrame(nullptr);
+    auto gpuFrame7 = gpu->beginFrame();
+    gpu->submitAndEndFrame(gpuFrame7);
 
     // Bloom is enabled by default (spec 10) and its passes always schedule with it -- kSize == 64
     // gives a 32-wide bloom base, which clamps to Renderer.cpp's full kMaxBloomDownsampleLevels ==
@@ -360,11 +387,11 @@ TEST_CASE("a joined pass samples the scene colour the graph rendered", "[gpu]") 
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
-    auto destination = makeProbeTarget(gpu->device(), "lmx.test.joinedDestination");
+    auto destination = makeProbeTarget(*gpu, "lmx.test.joinedDestination");
     INFO(errorOf(destination));
     REQUIRE(destination.has_value());
 
-    auto library = gpu->device().loadShaderLibrary("Shaders/FullscreenSample");
+    auto library = gpu->loadShaderLibrary("FullscreenSample");
     INFO(errorOf(library));
     REQUIRE(library.has_value());
     auto copyPipeline =
@@ -384,13 +411,14 @@ TEST_CASE("a joined pass samples the scene colour the graph rendered", "[gpu]") 
     // declarePasses() always declares bloom's transients (spec 10), so a caller building its own
     // graph around it needs a pool exactly as Renderer::render()'s convenience path does.
     lmx::render::TransientPool transients(gpu->device());
-    CommandList& commands = gpu->device().beginFrame();
+    auto gpuFrame8 = gpu->beginFrame();
+    auto& commands = gpuFrame8.commands;
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
     const lmx::render::GraphTexture sceneColor = (*renderer)->declarePasses(
-        graph, commands, sceneCamera(), lmx::test::prepareSceneView(view, gpu->device()));
+        graph, commands, sceneCamera(), lmx::test::prepareSceneView(view, *gpu));
     const lmx::render::GraphTexture copyTarget =
-        graph.importTexture(**destination, Format::BGRA8Unorm, "destination");
+        graph.importTexture(destination->rhi(), Format::BGRA8Unorm, "destination");
 
     lmx::render::PassDesc copy;
     copy.textureReads.push_back(sceneColor);
@@ -406,13 +434,17 @@ TEST_CASE("a joined pass samples the scene colour the graph rendered", "[gpu]") 
                       commands.draw(3);
                   });
     graph.exportTexture(lmx::render::nextVersion(copyTarget));
-    graph.execute(commands, gpu->device().frameNumber());
+    graph.execute(commands, gpu->frameNumber());
 
-    gpu->device().endFrame(nullptr);
-    gpu->device().waitIdle();
+    gpu->submitAndEndFrame(gpuFrame8);
+    gpu->waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
-    (*destination)->readback(pixels.data(), pixels.size());
+    {
+        const auto readbackBytes =
+            lmx::render::readbackNow(*gpu, *destination, lmx::render::TextureUse::RenderTarget);
+        std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
+    }
     requireTwoCubeImage(pixels, "clear sampled through the graph");
 }
 
@@ -423,22 +455,22 @@ TEST_CASE("a joined pass samples the scene colour the graph rendered", "[gpu]") 
 TEST_CASE("a pass resolving an undeclared texture is refused while the frame runs", "[gpu]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto declaredTarget = makeProbeTarget(**device, "lmx.test.declaredTarget");
+    REQUIRE(gpu != nullptr);
+
+    auto declaredTarget = makeProbeTarget(*gpu, "lmx.test.declaredTarget");
     INFO(errorOf(declaredTarget));
     REQUIRE(declaredTarget.has_value());
-    auto undeclaredTarget = makeProbeTarget(**device, "lmx.test.undeclaredTarget");
+    auto undeclaredTarget = makeProbeTarget(*gpu, "lmx.test.undeclaredTarget");
     INFO(errorOf(undeclaredTarget));
     REQUIRE(undeclaredTarget.has_value());
 
     lmx::render::RenderGraph graph;
     const lmx::render::GraphTexture declared =
-        graph.importTexture(**declaredTarget, Format::BGRA8Unorm, "declaredTarget");
+        graph.importTexture(declaredTarget->rhi(), Format::BGRA8Unorm, "declaredTarget");
     const lmx::render::GraphTexture undeclared =
-        graph.importTexture(**undeclaredTarget, Format::BGRA8Unorm, "undeclaredTarget");
+        graph.importTexture(undeclaredTarget->rhi(), Format::BGRA8Unorm, "undeclaredTarget");
 
     std::optional<lmx::render::GraphError> refusal;
     lmx::render::PassDesc probe;
@@ -452,10 +484,11 @@ TEST_CASE("a pass resolving an undeclared texture is refused while the frame run
                   });
     graph.exportTexture(lmx::render::nextVersion(declared));
 
-    CommandList& commands = (*device)->beginFrame();
-    graph.execute(commands, (*device)->frameNumber());
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    auto gpuFrame9 = gpu->beginFrame();
+    auto& commands = gpuFrame9.commands;
+    graph.execute(commands, gpu->frameNumber());
+    gpu->submitAndEndFrame(gpuFrame9);
+    gpu->waitIdle();
 
     REQUIRE(refusal.has_value());
     INFO(refusal->message);

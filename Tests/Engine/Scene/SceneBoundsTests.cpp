@@ -6,6 +6,7 @@
 #include "Core/Math/Aabb.h"
 #include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Scene/Scene.h"
+#include "Support/GpuTestSupport.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -58,8 +59,9 @@ TEST_CASE("shared bounds reject invalid and overflowing transforms conservativel
 //======================================================================================================================
 TEST_CASE("prepared bounds are canonical uploaded rows and static slots converge",
           "[gpu][scene][bounds]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
     engine::Scene scene;
     const auto mesh = scene.addMesh(engine::makeCube(), "bounds.upload.cube");
     const auto empty = scene.addMesh({}, "bounds.upload.empty");
@@ -71,22 +73,26 @@ TEST_CASE("prepared bounds are canonical uploaded rows and static slots converge
                      .mesh = mesh,
                      .material = material});
     scene.addObject({.name = "unreliable", .mesh = empty, .material = material});
-    REQUIRE(scene.finalize(**device));
+    REQUIRE(scene.finalize(*device));
     for (uint32_t frame = 0; frame < 4; ++frame) {
-        (*device)->beginFrame();
-        REQUIRE(scene.prepareFrame((*device)->frameNumber()));
+        auto gpuFrame1 = gpu->beginFrame();
+        REQUIRE(scene.prepareFrame(gpu->frameNumber()));
         if (frame == 3) {
             REQUIRE(scene.tableStats().rowsWritten == 0);
             REQUIRE(scene.tableStats().bytesWritten == 0);
         }
-        (*device)->endFrame(nullptr);
+        gpu->submitAndEndFrame(gpuFrame1);
     }
-    (*device)->waitIdle();
+    gpu->waitIdle();
     const auto tables = scene.tables();
     REQUIRE(tables.instanceRows.size() == 2);
     REQUIRE(tables.instanceCapacity >= 2);
     std::array<engine::InstanceRow, 2> uploaded;
-    tables.instances->rhi().readback(uploaded.data(), sizeof(uploaded));
+    {
+        const auto bytes = lmx::render::readbackNow(
+            *gpu, *tables.instances, lmx::render::BufferUse::ShaderRead, {0, sizeof(uploaded)});
+        std::memcpy(uploaded.data(), bytes.data(), sizeof(uploaded));
+    }
     REQUIRE(std::memcmp(uploaded.data(), tables.instanceRows.data(), sizeof(uploaded)) == 0);
     REQUIRE(uploaded[0].worldBoundsMin.x == Catch::Approx(8.5f));
     REQUIRE(uploaded[0].worldBoundsMin.y == Catch::Approx(19.0f));
@@ -94,18 +100,18 @@ TEST_CASE("prepared bounds are canonical uploaded rows and static slots converge
     REQUIRE((uploaded[0].flags & engine::kInstanceBoundsUnreliable) == 0);
     REQUIRE((uploaded[1].flags & engine::kInstanceBoundsUnreliable) != 0);
     scene.objects[0].position.x += 5;
-    (*device)->beginFrame();
-    REQUIRE(scene.prepareFrame((*device)->frameNumber()));
+    auto gpuFrame2 = gpu->beginFrame();
+    REQUIRE(scene.prepareFrame(gpu->frameNumber()));
     REQUIRE(scene.tables().instanceRows[0].worldBoundsMin.x == Catch::Approx(13.5f));
     REQUIRE(scene.tableStats().rowsWritten == 1);
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->submitAndEndFrame(gpuFrame2);
+    gpu->waitIdle();
     scene.objects[0].position.x = std::numeric_limits<float>::infinity();
-    (*device)->beginFrame();
-    REQUIRE(scene.prepareFrame((*device)->frameNumber()));
+    auto gpuFrame3 = gpu->beginFrame();
+    REQUIRE(scene.prepareFrame(gpu->frameNumber()));
     REQUIRE((scene.tables().instanceRows[0].flags & engine::kInstanceBoundsUnreliable) != 0);
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->submitAndEndFrame(gpuFrame3);
+    gpu->waitIdle();
 }
 
 //======================================================================================================================

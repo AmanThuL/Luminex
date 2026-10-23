@@ -108,8 +108,9 @@ TEST_CASE("document reload failure preserves activation and success invalidates 
 TEST_CASE("document assets append with distinct handles, source nodes, clips and combined bounds",
           "[gpu][scene-doc]") {
     using namespace lmx;
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
     auto document = scenes::readCatalogDocument("temporal-lab");
     REQUIRE(document);
     const auto firstIndex =
@@ -124,7 +125,7 @@ TEST_CASE("document assets append with distinct handles, source nodes, clips and
     const auto path = std::filesystem::current_path() / "SceneDocuments" / "two-assets.scene.gltf";
     std::filesystem::create_directories(path.parent_path());
     REQUIRE(asset::saveSceneDocument(*document, path));
-    auto loaded = scenes::loadSceneDocument(**device, path);
+    auto loaded = scenes::loadSceneDocument(*device, path);
     INFO((loaded ? "ok" : loaded.error().message));
     REQUIRE(loaded);
     const auto& binding = loaded->binding;
@@ -155,5 +156,5 @@ TEST_CASE("document assets append with distinct handles, source nodes, clips and
     REQUIRE(rebased);
     REQUIRE(loaded->scene->animation.duration == 24.0);
     REQUIRE(loaded->scene->assetAnimations.size() == 2);
-    (*device)->waitIdle();
+    gpu->waitIdle();
 }

@@ -51,45 +51,47 @@ TEST_CASE("a graph-declared copy pass feeds a graph-declared compute pass", "[gp
     constexpr uint8_t kFillValue = 0x03;
     constexpr uint32_t kFilledElement = 0x03030303;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
+    REQUIRE(gpu != nullptr);
 
-    auto library = (*device)->loadShaderLibrary("Shaders/BufferHazardSmoke");
+    auto library = gpu->loadShaderLibrary("BufferHazardSmoke");
     INFO(errorOf(library));
     REQUIRE(library.has_value());
 
-    auto pipeline =
-        (*device)->createComputePipeline({.library = library->get(),
-                                          .computeEntry = "computeAddFromBuffer",
-                                          .threadsPerThreadgroup = {kHazardThreadsPerGroup, 1, 1},
-                                          .label = "lmx.test.graph.hazardPipeline"});
+    auto pipeline = gpu->device().createComputePipeline(
+        {.library = library->get(),
+         .computeEntry = "computeAddFromBuffer",
+         .threadsPerThreadgroup = {kHazardThreadsPerGroup, 1, 1},
+         .label = "lmx.test.graph.hazardPipeline"});
     INFO(errorOf(pipeline));
     REQUIRE(pipeline.has_value());
 
     const std::vector<uint32_t> sentinel(kElements, 0xFFFFFFFFu);
-    auto accumulator = (*device)->createBuffer({.size = sizeof(uint32_t) * kElements,
-                                                .storageRead = true,
-                                                .label = "lmx.test.graph.accumulator"},
-                                               sentinel.data());
+    auto accumulator = lmx::engine::GpuBuffer::create(gpu->device(),
+                                                      {.size = sizeof(uint32_t) * kElements,
+                                                       .storageRead = true,
+                                                       .label = "lmx.test.graph.accumulator"},
+                                                      sentinel.data());
     INFO(errorOf(accumulator));
     REQUIRE(accumulator.has_value());
 
-    auto resolved = (*device)->createBuffer({.size = sizeof(uint32_t) * kElements,
-                                             .storageWrite = true,
-                                             .cpuReadback = true,
-                                             .label = "lmx.test.graph.resolved"},
-                                            nullptr);
+    auto resolved = lmx::engine::GpuBuffer::create(gpu->device(),
+                                                   {.size = sizeof(uint32_t) * kElements,
+                                                    .storageWrite = true,
+                                                    .cpuReadback = true,
+                                                    .label = "lmx.test.graph.resolved"},
+                                                   nullptr);
     INFO(errorOf(resolved));
     REQUIRE(resolved.has_value());
 
     const HazardParams params{.bias = kBias};
 
-    CommandList& commands = (*device)->beginFrame();
+    auto commandsFrame = gpu->beginFrame();
+    auto& commands = commandsFrame.commands;
 
     RenderGraph graph;
-    const GraphBuffer bins = graph.importBuffer(**accumulator, "lmx.test.graph.accumulator");
-    const GraphBuffer output = graph.importBuffer(**resolved, "lmx.test.graph.resolved");
+    const GraphBuffer bins = graph.importBuffer(accumulator->rhi(), "lmx.test.graph.accumulator");
+    const GraphBuffer output = graph.importBuffer(resolved->rhi(), "lmx.test.graph.resolved");
 
     CopyPassDesc clear;
     clear.bufferDestinations.push_back(bins);
@@ -120,12 +122,17 @@ TEST_CASE("a graph-declared copy pass feeds a graph-declared compute pass", "[gp
     // that produce it out of the cull.
     graph.readbackBuffer(nextVersion(output));
 
-    graph.execute(commands, (*device)->frameNumber());
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    graph.execute(commands, gpu->frameNumber());
+    gpu->submitAndEndFrame(commandsFrame);
+    gpu->waitIdle();
 
     std::vector<uint32_t> values(kElements, 0);
-    (*resolved)->readback(values.data(), values.size() * sizeof(uint32_t));
+    {
+        const auto readbackBytes =
+            lmx::render::readbackNow(*gpu, *resolved, lmx::render::BufferUse::StorageWrite,
+                                     {0, values.size() * sizeof(uint32_t)});
+        std::memcpy(values.data(), readbackBytes.data(), values.size() * sizeof(uint32_t));
+    }
 
     for (uint32_t index = 0; index < kElements; ++index) {
         INFO("element " + std::to_string(index));
@@ -141,15 +148,14 @@ TEST_CASE("a graph-declared compute pass feeds a raster pass", "[gpu]") {
     using namespace rojoRHI;
     using namespace lmx::render;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
+    REQUIRE(gpu != nullptr);
 
-    auto computeLibrary = (*device)->loadShaderLibrary("Shaders/ComputeImageSmoke");
+    auto computeLibrary = gpu->loadShaderLibrary("ComputeImageSmoke");
     INFO(errorOf(computeLibrary));
     REQUIRE(computeLibrary.has_value());
 
-    auto computePipeline = (*device)->createComputePipeline(
+    auto computePipeline = gpu->device().createComputePipeline(
         {.library = computeLibrary->get(),
          .computeEntry = "computeWriteImage",
          .threadsPerThreadgroup = {kImageThreadsPerGroup, kImageThreadsPerGroup, 1},
@@ -157,42 +163,43 @@ TEST_CASE("a graph-declared compute pass feeds a raster pass", "[gpu]") {
     INFO(errorOf(computePipeline));
     REQUIRE(computePipeline.has_value());
 
-    auto sampleLibrary = (*device)->loadShaderLibrary("Shaders/FullscreenSample");
+    auto sampleLibrary = gpu->loadShaderLibrary("FullscreenSample");
     INFO(errorOf(sampleLibrary));
     REQUIRE(sampleLibrary.has_value());
 
     auto samplePipeline =
-        (*device)->createGraphicsPipeline({.library = sampleLibrary->get(),
-                                           .vertexEntry = "vertexMain",
-                                           .fragmentEntry = "fragmentMain",
-                                           .colorFormat = Format::BGRA8Unorm,
-                                           .label = "lmx.test.graph.samplePipeline"});
+        gpu->device().createGraphicsPipeline({.library = sampleLibrary->get(),
+                                              .vertexEntry = "vertexMain",
+                                              .fragmentEntry = "fragmentMain",
+                                              .colorFormat = Format::BGRA8Unorm,
+                                              .label = "lmx.test.graph.samplePipeline"});
     INFO(errorOf(samplePipeline));
     REQUIRE(samplePipeline.has_value());
 
-    auto image = (*device)->createTexture({.width = kSize,
-                                           .height = kSize,
-                                           .format = Format::RGBA8Unorm,
-                                           .sampled = true,
-                                           .storageWrite = true,
-                                           .label = "lmx.test.graph.image"});
+    auto image = lmx::engine::GpuTexture::create(gpu->device(), {.width = kSize,
+                                                                 .height = kSize,
+                                                                 .format = Format::RGBA8Unorm,
+                                                                 .sampled = true,
+                                                                 .storageWrite = true,
+                                                                 .label = "lmx.test.graph.image"});
     INFO(errorOf(image));
     REQUIRE(image.has_value());
 
-    auto target = makeProbeTarget(**device, "lmx.test.graph.target");
+    auto target = makeProbeTarget(*gpu, "lmx.test.graph.target");
     INFO(errorOf(target));
     REQUIRE(target.has_value());
 
     const ImageParams params{.extent = kSize};
     const uint32_t groups = kSize / kImageThreadsPerGroup;
 
-    CommandList& commands = (*device)->beginFrame();
+    auto commandsFrame = gpu->beginFrame();
+    auto& commands = commandsFrame.commands;
 
     RenderGraph graph;
     const GraphTexture storage =
-        graph.importTexture(**image, Format::RGBA8Unorm, "lmx.test.graph.image");
+        graph.importTexture(image->rhi(), Format::RGBA8Unorm, "lmx.test.graph.image");
     const GraphTexture color =
-        graph.importTexture(**target, Format::BGRA8Unorm, "lmx.test.graph.target");
+        graph.importTexture(target->rhi(), Format::BGRA8Unorm, "lmx.test.graph.target");
 
     ComputePassDesc write;
     write.textureWrites.push_back(storage);
@@ -218,12 +225,16 @@ TEST_CASE("a graph-declared compute pass feeds a raster pass", "[gpu]") {
 
     graph.readbackTexture(nextVersion(color));
 
-    graph.execute(commands, (*device)->frameNumber());
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    graph.execute(commands, gpu->frameNumber());
+    gpu->submitAndEndFrame(commandsFrame);
+    gpu->waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
-    (*target)->readback(pixels.data(), pixels.size());
+    {
+        const auto readbackBytes =
+            lmx::render::readbackNow(*gpu, *target, lmx::render::TextureUse::RenderTarget);
+        std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
+    }
 
     const std::array<std::pair<uint32_t, uint32_t>, 3> probes = {
         {{0, 0}, {kSize - 1, 0}, {21, 42}}};
@@ -249,12 +260,12 @@ TEST_CASE("a retained frame record joins the timings of the frame it describes",
     constexpr uint32_t kFrames = 6;
     constexpr uint64_t kFillBytes = 256;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
-    lmx::engine::GpuContext timingSource{**device};
+    auto gpu = createTestGpu();
+    REQUIRE(gpu != nullptr);
+    lmx::engine::GpuContext timingSource{gpu->device()};
 
-    auto storage = (*device)->createBuffer(
+    auto storage = lmx::engine::GpuBuffer::create(
+        gpu->device(),
         {.size = kFillBytes, .storageRead = true, .label = "lmx.test.graph.retained"}, nullptr);
     INFO(errorOf(storage));
     REQUIRE(storage.has_value());
@@ -262,9 +273,10 @@ TEST_CASE("a retained frame record joins the timings of the frame it describes",
     lmx::app::FrameRecordRing records;
 
     const auto declareFrame = [&] {
-        CommandList& commands = (*device)->beginFrame();
+        auto commandsFrame = gpu->beginFrame();
+        auto& commands = commandsFrame.commands;
         RenderGraph graph;
-        const GraphBuffer target = graph.importBuffer(**storage, "lmx.test.graph.retained");
+        const GraphBuffer target = graph.importBuffer(storage->rhi(), "lmx.test.graph.retained");
 
         CopyPassDesc clear;
         clear.bufferDestinations.push_back(target);
@@ -276,10 +288,10 @@ TEST_CASE("a retained frame record joins the timings of the frame it describes",
                           });
         graph.exportBuffer(nextVersion(target));
 
-        records.retain(graph.execute(commands, (*device)->frameNumber()));
+        records.retain(graph.execute(commands, gpu->frameNumber()));
         const lmx::engine::PassTimingFrame published = timingSource.passTimings();
         records.joinTimings(published.frame, published.passes);
-        (*device)->endFrame(nullptr);
+        gpu->submitAndEndFrame(commandsFrame);
     };
 
     for (uint32_t frame = 0; frame < kFrames; ++frame) {
@@ -288,13 +300,13 @@ TEST_CASE("a retained frame record joins the timings of the frame it describes",
 
     // The one sequence passTimings() documents as publishing a specific frame: drain, then open one
     // more frame, which publishes the frame that just retired.
-    (*device)->waitIdle();
-    (*device)->beginFrame();
+    gpu->waitIdle();
+    auto emptyFrame = gpu->beginFrame();
     const lmx::engine::PassTimingFrame retired = timingSource.passTimings();
     const uint64_t measured = retired.frame;
     REQUIRE(records.joinTimings(measured, retired.passes));
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->submitAndEndFrame(emptyFrame);
+    gpu->waitIdle();
 
     const lmx::app::RetainedFrame* newest = records.newestTimedFrame();
     REQUIRE(newest != nullptr);
@@ -326,28 +338,28 @@ TEST_CASE("a graph-declared pass writes an extra color attachment", "[gpu]") {
     constexpr uint16_t kWrittenMotionX = 0x3400;
     constexpr uint16_t kWrittenMotionY = 0xB800;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
+    REQUIRE(gpu != nullptr);
 
-    auto color = makeProbeTarget(**device, "lmx.test.graph.mrtColor");
+    auto color = makeProbeTarget(*gpu, "lmx.test.graph.mrtColor");
     INFO(errorOf(color));
     REQUIRE(color.has_value());
 
-    auto motion = (*device)->createTexture({.width = kSize,
-                                            .height = kSize,
-                                            .format = Format::RG16Float,
-                                            .renderTarget = true,
-                                            .cpuReadback = true,
-                                            .label = "lmx.test.graph.mrtMotion"});
+    auto motion =
+        lmx::engine::GpuTexture::create(gpu->device(), {.width = kSize,
+                                                        .height = kSize,
+                                                        .format = Format::RG16Float,
+                                                        .renderTarget = true,
+                                                        .cpuReadback = true,
+                                                        .label = "lmx.test.graph.mrtMotion"});
     INFO(errorOf(motion));
     REQUIRE(motion.has_value());
 
-    auto library = (*device)->loadShaderLibrary("Shaders/MrtSmoke");
+    auto library = gpu->loadShaderLibrary("MrtSmoke");
     INFO(errorOf(library));
     REQUIRE(library.has_value());
 
-    auto pipeline = (*device)->createGraphicsPipeline(
+    auto pipeline = gpu->device().createGraphicsPipeline(
         {.library = library->get(),
          .vertexEntry = "vertexMain",
          .fragmentEntry = "fragmentMain",
@@ -358,13 +370,14 @@ TEST_CASE("a graph-declared pass writes an extra color attachment", "[gpu]") {
     INFO(errorOf(pipeline));
     REQUIRE(pipeline.has_value());
 
-    CommandList& commands = (*device)->beginFrame();
+    auto commandsFrame = gpu->beginFrame();
+    auto& commands = commandsFrame.commands;
 
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(**color, Format::BGRA8Unorm, "lmx.test.graph.mrtColor");
+        graph.importTexture(color->rhi(), Format::BGRA8Unorm, "lmx.test.graph.mrtColor");
     const GraphTexture motionVectors =
-        graph.importTexture(**motion, Format::RG16Float, "lmx.test.graph.mrtMotion");
+        graph.importTexture(motion->rhi(), Format::RG16Float, "lmx.test.graph.mrtMotion");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor, .clearColor = {0.0f, 1.0f, 0.0f, 1.0f}};
@@ -377,14 +390,22 @@ TEST_CASE("a graph-declared pass writes an extra color attachment", "[gpu]") {
     // The extra's version is the only sink, so it is also what keeps the pass out of the cull.
     graph.readbackTexture(nextVersion(motionVectors));
 
-    graph.execute(commands, (*device)->frameNumber());
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    graph.execute(commands, gpu->frameNumber());
+    gpu->submitAndEndFrame(commandsFrame);
+    gpu->waitIdle();
 
     std::vector<uint8_t> colorPixels(size_t{kSize} * kSize * 4);
-    (*color)->readback(colorPixels.data(), colorPixels.size());
+    {
+        const auto readbackBytes =
+            lmx::render::readbackNow(*gpu, *color, lmx::render::TextureUse::RenderTarget);
+        std::memcpy(colorPixels.data(), readbackBytes.data(), colorPixels.size());
+    }
     std::vector<uint8_t> motionPixels(size_t{kSize} * kSize * 2 * sizeof(uint16_t));
-    (*motion)->readback(motionPixels.data(), motionPixels.size());
+    {
+        const auto readbackBytes =
+            lmx::render::readbackNow(*gpu, *motion, lmx::render::TextureUse::RenderTarget);
+        std::memcpy(motionPixels.data(), readbackBytes.data(), motionPixels.size());
+    }
 
     const Pixel pixel = pixelAt(colorPixels, kSize / 2, kSize / 2);
     INFO(describe("color", kSize / 2, kSize / 2, pixel));

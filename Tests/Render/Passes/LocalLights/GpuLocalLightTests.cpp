@@ -4,6 +4,7 @@
 #include "Engine/Lights/LocalLightMath.h"
 #include "Engine/Scene/SceneTables.h"
 
+#include <cstring>
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
 #include <glm/vec3.hpp>
@@ -359,45 +360,52 @@ TEST_CASE("the punctual light shader matches its CPU mirror over a fixed sample 
     REQUIRE(exactZeros == 20);
     REQUIRE(coneEdges == 4);
 
-    auto device = rojoRHI::createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device);
-    auto library = (*device)->loadShaderLibrary("Shaders/PunctualLightOracle");
+    auto gpu = createTestGpu();
+
+    REQUIRE(gpu != nullptr);
+    auto library = gpu->loadShaderLibrary("PunctualLightOracle");
     INFO(errorOf(library));
     REQUIRE(library);
-    auto pipeline = (*device)->createComputePipeline({.library = library->get(),
-                                                      .computeEntry = "computeMain",
-                                                      .threadsPerThreadgroup = {1, 1, 1},
-                                                      .label = "lmx.test.punctualLight.pipeline"});
+    auto pipeline =
+        gpu->device().createComputePipeline({.library = library->get(),
+                                             .computeEntry = "computeMain",
+                                             .threadsPerThreadgroup = {1, 1, 1},
+                                             .label = "lmx.test.punctualLight.pipeline"});
     INFO(errorOf(pipeline));
     REQUIRE(pipeline);
 
-    auto sampleBuffer = (*device)->createBuffer({.size = samples.size() * sizeof(PunctualSample),
-                                                 .label = "lmx.test.punctualLight.samples"},
-                                                samples.data());
+    auto sampleBuffer = gpu->device().createBuffer({.size = samples.size() * sizeof(PunctualSample),
+                                                    .label = "lmx.test.punctualLight.samples"},
+                                                   samples.data());
     INFO(errorOf(sampleBuffer));
     REQUIRE(sampleBuffer);
-    auto output = (*device)->createBuffer({.size = samples.size() * sizeof(glm::vec4),
-                                           .storageWrite = true,
-                                           .cpuReadback = true,
-                                           .label = "lmx.test.punctualLight.output"},
-                                          nullptr);
+    auto output = lmx::engine::GpuBuffer::create(gpu->device(),
+                                                 {.size = samples.size() * sizeof(glm::vec4),
+                                                  .storageWrite = true,
+                                                  .cpuReadback = true,
+                                                  .label = "lmx.test.punctualLight.output"},
+                                                 nullptr);
     INFO(errorOf(output));
     REQUIRE(output);
 
     constexpr uint32_t kSampleSlot = 1;
-    rojoRHI::CommandList& commands = (*device)->beginFrame();
+    auto gpuFrame1 = gpu->beginFrame();
+    auto& commands = gpuFrame1.commands;
     commands.beginComputePass("lmx.test.punctualLight.evaluate");
     commands.bindComputePipeline(**pipeline);
-    commands.bindStorageBuffer(0, **output, rojoRHI::StorageAccess::Write);
+    commands.bindStorageBuffer(0, output->rhi(), rojoRHI::StorageAccess::Write);
     commands.bindBuffer(kSampleSlot, **sampleBuffer);
     commands.dispatch(static_cast<uint32_t>(samples.size()), 1, 1);
     commands.endComputePass();
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->submitAndEndFrame(gpuFrame1);
+    gpu->waitIdle();
 
     std::vector<glm::vec4> actual(samples.size());
-    (*output)->readback(actual.data(), actual.size() * sizeof(glm::vec4));
+    {
+        const auto readbackBytes = lmx::render::readbackNow(
+            *gpu, *output, lmx::render::BufferUse::StorageWrite, lmx::render::wholeBuffer(*output));
+        std::memcpy(actual.data(), readbackBytes.data(), actual.size() * sizeof(glm::vec4));
+    }
 
     for (size_t index = 0; index < samples.size(); ++index) {
         INFO("sample " << index << ": " << names[index]);

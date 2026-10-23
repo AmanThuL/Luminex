@@ -258,12 +258,13 @@ TEST_CASE("LightLab loads from the catalog with its requested population",
 
 //======================================================================================================================
 TEST_CASE("loadLightLabScene rejects out-of-range populations", "[gpu][scene][light-lab]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
-    REQUIRE_FALSE(lmx::test::loadCatalogScene(**device, "light-lab", 0, 0));
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
+    REQUIRE_FALSE(lmx::test::loadCatalogScene(*device, "light-lab", 0, 0));
     REQUIRE_FALSE(
-        lmx::test::loadCatalogScene(**device, "light-lab", engine::kMaxLocalLights + 1, 0));
-    REQUIRE_FALSE(lmx::test::loadCatalogScene(**device, "light-lab", engine::kMaxLocalLights, 1));
+        lmx::test::loadCatalogScene(*device, "light-lab", engine::kMaxLocalLights + 1, 0));
+    REQUIRE_FALSE(lmx::test::loadCatalogScene(*device, "light-lab", engine::kMaxLocalLights, 1));
 }
 
 //======================================================================================================================
@@ -290,11 +291,12 @@ TEST_CASE("LightLab grid brightness stays comparable as ranges shrink", "[scene]
 //======================================================================================================================
 TEST_CASE("LightLab document keeps seventeen saved objects at every CLI population",
           "[gpu][scene][light-lab][ux6-retirement]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
     for (const auto [lights, pile] : {std::pair{1u, 0u}, {64u, 10u}, {256u, 0u}, {4096u, 0u}}) {
         CAPTURE(lights, pile);
-        auto loaded = lmx::test::loadCatalogScene(**device, "light-lab", lights, pile);
+        auto loaded = lmx::test::loadCatalogScene(*device, "light-lab", lights, pile);
         REQUIRE(loaded);
         REQUIRE((*loaded)->objects.size() == 17);
         REQUIRE((*loaded)->localLights().size() == lights + pile);
@@ -316,6 +318,6 @@ TEST_CASE("LightLab document keeps seventeen saved objects at every CLI populati
         }
         REQUIRE(std::memcmp((*loaded)->animation.lightTracks.data(), tracks.data(),
                             tracks.size() * sizeof(asset::LightOrbitTrack)) == 0);
-        (*device)->waitIdle();
+        gpu->waitIdle();
     }
 }

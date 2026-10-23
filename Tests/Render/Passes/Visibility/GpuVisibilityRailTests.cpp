@@ -23,8 +23,9 @@ TEST_CASE("GPU VisibilityLab states and canonical output equal the CPU at three 
         for (double seconds : {0.0, 3.0, 6.0}) {
             world.animationTime = seconds;
             world.followCameraTrack(camera);
-            auto& commands = gpu->device().beginFrame();
-            REQUIRE(world.prepareFrame(gpu->device().frameNumber()));
+            auto commandsFrame = gpu->beginFrame();
+            auto& commands = commandsFrame.commands;
+            REQUIRE(world.prepareFrame(gpu->frameNumber()));
             std::vector<engine::DrawItem> items;
             auto view = render::buildSceneView(world, items, false);
             view.classifyMode = render::ClassifyMode::Gpu;
@@ -36,10 +37,10 @@ TEST_CASE("GPU VisibilityLab states and canonical output equal the CPU at three 
                                                              camera.viewMatrix());
             const auto expected = render::classifyView(planes, items, view.tables);
             (*renderer)->render(commands, camera, view);
-            const auto declared = gpu->device().frameNumber();
-            gpu->device().endFrame(nullptr);
+            const auto declared = gpu->frameNumber();
+            gpu->submitAndEndFrame(commandsFrame);
             world.commitFrame();
-            gpu->device().waitIdle();
+            gpu->waitIdle();
             (*renderer)->drainVisibilityAfterIdle();
             const auto results = (*renderer)->takeRetiredVisibility();
             REQUIRE(results.size() == 1);
@@ -69,7 +70,8 @@ TEST_CASE("Empty GPU view and classifier switches preserve final frame diagnosti
     std::vector<uint64_t> gpuFrames;
     for (auto classifier : {render::ClassifyMode::Gpu, render::ClassifyMode::Cpu,
                             render::ClassifyMode::Gpu, render::ClassifyMode::Gpu}) {
-        auto& commands = gpu->device().beginFrame();
+        auto commandsFrame = gpu->beginFrame();
+        auto& commands = commandsFrame.commands;
         render::SceneView view;
         view.temporal.enabled = false;
         view.classifyMode = classifier;
@@ -77,10 +79,10 @@ TEST_CASE("Empty GPU view and classifier switches preserve final frame diagnosti
         view.submission = render::SubmissionMode::Batched;
         (*renderer)->render(commands, engine::Camera{}, view);
         if (classifier == render::ClassifyMode::Gpu)
-            gpuFrames.push_back(gpu->device().frameNumber());
-        gpu->device().endFrame(nullptr);
+            gpuFrames.push_back(gpu->frameNumber());
+        gpu->submitAndEndFrame(commandsFrame);
     }
-    gpu->device().waitIdle();
+    gpu->waitIdle();
     (*renderer)->drainVisibilityAfterIdle();
     const auto results = (*renderer)->takeRetiredVisibility();
     REQUIRE(results.size() == gpuFrames.size());

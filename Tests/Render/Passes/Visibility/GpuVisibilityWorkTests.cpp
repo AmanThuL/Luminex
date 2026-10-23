@@ -1,7 +1,9 @@
 #include "Render/Passes/Visibility/GpuVisibility.h"
+
 #include "Support/GpuTestSupport.h"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <numeric>
 
@@ -22,6 +24,8 @@ struct WorkFixture {
     rojoRHI::Buffer* lastRows = nullptr;
     rojoRHI::Buffer* lastArgs = nullptr;
     rojoRHI::Buffer* lastStates = nullptr;
+    const lmx::engine::GpuBuffer* lastRowsOwner = nullptr;
+    const lmx::engine::GpuBuffer* lastArgsOwner = nullptr;
 
     //==================================================================================================================
     explicit WorkFixture(uint32_t count) {
@@ -43,7 +47,7 @@ struct WorkFixture {
         resize(count);
     }
     //==================================================================================================================
-    ~WorkFixture() { device->waitIdle(); }
+    ~WorkFixture() { gpu->waitIdle(); }
 
     //==================================================================================================================
     void resize(uint32_t count) {
@@ -69,8 +73,9 @@ struct WorkFixture {
             rows.empty() ? nullptr : rows.data());
         REQUIRE(input);
         instances.push_back(std::move(*input));
-        auto& commands = device->beginFrame();
-        const auto frame = device->frameNumber();
+        auto commandsFrame = gpu->beginFrame();
+        auto& commands = commandsFrame.commands;
+        const auto frame = gpu->frameNumber();
         if (frame >= 3)
             visibility->retireThrough(frame - 3);
         pool->beginFrame();
@@ -86,7 +91,9 @@ struct WorkFixture {
         view.classifyCheck = true;
         REQUIRE(submission->prepare(frame, view, {}, {}));
         lastRows = &submission->scene().rows->rhi();
+        lastRowsOwner = submission->scene().rows;
         lastArgs = &submission->scene().arguments->rhi();
+        lastArgsOwner = submission->scene().arguments;
         std::vector<uint32_t> rowSentinels(lastRows->size() / 4, 0xcdcdcdcdu);
         std::vector<uint32_t> argSentinels(lastArgs->size() / 4, 0xcdcdcdcdu);
         lastRows->write(0, rowSentinels.data(), lastRows->size());
@@ -143,14 +150,14 @@ struct WorkFixture {
                                    rojoRHI::BufferUse::StorageWrite);
         }
         graph.execute(commands, frame);
-        device->endFrame(nullptr);
+        gpu->submitAndEndFrame(commandsFrame);
         return frame;
     }
 
     //==================================================================================================================
     std::vector<render::VisibilityStatus> drain() {
-        device->waitIdle();
-        visibility->retireThrough(device->frameNumber());
+        gpu->waitIdle();
+        visibility->retireThrough(gpu->frameNumber());
         return visibility->takeRetired();
     }
 };
@@ -197,7 +204,13 @@ TEST_CASE("GPU dense scan carries across more than 256 chunks deterministically"
         REQUIRE(results.size() == 1);
         requireExact(results[0]);
         std::vector<uint32_t> bytes(fixture.lastRows->size() / 4);
-        fixture.lastRows->readback(bytes.data(), fixture.lastRows->size());
+        {
+            REQUIRE(&fixture.lastRowsOwner->rhi() == fixture.lastRows);
+            const auto readbackBytes = lmx::render::readbackNow(
+                *fixture.gpu, *fixture.lastRowsOwner, lmx::render::BufferUse::StorageWrite,
+                {0, fixture.lastRows->size()});
+            std::memcpy(bytes.data(), readbackBytes.data(), fixture.lastRows->size());
+        }
         if (frame)
             REQUIRE(bytes == previous);
         previous = std::move(bytes);
@@ -223,11 +236,23 @@ TEST_CASE("GPU capacities drop rows and commands without writing guard words",
             for (size_t i = capacities[2]; i < states.size(); ++i)
                 REQUIRE(states[i] == 0xcdcdcdcdu);
             std::vector<uint32_t> rows(fixture.lastRows->size() / 4);
-            fixture.lastRows->readback(rows.data(), fixture.lastRows->size());
+            {
+                REQUIRE(&fixture.lastRowsOwner->rhi() == fixture.lastRows);
+                const auto readbackBytes = lmx::render::readbackNow(
+                    *fixture.gpu, *fixture.lastRowsOwner, lmx::render::BufferUse::StorageWrite,
+                    {0, fixture.lastRows->size()});
+                std::memcpy(rows.data(), readbackBytes.data(), fixture.lastRows->size());
+            }
             for (size_t i = capacities[0]; i < rows.size(); ++i)
                 REQUIRE(rows[i] == 0xcdcdcdcdu);
             std::vector<uint32_t> args(fixture.lastArgs->size() / 4);
-            fixture.lastArgs->readback(args.data(), fixture.lastArgs->size());
+            {
+                REQUIRE(&fixture.lastArgsOwner->rhi() == fixture.lastArgs);
+                const auto readbackBytes = lmx::render::readbackNow(
+                    *fixture.gpu, *fixture.lastArgsOwner, lmx::render::BufferUse::StorageWrite,
+                    {0, fixture.lastArgs->size()});
+                std::memcpy(args.data(), readbackBytes.data(), fixture.lastArgs->size());
+            }
             for (size_t i = capacities[1] * 5; i < args.size(); ++i)
                 REQUIRE(args[i] == 0xcdcdcdcdu);
         }
@@ -314,9 +339,21 @@ TEST_CASE("GPU disabled rows contribute only disabled counters and no work in ei
             }
             if (mode == render::SubmissionMode::Indirect) {
                 std::vector<uint32_t> rows(fixture.lastRows->size() / 4);
-                fixture.lastRows->readback(rows.data(), fixture.lastRows->size());
+                {
+                    REQUIRE(&fixture.lastRowsOwner->rhi() == fixture.lastRows);
+                    const auto readbackBytes = lmx::render::readbackNow(
+                        *fixture.gpu, *fixture.lastRowsOwner, lmx::render::BufferUse::StorageWrite,
+                        {0, fixture.lastRows->size()});
+                    std::memcpy(rows.data(), readbackBytes.data(), fixture.lastRows->size());
+                }
                 std::vector<rojoRHI::DrawIndexedIndirectArgs> args(fixture.lastArgs->size() / 20);
-                fixture.lastArgs->readback(args.data(), fixture.lastArgs->size());
+                {
+                    REQUIRE(&fixture.lastArgsOwner->rhi() == fixture.lastArgs);
+                    const auto readbackBytes = lmx::render::readbackNow(
+                        *fixture.gpu, *fixture.lastArgsOwner, lmx::render::BufferUse::StorageWrite,
+                        {0, fixture.lastArgs->size()});
+                    std::memcpy(args.data(), readbackBytes.data(), fixture.lastArgs->size());
+                }
                 for (uint32_t i = 0; i < 513; i += 5) {
                     REQUIRE(rows[i] == 0xcdcdcdcdu);
                     REQUIRE(rows[513 + i] == 0xcdcdcdcdu);

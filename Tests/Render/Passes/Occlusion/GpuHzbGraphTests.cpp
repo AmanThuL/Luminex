@@ -20,8 +20,9 @@ TEST_CASE("occlusion graph roots every HZB mip and reads the immediately precedi
     TransientPool pool(gpu->device());
     const auto camera = lmx::engine::cameraFromScene((*scene)->initialCamera);
     for (uint32_t frame = 0; frame < 2; ++frame) {
-        auto& commands = gpu->device().beginFrame();
-        REQUIRE((*scene)->prepareFrame(gpu->device().frameNumber()));
+        auto gpuFrame1 = gpu->beginFrame();
+        auto& commands = gpuFrame1.commands;
+        REQUIRE((*scene)->prepareFrame(gpu->frameNumber()));
         std::vector<lmx::engine::DrawItem> items;
         auto view = buildSceneView(**scene, items, false);
         view.classifyMode = ClassifyMode::Gpu;
@@ -31,7 +32,7 @@ TEST_CASE("occlusion graph roots every HZB mip and reads the immediately precedi
         pool.beginFrame();
         RenderGraph graph(pool);
         graph.presentTexture((*renderer)->declarePasses(graph, commands, camera, view));
-        const auto record = graph.compileFrame(gpu->device().frameNumber());
+        const auto record = graph.compileFrame(gpu->frameNumber());
         INFO((record ? "" : record.error().message));
         REQUIRE(record);
         const auto& debug = record->debug;
@@ -49,10 +50,10 @@ TEST_CASE("occlusion graph roots every HZB mip and reads the immediately precedi
             return debug.resources[use.resource].name == sourceName &&
                    use.role == UseRole::ShaderRead;
         }));
-        graph.execute(commands, gpu->device().frameNumber());
-        gpu->device().endFrame(nullptr);
+        graph.execute(commands, gpu->frameNumber());
+        gpu->submitAndEndFrame(gpuFrame1);
         (*scene)->commitFrame();
-        gpu->device().waitIdle();
+        gpu->waitIdle();
         requireMatchesGolden(dumpCompiledFrame(*record), frame == 0 ? "frame-occlusion-first.txt"
                                                                     : "frame-occlusion-steady.txt");
     }

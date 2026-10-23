@@ -48,15 +48,17 @@ std::unique_ptr<render::Renderer> tableRenderer(engine::GpuContext& gpu) {
 }
 
 //======================================================================================================================
-std::unique_ptr<rojoRHI::Buffer> submitTables(rojoRHI::Device& device, engine::Scene& scene,
-                                              render::Renderer& renderer, bool wait = true) {
-    auto snapshot = device.createBuffer({.size = uint64_t{kSize} * kSize * 4,
-                                         .cpuReadback = true,
-                                         .label = "lmx.test.sceneTables.frame"},
-                                        nullptr);
+engine::GpuBuffer submitTables(engine::GpuContext& gpu, engine::Scene& scene,
+                               render::Renderer& renderer, bool wait = true) {
+    auto snapshot = engine::GpuBuffer::create(gpu.device(),
+                                              {.size = uint64_t{kSize} * kSize * 4,
+                                               .cpuReadback = true,
+                                               .label = "lmx.test.sceneTables.frame"},
+                                              nullptr);
     REQUIRE(snapshot.has_value());
-    auto& commands = device.beginFrame();
-    auto prepared = scene.prepareFrame(device.frameNumber());
+    auto gpuFrame = gpu.beginFrame();
+    auto& commands = gpuFrame.commands;
+    auto prepared = scene.prepareFrame(gpu.frameNumber());
     INFO(errorOf(prepared));
     REQUIRE(prepared.has_value());
     std::vector<engine::DrawItem> items;
@@ -71,7 +73,7 @@ std::unique_ptr<rojoRHI::Buffer> submitTables(rojoRHI::Device& device, engine::S
                             rojoRHI::TextureUse::CopySource);
     commands.beginCopyPass("lmx.test.sceneTables.preserveFrame");
     commands.copyTextureToBuffer(renderer.colorTarget().rhi(), {.width = kSize, .height = kSize},
-                                 **snapshot, {.bytesPerRow = kSize * 4});
+                                 snapshot->rhi(), {.bytesPerRow = kSize * 4});
     commands.endCopyPass();
     commands.textureBarrier(renderer.colorTarget().rhi(), rojoRHI::TextureUse::CopySource,
                             rojoRHI::TextureUse::RenderTarget);
@@ -79,18 +81,22 @@ std::unique_ptr<rojoRHI::Buffer> submitTables(rojoRHI::Device& device, engine::S
                               .clear = false,
                               .label = "lmx.test.sceneTables.restoreTarget"});
     commands.endRenderPass();
-    device.endFrame(nullptr);
+    gpu.submitAndEndFrame(gpuFrame);
     scene.commitFrame();
     if (wait) {
-        device.waitIdle();
+        gpu.waitIdle();
     }
     return std::move(*snapshot);
 }
 
 //======================================================================================================================
-std::vector<uint8_t> tablePixels(rojoRHI::Buffer& buffer) {
+std::vector<uint8_t> tablePixels(engine::GpuContext& gpu, const engine::GpuBuffer& buffer) {
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
-    buffer.readback(pixels.data(), pixels.size());
+    {
+        const auto bytes = lmx::render::readbackNow(
+            gpu, buffer, lmx::render::BufferUse::CopyDestination, {0, pixels.size()});
+        std::memcpy(pixels.data(), bytes.data(), pixels.size());
+    }
     return pixels;
 }
 
@@ -119,17 +125,26 @@ void requireBlack(const std::vector<uint8_t>& pixels, float x) {
 }
 
 //======================================================================================================================
-std::vector<engine::InstanceRow> instanceRows(engine::Scene& scene) {
+std::vector<engine::InstanceRow> instanceRows(engine::GpuContext& gpu, engine::Scene& scene) {
     const auto tables = scene.tables();
     std::vector<engine::InstanceRow> rows(tables.instanceCount);
-    tables.instances->rhi().readback(rows.data(), rows.size() * sizeof(engine::InstanceRow));
+    {
+        const auto bytes =
+            lmx::render::readbackNow(gpu, *tables.instances, lmx::render::BufferUse::ShaderRead,
+                                     {0, rows.size() * sizeof(engine::InstanceRow)});
+        std::memcpy(rows.data(), bytes.data(), rows.size() * sizeof(engine::InstanceRow));
+    }
     return rows;
 }
 
 //======================================================================================================================
-glm::vec2 tableMotion(render::Renderer& renderer, float x) {
+glm::vec2 tableMotion(engine::GpuContext& gpu, render::Renderer& renderer, float x) {
     std::vector<uint32_t> motion(size_t{kSize} * kSize);
-    renderer.motionTarget()->readback(motion.data(), motion.size() * sizeof(uint32_t));
+    {
+        const auto bytes = lmx::render::readbackNow(gpu, *renderer.motionTexture(),
+                                                    lmx::render::TextureUse::RenderTarget);
+        std::memcpy(motion.data(), bytes.data(), motion.size() * sizeof(uint32_t));
+    }
     return glm::unpackHalf2x16(motion[size_t{kSize / 2} * kSize + tablePixelX(x)]);
 }
 
@@ -147,21 +162,21 @@ TEST_CASE("Scene tables share geometry and material without sharing motion",
     REQUIRE(first != second);
     REQUIRE(scene.objects[0].mesh == scene.objects[1].mesh);
     REQUIRE(scene.objects[0].material == scene.objects[1].material);
-    auto frame = submitTables(gpu->device(), scene, *renderer);
-    requireRed(tablePixels(*frame), -0.6f);
-    requireRed(tablePixels(*frame), 0.6f);
+    auto frame = submitTables(*gpu, scene, *renderer);
+    requireRed(tablePixels(*gpu, frame), -0.6f);
+    requireRed(tablePixels(*gpu, frame), 0.6f);
     scene.tryObject(first)->position.x = -0.2f;
-    frame = submitTables(gpu->device(), scene, *renderer);
+    frame = submitTables(*gpu, scene, *renderer);
     REQUIRE(renderer->temporalStatus().lastReset == render::HistoryResetReason::None);
-    requireBlack(tablePixels(*frame), -0.6f);
-    requireRed(tablePixels(*frame), -0.2f);
-    requireRed(tablePixels(*frame), 0.6f);
-    const auto rows = instanceRows(scene);
+    requireBlack(tablePixels(*gpu, frame), -0.6f);
+    requireRed(tablePixels(*gpu, frame), -0.2f);
+    requireRed(tablePixels(*gpu, frame), 0.6f);
+    const auto rows = instanceRows(*gpu, scene);
     REQUIRE(rows[first.slot].previousModel[3].x == -0.6f);
     REQUIRE(rows[first.slot].model[3].x == -0.2f);
     REQUIRE(rows[second.slot].previousModel == rows[second.slot].model);
-    REQUIRE(tableMotion(*renderer, 0.6f) == glm::vec2(0));
-    REQUIRE(tableMotion(*renderer, -0.2f).x > 0.0f);
+    REQUIRE(tableMotion(*gpu, *renderer, 0.6f) == glm::vec2(0));
+    REQUIRE(tableMotion(*gpu, *renderer, -0.2f).x > 0.0f);
 }
 
 //======================================================================================================================
@@ -173,15 +188,15 @@ TEST_CASE("Scene removal preserves row identity and the image of remaining objec
     const auto retained = scene.objects[1].id;
     REQUIRE(scene.finalize(gpu->device()).has_value());
     auto renderer = tableRenderer(*gpu);
-    auto before = submitTables(gpu->device(), scene, *renderer);
+    auto before = submitTables(*gpu, scene, *renderer);
     scene.removeObject(removed);
     scene.tryObject(retained)->position.x = 0.0f;
-    auto after = submitTables(gpu->device(), scene, *renderer);
+    auto after = submitTables(*gpu, scene, *renderer);
     REQUIRE(renderer->temporalStatus().lastReset == render::HistoryResetReason::None);
     REQUIRE(scene.objects[0].id == retained);
     REQUIRE_FALSE(scene.tryObject(removed));
-    requireRed(tablePixels(*after), 0.0f);
-    requireBlack(tablePixels(*after), -0.6f);
+    requireRed(tablePixels(*gpu, after), 0.0f);
+    requireBlack(tablePixels(*gpu, after), -0.6f);
     auto authored = tableScene();
     const auto mesh = authored.objects[0].mesh;
     const auto material = authored.objects[0].material;
@@ -190,8 +205,8 @@ TEST_CASE("Scene removal preserves row identity and the image of remaining objec
     authored.addObject({.position = {0, 0, -3}, .mesh = mesh, .material = material});
     REQUIRE(authored.finalize(gpu->device()).has_value());
     auto referenceRenderer = tableRenderer(*gpu);
-    auto reference = submitTables(gpu->device(), authored, *referenceRenderer);
-    REQUIRE(tablePixels(*after) == tablePixels(*reference));
+    auto reference = submitTables(*gpu, authored, *referenceRenderer);
+    REQUIRE(tablePixels(*gpu, after) == tablePixels(*gpu, reference));
 }
 
 //======================================================================================================================
@@ -201,7 +216,7 @@ TEST_CASE("A reused scene row seeds its own pose and renders zero first-frame mo
     auto scene = tableScene();
     REQUIRE(scene.finalize(gpu->device()).has_value());
     auto renderer = tableRenderer(*gpu);
-    auto before = submitTables(gpu->device(), scene, *renderer);
+    auto before = submitTables(*gpu, scene, *renderer);
     const auto old = scene.objects[0];
     scene.removeObject(old.id);
     const auto replacement =
@@ -209,13 +224,13 @@ TEST_CASE("A reused scene row seeds its own pose and renders zero first-frame mo
     REQUIRE(replacement.slot == old.id.slot);
     REQUIRE(replacement.generation != old.id.generation);
     REQUIRE_FALSE(scene.tryObject(old.id));
-    auto after = submitTables(gpu->device(), scene, *renderer);
+    auto after = submitTables(*gpu, scene, *renderer);
     REQUIRE(renderer->temporalStatus().lastReset == render::HistoryResetReason::None);
-    requireRed(tablePixels(*after), 0.0f);
-    const auto row = instanceRows(scene)[replacement.slot];
+    requireRed(tablePixels(*gpu, after), 0.0f);
+    const auto row = instanceRows(*gpu, scene)[replacement.slot];
     REQUIRE(row.model == row.previousModel);
     REQUIRE(row.model[3].x == 0.0f);
-    REQUIRE(tableMotion(*renderer, 0.0f) == glm::vec2(0));
+    REQUIRE(tableMotion(*gpu, *renderer, 0.0f) == glm::vec2(0));
 }
 
 //======================================================================================================================
@@ -230,21 +245,21 @@ TEST_CASE("Scene replacement rejects foreign identities while submitted scenes o
     REQUIRE(second.finalize(gpu->device()).has_value());
     second.objects[0].position.x = 0.0f;
     auto renderer = tableRenderer(*gpu);
-    std::vector<std::unique_ptr<rojoRHI::Buffer>> frames;
-    frames.push_back(submitTables(gpu->device(), *first, *renderer, false));
-    frames.push_back(submitTables(gpu->device(), second, *renderer, false));
+    std::vector<engine::GpuBuffer> frames;
+    frames.push_back(submitTables(*gpu, *first, *renderer, false));
+    frames.push_back(submitTables(*gpu, second, *renderer, false));
     REQUIRE(renderer->temporalStatus().lastReset == render::HistoryResetReason::SceneChanged);
-    frames.push_back(submitTables(gpu->device(), *first, *renderer, false));
-    frames.push_back(submitTables(gpu->device(), second, *renderer, false));
+    frames.push_back(submitTables(*gpu, *first, *renderer, false));
+    frames.push_back(submitTables(*gpu, second, *renderer, false));
     REQUIRE(renderer->temporalStatus().lastReset == render::HistoryResetReason::SceneChanged);
-    gpu->device().waitIdle();
-    requireRed(tablePixels(*frames[0]), -0.6f);
-    requireRed(tablePixels(*frames[1]), 0.0f);
-    requireRed(tablePixels(*frames[2]), -0.6f);
-    requireRed(tablePixels(*frames[3]), 0.0f);
+    gpu->waitIdle();
+    requireRed(tablePixels(*gpu, frames[0]), -0.6f);
+    requireRed(tablePixels(*gpu, frames[1]), 0.0f);
+    requireRed(tablePixels(*gpu, frames[2]), -0.6f);
+    requireRed(tablePixels(*gpu, frames[3]), 0.0f);
     first.reset();
-    auto final = submitTables(gpu->device(), second, *renderer);
-    requireRed(tablePixels(*final), 0.0f);
+    auto final = submitTables(*gpu, second, *renderer);
+    requireRed(tablePixels(*gpu, final), 0.0f);
 }
 
 //======================================================================================================================
@@ -281,17 +296,21 @@ TEST_CASE("Scene texture fallbacks preserve factors and stale texture handles fa
     const auto materialId = scene.objects[0].material;
     REQUIRE(scene.finalize(gpu->device()).has_value());
     auto renderer = tableRenderer(*gpu);
-    auto fallback = submitTables(gpu->device(), scene, *renderer);
+    auto fallback = submitTables(*gpu, scene, *renderer);
     auto& material = scene.material(materialId);
     material.diffuse = whiteId;
     material.metallicRoughness = whiteId;
     material.occlusion = whiteId;
     material.emissiveMap = whiteId;
-    auto explicitWhite = submitTables(gpu->device(), scene, *renderer);
-    REQUIRE(tablePixels(*fallback) == tablePixels(*explicitWhite));
-    requireRed(tablePixels(*fallback), -0.6f);
+    auto explicitWhite = submitTables(*gpu, scene, *renderer);
+    REQUIRE(tablePixels(*gpu, fallback) == tablePixels(*gpu, explicitWhite));
+    requireRed(tablePixels(*gpu, fallback), -0.6f);
     engine::MaterialRow row{};
-    scene.tables().materials->rhi().readback(&row, sizeof(row));
+    {
+        const auto bytes = lmx::render::readbackNow(
+            *gpu, *scene.tables().materials, lmx::render::BufferUse::ShaderRead, {0, sizeof(row)});
+        std::memcpy(&row, bytes.data(), sizeof(row));
+    }
     REQUIRE((row.flags & engine::kMaterialHasNormalMap) == 0);
 }
 
@@ -302,38 +321,38 @@ TEST_CASE("Scene table growth keeps stable rows and retires old buffers after th
     auto scene = tableScene();
     REQUIRE(scene.finalize(gpu->device()).has_value());
     auto renderer = tableRenderer(*gpu);
-    auto initial = submitTables(gpu->device(), scene, *renderer, false);
+    auto initial = submitTables(*gpu, scene, *renderer, false);
     const auto old = scene.tables();
     const auto retained = scene.objects[0].id;
     const auto mesh = scene.objects[0].mesh;
     const auto material = scene.objects[0].material;
-    const uint64_t lastFrame = gpu->device().frameNumber();
+    const uint64_t lastFrame = gpu->frameNumber();
     const uint32_t capacity = scene.tableStats().instanceCapacity;
     while (scene.objects.size() <= capacity) {
         scene.addObject({.position = {0, 0, -3}, .mesh = mesh, .material = material});
     }
-    std::vector<std::unique_ptr<rojoRHI::Buffer>> frames;
-    frames.push_back(submitTables(gpu->device(), scene, *renderer, false));
+    std::vector<engine::GpuBuffer> frames;
+    frames.push_back(submitTables(*gpu, scene, *renderer, false));
     REQUIRE(renderer->temporalStatus().lastReset == render::HistoryResetReason::None);
     REQUIRE(scene.tableStats().growthEvents == 1);
     REQUIRE(scene.tableStats().instanceCapacity == capacity * 2);
     REQUIRE(scene.tableStats().pendingReleaseBuffers == 3);
     REQUIRE(scene.tables().instances != old.instances);
     REQUIRE(scene.tryObject(retained));
-    frames.push_back(submitTables(gpu->device(), scene, *renderer, false));
-    REQUIRE(gpu->device().frameNumber() == lastFrame + 2);
+    frames.push_back(submitTables(*gpu, scene, *renderer, false));
+    REQUIRE(gpu->frameNumber() == lastFrame + 2);
     REQUIRE(scene.tableStats().pendingReleaseBuffers == 3);
-    frames.push_back(submitTables(gpu->device(), scene, *renderer, false));
-    REQUIRE(gpu->device().frameNumber() == lastFrame + 3);
+    frames.push_back(submitTables(*gpu, scene, *renderer, false));
+    REQUIRE(gpu->frameNumber() == lastFrame + 3);
     REQUIRE(scene.tableStats().pendingReleaseBuffers == 0);
-    gpu->device().waitIdle();
-    requireRed(tablePixels(*initial), -0.6f);
+    gpu->waitIdle();
+    requireRed(tablePixels(*gpu, initial), -0.6f);
     for (const auto& frame : frames) {
-        requireRed(tablePixels(*frame), -0.6f);
-        requireRed(tablePixels(*frame), 0.0f);
+        requireRed(tablePixels(*gpu, frame), -0.6f);
+        requireRed(tablePixels(*gpu, frame), 0.0f);
     }
-    REQUIRE(instanceRows(scene)[retained.slot].model[3].x == -0.6f);
-    auto settled = submitTables(gpu->device(), scene, *renderer);
+    REQUIRE(instanceRows(*gpu, scene)[retained.slot].model[3].x == -0.6f);
+    auto settled = submitTables(*gpu, scene, *renderer);
     REQUIRE(scene.tableStats().rowsWritten == 0);
     REQUIRE(scene.tableStats().bytesWritten == 0);
 }
@@ -350,11 +369,11 @@ TEST_CASE("Scene table slots preserve each submitted transform across three-fram
     std::array<const lmx::engine::GpuBuffer*, 3> slotBuffers{};
     std::array<float, 3> slotPositions{};
     std::array<float, 3> slotPrevious{};
-    std::vector<std::unique_ptr<rojoRHI::Buffer>> frames;
+    std::vector<engine::GpuBuffer> frames;
     for (size_t i = 0; i < positions.size(); ++i) {
         scene.objects[0].position.x = positions[i];
         const float previous = scene.objects[0].previousModel[3].x;
-        frames.push_back(submitTables(gpu->device(), scene, *renderer, false));
+        frames.push_back(submitTables(*gpu, scene, *renderer, false));
         if (i > 0) {
             REQUIRE(renderer->temporalStatus().lastReset == render::HistoryResetReason::None);
         }
@@ -363,9 +382,9 @@ TEST_CASE("Scene table slots preserve each submitted transform across three-fram
         slotPositions[slot] = positions[i];
         slotPrevious[slot] = previous;
     }
-    gpu->device().waitIdle();
+    gpu->waitIdle();
     for (size_t i = 0; i < positions.size(); ++i) {
-        const auto pixels = tablePixels(*frames[i]);
+        const auto pixels = tablePixels(*gpu, frames[i]);
         requireRed(pixels, positions[i]);
         for (float other : {-0.7f, 0.0f, 0.7f}) {
             if (other != positions[i]) {
@@ -376,7 +395,11 @@ TEST_CASE("Scene table slots preserve each submitted transform across three-fram
     for (uint32_t slot = 0; slot < 3; ++slot) {
         engine::InstanceRow row{};
         REQUIRE(slotBuffers[slot]);
-        slotBuffers[slot]->rhi().readback(&row, sizeof(row));
+        {
+            const auto bytes = lmx::render::readbackNow(
+                *gpu, *slotBuffers[slot], lmx::render::BufferUse::ShaderRead, {0, sizeof(row)});
+            std::memcpy(&row, bytes.data(), sizeof(row));
+        }
         REQUIRE(row.model[3].x == slotPositions[slot]);
         REQUIRE(row.previousModel[3].x == slotPrevious[slot]);
     }
@@ -400,7 +423,7 @@ TEST_CASE("Local light table slots preserve each submitted row across three-fram
     const std::array<float, 6> positions = {-2.1f, -1.4f, -0.7f, 0.7f, 1.4f, 2.1f};
     std::array<const lmx::engine::GpuBuffer*, 3> slotBuffers{};
     std::array<float, 3> slotPositions{};
-    std::vector<std::unique_ptr<rojoRHI::Buffer>> frames;
+    std::vector<engine::GpuBuffer> frames;
     for (size_t i = 0; i < positions.size(); ++i) {
         REQUIRE(scene
                     .updateLight(*light, {.type = engine::LocalLightType::Point,
@@ -409,16 +432,20 @@ TEST_CASE("Local light table slots preserve each submitted row across three-fram
                                           .intensity = 1.0f,
                                           .range = 5.0f})
                     .has_value());
-        frames.push_back(submitTables(gpu->device(), scene, *renderer, false));
+        frames.push_back(submitTables(*gpu, scene, *renderer, false));
         const uint32_t slot = scene.tableStats().slot;
         slotBuffers[slot] = scene.tables().lights;
         slotPositions[slot] = positions[i];
     }
-    gpu->device().waitIdle();
+    gpu->waitIdle();
     for (uint32_t slot = 0; slot < 3; ++slot) {
         engine::LightRow row{};
         REQUIRE(slotBuffers[slot]);
-        slotBuffers[slot]->rhi().readback(&row, sizeof(row));
+        {
+            const auto bytes = lmx::render::readbackNow(
+                *gpu, *slotBuffers[slot], lmx::render::BufferUse::ShaderRead, {0, sizeof(row)});
+            std::memcpy(&row, bytes.data(), sizeof(row));
+        }
         REQUIRE(row.position.x == slotPositions[slot]);
         REQUIRE(row.range == 5.0f);
     }
@@ -446,17 +473,17 @@ TEST_CASE(
     scene.material(material).emissiveMap = id;
     REQUIRE(scene.finalize(gpu->device()).has_value());
     auto renderer = tableRenderer(*gpu);
-    auto textured = submitTables(gpu->device(), scene, *renderer, false);
+    auto textured = submitTables(*gpu, scene, *renderer, false);
     scene.material(material).emissiveMap.reset();
     scene.removeTexture(id);
     REQUIRE_FALSE(scene.tryTexture(id));
-    std::vector<std::unique_ptr<rojoRHI::Buffer>> fallback;
+    std::vector<engine::GpuBuffer> fallback;
     for (uint32_t frame = 0; frame < 3; ++frame) {
-        fallback.push_back(submitTables(gpu->device(), scene, *renderer, false));
+        fallback.push_back(submitTables(*gpu, scene, *renderer, false));
     }
-    gpu->device().waitIdle();
-    requireBlack(tablePixels(*textured), -0.6f);
+    gpu->waitIdle();
+    requireBlack(tablePixels(*gpu, textured), -0.6f);
     for (const auto& frame : fallback) {
-        requireRed(tablePixels(*frame), -0.6f);
+        requireRed(tablePixels(*gpu, frame), -0.6f);
     }
 }

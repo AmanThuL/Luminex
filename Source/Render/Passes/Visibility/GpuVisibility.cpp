@@ -139,14 +139,9 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rojoRHI::Command
     status.submission.chunkBytes = tables.chunks.size() * sizeof(ChunkRecord);
     status.submission.stateBytes = uint64_t{slot.capacity} * 4;
     status.submission.counterBytes = 2 * kVisibilityCounterWords * sizeof(uint32_t);
-    Pending pending{.status = status,
-                    .tables = tables,
-                    .params = params,
-                    .geometry = submission.arguments,
-                    .states = &slot.states.rhi(),
-                    .counters = &slot.counters.rhi(),
-                    .rows = &submission.scene.rows->rhi(),
-                    .arguments = &submission.scene.arguments->rhi()};
+    Pending pending{
+        .status = status, .tables = tables, .params = params, .geometry = submission.arguments};
+    const auto tickets = pending.tickets;
     if (view.classifyCheck)
         for (uint32_t v = 0; v < 2; ++v)
             for (uint32_t i = 0; i < tables.views[v].candidateCount; ++i) {
@@ -191,6 +186,17 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rojoRHI::Command
         classify.shaderTextureReads.push_back(pyramid);
     classify.bufferWrites = {states, nextVersion(counters), counts};
     const auto chunkCount = static_cast<uint32_t>(tables.chunks.size());
+    // The regions cover what retirement can read: each count is final at declaration.
+    const uint64_t stateBytes = uint64_t{std::min(params.candidateCount, params.stateCapacity)} * 4;
+    const uint64_t rowBytes = uint64_t{std::min(params.candidateCount, params.rowCapacity)} * 4;
+    const uint64_t argumentBytes =
+        uint64_t{std::min<uint32_t>(static_cast<uint32_t>(tables.runs.size()),
+                                    params.argumentCapacity)} *
+        sizeof(rojoRHI::DrawIndexedIndirectArgs);
+    const engine::GpuBuffer* const stateOwner = &slot.states;
+    const engine::GpuBuffer* const counterOwner = &slot.counters;
+    const engine::GpuBuffer* const rowOwner = submission.scene.rows;
+    const engine::GpuBuffer* const argumentOwner = submission.scene.arguments;
     graph.addComputePass(
         "lmx.pass.visibility.classify", std::move(classify),
         [=, this, &commands](const PassResources& resources) {
@@ -208,6 +214,8 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rojoRHI::Command
             bindStorage(resources, 8, nextVersion(counters), rojoRHI::StorageAccess::ReadWrite);
             bindStorage(resources, 9, counts, rojoRHI::StorageAccess::Write);
             commands.dispatch(std::max(1u, chunkCount), 1, 1);
+            tickets->states = recordReadback(m_gpu, commands, *stateOwner, BufferUse::StorageWrite,
+                                             {0, stateBytes});
         });
     if (params.layout) {
         ComputePassDesc scan;
@@ -252,6 +260,12 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rojoRHI::Command
             bindStorage(resources, 11, rows, rojoRHI::StorageAccess::Write);
             bindStorage(resources, 12, arguments, rojoRHI::StorageAccess::Write);
             commands.dispatch(std::max(1u, chunkCount), 1, 1);
+            tickets->counters = recordReadback(m_gpu, commands, *counterOwner,
+                                               BufferUse::StorageWrite, wholeBuffer(*counterOwner));
+            tickets->rows =
+                recordReadback(m_gpu, commands, *rowOwner, BufferUse::StorageWrite, {0, rowBytes});
+            tickets->arguments = recordReadback(m_gpu, commands, *argumentOwner,
+                                                BufferUse::StorageWrite, {0, argumentBytes});
         });
     graph.readbackBuffer(nextVersion(nextVersion(nextVersion(counters))));
     graph.readbackBuffer(nextVersion(states));

@@ -1,13 +1,15 @@
 #include "App/Model/Scene/SceneSession.h"
 #include "Support/EngineSceneTestSupport.h"
+#include "Support/GpuTestSupport.h"
 #include "Support/SceneDocumentTestSupport.h"
 
 //======================================================================================================================
 TEST_CASE("TemporalLab document places its diagnostics at the documented world positions",
           "[gpu]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    auto scene = lmx::test::loadCatalogScene(**device, "temporal-lab");
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
+    auto scene = lmx::test::loadCatalogScene(*device, "temporal-lab");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -65,9 +67,10 @@ TEST_CASE("TemporalLab document places its diagnostics at the documented world p
 //======================================================================================================================
 TEST_CASE("TemporalLab document's tracks close their loop and hit their documented periods",
           "[gpu]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    auto scene = lmx::test::loadCatalogScene(**device, "temporal-lab");
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
+    auto scene = lmx::test::loadCatalogScene(*device, "temporal-lab");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -136,9 +139,10 @@ TEST_CASE("TemporalLab document's tracks close their loop and hit their document
 //======================================================================================================================
 TEST_CASE("TemporalLab's imported truck wheel loops on its source clip across the lab wrap",
           "[gpu][scene-doc]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
-    auto scene = lmx::test::loadCatalogScene(**device, "temporal-lab");
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
+    auto scene = lmx::test::loadCatalogScene(*device, "temporal-lab");
     INFO(describeSceneError(scene));
     REQUIRE(scene);
     const auto& asset = (*scene)->assetAnimations[0];
@@ -199,9 +203,10 @@ TEST_CASE("TemporalLab's imported truck wheel loops on its source clip across th
 // viewport, the moving objects do not overlap the still ones they are read against, and the poles
 // stay separated on screen across their whole swing.
 TEST_CASE("TemporalLab document frames its probes and keeps its poles separated", "[gpu]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    auto scene = lmx::test::loadCatalogScene(**device, "temporal-lab");
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
+    auto scene = lmx::test::loadCatalogScene(*device, "temporal-lab");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 

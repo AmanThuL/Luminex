@@ -74,32 +74,35 @@ glm::mat4 facingPlaneModel(float z) {
 //======================================================================================================================
 // One declared and executed frame through the renderer's own graph, which is the path --screenshot
 // and the GPU tests take.
-void renderFrame(rojoRHI::Device& device, Renderer& renderer, const Camera& camera,
+void renderFrame(lmx::engine::GpuContext& gpu, Renderer& renderer, const Camera& camera,
                  const FixtureSceneView& view) {
-    rojoRHI::CommandList& commands = device.beginFrame();
-    renderer.render(commands, camera, lmx::test::prepareSceneView(view, device));
-    device.endFrame(nullptr);
-    device.waitIdle();
+    auto frame = gpu.beginFrame();
+    auto& commands = frame.commands;
+    renderer.render(commands, camera, lmx::test::prepareSceneView(view, gpu));
+    gpu.submitAndEndFrame(frame);
+    gpu.waitIdle();
 }
 
 //======================================================================================================================
 // The same frame without the drain: exactly what App/Shell/main.cpp submits every frame, so a
 // temporal resource a frame still in flight holds is left held rather than quietly retired by a
 // waitIdle the shipped loop never performs.
-void renderFrameInFlight(rojoRHI::Device& device, Renderer& renderer, const Camera& camera,
+void renderFrameInFlight(lmx::engine::GpuContext& gpu, Renderer& renderer, const Camera& camera,
                          const FixtureSceneView& view) {
-    rojoRHI::CommandList& commands = device.beginFrame();
-    renderer.render(commands, camera, lmx::test::prepareSceneView(view, device));
-    device.endFrame(nullptr);
+    auto frame = gpu.beginFrame();
+    auto& commands = frame.commands;
+    renderer.render(commands, camera, lmx::test::prepareSceneView(view, gpu));
+    gpu.submitAndEndFrame(frame);
 }
 
 //======================================================================================================================
 // One RGBA16Float target, widened to floats. Both the colour history and the raw scene target are
 // half-precision, so a comparison between them has to speak the same units the shader wrote.
-std::vector<glm::vec4> readHalf4(rojoRHI::Texture& texture) {
-    const size_t count = size_t{texture.width()} * texture.height();
-    std::vector<uint8_t> bytes(count * 8);
-    texture.readback(bytes.data(), bytes.size());
+std::vector<glm::vec4> readHalf4(lmx::engine::GpuContext& gpu,
+                                 const lmx::engine::GpuTexture& texture,
+                                 lmx::render::TextureUse current) {
+    const size_t count = size_t{texture.desc().width} * texture.desc().height;
+    const auto bytes = lmx::render::readbackNow(gpu, texture, current);
     std::vector<glm::vec4> pixels(count);
     for (size_t i = 0; i < pixels.size(); ++i) {
         uint16_t texel[4] = {0, 0, 0, 0};
@@ -177,7 +180,7 @@ using PerFrame = std::function<void(uint32_t frame, FixtureSceneView& view, Came
 // The render scale is not one of the fixed fields: `base.temporal.renderScale` carries a whole
 // sequence's scale and a PerFrame may set `view.temporal.renderScale` to change it per frame,
 // which is what the scale-change scenarios drive the extent with.
-std::vector<ScenarioFrame> renderSequence(rojoRHI::Device& device, Renderer& renderer,
+std::vector<ScenarioFrame> renderSequence(lmx::engine::GpuContext& gpu, Renderer& renderer,
                                           uint32_t frames, ReconstructionMode mode,
                                           const FixtureSceneView& base, const Camera& baseCamera,
                                           TemporalDebugView debugView, const PerFrame& perFrame) {
@@ -193,14 +196,23 @@ std::vector<ScenarioFrame> renderSequence(rojoRHI::Device& device, Renderer& ren
         if (perFrame) {
             perFrame(frame, view, camera);
         }
-        renderFrame(device, renderer, camera, view);
+        renderFrame(gpu, renderer, camera, view);
 
         ScenarioFrame record;
-        record.history = readHalf4(*renderer.historyTarget());
-        record.raw = readHalf4(renderer.hdrColorTarget());
-        record.display.resize(kScenarioPixels * 4);
-        renderer.colorTarget().rhi().readback(record.display.data(), record.display.size());
         record.status = renderer.temporalStatus();
+        const bool rawCopy =
+            record.status.reconstruction == ReconstructionMode::Raw && !record.status.upscaled;
+        const auto rawUse = record.status.reconstruction == ReconstructionMode::VendorTemporal
+                                ? lmx::render::TextureUse::ExternalRead
+                            : rawCopy ? lmx::render::TextureUse::CopySource
+                                      : lmx::render::TextureUse::ShaderRead;
+        const auto historyUse = rawCopy && view.temporal.debugView != TemporalDebugView::HistoryAge
+                                    ? lmx::render::TextureUse::CopyDestination
+                                    : lmx::render::TextureUse::ShaderRead;
+        record.history = readHalf4(gpu, *renderer.historyTexture(), historyUse);
+        record.raw = readHalf4(gpu, renderer.hdrColorTexture(), rawUse);
+        record.display = lmx::render::readbackNow(gpu, renderer.colorTarget(),
+                                                  lmx::render::TextureUse::RenderTarget);
         result.push_back(std::move(record));
     }
     return result;
@@ -420,8 +432,8 @@ TEST_CASE("vendor reconstruction settles a static jittered frame", "[gpu][tempor
         const auto sequence = [&](ReconstructionMode mode) {
             auto renderer = Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, true);
             REQUIRE(renderer.has_value());
-            return renderSequence(gpu->device(), **renderer, 32, mode, base, camera,
-                                  TemporalDebugView::Off, nullptr);
+            return renderSequence(*gpu, **renderer, 32, mode, base, camera, TemporalDebugView::Off,
+                                  nullptr);
         };
         const auto spatial = sequence(ReconstructionMode::Raw);
         const auto vendor = sequence(ReconstructionMode::VendorTemporal);
@@ -448,9 +460,13 @@ TEST_CASE("vendor reconstruction fills the display extent", "[gpu][temporal][ven
     const Camera camera;
     auto empty = Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, true);
     REQUIRE(empty.has_value());
-    renderFrame(gpu->device(), **empty, camera, scenarioSceneView({}, {0.0f, 0.0f, -1.0f}));
+    renderFrame(*gpu, **empty, camera, scenarioSceneView({}, {0.0f, 0.0f, -1.0f}));
     std::vector<uint8_t> background(kScenarioPixels * 4);
-    (*empty)->colorTarget().rhi().readback(background.data(), background.size());
+    {
+        const auto readbackBytes = lmx::render::readbackNow(*gpu, (*empty)->colorTarget(),
+                                                            lmx::render::TextureUse::RenderTarget);
+        std::memcpy(background.data(), readbackBytes.data(), background.size());
+    }
     const std::array<FixtureDrawItem, 1> items = {
         staticItem(*plane, facingPlaneModel(-2.0f), {0.6f, 0.6f, 0.6f, 1.0f})};
     for (float scale : {0.5f, 1.0f}) {
@@ -459,9 +475,8 @@ TEST_CASE("vendor reconstruction fills the display extent", "[gpu][temporal][ven
         base.temporal.renderScale = scale;
         auto renderer = Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, true);
         REQUIRE(renderer.has_value());
-        const auto frames =
-            renderSequence(gpu->device(), **renderer, 32, ReconstructionMode::VendorTemporal, base,
-                           camera, TemporalDebugView::Off, nullptr);
+        const auto frames = renderSequence(*gpu, **renderer, 32, ReconstructionMode::VendorTemporal,
+                                           base, camera, TemporalDebugView::Off, nullptr);
         uint32_t clearPixels = 0;
         for (size_t pixel = 0; pixel < kScenarioPixels; ++pixel) {
             const auto& display = frames.back().display;
@@ -500,8 +515,8 @@ TEST_CASE("a vendor reconstructed moving quad leaves no trail", "[gpu][temporal]
     const auto sequence = [&](ReconstructionMode mode) {
         auto renderer = Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, true);
         REQUIRE(renderer.has_value());
-        return renderSequence(gpu->device(), **renderer, kFrames, mode, base, camera,
-                              TemporalDebugView::Off, animate);
+        return renderSequence(*gpu, **renderer, kFrames, mode, base, camera, TemporalDebugView::Off,
+                              animate);
     };
     const auto spatial = sequence(ReconstructionMode::Raw);
     const auto vendor = sequence(ReconstructionMode::VendorTemporal);
@@ -530,8 +545,9 @@ TEST_CASE("native and vendor reconstruction retain separate valid histories",
     const Camera camera;
     auto empty = Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, true);
     REQUIRE(empty.has_value());
-    renderFrame(gpu->device(), **empty, camera, scenarioSceneView({}, {0.0f, 0.0f, -1.0f}));
-    const auto clear = readHalf4((*empty)->hdrColorTarget());
+    renderFrame(*gpu, **empty, camera, scenarioSceneView({}, {0.0f, 0.0f, -1.0f}));
+    const auto clear =
+        readHalf4(*gpu, (*empty)->hdrColorTexture(), lmx::render::TextureUse::ShaderRead);
     const std::array<FixtureDrawItem, 1> items = {
         staticItem(*plane, facingPlaneModel(-2.0f), {0.6f, 0.6f, 0.6f, 1.0f})};
     FixtureSceneView base = scenarioSceneView(items, {0.0f, 0.0f, -1.0f});
@@ -542,8 +558,8 @@ TEST_CASE("native and vendor reconstruction retain separate valid histories",
     };
     auto renderer = Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, true);
     REQUIRE(renderer.has_value());
-    const auto frames = renderSequence(gpu->device(), **renderer, 24, ReconstructionMode::NativeTaa,
-                                       base, camera, TemporalDebugView::Off, switchMode);
+    const auto frames = renderSequence(*gpu, **renderer, 24, ReconstructionMode::NativeTaa, base,
+                                       camera, TemporalDebugView::Off, switchMode);
     CHECK(frames[8].status.lastReset == HistoryResetReason::None);
     CHECK(frames[16].status.lastReset == HistoryResetReason::None);
     CHECK(frames[8].status.vendorReset);
@@ -582,8 +598,8 @@ TEST_CASE("vendor reconstruction follows an exposure step", "[gpu][temporal][ven
     const auto sequence = [&](ReconstructionMode mode) {
         auto renderer = Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, true);
         REQUIRE(renderer.has_value());
-        return renderSequence(gpu->device(), **renderer, kFrames, mode, base, camera,
-                              TemporalDebugView::Off, animate);
+        return renderSequence(*gpu, **renderer, kFrames, mode, base, camera, TemporalDebugView::Off,
+                              animate);
     };
     const auto raw = sequence(ReconstructionMode::Raw);
     const auto vendor = sequence(ReconstructionMode::VendorTemporal);
@@ -614,12 +630,12 @@ TEST_CASE("vendor scaler recreates on output resize and survives content scale c
     view.temporal.enabled = true;
     view.temporal.jitterEnabled = true;
     view.temporal.reconstruction = ReconstructionMode::VendorTemporal;
-    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(*gpu, **renderer, camera, view);
     const auto first = (*renderer)->temporalStatus();
     REQUIRE(first.vendorScalerGeneration > 0);
     REQUIRE(first.vendorReset);
     view.temporal.renderScale = 0.5f;
-    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(*gpu, **renderer, camera, view);
     const auto scaled = (*renderer)->temporalStatus();
     CHECK(scaled.lastReset == HistoryResetReason::None);
     CHECK_FALSE(scaled.vendorReset);
@@ -631,27 +647,28 @@ TEST_CASE("vendor scaler recreates on output resize and survives content scale c
     auto resized = (*renderer)->resize(256, 144);
     INFO(errorOf(resized));
     REQUIRE(resized.has_value());
-    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(*gpu, **renderer, camera, view);
     const auto afterResize = (*renderer)->temporalStatus();
     CHECK(afterResize.lastReset == HistoryResetReason::ExtentChanged);
     CHECK(afterResize.vendorReset);
     CHECK(afterResize.vendorScalerGeneration == first.vendorScalerGeneration + 1);
     CHECK(afterResize.extents.renderWidth == 128);
     CHECK(afterResize.extents.renderHeight == 72);
-    const auto output = readHalf4(*(*renderer)->historyTarget());
+    const auto output =
+        readHalf4(*gpu, *(*renderer)->historyTexture(), lmx::render::TextureUse::ShaderRead);
     CHECK(output.size() == 256 * 144);
 
     view.temporal.cameraCut = true;
-    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(*gpu, **renderer, camera, view);
     CHECK((*renderer)->temporalStatus().lastReset == HistoryResetReason::CameraCut);
     CHECK((*renderer)->temporalStatus().vendorReset);
     CHECK((*renderer)->temporalStatus().vendorScalerGeneration ==
           afterResize.vendorScalerGeneration);
     view.temporal.cameraCut = false;
     view.temporal.enabled = false;
-    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(*gpu, **renderer, camera, view);
     view.temporal.enabled = true;
-    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(*gpu, **renderer, camera, view);
     CHECK((*renderer)->temporalStatus().vendorReset);
     CHECK((*renderer)->temporalStatus().vendorScalerGeneration ==
           afterResize.vendorScalerGeneration);
@@ -679,15 +696,17 @@ TEST_CASE("vendor frames overlap while scale and diagnostics change", "[gpu][tem
         view.temporal.renderScale = frame % 2 == 0 ? 0.5f : 1.0f;
         view.temporal.debugView =
             frame % 2 == 0 ? TemporalDebugView::Off : TemporalDebugView::MotionVectors;
-        renderFrameInFlight(gpu->device(), **renderer, Camera{}, view);
+        renderFrameInFlight(*gpu, **renderer, Camera{}, view);
         CHECK((*renderer)->temporalStatus().vendorScalerGeneration == 1);
         if (frame > 0) {
             CHECK((*renderer)->temporalStatus().lastReset == HistoryResetReason::None);
             CHECK_FALSE((*renderer)->temporalStatus().vendorReset);
         }
     }
-    gpu->device().waitIdle();
-    const float mean = meanOver(luminances(readHalf4(*(*renderer)->historyTarget())), allPixels());
+    gpu->waitIdle();
+    const float mean = meanOver(luminances(readHalf4(*gpu, *(*renderer)->historyTexture(),
+                                                     lmx::render::TextureUse::ShaderRead)),
+                                allPixels());
     CHECK(std::isfinite(mean));
     CHECK(mean > 0.01f);
 }

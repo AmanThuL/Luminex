@@ -20,6 +20,7 @@
 #include "Engine/Asset/Image/PngImage.h"
 #include "Engine/Gpu/GpuContext.h"
 #include "Engine/Scene/Scene.h"
+#include "Render/Gpu/Readback.h"
 #include "Render/Graph/FrameDeclaration.h"
 #include "Render/Renderer/Renderer.h"
 #include "Scenes/SceneLibrary.h"
@@ -331,8 +332,8 @@ int runOffscreen(AppOptions options) {
                 const uint32_t ordinal = frame - sequence->warmup;
                 const std::string filename = std::format(
                     "frame-{:06}.{}", ordinal, captureFormatName(sequence->captureFormat));
-                std::vector<uint8_t> pixels(size_t{kScreenshotWidth} * kScreenshotHeight * 4);
-                (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
+                const auto pixels = render::readbackNow(gpu, (*renderer)->colorTarget(),
+                                                        render::TextureUse::RenderTarget);
                 if (!writeCaptureImage(sequence->captureSequencePath / filename, pixels,
                                        (*renderer)->displayDomain(),
                                        captureFrameMetadataJson(
@@ -373,8 +374,9 @@ int runOffscreen(AppOptions options) {
         return writeManifest(true) ? 0 : 1;
     }
 
-    std::vector<uint8_t> pixels(size_t{kScreenshotWidth} * kScreenshotHeight * 4);
-    (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
+    // The display pass wrote the target last, as a render target; nothing read it afterwards.
+    const auto pixels =
+        render::readbackNow(gpu, (*renderer)->colorTarget(), render::TextureUse::RenderTarget);
 
     // Preserve flat output as debugging evidence before reporting liveness failure.
     if (!writeCaptureImage(outPath, pixels, (*renderer)->displayDomain(),

@@ -1,16 +1,20 @@
 #include "Engine/Asset/RepositoryAsset.h"
 #include "Render/Renderer/SceneViewBuilder.h"
 #include "Support/EngineSceneTestSupport.h"
+#include "Support/GpuTestSupport.h"
 #include "Support/SceneDocumentTestSupport.h"
+
+#include <cstring>
 
 //======================================================================================================================
 // Deterministic diagnostics use the required studio environment authored by the document.
 TEST_CASE(
     "MaterialLab document builds deterministic diagnostics with its required document environment",
     "[gpu]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    auto scene = lmx::test::loadCatalogScene(**device, "material-lab");
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
+    auto scene = lmx::test::loadCatalogScene(*device, "material-lab");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -79,32 +83,34 @@ TEST_CASE("MaterialLab document does not double-light the fetched studio environ
         SKIP("Studio Small 09 is not present (xmake setup fetches it)");
     }
 
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    auto scene = lmx::test::loadCatalogScene(**device, "material-lab");
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
+    auto scene = lmx::test::loadCatalogScene(*device, "material-lab");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
     for (const lmx::engine::DirectionalLight& light : (*scene)->lights) {
         REQUIRE_FALSE(light.enabled);
         REQUIRE(glm::length(light.strength) > 0.0f);
     }
-    (*device)->beginFrame();
-    REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
+    auto gpuFrame1 = gpu->beginFrame();
+    REQUIRE((*scene)->prepareFrame(gpu->frameNumber()));
     std::vector<lmx::engine::DrawItem> items;
     const auto view = lmx::render::buildSceneView(**scene, items, false);
     for (const auto& light : view.lights)
         REQUIRE(light.strength == glm::vec3(0));
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->submitAndEndFrame(gpuFrame1);
+    gpu->waitIdle();
 }
 
 //======================================================================================================================
 TEST_CASE("MaterialLab document's sphere grid sweeps roughness across columns and metallic "
           "across rows",
           "[gpu]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    auto scene = lmx::test::loadCatalogScene(**device, "material-lab");
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
+    auto scene = lmx::test::loadCatalogScene(*device, "material-lab");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -131,9 +137,10 @@ TEST_CASE("MaterialLab document's sphere grid sweeps roughness across columns an
 TEST_CASE("MaterialLab document's depth lane is framed by a horizontal camera pan and its probes "
           "do not occlude each other",
           "[gpu]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    auto scene = lmx::test::loadCatalogScene(**device, "material-lab");
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
+    auto scene = lmx::test::loadCatalogScene(*device, "material-lab");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -171,9 +178,10 @@ TEST_CASE("MaterialLab document's depth lane is framed by a horizontal camera pa
 // The opening view is a lookdev view, not an inventory thumbnail: the complete sphere matrix must
 // be visible, yet large enough that roughness and reflection changes are immediately readable.
 TEST_CASE("MaterialLab document opens with the complete sphere matrix prominent", "[gpu]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    auto scene = lmx::test::loadCatalogScene(**device, "material-lab");
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
+    auto scene = lmx::test::loadCatalogScene(*device, "material-lab");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -204,9 +212,10 @@ TEST_CASE("MaterialLab document opens with the complete sphere matrix prominent"
 // initial camera along X. Exact X centres also pin the left-to-right lane ordering as scene data.
 TEST_CASE("MaterialLab document arranges texture diagnostics in a horizontally pannable lane",
           "[gpu]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    auto scene = lmx::test::loadCatalogScene(**device, "material-lab");
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
+    auto scene = lmx::test::loadCatalogScene(*device, "material-lab");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -252,9 +261,10 @@ TEST_CASE("MaterialLab document arranges texture diagnostics in a horizontally p
 TEST_CASE("MaterialLab document's normal-map probe encodes an exact flat {128,128,255,255} "
           "outside the bump",
           "[gpu]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    auto scene = lmx::test::loadCatalogScene(**device, "material-lab");
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
+    auto scene = lmx::test::loadCatalogScene(*device, "material-lab");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -265,29 +275,31 @@ TEST_CASE("MaterialLab document's normal-map probe encodes an exact flat {128,12
     REQUIRE(normalMap != nullptr);
 
     constexpr uint32_t kMapSize = 64;
-    auto destination = (*device)->createTexture({.width = kMapSize,
-                                                 .height = kMapSize,
-                                                 .format = rojoRHI::Format::BGRA8Unorm,
-                                                 .renderTarget = true,
-                                                 .cpuReadback = true,
-                                                 .label = "lmx.test.materialLabNormalCopy"});
+    auto destination =
+        lmx::engine::GpuTexture::create(*device, {.width = kMapSize,
+                                                  .height = kMapSize,
+                                                  .format = rojoRHI::Format::BGRA8Unorm,
+                                                  .renderTarget = true,
+                                                  .cpuReadback = true,
+                                                  .label = "lmx.test.materialLabNormalCopy"});
     INFO(describeSceneError(destination));
     REQUIRE(destination.has_value());
 
-    auto library = (*device)->loadShaderLibrary("Shaders/FullscreenSample");
+    auto library = gpu->loadShaderLibrary("FullscreenSample");
     INFO(describeSceneError(library));
     REQUIRE(library.has_value());
     auto pipeline =
-        (*device)->createGraphicsPipeline({.library = library->get(),
-                                           .vertexEntry = "vertexMain",
-                                           .fragmentEntry = "fragmentMain",
-                                           .colorFormat = rojoRHI::Format::BGRA8Unorm,
-                                           .label = "lmx.test.materialLabNormalCopyPipeline"});
-    INFO(describeSceneError(pipeline));
+        device->createGraphicsPipeline({.library = library->get(),
+                                        .vertexEntry = "vertexMain",
+                                        .fragmentEntry = "fragmentMain",
+                                        .colorFormat = rojoRHI::Format::BGRA8Unorm,
+                                        .label = "lmx.test.materialLabNormalCopyPipeline"});
+    INFO(errorOf(pipeline));
     REQUIRE(pipeline.has_value());
 
-    rojoRHI::CommandList& commands = (*device)->beginFrame();
-    commands.beginRenderPass({.colorTarget = destination->get(),
+    auto gpuFrame2 = gpu->beginFrame();
+    rojoRHI::CommandList& commands = gpuFrame2.commands;
+    commands.beginRenderPass({.colorTarget = &destination->rhi(),
                               .clearColor = {1.0f, 0.0f, 1.0f, 1.0f},
                               .clear = true,
                               .label = "lmx.test.materialLabNormalCopy"});
@@ -295,11 +307,15 @@ TEST_CASE("MaterialLab document's normal-map probe encodes an exact flat {128,12
     commands.bindTexture(0, normalMap->rhi());
     commands.draw(3);
     commands.endRenderPass();
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->submitAndEndFrame(gpuFrame2);
+    gpu->waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kMapSize} * kMapSize * 4);
-    (*destination)->readback(pixels.data(), pixels.size());
+    {
+        const auto bytes =
+            lmx::render::readbackNow(*gpu, *destination, lmx::render::TextureUse::RenderTarget);
+        std::memcpy(pixels.data(), bytes.data(), pixels.size());
+    }
 
     // Texel (0,0) is well outside the centred bump radius (28 texels from the (31.5,31.5)
     // centre) -- flat. Sorted so the assertion does not depend on the destination's BGRA channel
@@ -367,8 +383,9 @@ TEST_CASE("MaterialLab document's known-colour patches round-trip the display tr
     camera.nearZ = 0.1f;
     camera.farZ = 20.0f;
 
-    rojoRHI::CommandList& commands = gpu->device().beginFrame();
-    REQUIRE((*scene)->prepareFrame(gpu->device().frameNumber()).has_value());
+    auto gpuFrame3 = gpu->beginFrame();
+    rojoRHI::CommandList& commands = gpuFrame3.commands;
+    REQUIRE((*scene)->prepareFrame(gpu->frameNumber()).has_value());
     std::vector<lmx::engine::DrawItem> allItems;
     render::buildSceneView(**scene, allItems, false);
     std::vector<lmx::engine::DrawItem> items;
@@ -400,11 +417,15 @@ TEST_CASE("MaterialLab document's known-colour patches round-trip the display tr
     view.boundingSphere = {14.0f, 0.75f, 0.0f, 5.0f};
 
     (*renderer)->render(commands, camera, view);
-    gpu->device().endFrame(nullptr);
-    gpu->device().waitIdle();
+    gpu->submitAndEndFrame(gpuFrame3);
+    gpu->waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kProbeSize} * kProbeSize * 4);
-    (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
+    {
+        const auto bytes = lmx::render::readbackNow(*gpu, (*renderer)->colorTarget(),
+                                                    lmx::render::TextureUse::RenderTarget);
+        std::memcpy(pixels.data(), bytes.data(), pixels.size());
+    }
 
     // Readback hands back BGRA, so the channel at offset 0 is blue.
     const auto channelAt = [&](uint32_t x, uint32_t y, size_t channel) -> uint8_t {
@@ -520,8 +541,9 @@ TEST_CASE("MaterialLab document's mip probe converges to mid-gray under strong m
     camera.nearZ = 0.1f;
     camera.farZ = 20.0f;
 
-    rojoRHI::CommandList& commands = gpu->device().beginFrame();
-    REQUIRE((*scene)->prepareFrame(gpu->device().frameNumber()).has_value());
+    auto gpuFrame4 = gpu->beginFrame();
+    rojoRHI::CommandList& commands = gpuFrame4.commands;
+    REQUIRE((*scene)->prepareFrame(gpu->frameNumber()).has_value());
     std::vector<lmx::engine::DrawItem> allItems;
     render::buildSceneView(**scene, allItems, false);
     std::vector<lmx::engine::DrawItem> items;
@@ -541,11 +563,15 @@ TEST_CASE("MaterialLab document's mip probe converges to mid-gray under strong m
     view.boundingSphere = {probe->position.x, probe->position.y, probe->position.z, 2.0f};
 
     (*renderer)->render(commands, camera, view);
-    gpu->device().endFrame(nullptr);
-    gpu->device().waitIdle();
+    gpu->submitAndEndFrame(gpuFrame4);
+    gpu->waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kProbeSize} * kProbeSize * 4);
-    (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
+    {
+        const auto bytes = lmx::render::readbackNow(*gpu, (*renderer)->colorTarget(),
+                                                    lmx::render::TextureUse::RenderTarget);
+        std::memcpy(pixels.data(), bytes.data(), pixels.size());
+    }
 
     const ProjectedPixel coord = projectScenePixel(camera, kProbeSize, probe->position);
     REQUIRE(coord.x < kProbeSize);

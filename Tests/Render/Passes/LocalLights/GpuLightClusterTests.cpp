@@ -164,17 +164,18 @@ struct ClusterRun {
 
 //======================================================================================================================
 // Declares, executes and retires one clustering frame, and builds the mirror over the same inputs.
-ClusterRun runClusters(rojoRHI::Device& device, LightClusterStage& stage,
+ClusterRun runClusters(lmx::engine::GpuContext& gpu, LightClusterStage& stage,
                        const std::vector<lmx::engine::LightRow>& rows,
                        const LightClusterParams& params) {
-    auto lights = device.createBuffer({.size = rows.size() * sizeof(lmx::engine::LightRow),
-                                       .storageRead = true,
-                                       .label = "lmx.test.lightCluster.rows"},
-                                      rows.data());
+    auto lights = gpu.device().createBuffer({.size = rows.size() * sizeof(lmx::engine::LightRow),
+                                             .storageRead = true,
+                                             .label = "lmx.test.lightCluster.rows"},
+                                            rows.data());
     INFO(errorOf(lights));
     REQUIRE(lights);
-    auto& commands = device.beginFrame();
-    const uint64_t frame = device.frameNumber();
+    auto gpuFrame1 = gpu.beginFrame();
+    auto& commands = gpuFrame1.commands;
+    const uint64_t frame = gpu.frameNumber();
     RenderGraph graph;
     const GraphBuffer imported = graph.importBuffer(**lights, "lmx.test.lightCluster.rows");
     const auto outputs = stage.declare(
@@ -184,8 +185,8 @@ ClusterRun runClusters(rojoRHI::Device& device, LightClusterStage& stage,
     INFO((compiled ? std::string{} : compiled.error().message));
     REQUIRE(compiled);
     graph.execute(commands, frame);
-    device.endFrame(nullptr);
-    device.waitIdle();
+    gpu.submitAndEndFrame(gpuFrame1);
+    gpu.waitIdle();
     stage.retireThrough(frame);
     auto retired = stage.takeRetired();
     REQUIRE(retired.size() == 1);
@@ -254,7 +255,7 @@ TEST_CASE("the GPU froxel grid equals the mirror over a 256-light field", "[gpu]
     for (const auto& view : views) {
         INFO(std::format("extent {}x{}", view.width, view.height));
         const auto params = makeParams(view, uint32_t(rows.size()));
-        const auto run = runClusters(gpu->device(), *stage, rows, params);
+        const auto run = runClusters(*gpu, *stage, rows, params);
         // Nonvacuous, and not swamped by either overflow: this case is about the geometry.
         REQUIRE(run.mirror.counters.assigned > 1000);
         REQUIRE(run.mirror.counters.droppedPerCluster == 0);
@@ -288,7 +289,7 @@ TEST_CASE("froxel face and slice boundary probes equal the mirror", "[gpu][light
         makeProbe(view, {40, 20}, farDistance, 0.001f),          // on its far boundary
         makeProbe(view, {40, 20}, farDistance * 1.02f, 0.001f)}; // one guard past it
     params.rowCount = uint32_t(rows.size());
-    const auto run = runClusters(gpu->device(), *stage, rows, params);
+    const auto run = runClusters(*gpu, *stage, rows, params);
 
     // The probes must actually discriminate: each lands in its own tile, and the boundary probes
     // land in neighbouring slices.
@@ -339,7 +340,7 @@ TEST_CASE("the open slice's conservative rule equals the mirror on the GPU",
         makePoint({0.0f, 0.0f, -50.0f}, 10.0f),    // ends before the open slice begins
         makePoint({0.0f, 0.0f, -90.0f}, 10.5f)};   // just reaches past 100 m
     const auto params = makeParams(view, uint32_t(rows.size()));
-    const auto run = runClusters(gpu->device(), *stage, rows, params);
+    const auto run = runClusters(*gpu, *stage, rows, params);
 
     const uint32_t open = kClusterSliceCount - 1;
     const auto& axis = run.mirror.grid[froxelIndex({8, 4}, open)];
@@ -362,7 +363,7 @@ TEST_CASE("a near plane collapsing slices equals the mirror on the GPU", "[gpu][
     }
     REQUIRE(degenerate >= 1);
 
-    const auto run = runClusters(gpu->device(), *stage, rows, params);
+    const auto run = runClusters(*gpu, *stage, rows, params);
     REQUIRE(run.mirror.counters.assigned > 0);
     requireMatchesMirror(run);
 }
@@ -376,7 +377,7 @@ TEST_CASE("a tile owning no pixel lists nothing on the GPU either", "[gpu][light
     const auto view = makeView({0.0f, 0.0f, 0.0f}, 0.0f, 0.0f, 0.1f, 10, 8, {0.0f, 0.0f});
     const std::vector<lmx::engine::LightRow> rows{makePoint({0.0f, 0.0f, 0.0f}, 60.0f)};
     const auto params = makeParams(view, 1);
-    const auto run = runClusters(gpu->device(), *stage, rows, params);
+    const auto run = runClusters(*gpu, *stage, rows, params);
     REQUIRE(run.mirror.counters.assigned > 0);
     requireMatchesMirror(run);
 }
@@ -396,7 +397,7 @@ TEST_CASE("capacity overrides reproduce both overflow kinds on the GPU", "[gpu][
         stage->setCapacityOverride(4, kLightClusterIndexCapacity);
         auto params = makeParams(view, uint32_t(rows.size()));
         params.perClusterCap = 4;
-        const auto run = runClusters(gpu->device(), *stage, rows, params);
+        const auto run = runClusters(*gpu, *stage, rows, params);
         REQUIRE(run.mirror.counters.droppedPerCluster == kClusterCount * 6);
         REQUIRE(run.mirror.counters.droppedGlobal == 0);
         requireMatchesMirror(run);
@@ -405,7 +406,7 @@ TEST_CASE("capacity overrides reproduce both overflow kinds on the GPU", "[gpu][
         stage->setCapacityOverride(kMaxLightsPerCluster, 95);
         auto params = makeParams(view, uint32_t(rows.size()));
         params.globalCapacity = 95;
-        const auto run = runClusters(gpu->device(), *stage, rows, params);
+        const auto run = runClusters(*gpu, *stage, rows, params);
         REQUIRE(run.mirror.counters.assigned == 95);
         REQUIRE(run.mirror.counters.droppedGlobal == kClusterCount * 10 - 95);
         REQUIRE(run.mirror.counters.truncatedFroxels == kClusterCount - 9);
@@ -416,7 +417,7 @@ TEST_CASE("capacity overrides reproduce both overflow kinds on the GPU", "[gpu][
         auto params = makeParams(view, uint32_t(rows.size()));
         params.perClusterCap = 3;
         params.globalCapacity = 40;
-        const auto run = runClusters(gpu->device(), *stage, rows, params);
+        const auto run = runClusters(*gpu, *stage, rows, params);
         REQUIRE(run.mirror.counters.droppedPerCluster > 0);
         REQUIRE(run.mirror.counters.droppedGlobal > 0);
         requireMatchesMirror(run);
@@ -442,15 +443,16 @@ TEST_CASE("the stage declares nothing without clustered lights", "[gpu][light-cl
         // Clustered with no live light, and one live light with the mode off: neither declares.
         auto inputs = inputsFrom(params, imported, clustered ? 0u : 1u, 0);
         inputs.clustered = clustered;
-        auto& commands = gpu->device().beginFrame();
+        auto gpuFrame2 = gpu->beginFrame();
+        auto& commands = gpuFrame2.commands;
         const auto outputs = stage->declare(graph, commands, inputs);
         REQUIRE_FALSE(outputs.declared);
         const auto compiled = graph.compile();
         INFO((compiled ? std::string{} : compiled.error().message));
         REQUIRE(compiled);
         REQUIRE(compiled->passes.empty());
-        gpu->device().endFrame(nullptr);
-        gpu->device().waitIdle();
+        gpu->submitAndEndFrame(gpuFrame2);
+        gpu->waitIdle();
     }
     stage->retireThrough(1000);
     REQUIRE(stage->takeRetired().empty());
@@ -493,8 +495,9 @@ TEST_CASE("paced cluster slots retain exact shrinking lists and raster barriers"
                                        rows.data());
         REQUIRE(buffer);
         storage.push_back(std::move(*buffer));
-        auto& commands = gpu->device().beginFrame();
-        const auto frame = gpu->device().frameNumber();
+        auto gpuFrame3 = gpu->beginFrame();
+        auto& commands = gpuFrame3.commands;
+        const auto frame = gpu->frameNumber();
         if (step == 0)
             firstFrame = frame;
         if (frame >= 3) {
@@ -525,11 +528,11 @@ TEST_CASE("paced cluster slots retain exact shrinking lists and raster barriers"
             }
         }
         graph.execute(commands, frame);
-        gpu->device().endFrame(nullptr);
+        gpu->submitAndEndFrame(gpuFrame3);
         ++step;
     }
-    gpu->device().waitIdle();
-    stage->retireThrough(gpu->device().frameNumber());
+    gpu->waitIdle();
+    stage->retireThrough(gpu->frameNumber());
     checkRetired();
     REQUIRE(retiredCount == counts.size());
 }

@@ -73,13 +73,14 @@ TEST_CASE("visibility lab keeps its requested population and initial boundary la
 //======================================================================================================================
 TEST_CASE("visibility lab count includes boundary probes and seeded layout repeats",
           "[gpu][scene][visibility]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
-    REQUIRE_FALSE(lmx::test::loadCatalogScene(**device, "visibility-lab", 0));
-    REQUIRE_FALSE(lmx::test::loadCatalogScene(**device, "visibility-lab", 1048577));
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
+    REQUIRE_FALSE(lmx::test::loadCatalogScene(*device, "visibility-lab", 0));
+    REQUIRE_FALSE(lmx::test::loadCatalogScene(*device, "visibility-lab", 1048577));
     for (uint32_t count : {1u, 5u, 1024u}) {
-        auto first = lmx::test::loadCatalogScene(**device, "visibility-lab", count);
-        auto second = lmx::test::loadCatalogScene(**device, "visibility-lab", count);
+        auto first = lmx::test::loadCatalogScene(*device, "visibility-lab", count);
+        auto second = lmx::test::loadCatalogScene(*device, "visibility-lab", count);
         REQUIRE(first);
         REQUIRE(second);
         REQUIRE((*first)->objects.size() == count);
@@ -95,13 +96,14 @@ TEST_CASE("visibility lab count includes boundary probes and seeded layout repea
 //======================================================================================================================
 TEST_CASE("visibility lab occluders append deterministic slabs without altering the default grid",
           "[gpu][scene][visibility][occlusion]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
-    REQUIRE_FALSE(lmx::test::loadCatalogScene(**device, "visibility-lab", 32, 1025));
-    auto baseline = lmx::test::loadCatalogScene(**device, "visibility-lab", 32);
-    auto explicitZero = lmx::test::loadCatalogScene(**device, "visibility-lab", 32, 0);
-    auto occluded = lmx::test::loadCatalogScene(**device, "visibility-lab", 32, 4);
-    auto repeated = lmx::test::loadCatalogScene(**device, "visibility-lab", 32, 4);
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
+    REQUIRE_FALSE(lmx::test::loadCatalogScene(*device, "visibility-lab", 32, 1025));
+    auto baseline = lmx::test::loadCatalogScene(*device, "visibility-lab", 32);
+    auto explicitZero = lmx::test::loadCatalogScene(*device, "visibility-lab", 32, 0);
+    auto occluded = lmx::test::loadCatalogScene(*device, "visibility-lab", 32, 4);
+    auto repeated = lmx::test::loadCatalogScene(*device, "visibility-lab", 32, 4);
     REQUIRE(baseline);
     REQUIRE(explicitZero);
     REQUIRE(occluded);
@@ -150,14 +152,14 @@ TEST_CASE("visibility lab occluders append deterministic slabs without altering 
                     previous.position.x + previous.scale.x * 0.5f);
         }
     }
-    (*device)->beginFrame();
-    REQUIRE((*baseline)->prepareFrame((*device)->frameNumber()));
-    REQUIRE((*explicitZero)->prepareFrame((*device)->frameNumber()));
+    auto gpuFrame1 = gpu->beginFrame();
+    REQUIRE((*baseline)->prepareFrame(gpu->frameNumber()));
+    REQUIRE((*explicitZero)->prepareFrame(gpu->frameNumber()));
     const auto a = (*baseline)->tables();
     const auto b = (*explicitZero)->tables();
     REQUIRE(a.instanceRows.size() == b.instanceRows.size());
     REQUIRE(std::memcmp(a.instanceRows.data(), b.instanceRows.data(),
                         a.instanceRows.size() * sizeof(engine::InstanceRow)) == 0);
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->submitAndEndFrame(gpuFrame1);
+    gpu->waitIdle();
 }

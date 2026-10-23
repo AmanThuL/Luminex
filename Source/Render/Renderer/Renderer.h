@@ -6,6 +6,7 @@
 #pragma once
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Geometry/Mesh.h"
+#include "Engine/Gpu/GpuBuffer.h"
 #include "Engine/Gpu/GpuContext.h"
 #include "Engine/Gpu/GpuTexture.h"
 #include "Engine/View/Camera.h"
@@ -119,8 +120,9 @@ public:
     /// Always allocated at the output extent, and rasterised into an origin-anchored rectangle of
     /// TemporalStatus::extents' render extent, which a frame below scale 1 leaves smaller than the
     /// allocation. The texels outside that rectangle are whatever an earlier frame left there, so a
-    /// reader at a render scale below 1 has to crop to the active rectangle.
-    rojoRHI::Texture& hdrColorTarget();
+    /// reader at a render scale below 1 has to crop to the active rectangle. The owner is borrowed
+    /// until resize replaces it.
+    const engine::GpuTexture& hdrColorTexture();
 
     /// The last declared frame's depth buffer, D32Float and reversed (near = 1, falling toward 0
     /// with distance). Held past the scene pass and sampled rather than discarded, so a caller can
@@ -131,8 +133,8 @@ public:
     /// Depth ping-pongs by declared temporal frame parity, so this is the slot the frame just
     /// declared rendered into; a frame with temporal off renders into slot 0. Like the scene
     /// colour, it is allocated at the output extent and written only inside the origin-anchored
-    /// rectangle of TemporalStatus::extents' render extent.
-    rojoRHI::Texture& depthTarget();
+    /// rectangle of TemporalStatus::extents' render extent. The owner is borrowed until resize.
+    const engine::GpuTexture& depthTexture();
 
     /// What the last declared frame decided about its history. Advanced by declarePasses(), so it
     /// describes the frame just declared rather than the one about to be.
@@ -155,15 +157,16 @@ public:
     /// The frame's motion target in kMotionFormat, allocated with the scene targets and so never
     /// null after a successful create(). Borrowed: the renderer owns it and replaces it on
     /// resize().
-    rojoRHI::Texture* motionTarget() { return m_motion ? &m_motion.rhi() : nullptr; }
-    /// Returns the borrowed reactive attachment, with motionTarget ownership and readback terms.
-    rojoRHI::Texture* reactiveTarget() { return m_reactive ? &m_reactive.rhi() : nullptr; }
+    /// Returns null when no motion target exists.
+    const engine::GpuTexture* motionTexture() const { return m_motion ? &m_motion : nullptr; }
+    /// Borrows the reactive owner on motionTexture() ownership terms.
+    const engine::GpuTexture* reactiveTexture() const { return m_reactive ? &m_reactive : nullptr; }
 
     /// The colour history slot the frame just declared wrote, in kSceneColorFormat: the resolve's
     /// output under NativeTaa and the raw copy under Raw, so it always holds that frame's output.
-    /// Borrowed on motionTarget()'s terms; a frame with temporal off leaves slot 0 untouched and
+    /// Borrowed on motionTexture()'s terms; a frame with temporal off leaves slot 0 untouched and
     /// this reports it anyway.
-    rojoRHI::Texture* historyTarget();
+    const engine::GpuTexture* historyTexture();
 
     /// The use each persistent target was left in by the last frame that touched it. Bound to every
     /// graph declarePasses() is given, so a pass declared into that graph after the renderer's own
@@ -175,7 +178,7 @@ public:
     /// the renderer and never replaced, so it is never null. Readable from the CPU only when
     /// create() was given cpuReadback -- the tests and the offscreen path; the windowed App never
     /// reads it back, which is the whole point of keeping the feedback GPU-resident.
-    rojoRHI::Buffer& exposureBuffer();
+    const engine::GpuBuffer& exposureBufferOwner();
 
     /// Returns the current target width in pixels.
     uint32_t width() const { return m_width; }
@@ -272,8 +275,8 @@ private:
     std::optional<FrameSignature> m_previousSignature;
     std::optional<CameraFrameState> m_previousCamera;
     uint32_t m_temporalFrame = 0; // free-running; the jitter sequence wraps it itself
-    // The history slot the frame just declared used, which is what depthTarget() and
-    // historyTarget() report: m_temporalFrame % 2 on a temporal frame and 0 otherwise. Recorded
+    // The history slot the frame just declared used, which is what depthTexture() and
+    // historyTexture() report: m_temporalFrame % 2 on a temporal frame and 0 otherwise. Recorded
     // rather than recomputed because m_temporalFrame advances past it before declarePasses returns.
     uint32_t m_currentSlot = 0;
     uint64_t m_declaredFrames = 0;

@@ -1,6 +1,7 @@
 #include "Engine/Asset/Texture/Ibl.h"
 #include "Engine/Scene/Scene.h"
 #include "Scenes/CatalogScenes.h"
+#include "Support/GpuTestSupport.h"
 #include "Support/SceneDocumentTestSupport.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -444,9 +445,10 @@ TEST_CASE("the generators are byte-identical across runs", "[asset][ibl]") {
 // The uploaded set every catalog scene carries. MaterialLab has an asset-free fallback, so this
 // runs wherever a Metal 4 device exists.
 TEST_CASE("a built scene carries its uploaded IBL textures", "[gpu]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    auto scene = lmx::test::loadCatalogScene(**device, "material-lab");
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
+    auto scene = lmx::test::loadCatalogScene(*device, "material-lab");
     REQUIRE(scene.has_value());
 
     REQUIRE((*scene)->irradianceMap);

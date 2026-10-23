@@ -6,8 +6,12 @@
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Gpu/GpuBuffer.h"
 #include "Engine/Gpu/GpuContext.h"
+#include "Render/Gpu/Readback.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/Visibility/VisibilityTables.h"
+
+#include <memory>
+#include <optional>
 
 namespace lmx::render {
 /// Borrowed visibility inputs; CPU references need only survive declaration, graph handles this
@@ -58,16 +62,21 @@ private:
         uint32_t capacity = 0;
         bool used = false;
     };
+    // Recorded by the passes that write each buffer, after the write. A ticket names the buffer
+    // the frame wrote, not its owner: DrawSubmission growth move-assigns new owners into the slots
+    // the row and argument buffers came from while this frame is still pending. Pending entries
+    // and pass bodies share the tickets; their storage remains alive until its final owner releases
+    // it. A ticket stays empty when its graph pass did not execute.
+    struct Tickets {
+        std::optional<ReadbackTicket> states, counters, rows, arguments;
+    };
     struct Pending {
         VisibilityStatus status;
         VisibilityTables tables;
         VisibilityParams params;
         std::vector<InstanceVisibility> expected;
         std::vector<rojoRHI::DrawIndexedIndirectArgs> geometry;
-        // The RHI buffers themselves: DrawSubmission growth move-assigns new owners into the
-        // slots these came from, so an owner address would read the replacement at retirement.
-        rojoRHI::Buffer *states = nullptr, *counters = nullptr, *rows = nullptr,
-                        *arguments = nullptr;
+        std::shared_ptr<Tickets> tickets = std::make_shared<Tickets>();
     };
     lmx::Result<void> prepareSlot(Slot& slot, const VisibilityTables& tables);
     VisibilityStatus readback(Pending& pending);

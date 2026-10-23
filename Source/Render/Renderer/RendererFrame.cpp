@@ -147,9 +147,9 @@ RendererFrameImports Renderer::importFrameResources(RenderGraph& graph,
     const GraphTexture sceneDepth =
         state.temporalEnabled
             ? m_temporalResolve->importDepth(graph, state.slot)
-            : graph.importPersistentTexture(m_temporalResolve->depthSlot(0),
+            : graph.importPersistentTexture(m_temporalResolve->depthTexture(0).rhi(),
                                             rojoRHI::Format::D32Float, "lmx.render.sceneDepth");
-    // depthTarget() is public and a caller may sample it after this graph, so the frame's depth is
+    // depthTexture() is public and a caller may sample it after this graph, so the frame's depth is
     // left as a shader read, a stage set that also covers the attachment work the scene pass does
     // with it. A vendor frame leaves it as the scaler's opaque read instead, which the graph
     // derives from that pass.
@@ -200,9 +200,9 @@ RendererFrameImports Renderer::importFrameResources(RenderGraph& graph,
     const bool exposureWrittenByEarlierFrame = view.autoExposureEnabled || view.temporal.enabled;
     const GraphBuffer exposureImport =
         exposureWrittenByEarlierFrame
-            ? graph.importBuffer(m_exposureStage->buffer(), "lmx.render.exposureBuffer",
+            ? graph.importBuffer(m_exposureStage->bufferOwner().rhi(), "lmx.render.exposureBuffer",
                                  BufferUse::StorageWrite)
-            : graph.importBuffer(m_exposureStage->buffer(), "lmx.render.exposureBuffer");
+            : graph.importBuffer(m_exposureStage->bufferOwner().rhi(), "lmx.render.exposureBuffer");
     const GraphBuffer exposureCurrent =
         m_exposureStage->declareSeed(graph, commands, view, exposureImport);
 

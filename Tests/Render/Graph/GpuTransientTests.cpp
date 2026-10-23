@@ -1,5 +1,7 @@
 #include "Support/GpuTestSupport.h"
 
+#include <cstring>
+
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Graph/TransientPool.h"
 
@@ -55,15 +57,14 @@ TEST_CASE("a pooled frame and an unpooled frame render the same image", "[gpu]")
     using namespace rojoRHI;
     using namespace lmx::render;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
+    REQUIRE(gpu != nullptr);
 
-    auto computeLibrary = (*device)->loadShaderLibrary("Shaders/ComputeImageSmoke");
+    auto computeLibrary = gpu->loadShaderLibrary("ComputeImageSmoke");
     INFO(errorOf(computeLibrary));
     REQUIRE(computeLibrary.has_value());
 
-    auto writePipeline = (*device)->createComputePipeline(
+    auto writePipeline = gpu->device().createComputePipeline(
         {.library = computeLibrary->get(),
          .computeEntry = "computeWriteImage",
          .threadsPerThreadgroup = {kImageThreadsPerGroup, kImageThreadsPerGroup, 1},
@@ -71,7 +72,7 @@ TEST_CASE("a pooled frame and an unpooled frame render the same image", "[gpu]")
     INFO(errorOf(writePipeline));
     REQUIRE(writePipeline.has_value());
 
-    auto invertPipeline = (*device)->createComputePipeline(
+    auto invertPipeline = gpu->device().createComputePipeline(
         {.library = computeLibrary->get(),
          .computeEntry = "computeInvertImage",
          .threadsPerThreadgroup = {kImageThreadsPerGroup, kImageThreadsPerGroup, 1},
@@ -79,31 +80,32 @@ TEST_CASE("a pooled frame and an unpooled frame render the same image", "[gpu]")
     INFO(errorOf(invertPipeline));
     REQUIRE(invertPipeline.has_value());
 
-    auto sampleLibrary = (*device)->loadShaderLibrary("Shaders/FullscreenSample");
+    auto sampleLibrary = gpu->loadShaderLibrary("FullscreenSample");
     INFO(errorOf(sampleLibrary));
     REQUIRE(sampleLibrary.has_value());
 
     auto samplePipeline =
-        (*device)->createGraphicsPipeline({.library = sampleLibrary->get(),
-                                           .vertexEntry = "vertexMain",
-                                           .fragmentEntry = "fragmentMain",
-                                           .colorFormat = Format::BGRA8Unorm,
-                                           .label = "lmx.test.transient.samplePipeline"});
+        gpu->device().createGraphicsPipeline({.library = sampleLibrary->get(),
+                                              .vertexEntry = "vertexMain",
+                                              .fragmentEntry = "fragmentMain",
+                                              .colorFormat = Format::BGRA8Unorm,
+                                              .label = "lmx.test.transient.samplePipeline"});
     INFO(errorOf(samplePipeline));
     REQUIRE(samplePipeline.has_value());
 
-    auto target = makeProbeTarget(**device, "lmx.test.transient.target");
+    auto target = makeProbeTarget(*gpu, "lmx.test.transient.target");
     INFO(errorOf(target));
     REQUIRE(target.has_value());
 
     const ImageParams params{.extent = kSize};
     const uint32_t groups = kSize / kImageThreadsPerGroup;
 
-    TransientPool pool(**device);
+    TransientPool pool(gpu->device());
 
     // One frame, declared the same way both times; only the pooling switch differs.
     const auto renderOnce = [&](bool pooling) {
-        CommandList& commands = (*device)->beginFrame();
+        auto commandsFrame = gpu->beginFrame();
+        auto& commands = commandsFrame.commands;
         pool.beginFrame();
 
         RenderGraph graph(pool);
@@ -112,7 +114,7 @@ TEST_CASE("a pooled frame and an unpooled frame render the same image", "[gpu]")
         const GraphTexture second = graph.createTexture(kStorageImage, "lmx.test.transient.second");
         const GraphTexture third = graph.createTexture(kStorageImage, "lmx.test.transient.third");
         const GraphTexture color =
-            graph.importTexture(**target, Format::BGRA8Unorm, "lmx.test.transient.target");
+            graph.importTexture(target->rhi(), Format::BGRA8Unorm, "lmx.test.transient.target");
 
         ComputePassDesc write;
         write.textureWrites.push_back(first);
@@ -174,12 +176,16 @@ TEST_CASE("a pooled frame and an unpooled frame render the same image", "[gpu]")
 
         graph.readbackTexture(nextVersion(color));
 
-        const CompiledFrameRecord record = graph.execute(commands, (*device)->frameNumber());
-        (*device)->endFrame(nullptr);
-        (*device)->waitIdle();
+        const CompiledFrameRecord record = graph.execute(commands, gpu->frameNumber());
+        gpu->submitAndEndFrame(commandsFrame);
+        gpu->waitIdle();
 
         std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
-        (*target)->readback(pixels.data(), pixels.size());
+        {
+            const auto readbackBytes =
+                lmx::render::readbackNow(*gpu, *target, lmx::render::TextureUse::RenderTarget);
+            std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
+        }
         return std::pair{record, pixels};
     };
 
@@ -226,24 +232,24 @@ TEST_CASE("a transient cannot read what the transient it replaced left behind",
     constexpr uint64_t kBytes = sizeof(uint32_t) * kElements;
     constexpr TransientBufferDesc kBins{.size = kBytes, .storageRead = true};
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
+    REQUIRE(gpu != nullptr);
 
-    auto library = (*device)->loadShaderLibrary("Shaders/BufferHazardSmoke");
+    auto library = gpu->loadShaderLibrary("BufferHazardSmoke");
     INFO(errorOf(library));
     REQUIRE(library.has_value());
 
-    auto pipeline =
-        (*device)->createComputePipeline({.library = library->get(),
-                                          .computeEntry = "computeAddFromBuffer",
-                                          .threadsPerThreadgroup = {kHazardThreadsPerGroup, 1, 1},
-                                          .label = "lmx.test.transient.hazardPipeline"});
+    auto pipeline = gpu->device().createComputePipeline(
+        {.library = library->get(),
+         .computeEntry = "computeAddFromBuffer",
+         .threadsPerThreadgroup = {kHazardThreadsPerGroup, 1, 1},
+         .label = "lmx.test.transient.hazardPipeline"});
     INFO(errorOf(pipeline));
     REQUIRE(pipeline.has_value());
 
     const auto makeOutput = [&](const char* label) {
-        return (*device)->createBuffer(
+        return lmx::engine::GpuBuffer::create(
+            gpu->device(),
             {.size = kBytes, .storageWrite = true, .cpuReadback = true, .label = label}, nullptr);
     };
     auto firstOut = makeOutput("lmx.test.transient.firstOut");
@@ -254,17 +260,19 @@ TEST_CASE("a transient cannot read what the transient it replaced left behind",
     REQUIRE(secondOut.has_value());
 
     const HazardParams params{.bias = kBias};
-    TransientPool pool(**device);
+    TransientPool pool(gpu->device());
 
-    CommandList& commands = (*device)->beginFrame();
+    auto commandsFrame = gpu->beginFrame();
+    auto& commands = commandsFrame.commands;
     pool.beginFrame();
 
     RenderGraph graph(pool);
     const GraphBuffer first = graph.createBuffer(kBins, "lmx.test.transient.firstBins");
     const GraphBuffer second = graph.createBuffer(kBins, "lmx.test.transient.secondBins");
-    const GraphBuffer firstResult = graph.importBuffer(**firstOut, "lmx.test.transient.firstOut");
+    const GraphBuffer firstResult =
+        graph.importBuffer(firstOut->rhi(), "lmx.test.transient.firstOut");
     const GraphBuffer secondResult =
-        graph.importBuffer(**secondOut, "lmx.test.transient.secondOut");
+        graph.importBuffer(secondOut->rhi(), "lmx.test.transient.secondOut");
 
     const auto declareFill = [&](std::string_view label, GraphBuffer bins, uint8_t value) {
         CopyPassDesc fill;
@@ -300,9 +308,9 @@ TEST_CASE("a transient cannot read what the transient it replaced left behind",
     graph.readbackBuffer(nextVersion(firstResult));
     graph.readbackBuffer(nextVersion(secondResult));
 
-    const CompiledFrameRecord record = graph.execute(commands, (*device)->frameNumber());
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    const CompiledFrameRecord record = graph.execute(commands, gpu->frameNumber());
+    gpu->submitAndEndFrame(commandsFrame);
+    gpu->waitIdle();
 
     // The premise: the two transients really are one set of bytes, and the graph really did put a
     // barrier at the handover.
@@ -314,13 +322,18 @@ TEST_CASE("a transient cannot read what the transient it replaced left behind",
         });
     REQUIRE(reuse != record.debug.transitions.end());
 
-    const auto readValues = [](Buffer& buffer) {
+    const auto readValues = [&](const lmx::engine::GpuBuffer& buffer) {
         std::vector<uint32_t> values(kElements, 0);
-        buffer.readback(values.data(), values.size() * sizeof(uint32_t));
+        {
+            const auto readbackBytes =
+                lmx::render::readbackNow(*gpu, buffer, lmx::render::BufferUse::StorageWrite,
+                                         {0, values.size() * sizeof(uint32_t)});
+            std::memcpy(values.data(), readbackBytes.data(), values.size() * sizeof(uint32_t));
+        }
         return values;
     };
-    const std::vector<uint32_t> firstValues = readValues(**firstOut);
-    const std::vector<uint32_t> secondValues = readValues(**secondOut);
+    const std::vector<uint32_t> firstValues = readValues(*firstOut);
+    const std::vector<uint32_t> secondValues = readValues(*secondOut);
 
     constexpr uint32_t kFirstElement = 0xAAAAAAAA + kBias;
     constexpr uint32_t kSecondElement = 0x11111111 + kBias;
@@ -347,15 +360,14 @@ TEST_CASE("resizing and toggling transients leaks no heap generation", "[gpu][ch
     constexpr uint32_t kCycles = 4;
     constexpr std::array<uint32_t, kCycles> kExtents = {32, 64, 128, 64};
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
+    REQUIRE(gpu != nullptr);
 
-    auto computeLibrary = (*device)->loadShaderLibrary("Shaders/ComputeImageSmoke");
+    auto computeLibrary = gpu->loadShaderLibrary("ComputeImageSmoke");
     INFO(errorOf(computeLibrary));
     REQUIRE(computeLibrary.has_value());
 
-    auto writePipeline = (*device)->createComputePipeline(
+    auto writePipeline = gpu->device().createComputePipeline(
         {.library = computeLibrary->get(),
          .computeEntry = "computeWriteImage",
          .threadsPerThreadgroup = {kImageThreadsPerGroup, kImageThreadsPerGroup, 1},
@@ -363,27 +375,27 @@ TEST_CASE("resizing and toggling transients leaks no heap generation", "[gpu][ch
     INFO(errorOf(writePipeline));
     REQUIRE(writePipeline.has_value());
 
-    auto sampleLibrary = (*device)->loadShaderLibrary("Shaders/FullscreenSample");
+    auto sampleLibrary = gpu->loadShaderLibrary("FullscreenSample");
     INFO(errorOf(sampleLibrary));
     REQUIRE(sampleLibrary.has_value());
 
     auto samplePipeline =
-        (*device)->createGraphicsPipeline({.library = sampleLibrary->get(),
-                                           .vertexEntry = "vertexMain",
-                                           .fragmentEntry = "fragmentMain",
-                                           .colorFormat = Format::BGRA8Unorm,
-                                           .label = "lmx.test.transient.stressSamplePipeline"});
+        gpu->device().createGraphicsPipeline({.library = sampleLibrary->get(),
+                                              .vertexEntry = "vertexMain",
+                                              .fragmentEntry = "fragmentMain",
+                                              .colorFormat = Format::BGRA8Unorm,
+                                              .label = "lmx.test.transient.stressSamplePipeline"});
     INFO(errorOf(samplePipeline));
     REQUIRE(samplePipeline.has_value());
 
-    auto firstTarget = makeProbeTarget(**device, "lmx.test.transient.stressFirst");
-    auto secondTarget = makeProbeTarget(**device, "lmx.test.transient.stressSecond");
+    auto firstTarget = makeProbeTarget(*gpu, "lmx.test.transient.stressFirst");
+    auto secondTarget = makeProbeTarget(*gpu, "lmx.test.transient.stressSecond");
     INFO(errorOf(firstTarget));
     REQUIRE(firstTarget.has_value());
     INFO(errorOf(secondTarget));
     REQUIRE(secondTarget.has_value());
 
-    TransientPool pool(**device);
+    TransientPool pool(gpu->device());
 
     // Two transients whose lifetimes do not overlap, at whatever extent this cycle asked for.
     const auto renderFrame = [&](uint32_t extent, bool pooling) {
@@ -395,17 +407,18 @@ TEST_CASE("resizing and toggling transients leaks no heap generation", "[gpu][ch
                                         .sampled = true,
                                         .storageWrite = true};
 
-        CommandList& commands = (*device)->beginFrame();
+        auto commandsFrame = gpu->beginFrame();
+        auto& commands = commandsFrame.commands;
         pool.beginFrame();
 
         RenderGraph graph(pool);
         graph.setPoolingEnabled(pooling);
         const GraphTexture first = graph.createTexture(desc, "lmx.test.transient.stressFirst");
         const GraphTexture second = graph.createTexture(desc, "lmx.test.transient.stressSecond");
-        const GraphTexture firstColor =
-            graph.importTexture(**firstTarget, Format::BGRA8Unorm, "lmx.test.transient.firstColor");
-        const GraphTexture secondColor = graph.importTexture(**secondTarget, Format::BGRA8Unorm,
-                                                             "lmx.test.transient.secondColor");
+        const GraphTexture firstColor = graph.importTexture(firstTarget->rhi(), Format::BGRA8Unorm,
+                                                            "lmx.test.transient.firstColor");
+        const GraphTexture secondColor = graph.importTexture(
+            secondTarget->rhi(), Format::BGRA8Unorm, "lmx.test.transient.secondColor");
 
         const auto declarePair = [&](std::string_view writeLabel, std::string_view resolveLabel,
                                      GraphTexture storage, GraphTexture color) {
@@ -438,8 +451,8 @@ TEST_CASE("resizing and toggling transients leaks no heap generation", "[gpu][ch
         declarePair("lmx.test.transient.stressWriteSecond",
                     "lmx.test.transient.stressResolveSecond", second, secondColor);
 
-        const CompiledFrameRecord record = graph.execute(commands, (*device)->frameNumber());
-        (*device)->endFrame(nullptr);
+        const CompiledFrameRecord record = graph.execute(commands, gpu->frameNumber());
+        gpu->submitAndEndFrame(commandsFrame);
         return record;
     };
 
@@ -467,7 +480,7 @@ TEST_CASE("resizing and toggling transients leaks no heap generation", "[gpu][ch
     for (uint32_t frame = 0; frame < 2 * kTransientFrameSlots; ++frame) {
         renderFrame(kExtents.back(), true);
     }
-    (*device)->waitIdle();
+    gpu->waitIdle();
 
     REQUIRE(pool.retiringGenerationCount() == 0);
     REQUIRE(pool.liveGenerationCount() == kTransientFrameSlots);

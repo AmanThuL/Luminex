@@ -51,6 +51,25 @@ bind the scene tables, and `encodeDrawRuns`, the direct or indirect draw-run loo
 `SceneStage` uses; the shadow pass keeps its own run loop, as the
 [adoption measurements](../milestones/r/r3.5-validation.md) found.
 
+## Readback
+
+`Source/Render/Gpu/Readback.h` is the one way Luminex reads GPU results back, in two forms. The
+recorded form, `recordReadback`, runs inside the frame that writes a buffer or texture and returns
+a `ReadbackTicket` (the resource, a `BufferRegion`, the frame number); the caller keeps its
+frame-number retirement and calls `resolve` with the ticket once that frame has retired. A ticket
+names the object the owner held when it was recorded, not the owner, because an owner can take a
+new object while the readback is pending (draw-list growth does). A buffer resolve may read just
+the region's leading bytes when the retired frame says how many are defined. `GpuVisibility`,
+`LightClusterStage` and `OcclusionReference` record their tickets inside the passes that write each
+buffer, after the write; headless screenshots read the display target through `readbackNow`. The
+immediate form, `readbackNow`, waits for the GPU to go idle and returns the bytes; it is valid only
+outside a frame. Both take the resource's current `TextureUse` or `BufferUse` (the graph's own
+vocabulary), so that the switch to RojoRHI v2, which has no blocking readback, can record the
+barriers and the copy into a readback buffer without touching callers. On v1 recording records
+nothing, the use is ignored, and both forms forward to the blocking `readback`, which covers level
+0 of a texture (`packedTextureBytes`) and a buffer's leading bytes only, so a buffer region starts
+at offset zero.
+
 ## Visibility and submission modes
 
 `Visibility.h` classifies the canonical uploaded CPU rows against five normalized planes derived

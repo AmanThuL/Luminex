@@ -1,5 +1,7 @@
 #include "Support/GpuRendererTestSupport.h"
+
 #include "Support/SceneTableTestSupport.h"
+#include <cstring>
 
 using lmx::test::FixtureDrawItem;
 using lmx::test::FixtureMaterial;
@@ -46,13 +48,18 @@ TEST_CASE("the display transform tone maps and encodes the scene's linear output
     }
     view.boundingSphere = {0.0f, 0.0f, 0.0f, 4.0f};
 
-    CommandList& commands = gpu->device().beginFrame();
-    (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, gpu->device()));
-    gpu->device().endFrame(nullptr);
-    gpu->device().waitIdle();
+    auto commandsFrame = gpu->beginFrame();
+    auto& commands = commandsFrame.commands;
+    (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, *gpu));
+    gpu->submitAndEndFrame(commandsFrame);
+    gpu->waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
-    (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
+    {
+        const auto readbackBytes = lmx::render::readbackNow(*gpu, (*renderer)->colorTarget(),
+                                                            lmx::render::TextureUse::RenderTarget);
+        std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
+    }
 
     const int want = lmx::test::displayByte(0.5f);
     const Pixel probe = pixelAt(pixels, 32, 32);
@@ -107,13 +114,21 @@ TEST_CASE("the scene target holds radiance above 1.0 and exposure scales it exac
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
     const auto renderAtExposure = [&](float exposureEv) {
         view.exposureEv = exposureEv;
-        CommandList& commands = gpu->device().beginFrame();
-        (*renderer)->render(commands, sceneCamera(),
-                            lmx::test::prepareSceneView(view, gpu->device()));
-        gpu->device().endFrame(nullptr);
-        gpu->device().waitIdle();
-        (*renderer)->hdrColorTarget().readback(texels.data(), texels.size() * sizeof(uint16_t));
-        (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
+        auto commandsFrame = gpu->beginFrame();
+        auto& commands = commandsFrame.commands;
+        (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, *gpu));
+        gpu->submitAndEndFrame(commandsFrame);
+        gpu->waitIdle();
+        {
+            const auto readbackBytes = lmx::render::readbackNow(
+                *gpu, (*renderer)->hdrColorTexture(), lmx::render::TextureUse::ShaderRead);
+            std::memcpy(texels.data(), readbackBytes.data(), texels.size() * sizeof(uint16_t));
+        }
+        {
+            const auto readbackBytes = lmx::render::readbackNow(
+                *gpu, (*renderer)->colorTarget(), lmx::render::TextureUse::RenderTarget);
+            std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
+        }
     };
 
     renderAtExposure(0.0f);
@@ -186,10 +201,10 @@ TEST_CASE("auto exposure applies through the real scene pass with no CPU readbac
     view.exposureEv = 0.0f; // reset frame's manual value: exp2(0) == 1
 
     const auto submitFrame = [&]() {
-        CommandList& commands = gpu->device().beginFrame();
-        (*renderer)->render(commands, sceneCamera(),
-                            lmx::test::prepareSceneView(view, gpu->device()));
-        gpu->device().endFrame(nullptr);
+        auto commandsFrame = gpu->beginFrame();
+        auto& commands = commandsFrame.commands;
+        (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, *gpu));
+        gpu->submitAndEndFrame(commandsFrame);
     };
 
     view.exposureReset = true;
@@ -197,10 +212,14 @@ TEST_CASE("auto exposure applies through the real scene pass with no CPU readbac
 
     view.exposureReset = false;
     submitFrame();
-    gpu->device().waitIdle();
+    gpu->waitIdle();
 
     std::vector<uint16_t> texels(size_t{kSize} * kSize * 4);
-    (*renderer)->hdrColorTarget().readback(texels.data(), texels.size() * sizeof(uint16_t));
+    {
+        const auto readbackBytes = lmx::render::readbackNow(*gpu, (*renderer)->hdrColorTexture(),
+                                                            lmx::render::TextureUse::ShaderRead);
+        std::memcpy(texels.data(), readbackBytes.data(), texels.size() * sizeof(uint16_t));
+    }
     const HalfPixel frame2 = halfPixelAt(texels, 32, 32);
     const float frame2R = floatOfHalfBits(frame2.r);
     INFO("frame 2 lit texel r = " << frame2R);
@@ -209,7 +228,7 @@ TEST_CASE("auto exposure applies through the real scene pass with no CPU readbac
 }
 
 //======================================================================================================================
-// depthTarget() is public and may be sampled by a compute pass after the renderer's graph. Keep
+// depthTexture() is public and may be sampled by a compute pass after the renderer's graph. Keep
 // that dispatch in flight while the next frame starts writing depth again: the renderer's
 // previous-frame ShaderRead import must make the new attachment wait on the dispatch stage, not
 // merely on the previous fragment attachment work.
@@ -221,7 +240,7 @@ TEST_CASE("a depth sample is ordered before the next frame overwrites depth", "[
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
-    auto library = gpu->device().loadShaderLibrary("Shaders/BloomThreshold");
+    auto library = gpu->loadShaderLibrary("BloomThreshold");
     INFO(errorOf(library));
     REQUIRE(library.has_value());
     auto pipeline = gpu->device().createComputePipeline({.library = library->get(),
@@ -232,11 +251,12 @@ TEST_CASE("a depth sample is ordered before the next frame overwrites depth", "[
     REQUIRE(pipeline.has_value());
 
     constexpr uint32_t kProbeSize = kSize / 2;
-    auto probe = gpu->device().createTexture({.width = kProbeSize,
-                                              .height = kProbeSize,
-                                              .format = Format::RGBA16Float,
-                                              .storageWrite = true,
-                                              .label = "lmx.test.depthSampleProbe"});
+    auto probe =
+        lmx::engine::GpuTexture::create(gpu->device(), {.width = kProbeSize,
+                                                        .height = kProbeSize,
+                                                        .format = Format::RGBA16Float,
+                                                        .storageWrite = true,
+                                                        .label = "lmx.test.depthSampleProbe"});
     INFO(errorOf(probe));
     REQUIRE(probe.has_value());
 
@@ -254,23 +274,25 @@ TEST_CASE("a depth sample is ordered before the next frame overwrites depth", "[
                                            .dstHeight = kProbeSize};
     FixtureSceneView view;
 
-    CommandList& first = gpu->device().beginFrame();
-    (*renderer)->render(first, sceneCamera(), lmx::test::prepareSceneView(view, gpu->device()));
-    first.textureBarrier((*renderer)->depthTarget(), TextureUse::RenderTarget,
+    auto firstFrame = gpu->beginFrame();
+    auto& first = firstFrame.commands;
+    (*renderer)->render(first, sceneCamera(), lmx::test::prepareSceneView(view, *gpu));
+    first.textureBarrier((*renderer)->depthTexture().rhi(), TextureUse::RenderTarget,
                          TextureUse::ShaderRead);
     first.beginComputePass("lmx.test.sampleDepth");
     first.bindComputePipeline(**pipeline);
-    first.bindTexture(0, (*renderer)->depthTarget());
-    first.bindStorageTexture(1, **probe, {}, StorageAccess::Write);
+    first.bindTexture(0, (*renderer)->depthTexture().rhi());
+    first.bindStorageTexture(1, probe->rhi(), {}, StorageAccess::Write);
     first.bindFrameData(0, kParams);
     first.dispatch(kProbeSize / 8, kProbeSize / 8, 1);
     first.endComputePass();
-    gpu->device().endFrame(nullptr);
+    gpu->submitAndEndFrame(firstFrame);
 
-    CommandList& second = gpu->device().beginFrame();
-    (*renderer)->render(second, sceneCamera(), lmx::test::prepareSceneView(view, gpu->device()));
-    gpu->device().endFrame(nullptr);
-    gpu->device().waitIdle();
+    auto secondFrame = gpu->beginFrame();
+    auto& second = secondFrame.commands;
+    (*renderer)->render(second, sceneCamera(), lmx::test::prepareSceneView(view, *gpu));
+    gpu->submitAndEndFrame(secondFrame);
+    gpu->waitIdle();
 }
 
 //======================================================================================================================
@@ -290,14 +312,18 @@ TEST_CASE("odd renderer extents and disabled bloom stay within the bloom texture
     FixtureSceneView view;
     const auto renderWithBloom = [&](bool enabled) {
         view.bloomEnabled = enabled;
-        CommandList& commands = gpu->device().beginFrame();
-        (*renderer)->render(commands, sceneCamera(),
-                            lmx::test::prepareSceneView(view, gpu->device()));
-        gpu->device().endFrame(nullptr);
-        gpu->device().waitIdle();
+        auto commandsFrame = gpu->beginFrame();
+        auto& commands = commandsFrame.commands;
+        (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, *gpu));
+        gpu->submitAndEndFrame(commandsFrame);
+        gpu->waitIdle();
 
         std::vector<uint8_t> pixels(size_t{kOddWidth} * kOddHeight * 4);
-        (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
+        {
+            const auto readbackBytes = lmx::render::readbackNow(
+                *gpu, (*renderer)->colorTarget(), lmx::render::TextureUse::RenderTarget);
+            std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
+        }
         for (size_t texel = 0; texel < size_t{kOddWidth} * kOddHeight; ++texel) {
             REQUIRE(pixels[texel * 4 + 3] == 255);
         }

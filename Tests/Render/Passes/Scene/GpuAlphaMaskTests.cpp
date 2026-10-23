@@ -1,5 +1,6 @@
 #include "Support/GpuTestSupport.h"
 
+#include <cstring>
 #include <glm/gtc/packing.hpp>
 
 #include "Support/SceneTableTestSupport.h"
@@ -43,15 +44,23 @@ lmx::engine::GpuTexture cutoutTexture(Device& device) {
 }
 
 //======================================================================================================================
-std::vector<uint16_t> cutoutFrame(Device& device, Renderer& renderer, FixtureSceneView view) {
+std::vector<uint16_t> cutoutFrame(lmx::engine::GpuContext& gpu, Renderer& renderer,
+                                  FixtureSceneView view) {
     lmx::engine::Camera camera;
     camera.position = {0, 0, 5};
-    auto& commands = device.beginFrame();
-    renderer.render(commands, camera, lmx::test::prepareSceneView(view, device));
-    device.endFrame(nullptr);
-    device.waitIdle();
+    auto gpuFrame1 = gpu.beginFrame();
+    auto& commands = gpuFrame1.commands;
+    renderer.render(commands, camera, lmx::test::prepareSceneView(view, gpu));
+    gpu.submitAndEndFrame(gpuFrame1);
+    gpu.waitIdle();
     std::vector<uint16_t> pixels(kSize * kSize * 4);
-    renderer.hdrColorTarget().readback(pixels.data(), pixels.size() * sizeof(uint16_t));
+    {
+        const auto readbackBytes =
+            lmx::render::readbackNow(gpu, renderer.hdrColorTexture(),
+                                     view.temporal.enabled ? lmx::render::TextureUse::CopySource
+                                                           : lmx::render::TextureUse::ShaderRead);
+        std::memcpy(pixels.data(), readbackBytes.data(), pixels.size() * sizeof(uint16_t));
+    }
     return pixels;
 }
 
@@ -119,7 +128,7 @@ TEST_CASE("alpha mask shares color depth and motion coverage", "[gpu][alpha-mask
         items[0].material.doubleSided = true;
         view.temporal.enabled = true;
     }
-    auto pixels = cutoutFrame(gpu->device(), **renderer, view);
+    auto pixels = cutoutFrame(*gpu, **renderer, view);
     REQUIRE(cutoutChannel(pixels, 25, 0) < 0.01f);
     REQUIRE(cutoutChannel(pixels, 25, 1) > 1.0f);
     REQUIRE(cutoutChannel(pixels, 39, 0) > 1.0f);
@@ -127,10 +136,18 @@ TEST_CASE("alpha mask shares color depth and motion coverage", "[gpu][alpha-mask
     REQUIRE(cutoutChannel(pixels, 39, 3) == 1.0f);
     if (view.temporal.enabled) {
         std::vector<uint16_t> history(kSize * kSize * 4);
-        (*renderer)->historyTarget()->readback(history.data(), history.size() * sizeof(uint16_t));
+        {
+            const auto readbackBytes = lmx::render::readbackNow(
+                *gpu, *(*renderer)->historyTexture(), lmx::render::TextureUse::CopyDestination);
+            std::memcpy(history.data(), readbackBytes.data(), history.size() * sizeof(uint16_t));
+        }
         REQUIRE(cutoutChannel(history, 39, 3) == 1.0f);
         std::vector<uint16_t> motion(kSize * kSize * 2);
-        (*renderer)->motionTarget()->readback(motion.data(), motion.size() * 2);
+        {
+            const auto readbackBytes = lmx::render::readbackNow(
+                *gpu, *(*renderer)->motionTexture(), lmx::render::TextureUse::RenderTarget);
+            std::memcpy(motion.data(), readbackBytes.data(), motion.size() * 2);
+        }
         const size_t hole = (kSize / 2 * kSize + 25) * 2;
         const size_t solid = (kSize / 2 * kSize + 39) * 2;
         REQUIRE(glm::unpackHalf1x16(motion[hole]) == 0.0f);
@@ -138,14 +155,18 @@ TEST_CASE("alpha mask shares color depth and motion coverage", "[gpu][alpha-mask
         items[0].motionClass = lmx::engine::MotionClass::Rigid;
         items[0].previousModel =
             glm::translate(glm::mat4{1}, glm::vec3{-0.1f, 0, 0}) * items[0].model;
-        cutoutFrame(gpu->device(), **renderer, view);
-        (*renderer)->motionTarget()->readback(motion.data(), motion.size() * 2);
+        cutoutFrame(*gpu, **renderer, view);
+        {
+            const auto readbackBytes = lmx::render::readbackNow(
+                *gpu, *(*renderer)->motionTexture(), lmx::render::TextureUse::RenderTarget);
+            std::memcpy(motion.data(), readbackBytes.data(), motion.size() * 2);
+        }
         REQUIRE(glm::unpackHalf1x16(motion[hole]) == 0.0f);
         REQUIRE(glm::unpackHalf1x16(motion[solid]) > 0.005f);
     }
     items[0].material.alphaMode = lmx::engine::AlphaMode::Opaque;
     items[0].model = glm::mat4{1};
-    pixels = cutoutFrame(gpu->device(), **renderer, view);
+    pixels = cutoutFrame(*gpu, **renderer, view);
     REQUIRE(cutoutChannel(pixels, 25, 0) > 1.0f);
     REQUIRE(cutoutChannel(pixels, 25, 1) < 0.01f);
 }
@@ -175,15 +196,15 @@ TEST_CASE("alpha mask shadows preserve holes and transformed UV coverage", "[gpu
     auto view = cutoutView(items);
     view.temporal.enabled = false;
     view.lights[0].direction = glm::normalize(glm::vec3{-1, 0, -1});
-    const auto masked = cutoutFrame(gpu->device(), **renderer, view);
+    const auto masked = cutoutFrame(*gpu, **renderer, view);
     items[0].material.alphaMode = lmx::engine::AlphaMode::Opaque;
-    const auto opaque = cutoutFrame(gpu->device(), **renderer, view);
+    const auto opaque = cutoutFrame(*gpu, **renderer, view);
     INFO("masked=" << cutoutChannel(masked, 18, 0) << " opaque=" << cutoutChannel(opaque, 18, 0));
     REQUIRE(cutoutChannel(masked, 18, 0) > cutoutChannel(opaque, 18, 0) + 0.05f);
     items[0].material.alphaMode = lmx::engine::AlphaMode::Mask;
     items[0].material.uvTransform[0][0] = -1;
     items[0].material.uvTransform[3][0] = 1;
-    const auto flipped = cutoutFrame(gpu->device(), **renderer, view);
+    const auto flipped = cutoutFrame(*gpu, **renderer, view);
     REQUIRE(cutoutChannel(flipped, 18, 0) < cutoutChannel(masked, 18, 0) - 0.05f);
 }
 
@@ -205,12 +226,12 @@ TEST_CASE("double sided alpha masks reverse back-face lighting normals", "[gpu][
     item.material.doubleSided = true;
     auto view = cutoutView(std::span{&item, 1});
     view.temporal.enabled = false;
-    const auto front = cutoutFrame(gpu->device(), **renderer, view);
+    const auto front = cutoutFrame(*gpu, **renderer, view);
     item.model = glm::rotate(glm::mat4{1}, glm::pi<float>(), glm::vec3{0, 1, 0});
-    const auto back = cutoutFrame(gpu->device(), **renderer, view);
+    const auto back = cutoutFrame(*gpu, **renderer, view);
     REQUIRE(cutoutChannel(front, 32, 0) > 0.15f);
     REQUIRE(std::abs(cutoutChannel(front, 32, 0) - cutoutChannel(back, 32, 0)) < 0.002f);
     item.material.doubleSided = false;
-    const auto culled = cutoutFrame(gpu->device(), **renderer, view);
+    const auto culled = cutoutFrame(*gpu, **renderer, view);
     REQUIRE(cutoutChannel(culled, 32, 0) < 0.1f);
 }

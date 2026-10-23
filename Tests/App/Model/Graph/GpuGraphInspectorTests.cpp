@@ -8,6 +8,7 @@
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Graph/TransientPool.h"
 
+#include "Support/GpuTestSupport.h"
 #include "Support/SceneTableTestSupport.h"
 #include <algorithm>
 #include <cstdlib>
@@ -67,25 +68,25 @@ TEST_CASE("the inspector model agrees with the dump for the same frame", "[gpu]"
 
     constexpr uint64_t kBytes = 256;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
-    lmx::engine::GpuContext timingSource{**device};
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
 
-    auto target = (*device)->createBuffer(
+    auto target = device->createBuffer(
         {.size = kBytes, .storageRead = true, .label = "lmx.test.inspector.target"}, nullptr);
     INFO(errorOf(target));
     REQUIRE(target.has_value());
 
-    auto orphan = (*device)->createBuffer(
+    auto orphan = device->createBuffer(
         {.size = kBytes, .storageRead = true, .label = "lmx.test.inspector.orphan"}, nullptr);
     INFO(errorOf(orphan));
     REQUIRE(orphan.has_value());
 
-    TransientPool pool(**device);
+    TransientPool pool(*device);
     lmx::app::FrameRecordRing records;
 
-    CommandList& commands = (*device)->beginFrame();
+    auto gpuFrame1 = gpu->beginFrame();
+    CommandList& commands = gpuFrame1.commands;
     pool.beginFrame();
 
     RenderGraph graph(pool);
@@ -122,20 +123,20 @@ TEST_CASE("the inspector model agrees with the dump for the same frame", "[gpu]"
 
     graph.exportBuffer(nextVersion(targetHandle));
 
-    records.retain(graph.execute(commands, (*device)->frameNumber()));
-    const lmx::engine::PassTimingFrame published = timingSource.passTimings();
+    records.retain(graph.execute(commands, gpu->frameNumber()));
+    const lmx::engine::PassTimingFrame published = gpu->passTimings();
     records.joinTimings(published.frame, published.passes);
-    (*device)->endFrame(nullptr);
+    gpu->submitAndEndFrame(gpuFrame1);
 
     // The one sequence passTimings() documents as publishing a specific frame: drain, then open one
     // more frame, which publishes the frame that just retired.
-    (*device)->waitIdle();
-    (*device)->beginFrame();
-    const lmx::engine::PassTimingFrame retired = timingSource.passTimings();
+    gpu->waitIdle();
+    auto gpuFrame2 = gpu->beginFrame();
+    const lmx::engine::PassTimingFrame retired = gpu->passTimings();
     const uint64_t measured = retired.frame;
     REQUIRE(records.joinTimings(measured, retired.passes));
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->submitAndEndFrame(gpuFrame2);
+    gpu->waitIdle();
 
     const lmx::app::RetainedFrame* newest = records.newestTimedFrame();
     REQUIRE(newest != nullptr);
@@ -321,15 +322,16 @@ TEST_CASE("Native TAA physical history alternates without changing canvas topolo
     TransientPool pool(gpu->device());
     std::vector<CompiledFrameRecord> records;
     for (uint32_t frame = 0; frame < 4; ++frame) {
-        CommandList& commands = gpu->device().beginFrame();
+        auto gpuFrame3 = gpu->beginFrame();
+        CommandList& commands = gpuFrame3.commands;
         pool.beginFrame();
         RenderGraph graph(pool);
-        const auto display = (*renderer)->declarePasses(
-            graph, commands, temporalCamera(), lmx::test::prepareSceneView(view, gpu->device()));
+        const auto display = (*renderer)->declarePasses(graph, commands, temporalCamera(),
+                                                        lmx::test::prepareSceneView(view, *gpu));
         graph.presentTexture(display);
-        records.push_back(graph.execute(commands, gpu->device().frameNumber()));
-        gpu->device().endFrame(nullptr);
-        gpu->device().waitIdle();
+        records.push_back(graph.execute(commands, gpu->frameNumber()));
+        gpu->submitAndEndFrame(gpuFrame3);
+        gpu->waitIdle();
     }
     const auto first = lmx::app::buildGraphNodeModel(records[2], {});
     const auto second = lmx::app::buildGraphNodeModel(records[3], {});

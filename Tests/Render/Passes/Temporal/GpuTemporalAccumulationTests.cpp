@@ -1,5 +1,7 @@
 #include "Support/GpuTemporalTestSupport.h"
+
 #include "Support/SceneTableTestSupport.h"
+#include <cstring>
 
 using lmx::test::FixtureDrawItem;
 using lmx::test::FixtureMaterial;
@@ -43,7 +45,7 @@ TEST_CASE("accumulation settles a static jittered frame", "[gpu][temporal]") {
     INFO(errorOf(rawRenderer));
     REQUIRE(rawRenderer.has_value());
     const std::vector<ScenarioFrame> raw =
-        renderSequence(gpu->device(), **rawRenderer, 32, ReconstructionMode::Raw, base, camera,
+        renderSequence(*gpu, **rawRenderer, 32, ReconstructionMode::Raw, base, camera,
                        TemporalDebugView::Off, nullptr);
 
     auto taaRenderer =
@@ -51,8 +53,8 @@ TEST_CASE("accumulation settles a static jittered frame", "[gpu][temporal]") {
     INFO(errorOf(taaRenderer));
     REQUIRE(taaRenderer.has_value());
     const std::vector<ScenarioFrame> taa =
-        renderSequence(gpu->device(), **taaRenderer, 32, ReconstructionMode::NativeTaa, base,
-                       camera, TemporalDebugView::Off, nullptr);
+        renderSequence(*gpu, **taaRenderer, 32, ReconstructionMode::NativeTaa, base, camera,
+                       TemporalDebugView::Off, nullptr);
 
     const std::vector<uint32_t> pixels = allPixels();
     const float rawChange = frameToFrameChange(raw, pixels);
@@ -106,14 +108,14 @@ TEST_CASE("accumulation keeps thin geometry's brightness", "[gpu][temporal]") {
         Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(rawRenderer.has_value());
     const std::vector<ScenarioFrame> raw =
-        renderSequence(gpu->device(), **rawRenderer, 32, ReconstructionMode::Raw, base, camera,
+        renderSequence(*gpu, **rawRenderer, 32, ReconstructionMode::Raw, base, camera,
                        TemporalDebugView::Off, nullptr);
     auto taaRenderer =
         Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(taaRenderer.has_value());
     const std::vector<ScenarioFrame> taa =
-        renderSequence(gpu->device(), **taaRenderer, 32, ReconstructionMode::NativeTaa, base,
-                       camera, TemporalDebugView::Off, nullptr);
+        renderSequence(*gpu, **taaRenderer, 32, ReconstructionMode::NativeTaa, base, camera,
+                       TemporalDebugView::Off, nullptr);
 
     // A pole pixel is one the poles covered on at least one measured jitter sample; the floor never
     // reaches this luminance under a light that grazes it.
@@ -195,7 +197,7 @@ TEST_CASE("a moving quad leaves no trail behind it", "[gpu][temporal]") {
         Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(rawRenderer.has_value());
     const std::vector<ScenarioFrame> raw =
-        renderSequence(gpu->device(), **rawRenderer, kFrames, ReconstructionMode::Raw, base, camera,
+        renderSequence(*gpu, **rawRenderer, kFrames, ReconstructionMode::Raw, base, camera,
                        TemporalDebugView::Off, animate);
     // The debug view replaces the display target and nothing else, so one accumulated run answers
     // both halves: its colour slot is the picture, its display target the rejection mask.
@@ -203,8 +205,8 @@ TEST_CASE("a moving quad leaves no trail behind it", "[gpu][temporal]") {
         Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(taaRenderer.has_value());
     const std::vector<ScenarioFrame> taa =
-        renderSequence(gpu->device(), **taaRenderer, kFrames, ReconstructionMode::NativeTaa, base,
-                       camera, TemporalDebugView::RejectionMask, animate);
+        renderSequence(*gpu, **taaRenderer, kFrames, ReconstructionMode::NativeTaa, base, camera,
+                       TemporalDebugView::RejectionMask, animate);
 
     // The quad's screen span, from the same projection the scene was authored against.
     const auto quadColumns = [&](uint32_t frame) {
@@ -308,8 +310,8 @@ TEST_CASE("a reactive emissive step lands without a fade", "[gpu][temporal]") {
         Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(rawRenderer.has_value());
     const std::vector<ScenarioFrame> raw =
-        renderSequence(gpu->device(), **rawRenderer, kStepFrame + 1, ReconstructionMode::Raw, base,
-                       camera, TemporalDebugView::Off, animate);
+        renderSequence(*gpu, **rawRenderer, kStepFrame + 1, ReconstructionMode::Raw, base, camera,
+                       TemporalDebugView::Off, animate);
     // The debug view replaces the display target and nothing else, so the accumulated run answers
     // both halves at once: its colour slot is the picture the frozen tolerances measure, its
     // display target the reason the resolve chose. A second run reads the weight the same way.
@@ -317,14 +319,14 @@ TEST_CASE("a reactive emissive step lands without a fade", "[gpu][temporal]") {
         Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(taaRenderer.has_value());
     const std::vector<ScenarioFrame> taa =
-        renderSequence(gpu->device(), **taaRenderer, kStepFrame + 1, ReconstructionMode::NativeTaa,
-                       base, camera, TemporalDebugView::RejectionMask, animate);
+        renderSequence(*gpu, **taaRenderer, kStepFrame + 1, ReconstructionMode::NativeTaa, base,
+                       camera, TemporalDebugView::RejectionMask, animate);
     auto weightRenderer =
         Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(weightRenderer.has_value());
-    const std::vector<ScenarioFrame> weights = renderSequence(
-        gpu->device(), **weightRenderer, kStepFrame + 1, ReconstructionMode::NativeTaa, base,
-        camera, TemporalDebugView::BlendWeight, animate);
+    const std::vector<ScenarioFrame> weights =
+        renderSequence(*gpu, **weightRenderer, kStepFrame + 1, ReconstructionMode::NativeTaa, base,
+                       camera, TemporalDebugView::BlendWeight, animate);
 
     // A block at the quad's centre, far enough inside that no jittered edge reaches it.
     std::vector<uint32_t> center;
@@ -394,14 +396,14 @@ TEST_CASE("an exposure step is corrected in the history it blends", "[gpu][tempo
         Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(rawRenderer.has_value());
     const std::vector<ScenarioFrame> raw =
-        renderSequence(gpu->device(), **rawRenderer, kStepFrame, ReconstructionMode::Raw, base,
-                       camera, TemporalDebugView::Off, animate);
+        renderSequence(*gpu, **rawRenderer, kStepFrame, ReconstructionMode::Raw, base, camera,
+                       TemporalDebugView::Off, animate);
     auto taaRenderer =
         Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(taaRenderer.has_value());
     const std::vector<ScenarioFrame> taa =
-        renderSequence(gpu->device(), **taaRenderer, kStepFrame, ReconstructionMode::NativeTaa,
-                       base, camera, TemporalDebugView::Off, animate);
+        renderSequence(*gpu, **taaRenderer, kStepFrame, ReconstructionMode::NativeTaa, base, camera,
+                       TemporalDebugView::Off, animate);
 
     const std::vector<uint32_t> pixels = allPixels();
     const float rawMean = meanOver(luminances(raw.back().history), pixels);
@@ -442,8 +444,8 @@ TEST_CASE("a camera cut restarts the accumulation and its warmup", "[gpu][tempor
     auto renderer = Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(renderer.has_value());
     const std::vector<ScenarioFrame> frames =
-        renderSequence(gpu->device(), **renderer, kFrames, ReconstructionMode::NativeTaa, base,
-                       camera, TemporalDebugView::Off, animate);
+        renderSequence(*gpu, **renderer, kFrames, ReconstructionMode::NativeTaa, base, camera,
+                       TemporalDebugView::Off, animate);
 
     const ScenarioFrame& cut = frames[kCutFrame - 1];
     REQUIRE(cut.status.lastReset == HistoryResetReason::CameraCut);
@@ -498,14 +500,15 @@ TEST_CASE("switching from raw to native TAA needs no reset", "[gpu][temporal]") 
 
     view.temporal.reconstruction = ReconstructionMode::Raw;
     for (uint32_t frame = 0; frame < 4; ++frame) {
-        renderFrame(gpu->device(), **renderer, camera, view);
+        renderFrame(*gpu, **renderer, camera, view);
     }
     REQUIRE((*renderer)->temporalStatus().reconstruction == ReconstructionMode::Raw);
     const uint32_t ageBeforeSwitch = (*renderer)->temporalStatus().historyAge;
-    const std::vector<glm::vec4> rawCommit = readHalf4(*(*renderer)->historyTarget());
+    const std::vector<glm::vec4> rawCommit =
+        readHalf4(*gpu, *(*renderer)->historyTexture(), lmx::render::TextureUse::CopyDestination);
 
     view.temporal.reconstruction = ReconstructionMode::NativeTaa;
-    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(*gpu, **renderer, camera, view);
     const lmx::render::TemporalStatus status = (*renderer)->temporalStatus();
     REQUIRE(status.lastReset == HistoryResetReason::None);
     REQUIRE(status.reconstruction == ReconstructionMode::NativeTaa);
@@ -514,8 +517,10 @@ TEST_CASE("switching from raw to native TAA needs no reset", "[gpu][temporal]") 
 
     // The first accumulated frame is a blend, not a copy: it differs from its own raw frame, and it
     // moved toward it from what the raw commit had left in the other slot.
-    const std::vector<glm::vec4> blended = readHalf4(*(*renderer)->historyTarget());
-    const std::vector<glm::vec4> raw = readHalf4((*renderer)->hdrColorTarget());
+    const std::vector<glm::vec4> blended =
+        readHalf4(*gpu, *(*renderer)->historyTexture(), lmx::render::TextureUse::ShaderRead);
+    const std::vector<glm::vec4> raw =
+        readHalf4(*gpu, (*renderer)->hdrColorTexture(), lmx::render::TextureUse::ShaderRead);
     const std::vector<uint32_t> pixels = allPixels();
     const float towardRaw = meanAbsDiff(luminances(blended), luminances(raw), pixels);
     const float rawToCommit = meanAbsDiff(luminances(raw), luminances(rawCommit), pixels);
@@ -553,9 +558,13 @@ TEST_CASE("the raw bypass matches the temporal-off picture", "[gpu][temporal]") 
         view.temporal.enabled = temporal;
         view.temporal.jitterEnabled = false;
         view.temporal.reconstruction = ReconstructionMode::Raw;
-        renderFrame(gpu->device(), **renderer, camera, view);
+        renderFrame(*gpu, **renderer, camera, view);
         std::vector<uint8_t> display(kScenarioPixels * 4);
-        (*renderer)->colorTarget().rhi().readback(display.data(), display.size());
+        {
+            const auto readbackBytes = lmx::render::readbackNow(
+                *gpu, (*renderer)->colorTarget(), lmx::render::TextureUse::RenderTarget);
+            std::memcpy(display.data(), readbackBytes.data(), display.size());
+        }
         return display;
     };
 

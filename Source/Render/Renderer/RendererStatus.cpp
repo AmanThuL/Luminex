@@ -64,34 +64,34 @@ void Renderer::recordFrameStatus(const RendererFrameState& state) {
 }
 
 //======================================================================================================================
-rojoRHI::Buffer& Renderer::exposureBuffer() {
-    return m_exposureStage->buffer();
-}
-
-//======================================================================================================================
 const engine::GpuTexture& Renderer::colorTarget() {
     LMX_ASSERT(m_color, "Renderer::colorTarget: no color target -- create() failed");
     return m_color;
 }
 
 //======================================================================================================================
-rojoRHI::Texture& Renderer::hdrColorTarget() {
+const engine::GpuTexture& Renderer::hdrColorTexture() {
     LMX_ASSERT(m_hdrColor, "Renderer::hdrColorTarget: no scene color target -- create() failed");
-    return m_hdrColor.rhi();
+    return m_hdrColor;
 }
 
 //======================================================================================================================
-rojoRHI::Texture& Renderer::depthTarget() {
+const engine::GpuTexture& Renderer::depthTexture() {
     LMX_ASSERT(m_temporalResolve != nullptr,
                "Renderer::depthTarget: no depth target -- create() failed");
-    return m_temporalResolve->depthSlot(m_currentSlot);
+    return m_temporalResolve->depthTexture(m_currentSlot);
 }
 
 //======================================================================================================================
-rojoRHI::Texture* Renderer::historyTarget() {
+const engine::GpuTexture* Renderer::historyTexture() {
     LMX_ASSERT(m_temporalResolve != nullptr,
                "Renderer::historyTarget: no history -- create() failed");
-    return &m_temporalResolve->colorSlot(m_currentSlot);
+    return &m_temporalResolve->colorTexture(m_currentSlot);
+}
+
+//======================================================================================================================
+const engine::GpuBuffer& Renderer::exposureBufferOwner() {
+    return m_exposureStage->bufferOwner();
 }
 
 } // namespace lmx::render

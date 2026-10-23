@@ -832,8 +832,9 @@ TEST_CASE("document content preserves object and resource order across a generat
 //======================================================================================================================
 TEST_CASE("document content mip filtering follows each image color space",
           "[gpu][scene-doc][instantiate][ux6-content]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
     for (const bool srgb : {true, false}) {
         auto doc = test::contentDocument();
         auto content = std::make_shared<asset::DocContent>(*doc.content);
@@ -842,7 +843,7 @@ TEST_CASE("document content mip filtering follows each image color space",
         engine::Scene scene;
         engine::DocumentContentBinding binding;
         const std::array<uint32_t, 2> nodes{1, 2};
-        REQUIRE(engine::appendDocumentContent(**device, scene, doc, nodes, binding));
+        REQUIRE(engine::appendDocumentContent(*device, scene, doc, nodes, binding));
         const auto& material = scene.material(scene.objects[srgb ? 0 : 1].material);
         const auto* texture = scene.tryTexture(*(srgb ? material.diffuse : material.normalMap));
         REQUIRE(texture->desc().mipLevels == 3);
@@ -851,7 +852,8 @@ TEST_CASE("document content mip filtering follows each image color space",
             std::span(reinterpret_cast<const uint8_t*>(pixels.rgba8.data()), pixels.rgba8.size());
         const auto baked =
             asset::bakeMips(bytes, 4, 4, srgb ? asset::BakeMode::Srgb : asset::BakeMode::Linear);
-        auto expected = (*device)->createTexture(
+        auto expected = engine::GpuTexture::create(
+            *device,
             {.width = 4,
              .height = 4,
              .format = srgb ? rojoRHI::Format::RGBA8Unorm_sRGB : rojoRHI::Format::RGBA8Unorm,
@@ -860,23 +862,22 @@ TEST_CASE("document content mip filtering follows each image color space",
              .label = "expected document mips"},
             engine::toTextureMips(baked));
         REQUIRE(expected);
-        auto destination = makeProbeTarget(**device, "document mip probe");
-        auto library = (*device)->loadShaderLibrary("Shaders/SamplerSmoke");
+        auto destination = makeProbeTarget(*gpu, "document mip probe");
+        auto library = gpu->loadShaderLibrary("SamplerSmoke");
         REQUIRE(destination);
         REQUIRE(library);
-        auto pipeline =
-            (*device)->createGraphicsPipeline({.library = library->get(),
-                                               .vertexEntry = "vertexMain",
-                                               .fragmentEntry = "fragmentMipLevel1",
-                                               .colorFormat = rojoRHI::Format::BGRA8Unorm,
-                                               .label = "document mip probe"});
-        auto sampler = (*device)->createSampler({.addressMode = rojoRHI::AddressMode::Clamp});
+        auto pipeline = device->createGraphicsPipeline({.library = library->get(),
+                                                        .vertexEntry = "vertexMain",
+                                                        .fragmentEntry = "fragmentMipLevel1",
+                                                        .colorFormat = rojoRHI::Format::BGRA8Unorm,
+                                                        .label = "document mip probe"});
+        auto sampler = device->createSampler({.addressMode = rojoRHI::AddressMode::Clamp});
         REQUIRE(pipeline);
         REQUIRE(sampler);
         const auto actual =
-            renderSampledImage(**device, **pipeline, 0, texture->rhi(), **sampler, **destination);
+            renderSampledImage(*gpu, **pipeline, 0, *texture, **sampler, *destination);
         const auto reference =
-            renderSampledImage(**device, **pipeline, 0, **expected, **sampler, **destination);
+            renderSampledImage(*gpu, **pipeline, 0, *expected, **sampler, *destination);
         REQUIRE(actual == reference);
     }
 }

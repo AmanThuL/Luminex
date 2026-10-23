@@ -1,9 +1,11 @@
 #include "Core/Util/Sha256.h"
+
 #include "Engine/Asset/Image/BmpImage.h"
 #include "Render/Renderer/SceneViewBuilder.h"
 #include "Support/GpuTestSupport.h"
 #include "Support/SceneDocumentTestSupport.h"
 #include <algorithm>
+#include <cstring>
 #include <fstream>
 
 namespace {
@@ -14,11 +16,12 @@ struct ToggleFrame {
 };
 
 //======================================================================================================================
-ToggleFrame toggleFrame(rojoRHI::Device& device, engine::Scene& scene, render::Renderer& renderer,
+ToggleFrame toggleFrame(engine::GpuContext& gpu, engine::Scene& scene, render::Renderer& renderer,
                         const engine::Camera& camera, render::ClassifyMode classifier,
                         render::SubmissionMode submission, bool occlusion, std::string_view label) {
-    auto& commands = device.beginFrame();
-    REQUIRE(scene.prepareFrame(device.frameNumber()));
+    auto frame = gpu.beginFrame();
+    auto& commands = frame.commands;
+    REQUIRE(scene.prepareFrame(gpu.frameNumber()));
     std::vector<engine::DrawItem> items;
     auto view = render::buildSceneView(scene, items, false);
     view.temporal.enabled = false;
@@ -29,9 +32,9 @@ ToggleFrame toggleFrame(rojoRHI::Device& device, engine::Scene& scene, render::R
     view.occlusionEnabled = occlusion;
     view.occlusionCheck = occlusion;
     renderer.render(commands, camera, view);
-    device.endFrame(nullptr);
+    gpu.submitAndEndFrame(frame);
     scene.commitFrame();
-    device.waitIdle();
+    gpu.waitIdle();
     ToggleFrame result;
     result.visibility = renderer.visibilityStatus();
     if (classifier == render::ClassifyMode::Gpu) {
@@ -51,21 +54,30 @@ ToggleFrame toggleFrame(rojoRHI::Device& device, engine::Scene& scene, render::R
         REQUIRE(check.passed());
         REQUIRE(check.falselyRejectedInstances == 0);
     }
-    auto& target = renderer.colorTarget().rhi();
-    std::vector<uint8_t> bytes(size_t{target.width()} * target.height() * 4);
-    target.readback(bytes.data(), bytes.size());
+    const auto& target = renderer.colorTarget();
+    std::vector<uint8_t> bytes(size_t{target.desc().width} * target.desc().height * 4);
+    {
+        const auto readbackBytes =
+            lmx::render::readbackNow(gpu, target, lmx::render::TextureUse::RenderTarget);
+        std::memcpy(bytes.data(), readbackBytes.data(), bytes.size());
+    }
     result.digest = sha256Hex(std::as_bytes(std::span(bytes)));
     if (const char* directory = std::getenv("LMX_DISABLED_EVIDENCE_DIR")) {
         const auto path = std::filesystem::path(directory);
         std::filesystem::create_directories(path);
-        REQUIRE(asset::writeBmp(path / (std::string(label) + ".bmp"), bytes, target.width(),
-                                target.height()));
+        REQUIRE(asset::writeBmp(path / (std::string(label) + ".bmp"), bytes, target.desc().width,
+                                target.desc().height));
         std::ofstream detail(path / "row-details.tsv", std::ios::app);
         const auto submissionRows = render::buildDrawSubmission(
             view, result.visibility.scene, result.visibility.shadow, submission);
         std::vector<engine::InstanceRow> uploaded(view.tables.instanceCapacity);
-        view.tables.instances->rhi().readback(uploaded.data(),
-                                              uploaded.size() * sizeof(uploaded[0]));
+        {
+            const auto readbackBytes = lmx::render::readbackNow(
+                gpu, *view.tables.instances, lmx::render::BufferUse::ShaderRead,
+                {0, uploaded.size() * sizeof(uploaded[0])});
+            std::memcpy(uploaded.data(), readbackBytes.data(),
+                        uploaded.size() * sizeof(uploaded[0]));
+        }
         const auto vp = camera.projectionMatrix(16.0f / 9.0f) * camera.viewMatrix();
         for (size_t i = 0; i < scene.objects.size(); ++i) {
             if (scene.objects[i].materialQualifier != "column_a")
@@ -89,8 +101,9 @@ ToggleFrame toggleFrame(rojoRHI::Device& device, engine::Scene& scene, render::R
                                       (corner & 2) ? row.worldBoundsMax.y : row.worldBoundsMin.y,
                                       (corner & 4) ? row.worldBoundsMax.z : row.worldBoundsMin.z};
                 const auto clip = vp * glm::vec4(point, 1);
-                detail << (clip.x / clip.w * 0.5f + 0.5f) * target.width() << ','
-                       << (0.5f - clip.y / clip.w * 0.5f) * target.height() << ',' << clip.w << ';';
+                detail << (clip.x / clip.w * 0.5f + 0.5f) * target.desc().width << ','
+                       << (0.5f - clip.y / clip.w * 0.5f) * target.desc().height << ',' << clip.w
+                       << ';';
             }
             detail << '\n';
         }
@@ -131,11 +144,11 @@ TEST_CASE("Sponza column toggles restore exact temporal-off pixels and invalidat
                                std::to_string(static_cast<int>(mode));
             auto renderer = render::Renderer::create(*gpu, 320, 180, true);
             REQUIRE(renderer);
-            const auto before = toggleFrame(gpu->device(), scene, **renderer, camera, classifier,
-                                            mode, false, label + "-on");
+            const auto before = toggleFrame(*gpu, scene, **renderer, camera, classifier, mode,
+                                            false, label + "-on");
             scene.setObjectEnabled(index, false);
-            const auto off = toggleFrame(gpu->device(), scene, **renderer, camera, classifier, mode,
-                                         false, label + "-off");
+            const auto off = toggleFrame(*gpu, scene, **renderer, camera, classifier, mode, false,
+                                         label + "-off");
             REQUIRE(off.digest != before.digest);
             REQUIRE(off.visibility.sceneCounters.disabled == 1);
             REQUIRE(off.visibility.shadowCounters.disabled == 1);
@@ -144,8 +157,8 @@ TEST_CASE("Sponza column toggles restore exact temporal-off pixels and invalidat
             REQUIRE(off.visibility.scene.candidates[index].reason ==
                     render::VisibilityReason::AuthoredOff);
             scene.setObjectEnabled(index, true);
-            const auto restored = toggleFrame(gpu->device(), scene, **renderer, camera, classifier,
-                                              mode, false, label + "-restored");
+            const auto restored = toggleFrame(*gpu, scene, **renderer, camera, classifier, mode,
+                                              false, label + "-restored");
             CAPTURE(label, before.digest, off.digest, restored.digest);
             REQUIRE(restored.digest == before.digest);
             REQUIRE(scene.objects.size() == population);
@@ -160,8 +173,8 @@ TEST_CASE("Sponza column toggles restore exact temporal-off pixels and invalidat
             const bool enabled = frame < 2 || frame >= 4;
             scene.setObjectEnabled(index, enabled);
             const auto result =
-                toggleFrame(gpu->device(), scene, **renderer, camera, render::ClassifyMode::Gpu,
-                            mode, true, label + "-" + std::to_string(frame));
+                toggleFrame(*gpu, scene, **renderer, camera, render::ClassifyMode::Gpu, mode, true,
+                            label + "-" + std::to_string(frame));
             REQUIRE(result.visibility.sceneCounters.disabled == (enabled ? 0 : 1));
             if (frame == 2 || frame == 4)
                 REQUIRE(result.visibility.occlusionInvalidReason ==
@@ -174,8 +187,8 @@ TEST_CASE("Sponza column toggles restore exact temporal-off pixels and invalidat
 //======================================================================================================================
 TEST_CASE("document instantiation applies initial object effective flags before the first frame",
           "[gpu][scene-doc][disabled-instance]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
+    REQUIRE(gpu != nullptr);
     for (std::string_view id : {"sponza", "visibility-lab"}) {
         auto document = scenes::readCatalogDocument(id);
         REQUIRE(document);
@@ -189,21 +202,21 @@ TEST_CASE("document instantiation applies initial object effective flags before 
                           (std::string(id) + "-disabled.scene.gltf");
         std::filesystem::create_directories(path.parent_path());
         REQUIRE(asset::saveSceneDocument(*document, path));
-        auto loaded = scenes::loadSceneDocument(**device, path);
+        auto loaded = scenes::loadSceneDocument(gpu->device(), path);
         INFO(errorOf(loaded));
         REQUIRE(loaded);
         auto& scene = *loaded->scene;
         REQUIRE_FALSE(scene.objects.empty());
         REQUIRE(loaded->binding.objectEffective.size() == scene.objects.size());
-        (*device)->beginFrame();
-        REQUIRE(scene.prepareFrame((*device)->frameNumber()));
+        auto emptyFrame = gpu->beginFrame();
+        REQUIRE(scene.prepareFrame(gpu->frameNumber()));
         for (size_t i = 0; i < scene.objects.size(); ++i) {
             REQUIRE_FALSE(loaded->binding.objectEffective[i]);
             REQUIRE_FALSE(scene.objects[i].enabled);
             REQUIRE((scene.tables().instanceRows[scene.objects[i].id.slot].flags &
                      engine::kInstanceDisabled) != 0);
         }
-        (*device)->endFrame(nullptr);
-        (*device)->waitIdle();
+        gpu->submitAndEndFrame(emptyFrame);
+        gpu->waitIdle();
     }
 }

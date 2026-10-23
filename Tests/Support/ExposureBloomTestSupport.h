@@ -1,6 +1,8 @@
 #pragma once
 
 #include "Core/Diagnostics/Result.h"
+#include "Engine/Gpu/GpuContext.h"
+#include "Engine/Gpu/GpuTexture.h"
 #include <rojoRHI/RHI.h>
 
 #include <cstdint>
@@ -29,17 +31,19 @@ constexpr uint16_t halfPow2(int exponent) {
 }
 
 //======================================================================================================================
-inline rojoRHI::Result<std::unique_ptr<rojoRHI::Texture>>
-makeSceneColorTexture(rojoRHI::Device& device, uint32_t width, uint32_t height,
-                      std::span<const uint16_t> rgbaHalf, const char* label) {
+inline lmx::Result<engine::GpuTexture> makeSceneColorTexture(engine::GpuContext& gpu,
+                                                             uint32_t width, uint32_t height,
+                                                             std::span<const uint16_t> rgbaHalf,
+                                                             const char* label) {
     const rojoRHI::TextureMip mip{.data = rgbaHalf.data(),
                                   .bytesPerRow = uint64_t{width} * 4 * sizeof(uint16_t)};
-    return device.createTexture({.width = width,
-                                 .height = height,
-                                 .format = rojoRHI::Format::RGBA16Float,
-                                 .sampled = true,
-                                 .label = label},
-                                std::span{&mip, 1});
+    return engine::GpuTexture::create(gpu.device(),
+                                      {.width = width,
+                                       .height = height,
+                                       .format = rojoRHI::Format::RGBA16Float,
+                                       .sampled = true,
+                                       .label = label},
+                                      std::span{&mip, 1});
 }
 
 } // namespace lmx::test

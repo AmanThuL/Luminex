@@ -6,6 +6,7 @@
 #include "Engine/Geometry/Mesh.h"
 #include "Engine/Gpu/GpuContext.h"
 #include "Engine/View/Camera.h"
+#include "Render/Gpu/Readback.h"
 #include "Render/Renderer/Renderer.h"
 #include <rojoRHI/RHI.h>
 
@@ -90,36 +91,35 @@ inline bool channelNear(uint8_t actual, int expected, int tolerance) {
     return std::abs(int{actual} - expected) <= tolerance;
 }
 
-inline rojoRHI::Result<std::unique_ptr<rojoRHI::Texture>> makeProbeTarget(rojoRHI::Device& device,
-                                                                          const char* label) {
-    return device.createTexture({.width = kSize,
-                                 .height = kSize,
-                                 .format = rojoRHI::Format::BGRA8Unorm,
-                                 .renderTarget = true,
-                                 .cpuReadback = true,
-                                 .label = label});
+inline lmx::Result<lmx::engine::GpuTexture> makeProbeTarget(lmx::engine::GpuContext& gpu,
+                                                            const char* label) {
+    return lmx::engine::GpuTexture::create(gpu.device(), {.width = kSize,
+                                                          .height = kSize,
+                                                          .format = rojoRHI::Format::BGRA8Unorm,
+                                                          .renderTarget = true,
+                                                          .cpuReadback = true,
+                                                          .label = label});
 }
 
 inline std::vector<uint8_t>
-renderSampledImage(rojoRHI::Device& device, rojoRHI::GraphicsPipeline& pipeline,
-                   uint32_t textureSlot, rojoRHI::Texture& source, rojoRHI::Sampler& sampler,
-                   rojoRHI::Texture& destination, const rojoRHI::TextureViewDesc& view = {}) {
-    rojoRHI::CommandList& commands = device.beginFrame();
-    commands.beginRenderPass({.colorTarget = &destination,
+renderSampledImage(lmx::engine::GpuContext& gpu, rojoRHI::GraphicsPipeline& pipeline,
+                   uint32_t textureSlot, const lmx::engine::GpuTexture& source,
+                   rojoRHI::Sampler& sampler, const lmx::engine::GpuTexture& destination,
+                   const rojoRHI::TextureViewDesc& view = {}) {
+    auto frame = gpu.beginFrame();
+    auto& commands = frame.commands;
+    commands.beginRenderPass({.colorTarget = &destination.rhi(),
                               .clearColor = {1.0f, 0.0f, 1.0f, 1.0f},
                               .clear = true,
                               .label = "rojorhi.test.textureUpload.probe"});
     commands.bindPipeline(pipeline);
-    commands.bindTexture(textureSlot, source, view);
+    commands.bindTexture(textureSlot, source.rhi(), view);
     commands.bindSampler(0, sampler);
     commands.draw(3);
     commands.endRenderPass();
-    device.endFrame(nullptr);
-    device.waitIdle();
-
-    std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
-    destination.readback(pixels.data(), pixels.size());
-    return pixels;
+    gpu.submitAndEndFrame(frame);
+    gpu.waitIdle();
+    return lmx::render::readbackNow(gpu, destination, lmx::render::TextureUse::RenderTarget);
 }
 
 template <typename T>
@@ -130,8 +130,8 @@ std::string errorOf(const lmx::asset::AssetResult<T>& result) {
 }
 
 //======================================================================================================================
-// A GPU context over a real device with validation on, as rojoRHI::createDevice() defaults to; the
-// case stops here when no device can be created.
+// A GPU context over a real device with validation enabled; the case stops here when no device
+// can be created.
 inline std::unique_ptr<lmx::engine::GpuContext> createTestGpu() {
     auto gpu = lmx::engine::GpuContext::create({});
     INFO(errorOf(gpu));

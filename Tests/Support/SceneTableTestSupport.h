@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Engine/Gpu/GpuContext.h"
 #include "Engine/Scene/Scene.h"
 #include "Render/Renderer/SceneViewBuilder.h"
 #include <catch2/catch_test_macros.hpp>
@@ -98,10 +99,14 @@ struct FixtureSceneView : render::SceneView {
     FixtureSceneView() = default;
     FixtureSceneView(const render::SceneView& view) : render::SceneView(view), production(true) {}
 
-    render::SceneView prepare(rojoRHI::Device& device) const {
+    render::SceneView prepare(engine::GpuContext& gpu) const {
         if (production)
             return static_cast<const render::SceneView&>(*this);
-        const uint64_t frame = device.frameNumber();
+        return prepare(gpu.device(), gpu.frameNumber());
+    }
+
+private:
+    render::SceneView prepare(rojoRHI::Device& device, uint64_t frame) const {
         while (!retired.empty() && retired.front().first <= frame)
             retired.pop_front();
         bool rebuild = !state || state->meshes.size() != items.size() || state->sky != skySphere ||
@@ -206,18 +211,18 @@ struct FixtureSceneView : render::SceneView {
         return view;
     }
 };
-inline render::SceneView prepareSceneView(const FixtureSceneView& view, rojoRHI::Device& device) {
-    return view.prepare(device);
+inline render::SceneView prepareSceneView(const FixtureSceneView& view, engine::GpuContext& gpu) {
+    return view.prepare(gpu);
 }
-inline render::SceneView prepareSceneView(const render::SceneView& view, rojoRHI::Device&) {
+inline render::SceneView prepareSceneView(const render::SceneView& view, engine::GpuContext&) {
     return view;
 }
-template <typename DeviceOwner>
-render::SceneView prepareSceneView(const FixtureSceneView& view, DeviceOwner& device) {
-    return view.prepare(**device);
+inline render::SceneView prepareSceneView(const FixtureSceneView& view,
+                                          std::unique_ptr<engine::GpuContext>& gpu) {
+    return view.prepare(*gpu);
 }
-template <typename DeviceOwner>
-render::SceneView prepareSceneView(const render::SceneView& view, DeviceOwner&) {
+inline render::SceneView prepareSceneView(const render::SceneView& view,
+                                          std::unique_ptr<engine::GpuContext>&) {
     return view;
 }
 } // namespace lmx::test

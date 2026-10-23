@@ -93,12 +93,11 @@ inline glm::vec2 motionAt(const std::vector<uint8_t>& bytes, uint32_t x, uint32_
 }
 
 //======================================================================================================================
-inline std::vector<uint8_t> readMotion(Renderer& renderer) {
-    std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
-    rojoRHI::Texture* motion = renderer.motionTarget();
+inline std::vector<uint8_t> readMotion(lmx::engine::GpuContext& gpu, Renderer& renderer,
+                                       lmx::render::TextureUse current) {
+    const auto* motion = renderer.motionTexture();
     REQUIRE(motion != nullptr);
-    motion->readback(pixels.data(), pixels.size());
-    return pixels;
+    return lmx::render::readbackNow(gpu, *motion, current);
 }
 
 //======================================================================================================================
@@ -129,23 +128,23 @@ inline glm::mat4 facingPlaneModel(float z) {
 //======================================================================================================================
 // One declared and executed frame through the renderer's own graph, which is the path --screenshot
 // and the GPU tests take.
-inline void renderFrame(rojoRHI::Device& device, Renderer& renderer, const Camera& camera,
+inline void renderFrame(lmx::engine::GpuContext& gpu, Renderer& renderer, const Camera& camera,
                         const FixtureSceneView& view) {
-    rojoRHI::CommandList& commands = device.beginFrame();
-    renderer.render(commands, camera, lmx::test::prepareSceneView(view, device));
-    device.endFrame(nullptr);
-    device.waitIdle();
+    auto frame = gpu.beginFrame();
+    renderer.render(frame.commands, camera, lmx::test::prepareSceneView(view, gpu));
+    gpu.submitAndEndFrame(frame);
+    gpu.waitIdle();
 }
 
 //======================================================================================================================
 // The same frame without the drain: exactly what App/Shell/main.cpp submits every frame, so a
 // temporal resource a frame still in flight holds is left held rather than quietly retired by a
 // waitIdle the shipped loop never performs.
-inline void renderFrameInFlight(rojoRHI::Device& device, Renderer& renderer, const Camera& camera,
-                                const FixtureSceneView& view) {
-    rojoRHI::CommandList& commands = device.beginFrame();
-    renderer.render(commands, camera, lmx::test::prepareSceneView(view, device));
-    device.endFrame(nullptr);
+inline void renderFrameInFlight(lmx::engine::GpuContext& gpu, Renderer& renderer,
+                                const Camera& camera, const FixtureSceneView& view) {
+    auto frame = gpu.beginFrame();
+    renderer.render(frame.commands, camera, lmx::test::prepareSceneView(view, gpu));
+    gpu.submitAndEndFrame(frame);
 }
 
 //======================================================================================================================
@@ -181,9 +180,11 @@ using lmx::render::TemporalDebugView;
 //======================================================================================================================
 // One RGBA16Float target, widened to floats. Both the colour history and the raw scene target are
 // half-precision, so a comparison between them has to speak the same units the shader wrote.
-inline std::vector<glm::vec4> readHalf4(rojoRHI::Texture& texture) {
-    std::vector<uint8_t> bytes(kScenarioPixels * 8);
-    texture.readback(bytes.data(), bytes.size());
+//======================================================================================================================
+inline std::vector<glm::vec4> readHalf4(lmx::engine::GpuContext& gpu,
+                                        const lmx::engine::GpuTexture& texture,
+                                        lmx::render::TextureUse current) {
+    const auto bytes = lmx::render::readbackNow(gpu, texture, current);
     std::vector<glm::vec4> pixels(kScenarioPixels);
     for (size_t i = 0; i < pixels.size(); ++i) {
         uint16_t texel[4] = {0, 0, 0, 0};
@@ -261,8 +262,9 @@ using PerFrame = std::function<void(uint32_t frame, FixtureSceneView& view, Came
 // The render scale is not one of the fixed fields: `base.temporal.renderScale` carries a whole
 // sequence's scale and a PerFrame may set `view.temporal.renderScale` to change it per frame,
 // which is what the scale-change scenarios drive the extent with.
+//======================================================================================================================
 inline std::vector<ScenarioFrame>
-renderSequence(rojoRHI::Device& device, Renderer& renderer, uint32_t frames,
+renderSequence(lmx::engine::GpuContext& gpu, Renderer& renderer, uint32_t frames,
                ReconstructionMode mode, const FixtureSceneView& base, const Camera& baseCamera,
                TemporalDebugView debugView, const PerFrame& perFrame) {
     std::vector<ScenarioFrame> result;
@@ -277,14 +279,23 @@ renderSequence(rojoRHI::Device& device, Renderer& renderer, uint32_t frames,
         if (perFrame) {
             perFrame(frame, view, camera);
         }
-        renderFrame(device, renderer, camera, view);
+        renderFrame(gpu, renderer, camera, view);
 
         ScenarioFrame record;
-        record.history = readHalf4(*renderer.historyTarget());
-        record.raw = readHalf4(renderer.hdrColorTarget());
-        record.display.resize(kScenarioPixels * 4);
-        renderer.colorTarget().rhi().readback(record.display.data(), record.display.size());
         record.status = renderer.temporalStatus();
+        const bool rawCopy =
+            record.status.reconstruction == ReconstructionMode::Raw && !record.status.upscaled;
+        const auto rawUse = record.status.reconstruction == ReconstructionMode::VendorTemporal
+                                ? lmx::render::TextureUse::ExternalRead
+                            : rawCopy ? lmx::render::TextureUse::CopySource
+                                      : lmx::render::TextureUse::ShaderRead;
+        const auto historyUse = rawCopy && view.temporal.debugView != TemporalDebugView::HistoryAge
+                                    ? lmx::render::TextureUse::CopyDestination
+                                    : lmx::render::TextureUse::ShaderRead;
+        record.history = readHalf4(gpu, *renderer.historyTexture(), historyUse);
+        record.raw = readHalf4(gpu, renderer.hdrColorTexture(), rawUse);
+        record.display = lmx::render::readbackNow(gpu, renderer.colorTarget(),
+                                                  lmx::render::TextureUse::RenderTarget);
         result.push_back(std::move(record));
     }
     return result;
