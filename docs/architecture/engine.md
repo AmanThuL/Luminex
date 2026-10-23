@@ -83,6 +83,12 @@ adds content, such as lights, before `finalize` runs.
 
 `Gpu/` holds the GPU layer. `gpuError` is the one place a RojoRHI error becomes a `lmx::Error`.
 
+`GpuContext` owns the frame loop (`beginFrame`, `submitAndEndFrame`), idle waits, the frame
+number, pass timings (`PassTiming`, `PassTimingFrame`), upscaler support (`UpscalerSupportInfo`)
+and shader loading by bare name; `GpuOwned<T>` owns one GPU object. On RojoRHI v1 every
+`GpuContext` body forwards to the device call it replaces, in the same order, and the frame number
+is the device's. Code that only creates resources keeps a `rojoRHI::Device&` from `device()`.
+
 ## GPU uploads
 
 `Upload/` holds `DdsUpload.h`, `IblUpload.h` and the shared `SceneEnvironment.h` sky/light rig.
