@@ -2,21 +2,30 @@
 
 **Status**: Accepted
 
-- Shaders sit in three folders: `Shaders/Passes/<family>/` holds each family's entry files and any
+- `Shaders/Passes/<family>/` holds each family's entry files and any
   module local to that family, `Shaders/Common/` holds a module imported by two or more families or
   kept shared by a recorded decision (`Shadow` is that one decision, owner 2026-09-20), and
-  `Shaders/Tests/` holds test/benchmark oracles. `import X;` resolves a file beside the importer
+  `Shaders/Tests/` holds test/benchmark oracles and their nonentry root modules.
+  `import X;` resolves a file beside the importer
   before any `-I` directory, so a family's entries find their local modules with no search path; a
   source under `Shaders/Tests/` additionally receives `-I` for every family folder, since an oracle
   may test a family module and an oracle is not a family. Entry points
   `vertexMain`/`fragmentMain`/`computeMain` use `[shader("...")]` attributes (no `-entry` flags); a
   module has no shader entry points. Use named imports, never textual includes.
-  `Tools/check_shader_imports.py` and the compiler both enforce family-local and `Common/`-only
-  import locality — a `Common/` module imports `Common/` modules only, and a family-local module is
-  imported only from its own folder. The checker alone also enforces that no import reaches a file
-  that declares an entry point, and that every file sits in `Common/`, `Tests/` or
-  `Passes/<family>/` — checking these edges and unresolved imports in local policy and CI, ignoring
-  commented-out examples.
+  A family-local module is imported only from its own family, Tests or the explicit reflection
+  probes. Common modules cannot import family-local or Tests modules. Tests modules are importable
+  only from Tests and `TestLayout`; production sources cannot depend on test roots.
+- `Shaders/Layout/LuminexLayout.slang` and `Shaders/Layout/TestLayout.slang` are leaf reflection
+  probes, with no shader entry points. Both can import Common and pass-family modules;
+  `TestLayout` can additionally import Tests modules. No source may import either probe, and no
+  other file has an implicit Layout role.
+- `import RojoRHI;` reaches exactly the public mounted module at
+  `RojoRHI/Shaders/RojoRHI/RojoRHI.slang`, which must exist with that spelling. Local sources
+  cannot shadow that module. Private component modules, aliases and other external roots are not
+  importable; the component owns its separate shader tree and checker.
+  `Tools/check_shader_imports.py` checks these boundaries, placement, unresolved and malformed
+  imports, textual includes, entry-point imports and case-insensitive basename collisions in
+  local policy and CI, ignoring commented-out examples.
 - Globals: `gPascalCase` resources, `kPascalCase` constants. Explicit flat binding indices map 1:1
   to `MTL4ArgumentTable` slots in the current API; any replacement binding model or D3D12 lowering
   must update this convention with its shader ABI. The shared buffer namespace has 16 slots;
