@@ -140,5 +140,24 @@ class CppCommentTests(unittest.TestCase):
         )
 
 
+class EntryForHeaderTests(unittest.TestCase):
+    """A header compiles with the flags of a translation unit in its own module directory."""
+
+    def test_a_component_unit_with_the_same_module_name_and_stem_is_not_chosen(self) -> None:
+        root = Path("/repo")
+        entries = [
+            {"file": "RojoRHI/Source/Core/SlotAllocator.cpp"},
+            {"file": "Source/Core/Containers/Handle.cpp"},
+        ]
+        entry = comments._entry_for_header(root / "Source/Core/Containers/SlotAllocator.h", entries, root)
+        self.assertEqual(entry["file"], "Source/Core/Containers/Handle.cpp")
+
+    def test_an_absolute_unit_path_inside_the_module_matches(self) -> None:
+        root = Path("/repo")
+        entries = [{"file": "/repo/RojoRHI/Source/Core/Probe.cpp"}, {"file": "/repo/Source/Core/Probe.cpp"}]
+        entry = comments._entry_for_header(root / "Source/Core/Probe.h", entries, root)
+        self.assertEqual(entry["file"], "/repo/Source/Core/Probe.cpp")
+
+
 if __name__ == "__main__":
     unittest.main()

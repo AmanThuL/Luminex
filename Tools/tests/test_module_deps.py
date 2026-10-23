@@ -1624,7 +1624,20 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertEqual(sorted(self.contract["externals"]), ["rhi"])
         entry = self.contract["externals"]["rhi"]
         self.assertEqual(entry["paths"], ["RojoRHI"])
-        self.assertEqual(sorted(entry["targets"]), ["RojoRHI", "RojoRHIMetal4ImGui", "RojoRHITests"])
+        self.assertEqual(
+            sorted(entry["targets"]),
+            [
+                "RojoRHI",
+                "RojoRHIBench",
+                "RojoRHILegacy",
+                "RojoRHILegacyMetal4ImGui",
+                "RojoRHILegacyTests",
+                "RojoRHILtoProbe",
+                "RojoRHIMetalCpp",
+                "RojoRHITests",
+            ],
+        )
+        self.assertEqual(entry["includeRoots"], ["RojoRHI/Legacy/Include"])
         self.assertNotIn("rhi-public", self.contract["units"])
 
     def test_engine_owns_its_folder_and_depends_only_on_core_and_asset(self) -> None:
@@ -1718,7 +1731,16 @@ class RepositoryContractTests(unittest.TestCase):
                 self.assertIn("Scenes", self.contract["targets"][name]["deps"])
 
     def test_the_scenes_target_builds_on_core_rhi_asset_and_engine(self) -> None:
-        self.assertEqual(self.contract["targets"]["Scenes"]["deps"], ["Core", "RojoRHI", "Asset", "Engine"])
+        self.assertEqual(
+            self.contract["targets"]["Scenes"]["deps"], ["Core", "RojoRHILegacy", "RojoRHIMetalCpp", "Asset", "Engine"]
+        )
+
+    def test_no_luminex_target_depends_on_the_v2_rhi(self) -> None:
+        component = set(self.contract["externals"]["rhi"]["targets"])
+        for name, target in self.contract["targets"].items():
+            if name not in component:
+                with self.subTest(target=name):
+                    self.assertNotIn("RojoRHI", target.get("deps", []))
 
     def test_core_depends_on_no_unit_and_every_other_unit_depends_on_core(self) -> None:
         units = self.contract["units"]
