@@ -99,6 +99,7 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, engine::Gpu
     int pixelWidth = 0;
     int pixelHeight = 0;
     SDL_GetWindowSizeInPixels(window, &pixelWidth, &pixelHeight);
+#ifndef LMX_PENDING_POST
     auto outline = render::SelectionOutline::create(gpu, static_cast<uint32_t>(pixelWidth),
                                                     static_cast<uint32_t>(pixelHeight));
     if (!outline) {
@@ -106,6 +107,7 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, engine::Gpu
         return nullptr;
     }
     self->m_selectionOutline = std::move(*outline);
+#endif
 
     // Startup needs a renderable scene; later switch failures can retain the current one. This runs
     // before any ini is loaded: LoadIniSettingsFromDisk (below) sets ImGui's SettingsLoaded flag,
@@ -224,6 +226,7 @@ bool EditorShell::applyPendingViewportResize(engine::GpuContext& gpu, render::Re
                       m_viewportHeight, resized.error().message);
         return false;
     }
+#ifndef LMX_PENDING_POST
     rojoRHI::metal4::imguiForgetTexture(m_selectionOutline->target().rhi());
     if (auto result = m_selectionOutline->resize(renderer.width(), renderer.height(),
                                                  renderer.textureStates());
@@ -231,6 +234,7 @@ bool EditorShell::applyPendingViewportResize(engine::GpuContext& gpu, render::Re
         LMX_LOG_ERROR("Selection presentation resize failed: {}", result.error().message);
         m_showSelectionOutline = false;
     }
+#endif
     // A resize is a reset trigger (spec 9): the histogram's binning covered a differently-sized
     // image last frame, so the feedback loop restarts from the manual EV.
     ExposureResetContext candidate = m_exposureContext;
@@ -482,7 +486,11 @@ void EditorShell::buildPanels(engine::GpuContext& gpu, render::Renderer& rendere
         const ViewportPanelResult result = drawViewportPanel(
             open,
             ViewportPanelContext{.renderer = renderer,
+#ifndef LMX_PENDING_POST
                                  .outlineTarget = m_selectionOutline->target(),
+#else
+                                 .outlineTarget = renderer.colorTarget(),
+#endif
                                  .showOutline = m_showSelectionOutline,
                                  .scene = m_session.scene(),
                                  .settings = m_settings,
@@ -731,6 +739,7 @@ render::GraphTexture EditorShell::declareSelection(render::RenderGraph& graph,
                                                    render::GraphTexture display,
                                                    const render::SceneView& view,
                                                    const render::Renderer& renderer) {
+#ifndef LMX_PENDING_POST
     if (m_selectionOutline->target().desc().width != renderer.width() ||
         m_selectionOutline->target().desc().height != renderer.height() ||
         !m_showSelectionOutline || !m_viewportUsable ||
@@ -748,6 +757,9 @@ render::GraphTexture EditorShell::declareSelection(render::RenderGraph& graph,
                                         .selectedDraw = static_cast<uint32_t>(m_selection.index),
                                         .backingScale = m_viewportBackingScale,
                                         .visible = visible});
+#else
+    return display;
+#endif
 }
 
 //======================================================================================================================

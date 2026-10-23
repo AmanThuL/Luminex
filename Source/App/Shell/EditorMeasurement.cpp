@@ -63,6 +63,10 @@ bool EditorShell::startMeasurement(engine::GpuContext& gpu, const render::Render
             "Turn off dynamic resolution before starting a fixed-plan measurement.";
         return false;
     }
+#ifdef LMX_PENDING_LIGHTS
+    m_measurementFeedback = "Measurement requires lighting diagnostics, which are unavailable.";
+    return false;
+#endif
     MeasurementPlan plan;
     plan.warmupFrames = sessionOwned ? m_sessionMeasurementWarmup : m_measurementWarmup;
     plan.measuredFrames = sessionOwned ? m_sessionMeasurementFrames : m_measurementFrames;

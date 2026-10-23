@@ -145,8 +145,12 @@ MenuContext EditorShell::menuContext(const render::Renderer& renderer,
         .canRetryScene = m_sceneLoading.failedScene().has_value(),
         .canFrame = selectedObjectBounds(m_session.scene(), m_selection).has_value(),
         .objectSelected = m_selection.subject == EditorSubject::Object,
+#ifndef LMX_PENDING_POST
         .outlineReady = m_selectionOutline->target().desc().width == renderer.width() &&
                         m_selectionOutline->target().desc().height == renderer.height(),
+#else
+        .outlineReady = false,
+#endif
         .showOutline = m_showSelectionOutline,
         .gizmo = m_gizmo,
         .debug = activeDebugView(m_settings),

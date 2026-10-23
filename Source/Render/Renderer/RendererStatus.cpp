@@ -4,13 +4,25 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Core/Diagnostics/Assert.h"
+#ifndef LMX_PENDING_POST
 #include "Render/Passes/Exposure/ExposureStage.h"
+#endif
 #include "Render/Renderer/RendererInternal.h"
+#ifndef LMX_PENDING_VISIBILITY
+#include "Render/Passes/Occlusion/OcclusionReference.h"
+#include "Render/Passes/Visibility/GpuVisibility.h"
+#endif
+
+#ifndef LMX_PENDING_LIGHTS
+#include "Render/Common/PacedSlots.h"
+#endif
 #include <algorithm>
+#include <limits>
 
 namespace lmx::render {
 //======================================================================================================================
 void Renderer::recordFrameStatus(const RendererFrameState& state) {
+#ifndef LMX_PENDING_TEMPORAL
     // The frame just declared becomes the previous one. A frame the caller abandoned before
     // declaring never reaches here, so it never becomes anyone's predecessor.
     ++m_declaredFrames;
@@ -61,6 +73,12 @@ void Renderer::recordFrameStatus(const RendererFrameState& state) {
         m_temporalResolve->recordFrame(state.reconstruction);
         ++m_temporalFrame;
     }
+#else
+    ++m_declaredFrames;
+    m_temporalStatus = {};
+    m_temporalStatus.extents = state.extents;
+    m_temporalStatus.renderScale = 1.0f;
+#endif
 }
 
 //======================================================================================================================
@@ -77,21 +95,82 @@ const engine::GpuTexture& Renderer::hdrColorTexture() {
 
 //======================================================================================================================
 const engine::GpuTexture& Renderer::depthTexture() {
+#ifndef LMX_PENDING_TEMPORAL
     LMX_ASSERT(m_temporalResolve != nullptr,
                "Renderer::depthTarget: no depth target -- create() failed");
     return m_temporalResolve->depthTexture(m_currentSlot);
+#else
+    return m_standIns.depth;
+#endif
 }
 
 //======================================================================================================================
 const engine::GpuTexture* Renderer::historyTexture() {
+#ifndef LMX_PENDING_TEMPORAL
     LMX_ASSERT(m_temporalResolve != nullptr,
                "Renderer::historyTarget: no history -- create() failed");
     return &m_temporalResolve->colorTexture(m_currentSlot);
+#else
+    return nullptr;
+#endif
 }
 
 //======================================================================================================================
 const engine::GpuBuffer& Renderer::exposureBufferOwner() {
+#ifndef LMX_PENDING_POST
     return m_exposureStage->bufferOwner();
+#else
+    return m_standIns.exposure;
+#endif
+}
+
+//======================================================================================================================
+std::vector<VisibilityStatus> Renderer::takeRetiredVisibility() {
+#ifndef LMX_PENDING_VISIBILITY
+    auto results =
+        m_gpuVisibility ? m_gpuVisibility->takeRetired() : std::vector<VisibilityStatus>{};
+    if (m_occlusionReference) {
+        for (auto& result : results) {
+            m_occlusionReference->retireThrough(result.frameNumber);
+            auto checked = m_occlusionReference->check(result);
+            LMX_ASSERT(checked || !result.occlusionCheckEnabled,
+                       "enabled occlusion reference must join its retired frame");
+            if (checked)
+                result.occlusionCheck = std::move(*checked);
+        }
+    }
+    return results;
+#else
+    return {};
+#endif
+}
+
+//======================================================================================================================
+void Renderer::drainVisibilityAfterIdle() {
+#ifndef LMX_PENDING_VISIBILITY
+    if (m_occlusionReference)
+        m_occlusionReference->retireThrough(std::numeric_limits<uint64_t>::max());
+    if (m_gpuVisibility)
+        m_gpuVisibility->retireThrough(std::numeric_limits<uint64_t>::max());
+#else
+#endif
+}
+
+//======================================================================================================================
+std::vector<LightingStatus> Renderer::takeRetiredLighting() {
+#ifndef LMX_PENDING_LIGHTS
+    return lmx::render::takeRetired(m_retiredLighting);
+#else
+    return {};
+#endif
+}
+
+//======================================================================================================================
+void Renderer::drainLightingAfterIdle() {
+#ifndef LMX_PENDING_LIGHTS
+    retireLightingThrough(std::numeric_limits<uint64_t>::max());
+#else
+#endif
 }
 
 } // namespace lmx::render

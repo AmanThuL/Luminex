@@ -285,6 +285,7 @@ int runOffscreen(AppOptions options) {
         gpu.waitIdle();
         session.commitFrame();
         (*renderer)->drainVisibilityAfterIdle();
+#ifndef LMX_PENDING_LIGHTS
         (*renderer)->drainLightingAfterIdle();
         captureLighting = (*renderer)->lightingStatus();
         for (const auto& retired : (*renderer)->takeRetiredLighting()) {
@@ -302,6 +303,9 @@ int runOffscreen(AppOptions options) {
             LMX_LOG_ERROR("capture refused: {}", failure);
             return 1;
         }
+#else
+        captureLighting = {};
+#endif
         captureVisibility = (*renderer)->visibilityStatus();
         for (const auto& retired : (*renderer)->takeRetiredVisibility()) {
             if (retired.frameNumber == captureVisibility.frameNumber)

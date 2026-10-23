@@ -4,11 +4,16 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Render/Renderer/Renderer.h"
+#include "Render/Renderer/RendererStandIns.h"
 
 #include "Core/Diagnostics/Assert.h"
+#ifndef LMX_PENDING_POST
 #include "Render/Passes/Bloom/BloomStage.h"
+#endif
 #include "Render/Passes/Display/DisplayStage.h"
+#ifndef LMX_PENDING_POST
 #include "Render/Passes/Exposure/ExposureStage.h"
+#endif
 #include "Render/Renderer/RendererInternal.h"
 
 namespace lmx::render {
@@ -21,12 +26,22 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& c
     const RendererFrameState state = deriveFrameState(camera, view);
     const RendererFrameImports imports = importFrameResources(graph, commands, view, state);
 
+#ifndef LMX_PENDING_LIGHTS
     const auto lightClusters = prepareLighting(graph, commands, view, imports.lightsImport,
                                                state.extents, state.cameraState);
+#endif
+
+#ifndef LMX_PENDING_SCENE
     const auto planes =
         extractFrustumPlanes(state.temporalEnabled ? state.cameraState.viewProjectionJittered
                                                    : state.cameraState.viewProjection);
+#endif
+
+#ifndef LMX_PENDING_VISIBILITY
     m_previousPyramid = prepareOcclusion(graph, camera, view, state.extents, state.cameraState);
+#endif
+
+#ifndef LMX_PENDING_SCENE
     const auto drawBuffers = prepareVisibility(graph, commands, view, planes, imports.sceneBuffers);
     const auto drawRows = drawBuffers[0];
     const auto drawArguments = drawBuffers[1];
@@ -41,16 +56,29 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& c
                                 .lightViewProj = state.shadow.viewProj,
                                 .whiteTexture = &m_whiteTexture,
                                 .linearSampler = m_linearSampler.get()});
+#ifdef LMX_PENDING_LIGHTS
+    SceneView unlitView = view;
+    unlitView.localLightMode = engine::LocalLightMode::Off;
+#endif
     const GraphTexture sceneColorRead = m_sceneStage->declare(
+#ifndef LMX_PENDING_LIGHTS
         graph, commands, view,
+#else
+        graph, commands, unlitView,
+#endif
         {.draws = m_drawSubmission.scene(),
          .drawRows = drawRows,
          .drawArguments = drawArguments,
          .sceneBuffers = imports.sceneBuffers,
          .lights = imports.lightsImport,
+#ifndef LMX_PENDING_LIGHTS
          .lightGrid = lightClusters.declared ? std::optional{lightClusters.grid} : std::nullopt,
          .lightIndices =
              lightClusters.declared ? std::optional{lightClusters.indices} : std::nullopt,
+#else
+         .lightGrid = std::nullopt,
+         .lightIndices = std::nullopt,
+#endif
          .sceneColor = imports.sceneColor,
          .sceneDepth = imports.sceneDepth,
          .shadowRead = shadowRead,
@@ -73,10 +101,16 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& c
          .linearSampler = m_linearSampler.get(),
          .shadowSampler = m_shadowSampler.get(),
          .iblSampler = m_iblSampler.get()});
+#else
+    const GraphTexture sceneColorRead =
+        declareSceneClear(graph, imports.sceneColor, imports.sceneDepth, clearColor);
+#endif
     const uint32_t sceneWidth = m_width;
     const uint32_t sceneHeight = m_height;
+#ifndef LMX_PENDING_TEMPORAL
     const GraphTexture motionRead =
         state.temporalEnabled ? nextVersion(imports.motionTargetHandle) : GraphTexture{};
+#endif
 
     // ---- Temporal reconstruction (M6.2 spec 6). The stage declares the reprojection diagnostic,
     // this frame's accumulation or its raw commit, and the debug view; this frame routes what it
@@ -84,6 +118,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& c
     // produces, which is declared further down -- the graph's schedule is topological, so naming
     // that version here still orders the view behind its producer.
     GraphTexture displayResult = nextVersion(imports.displayColor);
+#ifndef LMX_PENDING_TEMPORAL
     TemporalResolveOutputs temporalOutputs;
     if (state.temporalEnabled) {
         TemporalInputs temporalInputs;
@@ -107,16 +142,22 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& c
                                                      state.debugView, displayResult);
         displayResult = temporalOutputs.displayResult;
     }
+#endif
 
     // What bloom and the display transform read: the colour slot whenever the frame accumulated or
     // upscaled into it -- both leave the finished output-extent picture there -- and the raw
     // jittered frame otherwise. Only a Raw frame that rasterised at the output extent still reads
     // scene colour. The histogram deliberately keeps metering the raw scene colour, so metering
     // stays independent of the accumulation it corrects.
+#ifndef LMX_PENDING_TEMPORAL
     const GraphTexture displayInput = state.nativeTaa || state.vendorTemporal || state.upscaled
                                           ? temporalOutputs.resolved
                                           : sceneColorRead;
+#else
+    const GraphTexture displayInput = sceneColorRead;
+#endif
 
+#ifndef LMX_PENDING_POST
     m_exposureStage->declareMetering(graph, commands, view,
                                      {.extents = state.extents,
                                       .sceneColorRead = sceneColorRead,
@@ -127,7 +168,11 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& c
                                                             .sceneWidth = sceneWidth,
                                                             .sceneHeight = sceneHeight,
                                                             .bloomThreshold = view.bloomThreshold});
+#else
+    const GraphTexture bloomResult;
+#endif
 
+#ifndef LMX_PENDING_LIGHTS
     const bool lightDebugEnabled =
         view.lightDebugView != engine::LightDebugView::Off && lightClusters.declared;
     LMX_ASSERT(view.lightDebugView == engine::LightDebugView::Off ||
@@ -145,12 +190,20 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& c
                                                                .sampled = true},
                                                               "lmx.render.lightDebugSource")
                                         : imports.displayColor;
+#else
+    const GraphTexture displayDestination = imports.displayColor;
+#endif
     m_displayStage->declare(graph, commands,
                             {.displayInput = displayInput,
                              .bloomResult = bloomResult,
                              .displayColor = displayDestination,
+#ifndef LMX_PENDING_POST
                              .bloomEnabled = view.bloomEnabled,
+#else
+                             .bloomEnabled = false,
+#endif
                              .bloomIntensity = view.bloomIntensity});
+#ifndef LMX_PENDING_LIGHTS
     if (lightDebugEnabled) {
         if (!m_lightDebug) {
             auto stage = LightDebugStage::create(m_gpu);
@@ -178,9 +231,12 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& c
              .outputWidth = m_width,
              .outputHeight = m_height});
     }
+#endif
 
+#ifndef LMX_PENDING_VISIBILITY
     // HZB follows every temporal depth consumer in the stable graph schedule.
     declareOcclusion(graph, commands, view, nextVersion(imports.sceneDepth), displayResult);
+#endif
 
     recordFrameStatus(state);
     return displayResult;

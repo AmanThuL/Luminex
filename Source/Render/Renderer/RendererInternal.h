@@ -10,7 +10,9 @@ namespace lmx::render {
 // Values derived once before any frame resources or passes are declared.
 struct RendererFrameState {
     bool temporalEnabled;
+#ifndef LMX_PENDING_TEMPORAL
     ReconstructionSelection selection;
+#endif
     ReconstructionMode reconstruction;
     bool vendorTemporal;
     float renderScale;
@@ -27,7 +29,9 @@ struct RendererFrameState {
     glm::vec2 jitterPixels;
     CameraFrameState cameraState;
     CameraFrameState previousCamera;
+#ifndef LMX_PENDING_SCENE
     ShadowMatrices shadow;
+#endif
 };
 
 // Graph-local imports, in the original declaration order including exposure seeding.

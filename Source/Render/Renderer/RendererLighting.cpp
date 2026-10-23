@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <limits>
 
+#ifndef LMX_PENDING_LIGHTS
 namespace lmx::render {
 
 //======================================================================================================================
@@ -109,14 +110,5 @@ void Renderer::retireLightingThrough(uint64_t frame) {
         });
 }
 
-//======================================================================================================================
-std::vector<LightingStatus> Renderer::takeRetiredLighting() {
-    return lmx::render::takeRetired(m_retiredLighting);
-}
-
-//======================================================================================================================
-void Renderer::drainLightingAfterIdle() {
-    retireLightingThrough(std::numeric_limits<uint64_t>::max());
-}
-
 } // namespace lmx::render
+#endif

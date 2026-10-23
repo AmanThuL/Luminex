@@ -5,19 +5,39 @@
 
 #include "Core/Diagnostics/Assert.h"
 #include "Engine/Gpu/GpuContext.h"
+#ifndef LMX_PENDING_POST
 #include "Render/Passes/Exposure/ExposureStage.h"
+#endif
+
+#ifndef LMX_PENDING_TEMPORAL
 #include "Render/Passes/Temporal/VendorTemporalScaler.h"
+#endif
 #include "Render/Renderer/RendererInternal.h"
 #include <utility>
 
 namespace lmx::render {
 //======================================================================================================================
 RendererFrameState Renderer::deriveFrameState(const engine::Camera& camera, const SceneView& view) {
+#ifndef LMX_PENDING_SCENE
+#ifndef LMX_PENDING_TEMPORAL
     LMX_ASSERT(m_hdrColor && m_color && m_shadowMap && m_motion && m_reactive && m_temporalResolve,
                "Renderer::declarePasses: targets are missing -- create() failed");
+#else
+    LMX_ASSERT(m_hdrColor && m_color && m_standIns.depth,
+               "Renderer::declarePasses: targets are missing -- create() failed");
+#endif
+#else
+    LMX_ASSERT(m_hdrColor && m_color && m_standIns.depth,
+               "Renderer::declarePasses: targets are missing -- create() failed");
+#endif
+
+#ifndef LMX_PENDING_SCENE
     LMX_ASSERT(view.boundingSphere.w > 0.0f,
                "SceneView::boundingSphere needs a positive radius -- it is what the shadow "
                "frustum is fitted to");
+#endif
+
+#ifndef LMX_PENDING_POST
     if (view.autoExposureEnabled) {
         LMX_ASSERT(view.exposureLowPercentile >= 0.0f &&
                        view.exposureLowPercentile < view.exposureHighPercentile &&
@@ -30,13 +50,20 @@ RendererFrameState Renderer::deriveFrameState(const engine::Camera& camera, cons
                        view.exposureAdaptDownStopsPerSecond >= 0.0f,
                    "SceneView exposure adaptation rates must not be negative");
     }
+#endif
 
+#ifndef LMX_PENDING_TEMPORAL
     const bool temporalEnabled = view.temporal.enabled;
     // The render scale is meaningful only with temporal on, the way jitterEnabled already is: a
     // frame with temporal off rasterises at the output extent whatever the field says.
     LMX_ASSERT(!temporalEnabled || (view.temporal.renderScale >= kMinRenderScale &&
                                     view.temporal.renderScale <= kMaxRenderScale),
                "SceneView temporal renderScale must lie within [kMinRenderScale, kMaxRenderScale]");
+#else
+    const bool temporalEnabled = false;
+#endif
+
+#ifndef LMX_PENDING_TEMPORAL
     const ReconstructionSelection selection =
         temporalEnabled
             ? m_temporalResolve->prepare(view.temporal.reconstruction, m_width, m_height)
@@ -49,6 +76,11 @@ RendererFrameState Renderer::deriveFrameState(const engine::Camera& camera, cons
                                                                         m_gpu.upscalerSupport())
                                                     : view.temporal.renderScale)
                                   : 1.0f;
+#else
+    const ReconstructionMode reconstruction = ReconstructionMode::Raw;
+    const bool vendorTemporal = false;
+    const float renderScale = 1.0f;
+#endif
 
     // Both extents of the frame. Every render-extent target keeps its output-extent allocation and
     // is used through an origin-anchored active rectangle, so a scale change allocates nothing.
@@ -59,6 +91,7 @@ RendererFrameState Renderer::deriveFrameState(const engine::Camera& camera, cons
                                    .fovY = camera.fovY,
                                    .nearZ = camera.nearZ,
                                    .temporalEnabled = temporalEnabled};
+#ifndef LMX_PENDING_TEMPORAL
     const HistoryResetReason resetReason =
         deriveHistoryReset(m_previousSignature, signature, view.temporal.cameraCut);
     const bool historyValid = temporalEnabled && resetReason == HistoryResetReason::None;
@@ -87,12 +120,28 @@ RendererFrameState Renderer::deriveFrameState(const engine::Camera& camera, cons
     // A frame with no predecessor reprojects onto itself, which is the only honest answer: its
     // history is being reset anyway, so a fabricated previous camera would only invent motion.
     const CameraFrameState previousCamera = m_previousCamera.value_or(cameraState);
+#else
+    const HistoryResetReason resetReason = HistoryResetReason::None;
+    const bool historyValid = false;
+    const FrameExtents previousExtents = extents;
+    const uint32_t slot = 0;
+    const uint32_t previousSlot = 0;
+    const bool nativeTaa = false;
+    const TemporalDebugView debugView = TemporalDebugView::Off;
+    const glm::vec2 jitterPixels{0.0f};
+    const CameraFrameState cameraState = buildCameraFrameState(camera, extents, jitterPixels);
+    const CameraFrameState previousCamera = cameraState;
+#endif
 
+#ifndef LMX_PENDING_SCENE
     const ShadowMatrices shadow = fitShadowOrtho(
         view.boundingSphere, view.lights[view.shadowCaster >= 0 ? view.shadowCaster : 0].direction);
+#endif
 
     return {.temporalEnabled = temporalEnabled,
+#ifndef LMX_PENDING_TEMPORAL
             .selection = selection,
+#endif
             .reconstruction = reconstruction,
             .vendorTemporal = vendorTemporal,
             .renderScale = renderScale,
@@ -109,7 +158,11 @@ RendererFrameState Renderer::deriveFrameState(const engine::Camera& camera, cons
             .jitterPixels = jitterPixels,
             .cameraState = cameraState,
             .previousCamera = previousCamera,
+#ifndef LMX_PENDING_SCENE
             .shadow = shadow};
+#else
+    };
+#endif
 }
 
 //======================================================================================================================
@@ -123,8 +176,12 @@ RendererFrameImports Renderer::importFrameResources(RenderGraph& graph,
     // imported with the use the last frame to touch it left it in: that is what orders this frame's
     // first access behind those earlier reads and writes on Metal 4's queue. The graph writes the
     // uses back from the passes that ran; the few set by hand below are accesses it cannot see.
+#ifndef LMX_PENDING_SCENE
     const GraphTexture shadowMap = graph.importPersistentTexture(
         m_shadowMap.rhi(), rojoRHI::Format::D32Float, "lmx.render.shadowMap");
+#else
+    const GraphTexture shadowMap;
+#endif
     const GraphTexture sceneColor = graph.importPersistentTexture(
         m_hdrColor.rhi(), kSceneColorFormat, "lmx.render.sceneColorHdr");
     if (state.temporalEnabled && !state.nativeTaa && !state.vendorTemporal && !state.upscaled) {
@@ -144,11 +201,16 @@ RendererFrameImports Renderer::importFrameResources(RenderGraph& graph,
     graph.setFinalUse(displayColor, TextureUse::ShaderRead);
     // A frame with temporal off imports slot 0 under the pre-temporal name, which is what keeps its
     // declaration exactly the one M6.1 made; a temporal frame names the slot it uses.
+#ifndef LMX_PENDING_TEMPORAL
     const GraphTexture sceneDepth =
         state.temporalEnabled
             ? m_temporalResolve->importDepth(graph, state.slot)
             : graph.importPersistentTexture(m_temporalResolve->depthTexture(0).rhi(),
                                             rojoRHI::Format::D32Float, "lmx.render.sceneDepth");
+#else
+    const GraphTexture sceneDepth = graph.importPersistentTexture(
+        m_standIns.depth.rhi(), rojoRHI::Format::D32Float, "lmx.render.sceneDepth");
+#endif
     // depthTexture() is public and a caller may sample it after this graph, so the frame's depth is
     // left as a shader read, a stage set that also covers the attachment work the scene pass does
     // with it. A vendor frame leaves it as the scaler's opaque read instead, which the graph
@@ -165,6 +227,7 @@ RendererFrameImports Renderer::importFrameResources(RenderGraph& graph,
     GraphTexture previousDepth;
     GraphTexture colorSlotImport;
     GraphTexture historyImport;
+#ifndef LMX_PENDING_TEMPORAL
     if (state.temporalEnabled) {
         motionTargetHandle =
             graph.importPersistentTexture(m_motion.rhi(), kMotionFormat, "lmx.render.motion");
@@ -180,6 +243,7 @@ RendererFrameImports Renderer::importFrameResources(RenderGraph& graph,
             graph.setFinalUse(colorSlotImport, TextureUse::ExternalWrite);
         }
     }
+#endif
 
     // Exposure feedback (spec 9): the persistent exposure buffer is imported here, before the
     // scene pass, because -- when auto-exposure is on -- the scene and sky passes read it
@@ -197,6 +261,7 @@ RendererFrameImports Renderer::importFrameResources(RenderGraph& graph,
     // manual temporal frame states the same thing for the same reason: its seed dispatch below
     // overwrites what the previous frame's seed wrote. Manual with temporal off imports it plainly:
     // no declared pass touches it, so there is no edge to state.
+#ifndef LMX_PENDING_POST
     const bool exposureWrittenByEarlierFrame = view.autoExposureEnabled || view.temporal.enabled;
     const GraphBuffer exposureImport =
         exposureWrittenByEarlierFrame
@@ -205,8 +270,13 @@ RendererFrameImports Renderer::importFrameResources(RenderGraph& graph,
             : graph.importBuffer(m_exposureStage->bufferOwner().rhi(), "lmx.render.exposureBuffer");
     const GraphBuffer exposureCurrent =
         m_exposureStage->declareSeed(graph, commands, view, exposureImport);
+#else
+    const GraphBuffer exposureCurrent =
+        graph.importBuffer(m_standIns.exposure.rhi(), "lmx.render.exposureBuffer");
+#endif
 
     std::vector<GraphBuffer> sceneBuffers;
+#ifndef LMX_PENDING_SCENE
     if (view.tables.vertices) {
         LMX_ASSERT(view.tables.indices && view.tables.meshes && view.tables.instances &&
                        view.tables.materials,
@@ -219,15 +289,18 @@ RendererFrameImports Renderer::importFrameResources(RenderGraph& graph,
     } else {
         LMX_ASSERT(view.items.empty() && !view.skySphere, "geometry needs scene table bindings");
     }
+#endif
 
     // Row count is a high-water mark; only live lights justify importing the sixth table.
     std::optional<GraphBuffer> lightsImport;
+#ifndef LMX_PENDING_LIGHTS
     if (view.tables.liveLightCount > 0) {
         LMX_ASSERT(view.tables.lights != nullptr, "a live local light needs its paced light table");
         LMX_ASSERT(view.tables.lightRows.size() >= view.tables.lightRowCount,
                    "the borrowed light rows must cover every addressable row slot");
         lightsImport = graph.importBuffer(view.tables.lights->rhi(), "lmx.scene.lights");
     }
+#endif
 
     return {.shadowMap = shadowMap,
             .sceneColor = sceneColor,

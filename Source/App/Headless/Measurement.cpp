@@ -96,6 +96,10 @@ int runMeasurement(const AppOptions& options) {
         LMX_LOG_ERROR("measurement output already exists: {}", options.measurementPath.string());
         return 1;
     }
+#ifdef LMX_PENDING_LIGHTS
+    LMX_LOG_ERROR("Measurement requires lighting diagnostics, which are unavailable.");
+    return 1;
+#endif
     auto context = engine::GpuContext::create({.validation = false});
     if (!context) {
         LMX_LOG_ERROR("measurement device: {}", context.error().message);
