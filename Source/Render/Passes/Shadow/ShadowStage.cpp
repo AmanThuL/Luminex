@@ -7,9 +7,9 @@
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Projection.h"
+#include "Engine/Gpu/CaptureSchema.h"
 #include "Engine/Gpu/GpuOwned.h"
 #include "Render/Common/DrawEncoding.h"
-#include <rojoRHI/CaptureSchema.h>
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -46,10 +46,8 @@ constexpr uint32_t kLinearSamplerSlot = 0;
 
 //======================================================================================================================
 void ShadowStage::registerUniformLayoutsForCapture() {
-    using rojoRHI::debug::CaptureSchema;
-    CaptureSchema& schema = CaptureSchema::instance();
 
-    schema.registerUniformStruct(
+    engine::registerUniformStruct(
         {.name = "ShadowPassUniforms",
          .slot = kPassUniformsSlot,
          .sizeBytes = sizeof(ShadowPassUniforms),

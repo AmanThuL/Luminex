@@ -5,8 +5,8 @@
 
 #include "Render/Passes/Scene/SceneStage.h"
 
+#include "Engine/Gpu/CaptureSchema.h"
 #include "Render/Passes/Scene/SceneStageInternal.h"
-#include <rojoRHI/CaptureSchema.h>
 
 #include <cstddef>
 #include <format>
@@ -17,15 +17,13 @@ using namespace scene_detail;
 
 //======================================================================================================================
 void SceneStage::registerSceneTableLayoutsForCapture() {
-    using rojoRHI::debug::CaptureSchema;
-    CaptureSchema& schema = CaptureSchema::instance();
 
-    schema.registerUniformStruct(
+    engine::registerUniformStruct(
         {.name = "DrawUniforms",
          .slot = engine::kDrawUniformsSlot,
          .sizeBytes = sizeof(engine::DrawUniforms),
          .fields = {{"firstEntry", offsetof(engine::DrawUniforms, firstEntry), "uint"}}});
-    schema.registerUniformStruct(
+    engine::registerUniformStruct(
         {.name = "InstanceRow",
          .slot = engine::kSceneInstancesSlot,
          .sizeBytes = sizeof(engine::InstanceRow),
@@ -38,7 +36,7 @@ void SceneStage::registerSceneTableLayoutsForCapture() {
                     {"emissiveScale", offsetof(engine::InstanceRow, emissiveScale), "float"},
                     {"worldBoundsMin", offsetof(engine::InstanceRow, worldBoundsMin), "float3"},
                     {"worldBoundsMax", offsetof(engine::InstanceRow, worldBoundsMax), "float3"}}});
-    schema.registerUniformStruct(
+    engine::registerUniformStruct(
         {.name = "MaterialRow",
          .slot = engine::kSceneMaterialsSlot,
          .sizeBytes = sizeof(engine::MaterialRow),
@@ -51,7 +49,7 @@ void SceneStage::registerSceneTableLayoutsForCapture() {
              {"occlusionStrength", offsetof(engine::MaterialRow, occlusionStrength), "float"},
              {"alphaCutoff", offsetof(engine::MaterialRow, alphaCutoff), "float"},
              {"flags", offsetof(engine::MaterialRow, flags), "uint"}}});
-    schema.registerUniformStruct(
+    engine::registerUniformStruct(
         {.name = "MeshRow",
          .slot = engine::kSceneMeshesSlot,
          .sizeBytes = sizeof(engine::MeshRow),
@@ -61,7 +59,7 @@ void SceneStage::registerSceneTableLayoutsForCapture() {
                     {"vertexCount", offsetof(engine::MeshRow, vertexCount), "uint"},
                     {"boundsMin", offsetof(engine::MeshRow, boundsMin), "float3"},
                     {"boundsMax", offsetof(engine::MeshRow, boundsMax), "float3"}}});
-    schema.registerUniformStruct(
+    engine::registerUniformStruct(
         {.name = "LightRow",
          .slot = engine::kSceneLightsSlot,
          .sizeBytes = sizeof(engine::LightRow),
@@ -73,7 +71,7 @@ void SceneStage::registerSceneTableLayoutsForCapture() {
                     {"spotOffset", offsetof(engine::LightRow, spotOffset), "float"},
                     {"boundCentre", offsetof(engine::LightRow, boundCentre), "float3"},
                     {"boundRadius", offsetof(engine::LightRow, boundRadius), "float"}}});
-    schema.registerUniformStruct(
+    engine::registerUniformStruct(
         {.name = "LocalLightParams",
          .slot = engine::kLocalLightParamsSlot,
          .sizeBytes = sizeof(LocalLightParams),
@@ -91,14 +89,10 @@ void SceneStage::registerSceneTableLayoutsForCapture() {
 
 //======================================================================================================================
 void SceneStage::registerPassLayoutsForCapture() {
-    using rojoRHI::debug::CaptureSchema;
-    CaptureSchema& schema = CaptureSchema::instance();
-
-    using rojoRHI::debug::SchemaUniformField;
 
     // Derive array offsets from the element stride to avoid duplicated layout literals.
     constexpr uint32_t kLightCount = sizeof(PassUniforms::lights) / sizeof(DirLightUniform);
-    std::vector<SchemaUniformField> passFields{
+    std::vector<engine::SchemaUniformField> passFields{
         {"viewProj", offsetof(PassUniforms, viewProj), "float4x4"},
         {"shadowTransform", offsetof(PassUniforms, shadowTransform), "float4x4"},
         {"eyePos", offsetof(PassUniforms, eyePos), "float3"},
@@ -120,12 +114,12 @@ void SceneStage::registerPassLayoutsForCapture() {
         {"viewProjUnjittered", offsetof(PassUniforms, viewProjUnjittered), "float4x4"});
     passFields.push_back({"previousViewProjUnjittered",
                           offsetof(PassUniforms, previousViewProjUnjittered), "float4x4"});
-    schema.registerUniformStruct({.name = "PassUniforms",
-                                  .slot = kPassUniformsSlot,
-                                  .sizeBytes = sizeof(PassUniforms),
-                                  .fields = std::move(passFields)});
+    engine::registerUniformStruct({.name = "PassUniforms",
+                                   .slot = kPassUniformsSlot,
+                                   .sizeBytes = sizeof(PassUniforms),
+                                   .fields = std::move(passFields)});
 
-    schema.registerUniformStruct(
+    engine::registerUniformStruct(
         {.name = "SkyUniforms",
          .slot = kPassUniformsSlot,
          .sizeBytes = sizeof(SkyUniforms),

@@ -51,8 +51,8 @@ struct RendererFrameState;
 struct RendererFrameImports;
 
 /// Capture tooling, not part of rendering: publishes the draw stages' uniform-block layouts
-/// (including masked variants) (name, slot, size, every field's offset and type) to
-/// rojoRHI::debug::CaptureSchema, so the capture sidecar can name the bytes a .gputrace holds
+/// (including masked variants) (name, slot, size, every field's offset and type) through
+/// engine::registerUniformStruct, so the capture sidecar can name the bytes a .gputrace holds
 /// instead of leaving them a hex dump.
 ///
 /// Free-standing and idempotent -- re-registering a struct replaces it -- because the layouts

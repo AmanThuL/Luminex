@@ -10,7 +10,7 @@
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"
-#include <rojoRHI/CaptureSchema.h>
+#include "Engine/Gpu/CaptureSchema.h"
 
 #include <algorithm>
 #include <string>
@@ -75,8 +75,7 @@ LightClusterKernelParams makeKernelParams(const LightClusterInputs& inputs, uint
 
 //======================================================================================================================
 void LightClusterStage::registerLayoutsForCapture() {
-    auto& schema = rojoRHI::debug::CaptureSchema::instance();
-    schema.registerUniformStruct(
+    engine::registerUniformStruct(
         {.name = "LightClusterParams",
          .slot = kParamsSlot,
          .sizeBytes = sizeof(LightClusterKernelParams),
