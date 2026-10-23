@@ -285,11 +285,16 @@
       ],
       "targets": [
         "RojoRHI",
-        "RojoRHIMetal4ImGui",
+        "RojoRHIBench",
+        "RojoRHILegacy",
+        "RojoRHILegacyMetal4ImGui",
+        "RojoRHILegacyTests",
+        "RojoRHILtoProbe",
+        "RojoRHIMetalCpp",
         "RojoRHITests"
       ],
       "includeRoots": [
-        "RojoRHI/Include"
+        "RojoRHI/Legacy/Include"
       ],
       "consumers": {
         "asset": [
@@ -337,19 +342,26 @@
         "rojoRHI::"
       ]
     },
-    "RojoRHI": {
+    "RojoRHILegacy": {
+      "deps": [
+        "RojoRHIMetalCpp"
+      ]
+    },
+    "RojoRHIMetalCpp": {
       "deps": []
     },
-    "RojoRHIMetal4ImGui": {
+    "RojoRHILegacyMetal4ImGui": {
       "deps": [
-        "RojoRHI",
+        "RojoRHILegacy",
+        "RojoRHIMetalCpp",
         "ImGui"
       ]
     },
     "Render": {
       "deps": [
         "Core",
-        "RojoRHI",
+        "RojoRHILegacy",
+        "RojoRHIMetalCpp",
         "Engine",
         "Asset"
       ]
@@ -357,8 +369,9 @@
     "App": {
       "deps": [
         "Core",
-        "RojoRHI",
-        "RojoRHIMetal4ImGui",
+        "RojoRHILegacy",
+        "RojoRHIMetalCpp",
+        "RojoRHILegacyMetal4ImGui",
         "Render",
         "ImGui",
         "ImGuiNodeEditor",
@@ -372,7 +385,8 @@
     "Tests": {
       "deps": [
         "Core",
-        "RojoRHI",
+        "RojoRHILegacy",
+        "RojoRHIMetalCpp",
         "Render",
         "Asset",
         "AppModel",
@@ -380,9 +394,33 @@
         "Scenes"
       ]
     },
+    "RojoRHILegacyTests": {
+      "deps": [
+        "RojoRHILegacy",
+        "RojoRHIMetalCpp"
+      ]
+    },
+    "RojoRHI": {
+      "deps": [
+        "RojoRHIMetalCpp"
+      ]
+    },
     "RojoRHITests": {
       "deps": [
-        "RojoRHI"
+        "RojoRHI",
+        "RojoRHIMetalCpp"
+      ]
+    },
+    "RojoRHILtoProbe": {
+      "deps": [
+        "RojoRHI",
+        "RojoRHIMetalCpp"
+      ]
+    },
+    "RojoRHIBench": {
+      "deps": [
+        "RojoRHI",
+        "RojoRHIMetalCpp"
       ]
     },
     "TextureBake": {
@@ -395,7 +433,8 @@
     "FrameDataBench": {
       "deps": [
         "Core",
-        "RojoRHI"
+        "RojoRHILegacy",
+        "RojoRHIMetalCpp"
       ]
     },
     "Asset": {
@@ -407,7 +446,8 @@
     "Engine": {
       "deps": [
         "Core",
-        "RojoRHI",
+        "RojoRHILegacy",
+        "RojoRHIMetalCpp",
         "Asset"
       ],
       "forbidUndefined": [
@@ -418,7 +458,8 @@
     "Scenes": {
       "deps": [
         "Core",
-        "RojoRHI",
+        "RojoRHILegacy",
+        "RojoRHIMetalCpp",
         "Asset",
         "Engine"
       ]
@@ -426,7 +467,8 @@
     "AppModel": {
       "deps": [
         "Core",
-        "RojoRHI",
+        "RojoRHILegacy",
+        "RojoRHIMetalCpp",
         "Render",
         "Asset",
         "Engine",

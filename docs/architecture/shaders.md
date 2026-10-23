@@ -54,7 +54,7 @@ readback fixtures, the occlusion probe, the punctual-light oracle and the visibi
 readback. An oracle belongs to no family, so it alone may import a module local to any
 `Shaders/Passes/<family>/` folder as well as `Common/`.
 
-`RojoRHI/Shaders/Tests/` is a separate tree, owned by the RojoRHI component. It compiles into its
+`RojoRHI/Legacy/Shaders/Tests/` is a separate tree, owned by the RojoRHI component. It compiles into its
 own target directory, so it may reuse a basename this tree also uses, and it may not import this
 tree's modules. It holds its own `Modules/Shadow.slang`, the `Triangle` shader, the cube,
 render-area, compute, indirect, instance-index and binding-limit smoke shaders, and byte-identical

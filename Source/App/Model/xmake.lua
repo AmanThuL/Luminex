@@ -2,4 +2,4 @@
 target("AppModel")
     set_kind("static")
     add_files("**.cpp")
-    add_deps("Core", "RojoRHI", "Render", "Asset", "Engine", "Scenes")
+    add_deps("Core", "RojoRHILegacy", "Render", "Asset", "Engine", "Scenes")

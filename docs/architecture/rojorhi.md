@@ -24,8 +24,12 @@ under `RojoRHI/`; an RHI change is a `rojo-rhi` commit that reaches Luminex as a
 includes, carries the standalone root settings and includes `xmake/setup.lua`, `xmake/tasks.lua`
 and `xmake/targets.lua`; `targets.lua` itself includes the component's `shaders.lua` rule, so a
 host that includes it gets the rule with the targets. Through `targets.lua` the root build compiles
-the RojoRHI targets, and the root `xmake test` runs the `RojoRHITests/unit` and `RojoRHITests/gpu`
-groups beside Luminex's own. The root `policy` task checks only the pin; RojoRHI's own checkers and
+the frozen v1 targets `RojoRHILegacy`, `RojoRHILegacyMetal4ImGui` and `RojoRHIMetalCpp`, which
+Luminex links, and the v2 `RojoRHI` target, which no Luminex target links. Luminex's tests run as
+`xmake test Tests/unit Tests/gpu RojoRHILegacyTests/unit RojoRHILegacyTests/gpu`;
+a plain `xmake test` also runs the component's v2 groups, so the groups are named. Hosted CI
+configures `--rojorhi_backend=null` (the default on macOS is `metal4`), and Metal 4 runs are local.
+The root `policy` task checks only the pin; RojoRHI's own checkers and
 format task run from inside the mount (`-P .`) and in `rojo-rhi`'s CI.
 
 RojoRHI grows only when a rendering feature supplies a real portability requirement. Metal 4 is the
@@ -36,8 +40,8 @@ production backend; Vulkan remains research evidence rather than a planned targe
 
 ## Public interface
 
-RojoRHI's public headers live under `RojoRHI/Include/rojoRHI/`; each leaf compiles alone, split by
-owner concept: `GpuAddress.h`, `Format.h`, `Buffer.h`, `Texture.h`, `Heap.h`, `Sampler.h`,
+RojoRHI's v1 public headers live under `RojoRHI/Legacy/Include/rojoRHI/`; each leaf compiles alone,
+split by owner concept: `GpuAddress.h`, `Format.h`, `Buffer.h`, `Texture.h`, `Heap.h`, `Sampler.h`,
 `ShaderLibrary.h`, `GraphicsPipeline.h`, `ComputePipeline.h`, `Indirect.h`, `RenderPass.h`,
 `CommandList.h`, `TemporalScaler.h`, `Swapchain.h`, and `Device.h`, plus `Result.h` and
 `Message.h`, behind an includes-only `RHI.h` umbrella that declares no parallel surface.
@@ -76,8 +80,8 @@ and storage-writable for the exposure texel; no MetalFX type enters a public hea
 
 ## Metal 4 backend
 
-`RojoRHI/Backends/Metal4` implements the current backend with private metal-cpp headers, keeping
-three frames in flight ([RojoRHI ADR 0002](../../RojoRHI/docs/decisions/0002-metal4-first.md)) over
+`RojoRHI/Legacy/Backends/Metal4` implements the current backend with private metal-cpp headers,
+keeping three frames in flight ([RojoRHI ADR 0002](../../RojoRHI/docs/decisions/0002-metal4-first.md)) over
 argument tables whose texture slots clear before each render or compute pass. A per-frame-slot
 growable frame-data page arena backs `bindFrameData`: normal pages are 256 KiB, an oversize request
 rounds up to that page quantum, and pages stay mapped and resident until device destruction, so a
@@ -90,9 +94,9 @@ Its MetalFX temporal scaler translates reciprocal scale units, hands work across
 through a public fence, and retains state in every encoded frame slot until retirement;
 CPU-readable outputs use a creation-time private scratch buffer copied inside the same timed call.
 
-The optional `RojoRHIMetal4ImGui` target owns the ImGui adapter, with sources under
-`RojoRHI/Backends/Metal4/ImGui/Source/`, its ImGui-dependent public extension header, and the
-dependency on Dear ImGui; the core RHI does not inherit any of them
+The optional `RojoRHILegacyMetal4ImGui` target owns the ImGui adapter, with sources under
+`RojoRHI/Legacy/Backends/Metal4/ImGui/Source/`, its ImGui-dependent public extension header,
+and the dependency on Dear ImGui; the core RHI does not inherit any of them
 ([RojoRHI ADR 0003](../../RojoRHI/docs/decisions/0003-thin-rhi.md)).
 
 ## Luminex-side integration
@@ -106,8 +110,9 @@ Luminex's `Tests` binary.
 
 ## Tests
 
-- `RojoRHI/Tests` (`RojoRHITests`) holds RojoRHI's own contract and GPU conformance suite; it links
-  only the `RojoRHI` target and no other project library.
+- `RojoRHI/Legacy/Tests` (`RojoRHILegacyTests`) holds RojoRHI's own contract and GPU conformance
+  suite; it links only the `RojoRHILegacy` and `RojoRHIMetalCpp` targets and no other project
+  library.
 - `Tests/Render/Renderer/CaptureSchemaTests` also holds four cases asserting RojoRHI's
   `CaptureSchema` contract from the Luminex side.
 - `Tests/Engine/Scene/GpuSceneTableAbiTests` also holds two cases asserting the scene-table upload
