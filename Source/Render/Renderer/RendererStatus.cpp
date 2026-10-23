@@ -10,7 +10,7 @@
 
 namespace lmx::render {
 //======================================================================================================================
-void Renderer::recordFrameStatus(const RendererFrameState& state, bool lightDebugEnabled) {
+void Renderer::recordFrameStatus(const RendererFrameState& state) {
     // The frame just declared becomes the previous one. A frame the caller abandoned before
     // declaring never reaches here, so it never becomes anyone's predecessor.
     ++m_declaredFrames;
@@ -57,35 +57,8 @@ void Renderer::recordFrameStatus(const RendererFrameState& state, bool lightDebu
     }
     m_previousSignature = state.signature;
     m_previousCamera = state.cameraState;
-    // What this frame's last access to each persistent target was, for the next frame's imports to
-    // state. The motion and reactive records survive frames with temporal off, which touch neither
-    // target: overwriting them there would let a later re-enabling frame claim the last access was
-    // its own attachment write, and its fragment-stage barrier would not drain the dispatch-stage
-    // read the last temporal frame actually ended with.
     if (state.temporalEnabled) {
-        // The resolve reads motion on every NativeTaa frame, and the debug view reads it whenever
-        // one is shown.
-        m_previousMotionUse =
-            state.nativeTaa || state.vendorTemporal || state.debugView != TemporalDebugView::Off
-                ? TextureUse::ShaderRead
-                : TextureUse::RenderTarget;
-        // Only the resolve reads the reactive attachment, so a Raw frame ends with its own write.
-        m_previousReactiveUse = state.nativeTaa || state.vendorTemporal ? TextureUse::ShaderRead
-                                                                        : TextureUse::RenderTarget;
-        m_temporalResolve->recordFrame(state.slot, state.reconstruction, state.debugView,
-                                       state.historyValid, state.upscaled);
-    }
-    if (lightDebugEnabled)
-        m_temporalResolve->recordDepthRead(state.temporalEnabled ? state.slot : 0);
-    // The scene colour is written and read by every frame. Under Raw at the output extent the
-    // commit copy is the last thing to touch it; an upscaled Raw frame samples it in the spatial
-    // pass instead of copying it, and under NativeTaa and with temporal off, bloom, the histogram
-    // and the display transform all read it and none copies out of it.
-    m_previousSceneColorUse = state.vendorTemporal ? TextureUse::ExternalRead
-                              : state.temporalEnabled && !state.nativeTaa && !state.upscaled
-                                  ? TextureUse::CopySource
-                                  : TextureUse::ShaderRead;
-    if (state.temporalEnabled) {
+        m_temporalResolve->recordFrame(state.reconstruction);
         ++m_temporalFrame;
     }
 }

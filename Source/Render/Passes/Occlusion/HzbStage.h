@@ -55,7 +55,9 @@ public:
     static lmx::Result<std::unique_ptr<HzbStage>> create(engine::GpuContext& gpu,
                                                          bool cpuReadback = false);
     /// Allocates from output extent only; unchanged dimensions preserve identity and history.
-    lmx::Result<void> resize(uint32_t outputWidth, uint32_t outputHeight);
+    /// Pyramids it replaces lose their `states` entries, so a reused address carries nothing.
+    lmx::Result<void> resize(uint32_t outputWidth, uint32_t outputHeight,
+                             TextureStateTable& states);
     /// Returns the last declared source, or an unbuilt record before the first build.
     const HzbSource& previousSource() const { return m_sources[m_lastBuilt]; }
     /// Returns the last declared pyramid, or an allocated unbuilt texture initially.

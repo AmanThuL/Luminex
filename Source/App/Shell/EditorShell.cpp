@@ -225,7 +225,9 @@ bool EditorShell::applyPendingViewportResize(engine::GpuContext& gpu, render::Re
         return false;
     }
     rojoRHI::metal4::imguiForgetTexture(m_selectionOutline->target().rhi());
-    if (auto result = m_selectionOutline->resize(renderer.width(), renderer.height()); !result) {
+    if (auto result = m_selectionOutline->resize(renderer.width(), renderer.height(),
+                                                 renderer.textureStates());
+        !result) {
         LMX_LOG_ERROR("Selection presentation resize failed: {}", result.error().message);
         m_showSelectionOutline = false;
     }

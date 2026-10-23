@@ -90,8 +90,7 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
     REQUIRE((*scene)->prepareFrame(gpu->device().frameNumber()));
     std::vector<lmx::engine::DrawItem> items;
     const auto view = lmx::render::buildSceneView(**scene, items, false);
-    (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, gpu->device()),
-                        /*barrierForSampling=*/false);
+    (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, gpu->device()));
     commands.textureBarrier((*renderer)->depthTarget(), TextureUse::RenderTarget,
                             TextureUse::ShaderRead);
     commands.beginRenderPass({.colorTarget = probeImage->get(),
@@ -222,8 +221,7 @@ TEST_CASE("MaterialLab's sphere grid conserves energy in a white furnace", "[gpu
     Camera camera;
     camera.position = {0.0f, 0.0f, 12.0f};
 
-    (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, gpu->device()),
-                        /*barrierForSampling=*/false);
+    (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, gpu->device()));
     gpu->device().endFrame(nullptr);
     gpu->device().waitIdle();
 
@@ -337,8 +335,7 @@ TEST_CASE("dielectric and conductor probes match a CPU BRDF reference at pinned 
         view.boundingSphere = {0.0f, 0.0f, 0.0f, 12.0f};
 
         CommandList& commands = gpu->device().beginFrame();
-        (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, gpu->device()),
-                            /*barrierForSampling=*/false);
+        (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, gpu->device()));
         gpu->device().endFrame(nullptr);
         gpu->device().waitIdle();
 

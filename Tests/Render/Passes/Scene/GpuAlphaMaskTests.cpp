@@ -47,7 +47,7 @@ std::vector<uint16_t> cutoutFrame(Device& device, Renderer& renderer, FixtureSce
     lmx::engine::Camera camera;
     camera.position = {0, 0, 5};
     auto& commands = device.beginFrame();
-    renderer.render(commands, camera, lmx::test::prepareSceneView(view, device), false);
+    renderer.render(commands, camera, lmx::test::prepareSceneView(view, device));
     device.endFrame(nullptr);
     device.waitIdle();
     std::vector<uint16_t> pixels(kSize * kSize * 4);

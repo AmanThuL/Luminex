@@ -7,7 +7,7 @@ TEST_CASE("external passes order inputs and outputs without opening an RHI scope
     FakeTexture output{64, 64, "output"};
     FakeTexture display{64, 64, "display"};
     RecordingCommandList commands;
-    FakeDevice::FakeTemporalScaler scaler;
+    FakeTemporalScaler scaler;
     RenderGraph graph;
     const auto a = graph.importTexture(input, rojoRHI::Format::RGBA16Float, "input");
     const auto b = graph.importTexture(output, rojoRHI::Format::RGBA16Float, "output");
@@ -31,6 +31,12 @@ TEST_CASE("external passes order inputs and outputs without opening an RHI scope
                   {.textureReads = {nextVersion(b)}, .color = ColorAttachment{.handle = c}},
                   kNoWork);
     graph.presentTexture(nextVersion(c));
+
+    REQUIRE(describe(lowered(graph, 3)) ==
+            std::vector<std::string>{"scope lmx.frame", "scope pack", "run pack", "end scope",
+                                     "barrier input StorageWrite->ExternalRead", "run vendor",
+                                     "barrier output ExternalWrite->ShaderRead", "begin display",
+                                     "run display", "end", "end scope"});
 
     const auto record = graph.execute(commands, 3);
     REQUIRE(record.debug.passes[1].kind == PassKind::External);
@@ -57,9 +63,12 @@ TEST_CASE("external terminal uses preserve cross-frame hazards", "[render][graph
     FakeTexture output{64, 64};
 
     SECTION("a prior external write is visible to a sampled read") {
+        TextureStateTable states;
+        states.set(texture, lmx::render::TextureUse::ExternalWrite);
         RenderGraph graph;
-        const auto input = graph.importTexture(texture, rojoRHI::Format::RGBA16Float, "history",
-                                               lmx::render::TextureUse::ExternalWrite);
+        graph.bindTextureStates(states);
+        const auto input =
+            graph.importPersistentTexture(texture, rojoRHI::Format::RGBA16Float, "history");
         const auto result = graph.importTexture(output, rojoRHI::Format::RGBA16Float, "output");
         graph.addComputePass("sample", {.shaderTextureReads = {input}, .textureWrites = {result}},
                              kNoWork);
@@ -71,9 +80,12 @@ TEST_CASE("external terminal uses preserve cross-frame hazards", "[render][graph
         REQUIRE(record->debug.transitions[0].textureTo == lmx::render::TextureUse::ShaderRead);
     }
     SECTION("a prior external read is ordered before a new write") {
+        TextureStateTable states;
+        states.set(texture, lmx::render::TextureUse::ExternalRead);
         RenderGraph graph;
-        const auto input = graph.importTexture(texture, rojoRHI::Format::RGBA16Float, "history",
-                                               lmx::render::TextureUse::ExternalRead);
+        graph.bindTextureStates(states);
+        const auto input =
+            graph.importPersistentTexture(texture, rojoRHI::Format::RGBA16Float, "history");
         graph.addComputePass("overwrite", {.textureWrites = {input}}, kNoWork);
         graph.exportTexture(nextVersion(input));
         const auto record = graph.compileFrame(1);
@@ -83,9 +95,12 @@ TEST_CASE("external terminal uses preserve cross-frame hazards", "[render][graph
         REQUIRE(record->debug.transitions[0].textureTo == lmx::render::TextureUse::StorageWrite);
     }
     SECTION("a prior external read needs no barrier for another read") {
+        TextureStateTable states;
+        states.set(texture, lmx::render::TextureUse::ExternalRead);
         RenderGraph graph;
-        const auto input = graph.importTexture(texture, rojoRHI::Format::RGBA16Float, "history",
-                                               lmx::render::TextureUse::ExternalRead);
+        graph.bindTextureStates(states);
+        const auto input =
+            graph.importPersistentTexture(texture, rojoRHI::Format::RGBA16Float, "history");
         const auto result = graph.importTexture(output, rojoRHI::Format::RGBA16Float, "output");
         graph.addExternalPass("vendor", {.textureReads = {input}, .textureWrites = {result}},
                               kNoWork);
@@ -125,8 +140,8 @@ TEST_CASE("external declarations enforce texture versions and ranges",
 //======================================================================================================================
 TEST_CASE("external consumers bound transient lifetimes and unused work is culled",
           "[render][graph][external]") {
-    FakeDevice device;
-    TransientPool pool{device};
+    FakeTransientBackend backend;
+    TransientPool pool{backend};
     FakeTexture output{64, 64};
     RenderGraph graph{pool};
     const auto packed = graph.createTexture(kTransientColor, "packed");
@@ -145,5 +160,5 @@ TEST_CASE("external consumers bound transient lifetimes and unused work is culle
     REQUIRE(record->debug.transients[0].firstPass == 0);
     REQUIRE(record->debug.transients[0].lastPass == 1);
     REQUIRE_FALSE(record->debug.transients[1].used);
-    REQUIRE(record->debug.memory.requested == FakeDevice::kTextureAlignment);
+    REQUIRE(record->debug.memory.requested == FakeTransientBackend::kTextureAlignment);
 }

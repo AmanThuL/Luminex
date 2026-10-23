@@ -163,8 +163,8 @@ struct DebugTransient {
     uint32_t firstPass = 0; ///< First scheduled pass that touches it.
     uint32_t lastPass = 0;  ///< Last scheduled pass that touches it.
     uint64_t offset = 0;    ///< Byte offset of its placement within the frame's transient heap.
-    uint64_t size = 0;      ///< Bytes the RHI reports the descriptor occupies in a heap.
-    uint64_t alignment = 0; ///< Alignment the RHI reports its heap offset must satisfy.
+    uint64_t size = 0;      ///< Bytes the transient backend reports the descriptor occupies.
+    uint64_t alignment = 0; ///< Alignment the transient backend reports its offset must satisfy.
     bool aliases = false;   ///< Whether it took memory an earlier transient's lifetime had freed.
 };
 

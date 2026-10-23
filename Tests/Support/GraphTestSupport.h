@@ -10,6 +10,21 @@
 #include <string_view>
 #include <vector>
 
+// v1 device and command-list fakes for the cases that still create stages or a Renderer through a
+// device: Renderer, stage, App/Model and scene tests, and the checkpoint case that sizes a pool by
+// device. Graph-only cases use the Luminex seam fakes in Support/RenderGraphTestSupport.h and
+// Support/TransientBackendTestSupport.h instead. The heap and placed-object members stay because a
+// Renderer built on this device places its transients through them.
+//
+// Every v1 subclass the test support still defines, and why:
+// - here: FakeCommandList, FakeGraphicsPipeline, FakeComputePipeline and FakeDevice with its heap,
+//   texture, buffer and FakeTemporalScaler members, for cases that build stages or a Renderer;
+// - Support/TransientBackendTestSupport.h: FakeTexture and FakeBuffer, because graph imports and
+//   placed transients are rojoRHI::Texture and Buffer objects;
+// - Support/RenderGraphTestSupport.h: RecordingCommandList, because the emitter records on a v1
+//   command list, and a second FakeTemporalScaler, which an external pass hands to that list and
+//   which goes together with RecordingCommandList.
+
 namespace {
 
 using namespace rojoRHI;

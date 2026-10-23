@@ -66,7 +66,7 @@ std::unique_ptr<rojoRHI::Buffer> submitTables(rojoRHI::Device& device, engine::S
     view.temporal.jitterEnabled = false;
     view.temporal.reconstruction = render::ReconstructionMode::Raw;
     view.temporal.sceneGeneration = scene.objects.front().id.store;
-    renderer.render(commands, engine::Camera{}, view, false);
+    renderer.render(commands, engine::Camera{}, view);
     commands.textureBarrier(renderer.colorTarget().rhi(), rojoRHI::TextureUse::RenderTarget,
                             rojoRHI::TextureUse::CopySource);
     commands.beginCopyPass("lmx.test.sceneTables.preserveFrame");

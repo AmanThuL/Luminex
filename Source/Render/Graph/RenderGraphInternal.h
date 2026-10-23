@@ -82,6 +82,9 @@ struct TransitionState {
 };
 
 bool isWriteRole(UseRole role);
+// The texture use a declaration stands for, on either side of a derived barrier and in the use a
+// persistent texture is written back with.
+TextureUse textureUseOf(PassKind kind, UseRole role);
 ResolvedRange resolveRange(const rojoRHI::TextureSubresourceRange& range, uint32_t mipLevels,
                            uint32_t arrayLayers);
 bool rangesOverlap(const ResolvedRange& a, const ResolvedRange& b);

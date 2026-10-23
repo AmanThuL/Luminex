@@ -19,6 +19,7 @@
 #include <array>
 #include <cmath>
 #include <format>
+#include <optional>
 #include <span>
 #include <string>
 #include <utility>
@@ -39,6 +40,51 @@ constexpr std::array<uint8_t, 4> kBlackTexel = {0, 0, 0, 255};
 // The DFG fallback's (scale, bias), as RG16Float bits. Zero makes the specular reconstruction
 // F0 * 0 + 0 vanish -- the matching answer for an environment that is itself black.
 constexpr std::array<uint16_t, 2> kZeroDfgTexel = {0, 0};
+
+//======================================================================================================================
+// Seeds a target resize() allocates. A replacement starts from the use its predecessor was left
+// in, so a resize changes none of the barriers the next frame records; the first allocation starts
+// from `initial`. The predecessor's entry goes with it, so its address carries nothing forward.
+void seedReplacement(TextureStateTable& states, const engine::GpuTexture& previous,
+                     const rojoRHI::Texture& replacement, TextureUse initial) {
+    TextureUse use = initial;
+    if (previous) {
+        use = states.find(previous.rhi()).value_or(initial);
+        states.forget(previous.rhi());
+    }
+    states.set(replacement, use);
+}
+
+// The temporal slots' entries, depth then colour per slot, as forgetTemporalSlots() found them.
+using TemporalSlotUses = std::array<std::optional<TextureUse>, 4>;
+
+//======================================================================================================================
+// Drops the temporal slots' entries before resize() replaces the slots, returning them so a failed
+// resize, which keeps the old slots, can put them back with restoreTemporalSlots().
+TemporalSlotUses forgetTemporalSlots(TextureStateTable& states, TemporalResolve& temporal) {
+    TemporalSlotUses outgoing{};
+    for (uint32_t slot = 0; slot < 2; ++slot) {
+        outgoing[slot] = states.find(temporal.depthSlot(slot));
+        outgoing[2 + slot] = states.find(temporal.colorSlot(slot));
+        states.forget(temporal.depthSlot(slot));
+        states.forget(temporal.colorSlot(slot));
+    }
+    return outgoing;
+}
+
+//======================================================================================================================
+// Puts back the entries forgetTemporalSlots() dropped, for slots a failed resize kept.
+void restoreTemporalSlots(TextureStateTable& states, TemporalResolve& temporal,
+                          const TemporalSlotUses& outgoing) {
+    for (uint32_t slot = 0; slot < 2; ++slot) {
+        if (outgoing[slot]) {
+            states.set(temporal.depthSlot(slot), *outgoing[slot]);
+        }
+        if (outgoing[2 + slot]) {
+            states.set(temporal.colorSlot(slot), *outgoing[2 + slot]);
+        }
+    }
+}
 
 } // namespace
 
@@ -115,6 +161,8 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
             return std::unexpected(shadowMap.error());
         }
         self->m_shadowMap = std::move(*shadowMap);
+        // What every frame leaves it as: the scene pass samples it after the shadow pass writes it.
+        self->m_textureStates.set(self->m_shadowMap.rhi(), TextureUse::ShaderRead);
     }
 
     {
@@ -245,7 +293,10 @@ lmx::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
     if (!color) {
         return std::unexpected(color.error());
     }
-    // Swap the targets only after every allocation succeeds.
+    // Swap the targets only after every allocation succeeds. The scene colour starts as the display
+    // transform's read left it; the display target as the sampled image it always ends as.
+    seedReplacement(m_textureStates, m_hdrColor, hdrColor->rhi(), TextureUse::ShaderRead);
+    seedReplacement(m_textureStates, m_color, color->rhi(), TextureUse::ShaderRead);
     m_hdrColor = std::move(*hdrColor);
     m_color = std::move(*color);
     m_width = width;
@@ -262,14 +313,29 @@ lmx::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
         }
     }
     {
+        // The outgoing slots' entries go with them. A failed resize keeps those slots, so it puts
+        // their entries back.
+        const bool replacing = m_temporalResolve->depthBytes() > 0;
+        const TemporalSlotUses outgoing =
+            replacing ? forgetTemporalSlots(m_textureStates, *m_temporalResolve)
+                      : TemporalSlotUses{};
         auto slots = m_temporalResolve->resize(width, height);
         if (!slots) {
+            if (replacing) {
+                restoreTemporalSlots(m_textureStates, *m_temporalResolve, outgoing);
+            }
             return std::unexpected(slots.error());
+        }
+        // The slots' contents went with the old textures, and the extent change resets history
+        // anyway: a colour slot starts as the commit copy leaves it, a depth slot as sampled.
+        for (uint32_t slot = 0; slot < 2; ++slot) {
+            m_textureStates.set(m_temporalResolve->colorSlot(slot), TextureUse::CopyDestination);
+            m_textureStates.set(m_temporalResolve->depthSlot(slot), TextureUse::ShaderRead);
         }
     }
     if (m_hzbStage) {
         {
-            auto result = m_hzbStage->resize(width, height);
+            auto result = m_hzbStage->resize(width, height, m_textureStates);
             if (!result) {
                 return std::unexpected(result.error());
             }
@@ -309,6 +375,9 @@ lmx::Result<void> Renderer::createTemporalTargets() {
         return std::unexpected(reactive.error());
     }
 
+    // Both start as their own attachment write leaves them, the scene pass's.
+    seedReplacement(m_textureStates, m_motion, motion->rhi(), TextureUse::RenderTarget);
+    seedReplacement(m_textureStates, m_reactive, reactive->rhi(), TextureUse::RenderTarget);
     m_motion = std::move(*motion);
     m_reactive = std::move(*reactive);
     return {};

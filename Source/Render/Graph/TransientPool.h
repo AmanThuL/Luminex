@@ -4,10 +4,16 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+
+#include "Render/Graph/TransientBackend.h"
+#include "Render/Graph/TransientResourceDesc.h"
+
 #include <rojoRHI/RHI.h>
 
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <string_view>
 #include <vector>
 
 namespace lmx::render {
@@ -37,12 +43,22 @@ inline constexpr uint32_t kTransientFrameSlots = 3;
 /// placed texture must outlive the frame that referenced it, and the slot rotation is what says
 /// when it has.
 ///
-/// The pool must outlive every RenderGraph that names it, and must not outlive its device.
+/// The pool reaches the device only through a TransientBackend, which sizes descriptors, creates
+/// heaps and places resources; every decision above stays here.
+///
+/// The pool must outlive every RenderGraph that names it, and must not outlive its backend or
+/// device.
 class TransientPool {
 public:
-    /// Binds the pool to the device its heaps and placed resources are created on. Nothing is
-    /// allocated here: a pool that no frame ever reserves memory from owns no GPU objects.
-    explicit TransientPool(rojoRHI::Device& device) : m_device(device) {}
+    /// Binds the pool to the device its heaps and placed resources are created on, through an
+    /// RhiTransientBackend the pool owns. Nothing is allocated here: a pool that no frame ever
+    /// reserves memory from owns no GPU objects.
+    explicit TransientPool(rojoRHI::Device& device);
+    /// Binds the pool to `backend`, which it borrows and which must outlive it.
+    explicit TransientPool(TransientBackend& backend) : m_backend(backend) {}
+    /// Releases every placed resource and heap the pool still holds through its backend: the
+    /// slots' first, then the generations still retiring.
+    ~TransientPool();
 
     /// Non-copyable: it owns heaps and the resources placed in them, and a copy would duplicate the
     /// slot rotation that keeps them alive.
@@ -66,18 +82,27 @@ public:
     /// One reservation per frame, whatever it asks for: a second one is refused rather than handing
     /// a second caller offsets into a heap the first caller's resources are still live in. Two
     /// graphs that both declare transients therefore belong in two frames.
-    rojoRHI::Result<void> reserve(uint64_t bytes);
+    lmx::Result<void> reserve(uint64_t bytes);
 
-    /// Places a texture at `offset` in the open slot's heap and keeps it alive until that slot is
-    /// reused. Requires a preceding reserve() whose bytes cover the placement.
-    rojoRHI::Result<rojoRHI::Texture*> placeTexture(const rojoRHI::TextureDesc& desc,
-                                                    uint64_t offset);
+    /// Places a texture of `desc`, labelled `label`, at `offset` in the open slot's heap and keeps
+    /// it alive until that slot is reused. Requires a preceding reserve() whose bytes cover the
+    /// placement.
+    lmx::Result<rojoRHI::Texture*> placeTexture(const TransientTextureDesc& desc, uint64_t offset,
+                                                std::string_view label);
     /// The buffer counterpart of placeTexture.
-    rojoRHI::Result<rojoRHI::Buffer*> placeBuffer(const rojoRHI::BufferDesc& desc, uint64_t offset);
+    lmx::Result<rojoRHI::Buffer*> placeBuffer(const TransientBufferDesc& desc, uint64_t offset,
+                                              std::string_view label);
 
-    /// The device the pool's resources are created on, and the one whose textureSizeAlign and
-    /// bufferSizeAlign a graph plans its layout against.
-    rojoRHI::Device& device() const { return m_device; }
+    /// What a texture of `desc` costs in the pool's heaps, which a graph plans its layout against.
+    TransientFootprint footprint(const TransientTextureDesc& desc) const {
+        return m_backend.footprint(desc);
+    }
+    /// What a buffer of `desc` costs in the pool's heaps.
+    TransientFootprint footprint(const TransientBufferDesc& desc) const {
+        return m_backend.footprint(desc);
+    }
+    /// The backend's open frame number, which names the frame beginFrame() opens.
+    uint64_t frameNumber() const { return m_backend.frameNumber(); }
 
     /// Every heap the pool still owns: the live generation of each slot plus every generation
     /// waiting to be released. Exposed so a test can assert that toggling and resizing a frame
@@ -91,11 +116,10 @@ public:
     uint64_t heapBytes() const;
 
 private:
-    // One slot's heap and the resources this slot's current frame placed in it. Resources are
-    // declared after the heap so they are destroyed first -- a placed resource must not outlive
-    // the memory it sits in.
+    // One slot's heap. The resources this slot's current frame placed in it are held by the
+    // backend until beginFrame() releases them when the slot comes round again.
     struct Slot {
-        std::unique_ptr<rojoRHI::Heap> heap;
+        std::optional<TransientHeapId> heap;
         uint64_t bytes = 0;
         // Whether the open frame has already reserved this slot. Tracked rather than inferred from
         // the placed resources below, because a reservation that happens to ask for the bytes the
@@ -104,8 +128,6 @@ private:
         // The frame that most recently placed into `heap`, which is what dates the generation
         // when it is retired.
         uint64_t lastFrame = 0;
-        std::vector<std::unique_ptr<rojoRHI::Texture>> textures;
-        std::vector<std::unique_ptr<rojoRHI::Buffer>> buffers;
     };
 
     // A generation taken out of service, with the frame number after which nothing can still be
@@ -113,14 +135,17 @@ private:
     // uses, restated here so the release rule is checkable rather than inferred from which slot
     // happened to own the heap.
     struct Retiring {
-        std::unique_ptr<rojoRHI::Heap> heap;
+        TransientHeapId heap;
         uint64_t releaseAtFrame = 0;
     };
 
     Slot& openSlot();
     const Slot& openSlot() const;
 
-    rojoRHI::Device& m_device;
+    // Declared before the reference so a backend the pool owns outlives every use of it, the
+    // destructor's releases included. Empty when the pool borrows its backend.
+    std::unique_ptr<TransientBackend> m_ownedBackend;
+    TransientBackend& m_backend;
     Slot m_slots[kTransientFrameSlots];
     std::vector<Retiring> m_retiring;
     // The frame beginFrame() last opened; zero until it has been called, which is what makes a

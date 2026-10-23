@@ -54,7 +54,7 @@ VisibilityStatus checkedFrame(Device& device, engine::Scene& scene, Renderer& re
     view.bloomEnabled = false;
     if (configure)
         configure(view);
-    renderer.render(commands, camera, view, false);
+    renderer.render(commands, camera, view);
     std::unique_ptr<ShaderLibrary> readLibrary;
     std::unique_ptr<ComputePipeline> readPipeline;
     std::unique_ptr<Buffer> depthBuffer;
@@ -297,7 +297,7 @@ TEST_CASE("occlusion joins overlapping retired frames across slot reuse in both 
             view.temporal.reconstruction = ReconstructionMode::Raw;
             view.temporal.sceneGeneration = 9;
             view.temporal.renderScale = frame % 2 == 0 ? 1.0f : 0.5f;
-            (*renderer)->render(commands, camera, view, false);
+            (*renderer)->render(commands, camera, view);
             gpu->device().endFrame(nullptr);
             scene.commitFrame();
             auto retired = (*renderer)->takeRetiredVisibility();

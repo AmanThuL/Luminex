@@ -132,8 +132,7 @@ inline glm::mat4 facingPlaneModel(float z) {
 inline void renderFrame(rojoRHI::Device& device, Renderer& renderer, const Camera& camera,
                         const FixtureSceneView& view) {
     rojoRHI::CommandList& commands = device.beginFrame();
-    renderer.render(commands, camera, lmx::test::prepareSceneView(view, device),
-                    /*barrierForSampling=*/false);
+    renderer.render(commands, camera, lmx::test::prepareSceneView(view, device));
     device.endFrame(nullptr);
     device.waitIdle();
 }
@@ -145,8 +144,7 @@ inline void renderFrame(rojoRHI::Device& device, Renderer& renderer, const Camer
 inline void renderFrameInFlight(rojoRHI::Device& device, Renderer& renderer, const Camera& camera,
                                 const FixtureSceneView& view) {
     rojoRHI::CommandList& commands = device.beginFrame();
-    renderer.render(commands, camera, lmx::test::prepareSceneView(view, device),
-                    /*barrierForSampling=*/false);
+    renderer.render(commands, camera, lmx::test::prepareSceneView(view, device));
     device.endFrame(nullptr);
 }
 

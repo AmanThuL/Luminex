@@ -2,9 +2,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "Render/Graph/LoweredFrame.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Graph/TransientPool.h"
-#include "Support/GraphTestSupport.h"
+#include "Support/TransientBackendTestSupport.h"
 
 #include <algorithm>
 #include <array>
@@ -12,76 +13,19 @@
 #include <limits>
 #include <ranges>
 #include <string>
+#include <variant>
 #include <vector>
 
 using namespace lmx;
 using namespace lmx::render;
 
+// The graph tests run on Luminex seams: the transient backend fake, assertions on the lowered
+// frame, and the recording list only in cases that exercise the emitter. The v1 subclasses that
+// remain, here and elsewhere in the test support, are listed in Support/GraphTestSupport.h.
+
 namespace {
-// Texture is an interface, and the graph reads three things from it: the extent, which is what the
-// attachment rules inspect since the format is declared at import, and the mip and layer counts,
-// which a declared subresource range is resolved and bounds-checked against. readback() is never
-// reached, so it is left empty rather than faked.
-//
-// `name` is the test's own label for the texture, so a recorded barrier says which resource it
-// transitioned rather than printing a pointer.
-struct FakeTexture final : rojoRHI::Texture {
-    std::string name;
-
-    //==================================================================================================================
-    FakeTexture(uint32_t width, uint32_t height, std::string label = {}, uint32_t mips = 1,
-                uint32_t layers = 1)
-        : name(std::move(label)), m_width(width), m_height(height), m_mipLevels(mips),
-          m_arrayLayers(layers) {}
-
-    //==================================================================================================================
-    uint32_t width() const override { return m_width; }
-
-    //==================================================================================================================
-    uint32_t height() const override { return m_height; }
-
-    // Unknown is the sentinel a test double uses when the graph case declares the format itself;
-    // production textures always report their concrete creation format.
-    //==================================================================================================================
-    rojoRHI::Format format() const override { return rojoRHI::Format::Unknown; }
-
-    //==================================================================================================================
-    uint32_t mipLevels() const override { return m_mipLevels; }
-
-    //==================================================================================================================
-    uint32_t arrayLayers() const override { return m_arrayLayers; }
-
-    //==================================================================================================================
-    void readback(void*, uint64_t) override {}
-
-private:
-    uint32_t m_width = 0;
-    uint32_t m_height = 0;
-    uint32_t m_mipLevels = 1;
-    uint32_t m_arrayLayers = 1;
-};
-
-// The graph never reads a buffer's size -- buffers carry no attachment or subresource rules at all
-// -- so this exists to give importBuffer a real object to borrow and to name itself in a barrier.
-struct FakeBuffer final : rojoRHI::Buffer {
-    std::string name;
-
-    //==================================================================================================================
-    explicit FakeBuffer(uint64_t size, std::string label = {})
-        : name(std::move(label)), m_size(size) {}
-
-    //==================================================================================================================
-    uint64_t size() const override { return m_size; }
-
-    //==================================================================================================================
-    void readback(void*, uint64_t) override {}
-
-    //==================================================================================================================
-    void write(uint64_t, const void*, uint64_t) override {}
-
-private:
-    uint64_t m_size = 0;
-};
+// A scaler the recording list can be handed; it carries no state.
+struct FakeTemporalScaler final : rojoRHI::TemporalScaler {};
 
 // Passes here are declarations and nothing else: this layer stores the body without running it, so
 // every pass gets the same empty one.
@@ -94,6 +38,60 @@ template <typename T>
 //======================================================================================================================
 inline std::string errorOf(const GraphResult<T>& result) {
     return result ? std::string{} : result.error().message;
+}
+
+//======================================================================================================================
+// The graph's ordering is a property of the lowered frame, so a case asserts it there with no
+// device and no command list. One string per op, with a barrier entry as one string of its own,
+// named by the resource's declared name and spelled like the recording log below, so the barrier
+// strings read the same in both. A narrowed texture range is spelled out, a whole-resource one is
+// left out, because a barrier covering the wrong subresources is what these cases look for.
+inline std::vector<std::string> describe(const LoweredFrame& frame) {
+    const auto nameOf = [&](uint32_t resource) {
+        return frame.record.debug.resources[resource].name;
+    };
+    std::vector<std::string> lines;
+    for (const LoweredOp& op : frame.ops) {
+        if (const auto* barriers = std::get_if<BarriersOp>(&op)) {
+            for (const LoweredBarrier& barrier : barriers->barriers) {
+                if (const auto* texture = std::get_if<LoweredTextureBarrier>(&barrier)) {
+                    const rojoRHI::TextureSubresourceRange& range = texture->range;
+                    const bool wholeResource = range.baseMipLevel == 0 &&
+                                               range.mipLevelCount == rojoRHI::kAllMipLevels &&
+                                               range.baseArrayLayer == 0 &&
+                                               range.arrayLayerCount == rojoRHI::kAllArrayLayers;
+                    lines.push_back("barrier " + nameOf(texture->resource) +
+                                    (wholeResource ? "" : " " + describeRange(range)) + " " +
+                                    std::string{textureUseName(texture->from)} + "->" +
+                                    std::string{textureUseName(texture->to)});
+                } else {
+                    const auto& buffer = std::get<LoweredBufferBarrier>(barrier);
+                    lines.push_back("barrier " + nameOf(buffer.resource) + " " +
+                                    std::string{bufferUseName(buffer.from)} + "->" +
+                                    std::string{bufferUseName(buffer.to)});
+                }
+            }
+        } else if (const auto* begin = std::get_if<BeginRenderPassOp>(&op)) {
+            lines.push_back("begin " + begin->label);
+        } else if (std::holds_alternative<EndRenderPassOp>(op)) {
+            lines.emplace_back("end");
+        } else if (const auto* scope = std::get_if<BeginScopeOp>(&op)) {
+            lines.push_back("scope " + scope->label);
+        } else if (std::holds_alternative<EndScopeOp>(op)) {
+            lines.emplace_back("end scope");
+        } else {
+            lines.push_back("run " + std::get<RunOp>(op).label);
+        }
+    }
+    return lines;
+}
+
+//======================================================================================================================
+inline LoweredFrame lowered(const RenderGraph& graph, uint64_t frameId = 1) {
+    GraphResult<LoweredFrame> frame = graph.lower(frameId);
+    INFO(errorOf(frame));
+    REQUIRE(frame.has_value());
+    return std::move(*frame);
 }
 
 //======================================================================================================================
@@ -255,9 +253,9 @@ struct RecordingCommandList final : rojoRHI::CommandList {
 
 namespace {
 
-// One transient the fake device sizes to exactly one alignment unit: 64 * 64 texels at four bytes
-// each is 16 KiB, which is FakeDevice::kTextureAlignment. Every offset below is therefore a
-// multiple of the size, which keeps the packing readable in the assertions.
+// One transient the fake backend sizes to exactly one alignment unit: 64 * 64 texels at four bytes
+// each is 16 KiB, which is FakeTransientBackend::kTextureAlignment. Every offset below is
+// therefore a multiple of the size, which keeps the packing readable in the assertions.
 [[maybe_unused]] constexpr TransientTextureDesc kTransientColor{.width = 64,
                                                                 .height = 64,
                                                                 .format =
@@ -268,8 +266,8 @@ namespace {
 // Two transients used one after the other, with an imported target between them so the first one's
 // lifetime closes before the second one's opens. It is the shape aliasing exists for.
 struct DisjointFrame {
-    FakeDevice device;
-    TransientPool pool{device};
+    FakeTransientBackend transients;
+    TransientPool pool{transients};
     FakeTexture midTarget{64, 64, "mid"};
     FakeTexture outTarget{64, 64, "out"};
     RenderGraph graph{pool};

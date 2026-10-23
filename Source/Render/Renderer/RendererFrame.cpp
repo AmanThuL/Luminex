@@ -119,48 +119,66 @@ RendererFrameImports Renderer::importFrameResources(RenderGraph& graph,
                                                     const RendererFrameState& state) {
     // The graph snapshots formats at import for attachment validation; these named constants are
     // the same ones resize() and create() used to build the persistent targets.
-    // These targets persist across frames while three command buffers may be in flight. Their
-    // previous frame's terminal uses seed the fresh graph so its first attachment writes cannot
-    // overlap those earlier reads/writes on Metal 4's queue. Depth and display use ShaderRead
-    // conservatively because their public targets may be sampled by a caller after this graph;
-    // that stage set also covers their ordinary fragment attachment work.
-    const GraphTexture shadowMap =
-        graph.importTexture(m_shadowMap.rhi(), rojoRHI::Format::D32Float, "lmx.render.shadowMap",
-                            TextureUse::ShaderRead);
-    // The scene colour's terminal use is the display pass's read on an ordinary frame and the
-    // history commit's copy on a temporal one, so it is what the previous frame left rather than a
-    // constant.
-    const GraphTexture sceneColor = graph.importTexture(
-        m_hdrColor.rhi(), kSceneColorFormat, "lmx.render.sceneColorHdr", m_previousSceneColorUse);
-    const GraphTexture displayColor = graph.importTexture(
-        m_color.rhi(), kDisplayFormat, "lmx.render.displayColor", TextureUse::ShaderRead);
-    // A frame with temporal off imports slot 0 under the pre-temporal name and use, which is what
-    // keeps its declaration exactly the one M6.1 made; a temporal frame names the slot it uses.
+    // These targets persist across frames while three command buffers may be in flight, so each is
+    // imported with the use the last frame to touch it left it in: that is what orders this frame's
+    // first access behind those earlier reads and writes on Metal 4's queue. The graph writes the
+    // uses back from the passes that ran; the few set by hand below are accesses it cannot see.
+    const GraphTexture shadowMap = graph.importPersistentTexture(
+        m_shadowMap.rhi(), rojoRHI::Format::D32Float, "lmx.render.shadowMap");
+    const GraphTexture sceneColor = graph.importPersistentTexture(
+        m_hdrColor.rhi(), kSceneColorFormat, "lmx.render.sceneColorHdr");
+    if (state.temporalEnabled && !state.nativeTaa && !state.vendorTemporal && !state.upscaled) {
+        // The one override that states no access after the graph: it keeps the earlier
+        // hand-tracked CopySource state solely so the gpu golden dump stays unchanged. That state
+        // is likely under-synchronised: the derived last use is ShaderRead, because the commit copy
+        // is scheduled before the bloom and display reads of the same version, so the next frame's
+        // first barrier does not wait on those reads. Correcting it changes that golden, so it
+        // stays a deliberate, open decision.
+        graph.setFinalUse(sceneColor, TextureUse::CopySource);
+    }
+    const GraphTexture displayColor =
+        graph.importPersistentTexture(m_color.rhi(), kDisplayFormat, "lmx.render.displayColor");
+    // colorTarget() is sampled after the graph -- by the viewport, a screenshot, or a pass the
+    // caller encodes by hand -- so the display target is left as a shader read whatever its last
+    // pass was.
+    graph.setFinalUse(displayColor, TextureUse::ShaderRead);
+    // A frame with temporal off imports slot 0 under the pre-temporal name, which is what keeps its
+    // declaration exactly the one M6.1 made; a temporal frame names the slot it uses.
     const GraphTexture sceneDepth =
         state.temporalEnabled
             ? m_temporalResolve->importDepth(graph, state.slot)
-            : graph.importTexture(m_temporalResolve->depthSlot(0), rojoRHI::Format::D32Float,
-                                  "lmx.render.sceneDepth", m_temporalResolve->depthUse(0));
+            : graph.importPersistentTexture(m_temporalResolve->depthSlot(0),
+                                            rojoRHI::Format::D32Float, "lmx.render.sceneDepth");
+    // depthTarget() is public and a caller may sample it after this graph, so the frame's depth is
+    // left as a shader read, a stage set that also covers the attachment work the scene pass does
+    // with it. A vendor frame leaves it as the scaler's opaque read instead, which the graph
+    // derives from that pass.
+    if (!state.vendorTemporal) {
+        graph.setFinalUse(sceneDepth, TextureUse::ShaderRead);
+    }
 
-    // The temporal pair, imported only by a frame that declares the temporal path. Motion's
-    // terminal use is its attachment write on a frame that shows no debug view and the view's own
-    // read on one that does, so the import states what the previous frame recorded. History's is
-    // the commit copy at the end of the previous temporal frame, which is what this frame's
-    // reprojection reads across the frame boundary; the reactive attachment's is its own
-    // attachment write on a Raw frame and the resolve's read on a NativeTaa one.
+    // The temporal pair, imported only by a frame that declares the temporal path. A frame with
+    // temporal off touches neither target, so the uses the last temporal frame left survive it
+    // and a re-enabling frame is still ordered behind that frame's reads.
     GraphTexture motionTargetHandle;
     GraphTexture reactiveTargetHandle;
     GraphTexture previousDepth;
     GraphTexture colorSlotImport;
     GraphTexture historyImport;
     if (state.temporalEnabled) {
-        motionTargetHandle = graph.importTexture(m_motion.rhi(), kMotionFormat, "lmx.render.motion",
-                                                 m_previousMotionUse);
-        reactiveTargetHandle = graph.importTexture(m_reactive.rhi(), kReactiveFormat,
-                                                   "lmx.render.reactive", m_previousReactiveUse);
+        motionTargetHandle =
+            graph.importPersistentTexture(m_motion.rhi(), kMotionFormat, "lmx.render.motion");
+        reactiveTargetHandle =
+            graph.importPersistentTexture(m_reactive.rhi(), kReactiveFormat, "lmx.render.reactive");
         previousDepth = m_temporalResolve->importDepth(graph, state.previousSlot);
         colorSlotImport = m_temporalResolve->importColor(graph, state.slot);
         historyImport = m_temporalResolve->importColor(graph, state.previousSlot);
+        if (state.vendorTemporal) {
+            // The scaler writes the slot opaquely and display then samples it; the slot keeps the
+            // scaler's producer stage set across frames, the conservative state for the next
+            // frame's first access.
+            graph.setFinalUse(colorSlotImport, TextureUse::ExternalWrite);
+        }
     }
 
     // Exposure feedback (spec 9): the persistent exposure buffer is imported here, before the

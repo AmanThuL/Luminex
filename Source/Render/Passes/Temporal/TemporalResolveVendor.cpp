@@ -37,7 +37,6 @@ ReconstructionSelection TemporalResolve::prepare(ReconstructionMode requested, u
 //======================================================================================================================
 void TemporalResolve::recordDisabledFrame() {
     m_vendor->recordMode(ReconstructionMode::Raw);
-    m_depthUse[0] = TextureUse::ShaderRead;
 }
 
 //======================================================================================================================

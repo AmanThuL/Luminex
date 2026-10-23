@@ -362,8 +362,8 @@ TEST_CASE("R8Unorm is accepted as a color attachment", "[render][graph]") {
 // The transient rule reaches every attachment: an extra that loads consumes contents the frame
 // never produced just as the primary would.
 TEST_CASE("a transient loaded as an extra color attachment fails to compile", "[render][graph]") {
-    FakeDevice device;
-    TransientPool pool(device);
+    FakeTransientBackend backend;
+    TransientPool pool(backend);
     FakeTexture outTarget{64, 64, "out"};
     RenderGraph graph(pool);
     const GraphTexture scratch = graph.createTexture(kTransientColor, "lmx.transient.scratch");

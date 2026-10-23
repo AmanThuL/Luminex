@@ -19,6 +19,7 @@ using graph_detail::isWriteRole;
 using graph_detail::rangesOverlap;
 using graph_detail::ResolvedRange;
 using graph_detail::resolveRange;
+using graph_detail::textureUseOf;
 using Covered = graph_detail::TransitionState::Covered;
 using WriteState = graph_detail::TransitionState::WriteState;
 using TextureWriter = graph_detail::TransitionState::TextureWriter;
@@ -26,34 +27,6 @@ using PendingRead = graph_detail::TransitionState::PendingRead;
 using ReadState = graph_detail::TransitionState::ReadState;
 
 namespace {
-
-//======================================================================================================================
-// The RHI use a declaration stands for on either side of a derived barrier. The role decides it
-// almost alone; only a plain read has to ask the pass kind, because a compute pass reads through a
-// storage binding where a raster pass reads through a sampled one.
-TextureUse textureUseOf(PassKind kind, UseRole role) {
-    if (kind == PassKind::External) {
-        return isWriteRole(role) ? TextureUse::ExternalWrite : TextureUse::ExternalRead;
-    }
-    switch (role) {
-    case UseRole::Read:
-        return kind == PassKind::Compute ? TextureUse::StorageRead : TextureUse::ShaderRead;
-    case UseRole::ShaderRead:
-        return TextureUse::ShaderRead;
-    case UseRole::IndirectArgument:
-        return TextureUse::ShaderRead;
-    case UseRole::Write:
-        return TextureUse::StorageWrite;
-    case UseRole::ColorAttachment:
-    case UseRole::DepthAttachment:
-        return TextureUse::RenderTarget;
-    case UseRole::CopySource:
-        return TextureUse::CopySource;
-    case UseRole::CopyDestination:
-        return TextureUse::CopyDestination;
-    }
-    return TextureUse::ShaderRead;
-}
 
 //======================================================================================================================
 BufferUse bufferUseOf(PassKind kind, UseRole role) {

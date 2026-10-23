@@ -21,9 +21,16 @@ TEST_CASE("execute encodes each pass kind in its own scope", "[render][graph]") 
     graph.addPass("lmx.pass.present", present, kNoWork);
     graph.exportTexture(nextVersion(color));
 
+    const LoweredFrame frame = lowered(graph);
+
+    REQUIRE(describe(frame) ==
+            std::vector<std::string>{"scope lmx.frame", "scope lmx.pass.fill", "run lmx.pass.fill",
+                                     "end scope", "barrier storage StorageWrite->ShaderRead",
+                                     "begin lmx.pass.present", "run lmx.pass.present", "end",
+                                     "end scope"});
+
     RecordingCommandList commands;
     graph.execute(commands, 1);
-
     REQUIRE(commands.events == std::vector<std::string>{"begin compute lmx.pass.fill",
                                                         "end compute",
                                                         "barrier storage StorageWrite->ShaderRead",
@@ -49,9 +56,17 @@ TEST_CASE("execute derives a buffer barrier from a copy destination", "[render][
     graph.addComputePass("lmx.pass.accumulate", accumulate, kNoWork);
     graph.exportBuffer(GraphBuffer{bins.index, 2});
 
+    const LoweredFrame frame = lowered(graph);
+
+    REQUIRE(describe(frame) == std::vector<std::string>{
+                                   "scope lmx.frame", "scope lmx.pass.clear", "run lmx.pass.clear",
+                                   "end scope", "barrier histogram CopyDestination->StorageRead",
+                                   "barrier histogram CopyDestination->StorageWrite",
+                                   "scope lmx.pass.accumulate", "run lmx.pass.accumulate",
+                                   "end scope", "end scope"});
+
     RecordingCommandList commands;
     graph.execute(commands, 1);
-
     REQUIRE(commands.events ==
             std::vector<std::string>{"begin copy lmx.pass.clear", "end copy",
                                      "barrier histogram CopyDestination->StorageRead",
@@ -222,9 +237,16 @@ TEST_CASE("a derived barrier carries the range the reader declared", "[render][g
     graph.addComputePass("lmx.pass.downsample", downsample, kNoWork);
     graph.exportTexture(GraphTexture{bloom.index, 2});
 
+    const LoweredFrame frame = lowered(graph);
+
+    REQUIRE(describe(frame) ==
+            std::vector<std::string>{
+                "scope lmx.frame", "scope lmx.pass.write", "run lmx.pass.write", "end scope",
+                "barrier bloom mips[0..0] layers[0..] StorageWrite->StorageRead",
+                "scope lmx.pass.downsample", "run lmx.pass.downsample", "end scope", "end scope"});
+
     RecordingCommandList commands;
     graph.execute(commands, 1);
-
     REQUIRE(commands.events ==
             std::vector<std::string>{"begin compute lmx.pass.write", "end compute",
                                      "barrier chain mips[0..0] layers[0..] "

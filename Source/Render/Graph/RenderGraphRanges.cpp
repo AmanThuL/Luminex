@@ -57,6 +57,34 @@ bool rangesOverlap(const ResolvedRange& a, const ResolvedRange& b) {
 }
 
 //======================================================================================================================
+// The RHI use a declaration stands for on either side of a derived barrier. The role decides it
+// almost alone; only a plain read has to ask the pass kind, because a compute pass reads through a
+// storage binding where a raster pass reads through a sampled one.
+TextureUse textureUseOf(PassKind kind, UseRole role) {
+    if (kind == PassKind::External) {
+        return isWriteRole(role) ? TextureUse::ExternalWrite : TextureUse::ExternalRead;
+    }
+    switch (role) {
+    case UseRole::Read:
+        return kind == PassKind::Compute ? TextureUse::StorageRead : TextureUse::ShaderRead;
+    case UseRole::ShaderRead:
+        return TextureUse::ShaderRead;
+    case UseRole::IndirectArgument:
+        return TextureUse::ShaderRead;
+    case UseRole::Write:
+        return TextureUse::StorageWrite;
+    case UseRole::ColorAttachment:
+    case UseRole::DepthAttachment:
+        return TextureUse::RenderTarget;
+    case UseRole::CopySource:
+        return TextureUse::CopySource;
+    case UseRole::CopyDestination:
+        return TextureUse::CopyDestination;
+    }
+    return TextureUse::ShaderRead;
+}
+
+//======================================================================================================================
 // How a sink names itself in a validation message: "exported texture 'x' ... is not written by any
 // pass" reads as the declaration the caller made.
 std::string_view sinkVerb(SinkKind kind) {

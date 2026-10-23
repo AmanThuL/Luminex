@@ -37,6 +37,12 @@ TEST_CASE("execute encodes the schedule as labelled render passes", "[render][gr
 
     graph.exportTexture(nextVersion(sceneColor));
 
+    REQUIRE(
+        describe(lowered(graph)) ==
+        std::vector<std::string>{"scope lmx.frame", "begin lmx.pass.shadow", "run lmx.pass.shadow",
+                                 "end", "barrier shadowMap RenderTarget->ShaderRead",
+                                 "begin lmx.pass.scene", "run lmx.pass.scene", "end", "end scope"});
+
     graph.execute(commands, 1);
 
     REQUIRE(commands.events ==
@@ -93,13 +99,14 @@ TEST_CASE("execute transitions a sampled render target once", "[render][graph]")
     graph.exportTexture(nextVersion(first));
     graph.exportTexture(nextVersion(second));
 
-    RecordingCommandList commands;
-    graph.execute(commands, 1);
+    const LoweredFrame frame = lowered(graph);
 
-    REQUIRE(commands.events == std::vector<std::string>{
-                                   "begin lmx.pass.shadow", "end",
-                                   "barrier shadowMap RenderTarget->ShaderRead",
-                                   "begin lmx.pass.first", "end", "begin lmx.pass.second", "end"});
+    REQUIRE(describe(frame) ==
+            std::vector<std::string>{
+                "scope lmx.frame", "begin lmx.pass.shadow", "run lmx.pass.shadow", "end",
+                "barrier shadowMap RenderTarget->ShaderRead", "begin lmx.pass.first",
+                "run lmx.pass.first", "end", "begin lmx.pass.second", "run lmx.pass.second", "end",
+                "end scope"});
 }
 
 //======================================================================================================================
@@ -116,10 +123,10 @@ TEST_CASE("execute emits no barrier for a texture only exported", "[render][grap
     graph.addPass("lmx.pass.scene", scene, kNoWork);
     graph.exportTexture(nextVersion(sceneColor));
 
-    RecordingCommandList commands;
-    graph.execute(commands, 1);
+    const LoweredFrame frame = lowered(graph);
 
-    REQUIRE(commands.events == std::vector<std::string>{"begin lmx.pass.scene", "end"});
+    REQUIRE(describe(frame) == std::vector<std::string>{"scope lmx.frame", "begin lmx.pass.scene",
+                                                        "run lmx.pass.scene", "end", "end scope"});
 }
 
 //======================================================================================================================
@@ -157,18 +164,30 @@ TEST_CASE("execute transitions a render target again after it is rewritten", "[r
 
     graph.exportTexture(GraphTexture{scratch.index, 2});
 
-    RecordingCommandList commands;
-    graph.execute(commands, 1);
+    const LoweredFrame frame = lowered(graph);
 
-    REQUIRE(commands.events ==
-            std::vector<std::string>{
-                "begin lmx.pass.write", "end", "barrier pingPong RenderTarget->ShaderRead",
-                "begin lmx.pass.sample", "end", "barrier other RenderTarget->ShaderRead",
-                "barrier pingPong RenderTarget->RenderTarget",
-                "barrier pingPong ShaderRead->RenderTarget", "begin lmx.pass.rewrite", "end",
-                "barrier pingPong RenderTarget->ShaderRead",
-                "barrier other RenderTarget->RenderTarget",
-                "barrier other ShaderRead->RenderTarget", "begin lmx.pass.resample", "end"});
+    REQUIRE(describe(frame) ==
+            std::vector<std::string>{"scope lmx.frame",
+                                     "begin lmx.pass.write",
+                                     "run lmx.pass.write",
+                                     "end",
+                                     "barrier pingPong RenderTarget->ShaderRead",
+                                     "begin lmx.pass.sample",
+                                     "run lmx.pass.sample",
+                                     "end",
+                                     "barrier other RenderTarget->ShaderRead",
+                                     "barrier pingPong RenderTarget->RenderTarget",
+                                     "barrier pingPong ShaderRead->RenderTarget",
+                                     "begin lmx.pass.rewrite",
+                                     "run lmx.pass.rewrite",
+                                     "end",
+                                     "barrier pingPong RenderTarget->ShaderRead",
+                                     "barrier other RenderTarget->RenderTarget",
+                                     "barrier other ShaderRead->RenderTarget",
+                                     "begin lmx.pass.resample",
+                                     "run lmx.pass.resample",
+                                     "end",
+                                     "end scope"});
 }
 
 //======================================================================================================================
@@ -197,13 +216,13 @@ TEST_CASE("execute barriers a buffer write after an earlier read", "[render][gra
     graph.exportBuffer(nextVersion(sceneColor));
     graph.exportBuffer(nextVersion(exposure));
 
-    RecordingCommandList commands;
-    graph.execute(commands, 1);
+    const LoweredFrame frame = lowered(graph);
 
-    REQUIRE(commands.events ==
-            std::vector<std::string>{"begin compute lmx.pass.scene", "end compute",
-                                     "barrier exposure StorageRead->StorageWrite",
-                                     "begin compute lmx.pass.resolve", "end compute"});
+    REQUIRE(describe(frame) == std::vector<std::string>{
+                                   "scope lmx.frame", "scope lmx.pass.scene", "run lmx.pass.scene",
+                                   "end scope", "barrier exposure StorageRead->StorageWrite",
+                                   "scope lmx.pass.resolve", "run lmx.pass.resolve", "end scope",
+                                   "end scope"});
 }
 
 //======================================================================================================================
@@ -241,8 +260,8 @@ TEST_CASE("a buffer write is barriered after every kind of earlier read", "[rend
     graph.exportBuffer(nextVersion(histogram));
     graph.exportBuffer(nextVersion(exposure));
 
-    RecordingCommandList commands;
-    const CompiledFrameRecord record = graph.execute(commands, 1);
+    const LoweredFrame frame = lowered(graph);
+    const CompiledFrameRecord& record = frame.record;
 
     // Two write-after-read transitions before the resolve, one per reading use.
     REQUIRE(record.debug.transitions.size() == 2);
@@ -251,13 +270,13 @@ TEST_CASE("a buffer write is barriered after every kind of earlier read", "[rend
     REQUIRE(record.debug.transitions[0].beforePass == 2);
     REQUIRE(record.debug.transitions[1].beforePass == 2);
 
-    REQUIRE(commands.events ==
-            std::vector<std::string>{"begin lmx.pass.scene", "end",
-                                     "begin compute lmx.pass.histogram", "end compute",
-                                     "barrier exposure ShaderRead->StorageWrite",
-                                     "barrier exposure "
-                                     "StorageRead->StorageWrite",
-                                     "begin compute lmx.pass.resolve", "end compute"});
+    REQUIRE(describe(frame) == std::vector<std::string>{
+                                   "scope lmx.frame", "begin lmx.pass.scene", "run lmx.pass.scene",
+                                   "end", "scope lmx.pass.histogram", "run lmx.pass.histogram",
+                                   "end scope", "barrier exposure ShaderRead->StorageWrite",
+                                   "barrier exposure StorageRead->StorageWrite",
+                                   "scope lmx.pass.resolve", "run lmx.pass.resolve", "end scope",
+                                   "end scope"});
 }
 
 //======================================================================================================================
@@ -299,8 +318,8 @@ TEST_CASE("a texture write is barriered after every kind of earlier read", "[ren
     graph.exportTexture(nextVersion(display));
     graph.exportTexture(nextVersion(sceneRead));
 
-    RecordingCommandList commands;
-    const CompiledFrameRecord record = graph.execute(commands, 1);
+    const LoweredFrame frame = lowered(graph);
+    const CompiledFrameRecord& record = frame.record;
 
     // Two read-after-write transitions (one per reading stage class), the write-after-write edge
     // from the original render target producer, then two write-after-read edges from the readers.
@@ -312,15 +331,16 @@ TEST_CASE("a texture write is barriered after every kind of earlier read", "[ren
     REQUIRE(record.debug.transitions[4].beforePass == 3);
     REQUIRE(record.debug.transitions[4].textureFrom == lmx::render::TextureUse::ShaderRead);
 
-    REQUIRE(commands.events ==
+    REQUIRE(describe(frame) ==
             std::vector<std::string>{
-                "begin lmx.pass.scene", "end", "barrier sceneColor RenderTarget->StorageRead",
-                "begin compute lmx.pass.histogram", "end compute",
-                "barrier sceneColor RenderTarget->ShaderRead", "begin lmx.pass.display", "end",
-                "barrier sceneColor RenderTarget->StorageWrite",
+                "scope lmx.frame", "begin lmx.pass.scene", "run lmx.pass.scene", "end",
+                "barrier sceneColor RenderTarget->StorageRead", "scope lmx.pass.histogram",
+                "run lmx.pass.histogram", "end scope",
+                "barrier sceneColor RenderTarget->ShaderRead", "begin lmx.pass.display",
+                "run lmx.pass.display", "end", "barrier sceneColor RenderTarget->StorageWrite",
                 "barrier sceneColor StorageRead->StorageWrite",
-                "barrier sceneColor ShaderRead->StorageWrite", "begin compute lmx.pass.overwrite",
-                "end compute"});
+                "barrier sceneColor ShaderRead->StorageWrite", "scope lmx.pass.overwrite",
+                "run lmx.pass.overwrite", "end scope", "end scope"});
 }
 
 //======================================================================================================================
@@ -338,11 +358,11 @@ TEST_CASE("a pass reading and writing one buffer owes itself no barrier", "[rend
     graph.addComputePass("lmx.pass.accumulate", accumulate, kNoWork);
     graph.exportBuffer(nextVersion(bins));
 
-    RecordingCommandList commands;
-    graph.execute(commands, 1);
+    const LoweredFrame frame = lowered(graph);
 
-    REQUIRE(commands.events ==
-            std::vector<std::string>{"begin compute lmx.pass.accumulate", "end compute"});
+    REQUIRE(describe(frame) ==
+            std::vector<std::string>{"scope lmx.frame", "scope lmx.pass.accumulate",
+                                     "run lmx.pass.accumulate", "end scope", "end scope"});
 }
 
 //======================================================================================================================
@@ -383,14 +403,13 @@ TEST_CASE("a write-after-read barrier survives an unrelated write to a disjoint 
     graph.exportTexture(GraphTexture{bloom.index, 2});
     graph.exportTexture(nextVersion(sink));
 
-    RecordingCommandList commands;
-    graph.execute(commands, 1);
+    const LoweredFrame frame = lowered(graph);
 
-    REQUIRE(commands.events == std::vector<std::string>{
-                                   "begin lmx.pass.a", "end", "begin compute lmx.pass.b",
-                                   "end compute",
-                                   "barrier chain mips[0..0] layers[0..] ShaderRead->StorageWrite",
-                                   "begin compute lmx.pass.c", "end compute"});
+    REQUIRE(describe(frame) == std::vector<std::string>{
+                                   "scope lmx.frame", "begin lmx.pass.a", "run lmx.pass.a", "end",
+                                   "scope lmx.pass.b", "run lmx.pass.b", "end scope",
+                                   "barrier bloom mips[0..0] layers[0..] ShaderRead->StorageWrite",
+                                   "scope lmx.pass.c", "run lmx.pass.c", "end scope", "end scope"});
 }
 
 //======================================================================================================================
@@ -434,15 +453,14 @@ TEST_CASE("a write-after-read barrier survives a partial-overlap discharge", "[r
     graph.exportTexture(GraphTexture{bloom.index, 2});
     graph.exportTexture(nextVersion(sink));
 
-    RecordingCommandList commands;
-    graph.execute(commands, 1);
+    const LoweredFrame frame = lowered(graph);
 
-    REQUIRE(commands.events == std::vector<std::string>{
-                                   "begin lmx.pass.a", "end",
-                                   "barrier chain mips[0..0] layers[0..] ShaderRead->StorageWrite",
-                                   "begin compute lmx.pass.d", "end compute",
-                                   "barrier chain mips[2..2] layers[0..] ShaderRead->StorageWrite",
-                                   "begin compute lmx.pass.e", "end compute"});
+    REQUIRE(describe(frame) == std::vector<std::string>{
+                                   "scope lmx.frame", "begin lmx.pass.a", "run lmx.pass.a", "end",
+                                   "barrier bloom mips[0..0] layers[0..] ShaderRead->StorageWrite",
+                                   "scope lmx.pass.d", "run lmx.pass.d", "end scope",
+                                   "barrier bloom mips[2..2] layers[0..] ShaderRead->StorageWrite",
+                                   "scope lmx.pass.e", "run lmx.pass.e", "end scope", "end scope"});
 }
 
 //======================================================================================================================
@@ -479,14 +497,13 @@ TEST_CASE("a fully covered read is completely discharged", "[render][graph]") {
     graph.exportTexture(GraphTexture{bloom.index, 2});
     graph.exportTexture(nextVersion(sink));
 
-    RecordingCommandList commands;
-    graph.execute(commands, 1);
+    const LoweredFrame frame = lowered(graph);
 
-    REQUIRE(commands.events == std::vector<std::string>{
-                                   "begin lmx.pass.a", "end",
-                                   "barrier chain mips[0..0] layers[0..] ShaderRead->StorageWrite",
-                                   "begin compute lmx.pass.d", "end compute",
-                                   "begin compute lmx.pass.e", "end compute"});
+    REQUIRE(describe(frame) == std::vector<std::string>{
+                                   "scope lmx.frame", "begin lmx.pass.a", "run lmx.pass.a", "end",
+                                   "barrier bloom mips[0..0] layers[0..] ShaderRead->StorageWrite",
+                                   "scope lmx.pass.d", "run lmx.pass.d", "end scope",
+                                   "scope lmx.pass.e", "run lmx.pass.e", "end scope", "end scope"});
 }
 
 //======================================================================================================================
@@ -522,8 +539,8 @@ TEST_CASE("each reader of a distinct range gets its own transition", "[render][g
     graph.exportTexture(nextVersion(a));
     graph.exportTexture(nextVersion(b));
 
-    RecordingCommandList commands;
-    const CompiledFrameRecord record = graph.execute(commands, 1);
+    const LoweredFrame frame = lowered(graph);
+    const CompiledFrameRecord& record = frame.record;
 
     REQUIRE(record.debug.transitions.size() == 2);
     REQUIRE(record.debug.transitions[0].beforePass == 1);
@@ -531,14 +548,13 @@ TEST_CASE("each reader of a distinct range gets its own transition", "[render][g
     REQUIRE(record.debug.transitions[1].beforePass == 2);
     REQUIRE(record.debug.transitions[1].range.baseMipLevel == 1);
 
-    REQUIRE(commands.events == std::vector<std::string>{"begin compute lmx.pass.write",
-                                                        "end compute",
-                                                        "barrier chain mips[0..0] layers[0..] "
-                                                        "StorageWrite->ShaderRead",
-                                                        "begin lmx.pass.readMip0", "end",
-                                                        "barrier chain mips[1..1] layers[0..] "
-                                                        "StorageWrite->ShaderRead",
-                                                        "begin lmx.pass.readMip1", "end"});
+    REQUIRE(describe(frame) ==
+            std::vector<std::string>{
+                "scope lmx.frame", "scope lmx.pass.write", "run lmx.pass.write", "end scope",
+                "barrier bloom mips[0..0] layers[0..] StorageWrite->ShaderRead",
+                "begin lmx.pass.readMip0", "run lmx.pass.readMip0", "end",
+                "barrier bloom mips[1..1] layers[0..] StorageWrite->ShaderRead",
+                "begin lmx.pass.readMip1", "run lmx.pass.readMip1", "end", "end scope"});
 }
 
 //======================================================================================================================
@@ -575,15 +591,16 @@ TEST_CASE("a reader enclosed by an earlier transition gets none", "[render][grap
     graph.exportTexture(nextVersion(a));
     graph.exportTexture(nextVersion(b));
 
-    RecordingCommandList commands;
-    const CompiledFrameRecord record = graph.execute(commands, 1);
+    const LoweredFrame frame = lowered(graph);
+    const CompiledFrameRecord& record = frame.record;
 
     REQUIRE(record.debug.transitions.size() == 1);
-    REQUIRE(commands.events == std::vector<std::string>{"begin compute lmx.pass.write",
-                                                        "end compute",
-                                                        "barrier chain StorageWrite->ShaderRead",
-                                                        "begin lmx.pass.readAll", "end",
-                                                        "begin lmx.pass.readMip2", "end"});
+    REQUIRE(describe(frame) == std::vector<std::string>{
+                                   "scope lmx.frame", "scope lmx.pass.write", "run lmx.pass.write",
+                                   "end scope", "barrier bloom StorageWrite->ShaderRead",
+                                   "begin lmx.pass.readAll", "run lmx.pass.readAll", "end",
+                                   "begin lmx.pass.readMip2", "run lmx.pass.readMip2", "end",
+                                   "end scope"});
 }
 
 //======================================================================================================================
@@ -624,8 +641,8 @@ TEST_CASE("a reader of another stage class is not covered by an earlier transiti
     graph.exportBuffer(nextVersion(histogram));
     graph.exportTexture(nextVersion(display));
 
-    RecordingCommandList commands;
-    const CompiledFrameRecord record = graph.execute(commands, 1);
+    const LoweredFrame frame = lowered(graph);
+    const CompiledFrameRecord& record = frame.record;
 
     REQUIRE(record.debug.transitions.size() == 2);
     REQUIRE(record.debug.transitions[0].beforePass == 1);
@@ -633,11 +650,13 @@ TEST_CASE("a reader of another stage class is not covered by an earlier transiti
     REQUIRE(record.debug.transitions[1].beforePass == 2);
     REQUIRE(record.debug.transitions[1].textureTo == lmx::render::TextureUse::ShaderRead);
 
-    REQUIRE(commands.events ==
-            std::vector<std::string>{
-                "begin lmx.pass.scene", "end", "barrier sceneColor RenderTarget->StorageRead",
-                "begin compute lmx.pass.histogram", "end compute",
-                "barrier sceneColor RenderTarget->ShaderRead", "begin lmx.pass.display", "end"});
+    REQUIRE(describe(frame) == std::vector<std::string>{
+                                   "scope lmx.frame", "begin lmx.pass.scene", "run lmx.pass.scene",
+                                   "end", "barrier sceneColor RenderTarget->StorageRead",
+                                   "scope lmx.pass.histogram", "run lmx.pass.histogram",
+                                   "end scope", "barrier sceneColor RenderTarget->ShaderRead",
+                                   "begin lmx.pass.display", "run lmx.pass.display", "end",
+                                   "end scope"});
 }
 
 //======================================================================================================================
@@ -674,19 +693,19 @@ TEST_CASE("a buffer reader of another stage class is not covered either", "[rend
     graph.exportTexture(nextVersion(sceneColor));
     graph.exportBuffer(nextVersion(histogram));
 
-    RecordingCommandList commands;
-    const CompiledFrameRecord record = graph.execute(commands, 1);
+    const LoweredFrame frame = lowered(graph);
+    const CompiledFrameRecord& record = frame.record;
 
     REQUIRE(record.debug.transitions.size() == 2);
     REQUIRE(record.debug.transitions[0].bufferTo == lmx::render::BufferUse::ShaderRead);
     REQUIRE(record.debug.transitions[1].bufferTo == lmx::render::BufferUse::StorageRead);
 
-    REQUIRE(commands.events ==
-            std::vector<std::string>{"begin compute lmx.pass.seed", "end compute",
-                                     "barrier exposure StorageWrite->ShaderRead",
-                                     "begin lmx.pass.scene", "end",
-                                     "barrier exposure StorageWrite->StorageRead",
-                                     "begin compute lmx.pass.histogram", "end compute"});
+    REQUIRE(describe(frame) ==
+            std::vector<std::string>{
+                "scope lmx.frame", "scope lmx.pass.seed", "run lmx.pass.seed", "end scope",
+                "barrier exposure StorageWrite->ShaderRead", "begin lmx.pass.scene",
+                "run lmx.pass.scene", "end", "barrier exposure StorageWrite->StorageRead",
+                "scope lmx.pass.histogram", "run lmx.pass.histogram", "end scope", "end scope"});
 }
 
 //======================================================================================================================
@@ -709,8 +728,8 @@ TEST_CASE("a buffer imported with a prior producer transitions before its first 
     graph.addPass("lmx.pass.scene", scene, kNoWork);
     graph.exportTexture(nextVersion(sceneColor));
 
-    RecordingCommandList commands;
-    const CompiledFrameRecord record = graph.execute(commands, 1);
+    const LoweredFrame frame = lowered(graph);
+    const CompiledFrameRecord& record = frame.record;
 
     REQUIRE(record.debug.transitions.size() == 1);
     REQUIRE(record.debug.transitions[0].beforePass == 0);
@@ -719,8 +738,10 @@ TEST_CASE("a buffer imported with a prior producer transitions before its first 
     REQUIRE(record.debug.transitions[0].bufferTo == lmx::render::BufferUse::ShaderRead);
 
     // The barrier leads the frame: nothing precedes the pass that consumes it.
-    REQUIRE(commands.events == std::vector<std::string>{"barrier exposure StorageWrite->ShaderRead",
-                                                        "begin lmx.pass.scene", "end"});
+    REQUIRE(describe(frame) == std::vector<std::string>{"scope lmx.frame",
+                                                        "barrier exposure StorageWrite->ShaderRead",
+                                                        "begin lmx.pass.scene",
+                                                        "run lmx.pass.scene", "end", "end scope"});
 }
 
 //======================================================================================================================
@@ -741,11 +762,12 @@ TEST_CASE("a buffer imported without a prior producer transitions nothing", "[re
     graph.addPass("lmx.pass.scene", scene, kNoWork);
     graph.exportTexture(nextVersion(sceneColor));
 
-    RecordingCommandList commands;
-    const CompiledFrameRecord record = graph.execute(commands, 1);
+    const LoweredFrame frame = lowered(graph);
+    const CompiledFrameRecord& record = frame.record;
 
     REQUIRE(record.debug.transitions.empty());
-    REQUIRE(commands.events == std::vector<std::string>{"begin lmx.pass.scene", "end"});
+    REQUIRE(describe(frame) == std::vector<std::string>{"scope lmx.frame", "begin lmx.pass.scene",
+                                                        "run lmx.pass.scene", "end", "end scope"});
 }
 
 //======================================================================================================================
@@ -796,10 +818,12 @@ TEST_CASE("a texture import carries its previous-frame access", "[render][graph]
     FakeTexture output{64, 64, "output"};
 
     SECTION("prior read before current write") {
+        TextureStateTable states;
+        states.set(persistent, lmx::render::TextureUse::ShaderRead);
         RenderGraph graph;
+        graph.bindTextureStates(states);
         const GraphTexture texture =
-            graph.importTexture(persistent, rojoRHI::Format::BGRA8Unorm, "persistent",
-                                lmx::render::TextureUse::ShaderRead);
+            graph.importPersistentTexture(persistent, rojoRHI::Format::BGRA8Unorm, "persistent");
         PassDesc overwrite;
         overwrite.color = ColorAttachment{.handle = texture};
         graph.addPass("lmx.pass.overwrite", overwrite, kNoWork);
@@ -813,10 +837,12 @@ TEST_CASE("a texture import carries its previous-frame access", "[render][graph]
     }
 
     SECTION("prior read before current loaded attachment") {
+        TextureStateTable states;
+        states.set(persistent, lmx::render::TextureUse::ShaderRead);
         RenderGraph graph;
+        graph.bindTextureStates(states);
         const GraphTexture texture =
-            graph.importTexture(persistent, rojoRHI::Format::BGRA8Unorm, "persistent",
-                                lmx::render::TextureUse::ShaderRead);
+            graph.importPersistentTexture(persistent, rojoRHI::Format::BGRA8Unorm, "persistent");
         PassDesc loadAndOverwrite;
         loadAndOverwrite.color =
             ColorAttachment{.handle = texture, .load = LoadOp::Load, .store = StoreOp::Store};
@@ -831,10 +857,12 @@ TEST_CASE("a texture import carries its previous-frame access", "[render][graph]
     }
 
     SECTION("prior write before current read") {
+        TextureStateTable states;
+        states.set(persistent, lmx::render::TextureUse::RenderTarget);
         RenderGraph graph;
+        graph.bindTextureStates(states);
         const GraphTexture texture =
-            graph.importTexture(persistent, rojoRHI::Format::BGRA8Unorm, "persistent",
-                                lmx::render::TextureUse::RenderTarget);
+            graph.importPersistentTexture(persistent, rojoRHI::Format::BGRA8Unorm, "persistent");
         const GraphTexture color =
             graph.importTexture(output, rojoRHI::Format::BGRA8Unorm, "output");
         PassDesc sample;
@@ -851,10 +879,12 @@ TEST_CASE("a texture import carries its previous-frame access", "[render][graph]
     }
 
     SECTION("prior read before current read") {
+        TextureStateTable states;
+        states.set(persistent, lmx::render::TextureUse::ShaderRead);
         RenderGraph graph;
+        graph.bindTextureStates(states);
         const GraphTexture texture =
-            graph.importTexture(persistent, rojoRHI::Format::BGRA8Unorm, "persistent",
-                                lmx::render::TextureUse::ShaderRead);
+            graph.importPersistentTexture(persistent, rojoRHI::Format::BGRA8Unorm, "persistent");
         const GraphTexture color =
             graph.importTexture(output, rojoRHI::Format::BGRA8Unorm, "output");
         PassDesc sample;

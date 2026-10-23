@@ -14,7 +14,7 @@ namespace lmx::render {
 FrameDeclaration::FrameDeclaration(TransientPool& pool, Renderer& renderer,
                                    rojoRHI::CommandList& commands, const engine::Camera& camera,
                                    const SceneView& view, bool poolingEnabled)
-    : m_commands(commands), m_frameId(pool.device().frameNumber()), m_graph(pool) {
+    : m_commands(commands), m_frameId(pool.frameNumber()), m_graph(pool) {
     pool.beginFrame();
     m_graph.setPoolingEnabled(poolingEnabled);
     m_displayColor = renderer.declarePasses(m_graph, commands, camera, view);

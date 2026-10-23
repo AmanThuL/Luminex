@@ -207,8 +207,7 @@ TEST_CASE("renderer shadows a floating cube onto the ground", "[gpu]") {
     camera.pitch = -0.62f;
 
     CommandList& commands = gpu->device().beginFrame();
-    (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, gpu->device()),
-                        /*barrierForSampling=*/false);
+    (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, gpu->device()));
     gpu->device().endFrame(nullptr);
     gpu->device().waitIdle();
 
@@ -478,7 +477,7 @@ TEST_CASE("renderer applies the chosen directional caster and leaves none or dis
                 view.exposureReset = true;
                 view.exposureAdaptUpStopsPerSecond = 0;
                 view.exposureAdaptDownStopsPerSecond = 0;
-                (*renderer)->render(commands, camera, view, false);
+                (*renderer)->render(commands, camera, view);
                 gpu->device().endFrame(nullptr);
                 gpu->device().waitIdle();
                 std::vector<uint8_t> pixels(size_t{kSceneProbeSize} * kSceneProbeSize * 4);

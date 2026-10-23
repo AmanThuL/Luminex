@@ -47,8 +47,7 @@ TEST_CASE("the display transform tone maps and encodes the scene's linear output
     view.boundingSphere = {0.0f, 0.0f, 0.0f, 4.0f};
 
     CommandList& commands = gpu->device().beginFrame();
-    (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, gpu->device()),
-                        /*barrierForSampling=*/false);
+    (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, gpu->device()));
     gpu->device().endFrame(nullptr);
     gpu->device().waitIdle();
 
@@ -110,8 +109,7 @@ TEST_CASE("the scene target holds radiance above 1.0 and exposure scales it exac
         view.exposureEv = exposureEv;
         CommandList& commands = gpu->device().beginFrame();
         (*renderer)->render(commands, sceneCamera(),
-                            lmx::test::prepareSceneView(view, gpu->device()),
-                            /*barrierForSampling=*/false);
+                            lmx::test::prepareSceneView(view, gpu->device()));
         gpu->device().endFrame(nullptr);
         gpu->device().waitIdle();
         (*renderer)->hdrColorTarget().readback(texels.data(), texels.size() * sizeof(uint16_t));
@@ -190,8 +188,7 @@ TEST_CASE("auto exposure applies through the real scene pass with no CPU readbac
     const auto submitFrame = [&]() {
         CommandList& commands = gpu->device().beginFrame();
         (*renderer)->render(commands, sceneCamera(),
-                            lmx::test::prepareSceneView(view, gpu->device()),
-                            /*barrierForSampling=*/false);
+                            lmx::test::prepareSceneView(view, gpu->device()));
         gpu->device().endFrame(nullptr);
     };
 
@@ -258,8 +255,7 @@ TEST_CASE("a depth sample is ordered before the next frame overwrites depth", "[
     FixtureSceneView view;
 
     CommandList& first = gpu->device().beginFrame();
-    (*renderer)->render(first, sceneCamera(), lmx::test::prepareSceneView(view, gpu->device()),
-                        /*barrierForSampling=*/false);
+    (*renderer)->render(first, sceneCamera(), lmx::test::prepareSceneView(view, gpu->device()));
     first.textureBarrier((*renderer)->depthTarget(), TextureUse::RenderTarget,
                          TextureUse::ShaderRead);
     first.beginComputePass("lmx.test.sampleDepth");
@@ -272,8 +268,7 @@ TEST_CASE("a depth sample is ordered before the next frame overwrites depth", "[
     gpu->device().endFrame(nullptr);
 
     CommandList& second = gpu->device().beginFrame();
-    (*renderer)->render(second, sceneCamera(), lmx::test::prepareSceneView(view, gpu->device()),
-                        /*barrierForSampling=*/false);
+    (*renderer)->render(second, sceneCamera(), lmx::test::prepareSceneView(view, gpu->device()));
     gpu->device().endFrame(nullptr);
     gpu->device().waitIdle();
 }
@@ -297,8 +292,7 @@ TEST_CASE("odd renderer extents and disabled bloom stay within the bloom texture
         view.bloomEnabled = enabled;
         CommandList& commands = gpu->device().beginFrame();
         (*renderer)->render(commands, sceneCamera(),
-                            lmx::test::prepareSceneView(view, gpu->device()),
-                            /*barrierForSampling=*/false);
+                            lmx::test::prepareSceneView(view, gpu->device()));
         gpu->device().endFrame(nullptr);
         gpu->device().waitIdle();
 
