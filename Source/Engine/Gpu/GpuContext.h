@@ -66,7 +66,8 @@ public:
     /// Returns the number of the newest frame beginFrame has opened; zero before the first.
     uint64_t frameNumber() const;
 
-    /// Returns the pass timings of the newest retired frame; valid until the next beginFrame.
+    /// Returns the pass timings of the newest retired frame; valid until the next passTimings or
+    /// beginFrame.
     PassTimingFrame passTimings();
     /// Returns the device's temporal upscaler support.
     UpscalerSupportInfo upscalerSupport() const;

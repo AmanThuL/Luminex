@@ -22,8 +22,7 @@ ErrorCode gpuErrorCode(rojoRHI::ErrorCode code) {
     case rojoRHI::ErrorCode::SwapchainFailed:
         return ErrorCode::Gpu;
     }
-    return ErrorCode::Gpu; // unreachable for a valid enumerator; keeps the exhaustive switch free
-                           // of default
+    return ErrorCode::Gpu; // unreachable; keeps the switch free of default
 }
 
 } // namespace

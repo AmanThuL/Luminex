@@ -86,9 +86,10 @@ std::string shaderLibraryPath(std::string_view name) {
 //======================================================================================================================
 void copyPassTimings(std::span<const rojoRHI::PassTiming> source,
                      std::vector<PassTiming>& destination) {
-    destination.clear();
-    for (const rojoRHI::PassTiming& timing : source) {
-        destination.push_back({timing.label, timing.gpuMilliseconds});
+    destination.resize(source.size());
+    for (size_t index = 0; index < source.size(); ++index) {
+        destination[index].label.assign(source[index].label);
+        destination[index].gpuMilliseconds = source[index].gpuMilliseconds;
     }
 }
 

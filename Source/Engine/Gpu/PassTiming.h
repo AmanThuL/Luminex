@@ -26,8 +26,9 @@ struct PassTiming {
 
 /// The pass timings of one retired frame, in the order that frame began its passes.
 struct PassTimingFrame {
-    uint64_t frame = 0;                 ///< Frame the timings were measured on; zero when none yet.
-    std::span<const PassTiming> passes; ///< Rows the context owns; valid until the next beginFrame.
+    uint64_t frame = 0; ///< Frame the timings were measured on; zero when none yet.
+    std::span<const PassTiming>
+        passes; ///< Rows the context owns; valid until the next passTimings or beginFrame.
 };
 
 /// Device support for temporal reconstruction, fixed for the device lifetime.

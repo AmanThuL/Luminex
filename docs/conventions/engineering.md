@@ -84,7 +84,7 @@ in `Render/Common`; shader mirror structs, binding slots and rendering policy st
    identity and history or recreate them; callers' reset semantics decide this policy. Use three
    paced slots for frame data and two entries for ping-pong history.
 4. Propagate expected failures as `auto x = ...; if (!x) { return std::unexpected(x.error()); }`;
-   translate a RojoRHI device result at the call with `engine::gpuError(x.error())`.
+   when `x` is a RojoRHI result, translate it at the call with `engine::gpuError(x.error())`.
    Keep a local scope when it preserves the old result object's destruction boundary.
 5. Label every library, pipeline and resource. New pipelines use `lmx.render.<name>Pipeline` and
    new passes `lmx.pass.<family>.<step>`. Existing capture labels remain frozen.
