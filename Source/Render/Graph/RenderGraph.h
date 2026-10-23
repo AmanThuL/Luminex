@@ -4,7 +4,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "Render/Graph/AttachmentOps.h"
 #include "Render/Graph/CompiledFrameRecord.h"
+#include "Render/Graph/LoweredFrame.h"
 #include "Render/Graph/TransientPool.h"
 #include <rojoRHI/RHI.h>
 
@@ -123,23 +125,6 @@ struct TextureUseDesc {
     /// Declares `subresources` of `handle`.
     TextureUseDesc(GraphTexture texture, const rojoRHI::TextureSubresourceRange& subresources)
         : handle(texture), range(subresources) {}
-};
-
-/// What an attachment does with the version it names on entry. Clear starts from the clear value;
-/// Load keeps the existing contents, which makes the attachment a read of that version as well as a
-/// write of it. Either way the pass is ordered after whatever produced that version -- a clear that
-/// overtook its producer would erase the wrong contents.
-enum class LoadOp {
-    Clear, ///< Replace prior contents with the attachment clear value.
-    Load,  ///< Preserve and consume prior attachment contents.
-};
-
-/// Whether the version the pass produces outlives the pass. Store keeps it readable by later passes
-/// and by exportTexture; Discard states that nothing consumes it, as for a depth buffer used only
-/// for the pass's own hidden-surface removal.
-enum class StoreOp {
-    Store,   ///< Preserve produced contents for later consumers.
-    Discard, ///< Permit produced contents to expire with the pass.
 };
 
 /// One colour attachment of a pass. `handle` is the version the pass writes, so the pass produces
@@ -420,10 +405,18 @@ public:
     /// else. Failures are compile()'s, in compile()'s order.
     GraphResult<CompiledFrameRecord> compileFrame(uint64_t frameId) const;
 
+    /// The same compilation, lowered to the ordered operations an emitter records: the frame
+    /// scope, and per scheduled pass its barriers, then its render pass, its labelled scope or,
+    /// for an external pass, nothing around its body (LoweredFrame states the order). It needs no
+    /// device: imported resources carry their objects and transients stay unplaced. Failures are
+    /// compile()'s, in compile()'s order.
+    GraphResult<LoweredFrame> lower(uint64_t frameId) const;
+
     /// Validates the declarations and runs them: every scheduled pass becomes one RHI pass of its
     /// own kind, labelled with the pass's name, and the pass body is called between that scope's
     /// begin and end with the resources it declared. A raster pass's scope is built from its
-    /// attachments; a compute or copy pass's carries only the label.
+    /// attachments; a compute or copy pass's carries only the label. The frame is lowered first,
+    /// its transients placed, and emit() records the lowered operations.
     ///
     /// Compilation happens here rather than in the caller so that nothing can reach the GPU
     /// unvalidated. A frame that fails to compile is programmer error and aborts with compile()'s
@@ -462,10 +455,10 @@ public:
     /// what was covered and owes the transition afresh.
     ///
     /// A raster pass must declare an attachment; a pass with no attachment is a compute or copy
-    /// pass and is declared through the path that says so. The RHI's own attachment rules bind here
-    /// too and are asserted with the offending pass named: a colour attachment is always stored, a
-    /// depth attachment always clears, a pass carrying both clears both, and a depth-only pass must
-    /// store its depth.
+    /// pass and is declared through the path that says so. The RHI's own attachment rules bind in
+    /// emit() and are asserted with the offending pass named: a colour attachment is always stored,
+    /// a depth attachment always clears, a pass carrying both clears both, and a depth-only pass
+    /// must store its depth.
     ///
     /// Answers with the record compileFrame(`frameId`) produced, which is the record of what this
     /// call encoded: the barriers listed in it are the barriers emitted, because both come from the
@@ -542,7 +535,7 @@ private:
     struct Pass {
         std::string label;
         PassKind kind = PassKind::Raster;
-        // Attachments are kept whole because execute() needs their load, store, and clear values;
+        // Attachments are kept whole because lower() needs their load, store, and clear values;
         // everything else about a pass is in its declarations.
         std::optional<ColorAttachment> color;
         std::vector<ColorAttachment> extraColor;
@@ -604,6 +597,9 @@ private:
     // The RHI descriptors a transient's Resource compiles to, labelled with its name.
     rojoRHI::TextureDesc textureDescOf(const Resource& resource) const;
     rojoRHI::BufferDesc bufferDescOf(const Resource& resource) const;
+
+    // The render-pass op a raster pass lowers to, carrying its attachments as declared.
+    BeginRenderPassOp beginRenderPassOf(const Pass& pass) const;
 
     // Reserves the frame's transient heap and places every used transient in it, filling in the
     // resource pointers the pass bodies resolve. Failure is programmer error and aborts, on

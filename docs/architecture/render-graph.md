@@ -53,11 +53,30 @@ compare, the `LMX_GRAPH_DUMP` environment variable writes for the first executed
 Render Graph window's Dump frame action exports; procedures for reading a graph dump and the
 detached Render Graph window live in [GPU debugging](../guides/gpu-debugging.md).
 
+## Lowering and emission
+
+`RenderGraph::lower` turns a compiled frame into a `LoweredFrame` (`LoweredFrame.h`) without a
+device: the record, an ordered list of ops, and the device objects behind each resource index, with
+transients left unplaced. `BeginScopeOp{"lmx.frame"}` and its `EndScopeOp` enclose every frame, an
+empty schedule included. Each scheduled pass then contributes one `BarriersOp` holding its texture
+and buffer transitions in record order (none when it needs none), followed by a raster pass's
+`BeginRenderPassOp`, `RunOp` and `EndRenderPassOp`, a compute or copy pass's `BeginScopeOp`,
+`RunOp` and `EndScopeOp` under its own label, or an external pass's `RunOp` alone. Attachment load
+and store actions live in `AttachmentOps.h`. `execute()` lowers, places the frame's transients,
+fills their objects in, dumps the record and hands the frame to `emit()` (`FrameEmitter.h`), the one
+piece of graph code that records commands. The v1 emitter records each barrier in order, builds
+each render pass from its op and asserts the command list's attachment limits there, opens compute
+and copy passes around their bodies from the `RunOp`'s kind and label, and records nothing for
+scopes, since that command list times passes itself. Raster passes carry no scope of their own; a backend
+that times passes times a raster pass from its `BeginRenderPassOp`/`EndRenderPassOp` pair.
+
 ## Implementation units
 
-Declaration and execution, schedule compilation and transient-lifetime assignment, transition
-derivation, and validation are separate units (`RenderGraph.h`/`.cpp`, `RenderGraphCompile.cpp`,
-`RenderGraphTransitions.cpp`, `RenderGraphValidation.cpp`), sharing private range and declaration
+Declaration, lowering and execution, schedule compilation and transient-lifetime assignment,
+transition derivation, validation and emission are separate units (`RenderGraph.h`/`.cpp`,
+`RenderGraphCompile.cpp`, `RenderGraphTransitions.cpp`, `RenderGraphValidation.cpp`,
+`FrameEmitter.h`/`.cpp`), over the value types of `LoweredFrame.h`, `AttachmentOps.h` and
+`ResourceUse.h`, sharing private range and declaration
 helpers through `RenderGraphInternal.h` and `RenderGraphRanges.cpp`. The private transition steps
 share one `graph_detail::TransitionState`, which holds each resource's last write and pending
 reads, and they retain alias handoffs, read-after-write, write-after-write and write-after-read
@@ -74,10 +93,10 @@ accepted `CompiledFrameRecord`, which the caller retains for its own frame-recor
 ## Tests
 
 - `Tests/Render/Graph/` covers declaration, validation, scheduling, transitions, transient
-  placement and aliasing, external passes, attachment rules and the deterministic dump, across
-  `GpuAppFrameDeclaration`, `GpuRenderGraph`, `GpuTransient`, `GraphDump`, `RenderGraph`,
-  `RenderGraphAttachment`, `RenderGraphExecution`, `RenderGraphExternal`, `RenderGraphRecord`,
-  `RenderGraphTransient`, `RenderGraphTransition` and `RenderTransientPool`.
+  placement and aliasing, external passes, attachment rules, lowering and the deterministic dump,
+  across `GpuAppFrameDeclaration`, `GpuRenderGraph`, `GpuTransient`, `GraphDump`, `RenderGraph`,
+  `RenderGraphAttachment`, `RenderGraphExecution`, `RenderGraphExternal`, `RenderGraphLowering`,
+  `RenderGraphRecord`, `RenderGraphTransient`, `RenderGraphTransition` and `RenderTransientPool`.
 - `Tests/App/Model/Graph/` covers the editor's graph models built on this contract (frame-record
   retention, node model and layout, snapshots and the graph inspector), described in
   [App](app.md).

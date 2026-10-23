@@ -7,6 +7,7 @@
 #include "Render/Graph/RenderGraphInternal.h"
 
 #include "Core/Diagnostics/Assert.h"
+#include "Render/Graph/FrameEmitter.h"
 #include "Render/Graph/GraphDump.h"
 
 #include <algorithm>
@@ -16,6 +17,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace lmx::render {
@@ -26,98 +28,6 @@ namespace {
 
 // A cubemap face is one declared array layer.
 constexpr uint32_t kCubeFaceCount = 6;
-
-// The enumerators keep v1's values, so a conversion that drifts fails to compile rather than
-// recording the wrong barrier.
-static_assert(static_cast<int>(TextureUse::RenderTarget) ==
-              static_cast<int>(rojoRHI::TextureUse::RenderTarget));
-static_assert(static_cast<int>(TextureUse::ShaderRead) ==
-              static_cast<int>(rojoRHI::TextureUse::ShaderRead));
-static_assert(static_cast<int>(TextureUse::StorageRead) ==
-              static_cast<int>(rojoRHI::TextureUse::StorageRead));
-static_assert(static_cast<int>(TextureUse::StorageWrite) ==
-              static_cast<int>(rojoRHI::TextureUse::StorageWrite));
-static_assert(static_cast<int>(TextureUse::CopySource) ==
-              static_cast<int>(rojoRHI::TextureUse::CopySource));
-static_assert(static_cast<int>(TextureUse::CopyDestination) ==
-              static_cast<int>(rojoRHI::TextureUse::CopyDestination));
-static_assert(static_cast<int>(TextureUse::ExternalRead) ==
-              static_cast<int>(rojoRHI::TextureUse::ExternalRead));
-static_assert(static_cast<int>(TextureUse::ExternalWrite) ==
-              static_cast<int>(rojoRHI::TextureUse::ExternalWrite));
-static_assert(static_cast<int>(BufferUse::ShaderRead) ==
-              static_cast<int>(rojoRHI::BufferUse::ShaderRead));
-static_assert(static_cast<int>(BufferUse::StorageRead) ==
-              static_cast<int>(rojoRHI::BufferUse::StorageRead));
-static_assert(static_cast<int>(BufferUse::StorageWrite) ==
-              static_cast<int>(rojoRHI::BufferUse::StorageWrite));
-static_assert(static_cast<int>(BufferUse::CopySource) ==
-              static_cast<int>(rojoRHI::BufferUse::CopySource));
-static_assert(static_cast<int>(BufferUse::CopyDestination) ==
-              static_cast<int>(rojoRHI::BufferUse::CopyDestination));
-static_assert(static_cast<int>(BufferUse::IndirectArgument) ==
-              static_cast<int>(rojoRHI::BufferUse::IndirectArgument));
-
-//======================================================================================================================
-rojoRHI::TextureUse toRhi(TextureUse use) {
-    switch (use) {
-    case TextureUse::RenderTarget:
-        return rojoRHI::TextureUse::RenderTarget;
-    case TextureUse::ShaderRead:
-        return rojoRHI::TextureUse::ShaderRead;
-    case TextureUse::StorageRead:
-        return rojoRHI::TextureUse::StorageRead;
-    case TextureUse::StorageWrite:
-        return rojoRHI::TextureUse::StorageWrite;
-    case TextureUse::CopySource:
-        return rojoRHI::TextureUse::CopySource;
-    case TextureUse::CopyDestination:
-        return rojoRHI::TextureUse::CopyDestination;
-    case TextureUse::ExternalRead:
-        return rojoRHI::TextureUse::ExternalRead;
-    case TextureUse::ExternalWrite:
-        return rojoRHI::TextureUse::ExternalWrite;
-    }
-    return rojoRHI::TextureUse::ShaderRead;
-}
-
-//======================================================================================================================
-rojoRHI::BufferUse toRhi(BufferUse use) {
-    switch (use) {
-    case BufferUse::ShaderRead:
-        return rojoRHI::BufferUse::ShaderRead;
-    case BufferUse::StorageRead:
-        return rojoRHI::BufferUse::StorageRead;
-    case BufferUse::StorageWrite:
-        return rojoRHI::BufferUse::StorageWrite;
-    case BufferUse::CopySource:
-        return rojoRHI::BufferUse::CopySource;
-    case BufferUse::CopyDestination:
-        return rojoRHI::BufferUse::CopyDestination;
-    case BufferUse::IndirectArgument:
-        return rojoRHI::BufferUse::IndirectArgument;
-    }
-    return rojoRHI::BufferUse::ShaderRead;
-}
-
-//======================================================================================================================
-// One colour attachment slot of an RHI render-pass descriptor, filled from a declared attachment.
-// The primary and every extra go through it, so the store rule and its message are written once
-// and a slot cannot be filled two subtly different ways. `what` names the attachment in that
-// message -- "its colour attachment", "extra color attachment 1".
-void fillColorTarget(const ColorAttachment& attachment, rojoRHI::Texture* texture,
-                     std::string_view passLabel, std::string_view what, rojoRHI::Texture*& target,
-                     bool& clear, float (&clearColor)[4]) {
-    LMX_ASSERT(attachment.store == StoreOp::Store,
-               std::format("pass '{}' discards {}, which this RHI cannot express -- a colour "
-                           "attachment is always stored",
-                           passLabel, what));
-    target = texture;
-    clear = attachment.load == LoadOp::Clear;
-    for (size_t channel = 0; channel < 4; ++channel) {
-        clearColor[channel] = attachment.clearColor[channel];
-    }
-}
 
 } // namespace
 
@@ -541,105 +451,126 @@ bool RenderGraph::passDeclares(uint32_t passIndex, uint32_t resourceIndex, uint3
 }
 
 //======================================================================================================================
-CompiledFrameRecord RenderGraph::execute(rojoRHI::CommandList& commands, uint64_t frameId) {
+GraphResult<LoweredFrame> RenderGraph::lower(uint64_t frameId) const {
     GraphResult<CompiledFrameRecord> record = compileFrame(frameId);
-    LMX_ASSERT(record.has_value(), record.error().message);
-    placeTransients(record->debug);
-    dumpCompiledFrameIfRequested(*record);
+    if (!record) {
+        return std::unexpected(std::move(record.error()));
+    }
 
+    LoweredFrame frame{.record = std::move(*record)};
+    // A transient keeps the pointer its last placement left behind; lowering reports it unplaced,
+    // because only execute() knows the frame it is placed for.
+    frame.resources.reserve(m_resources.size());
+    for (const Resource& resource : m_resources) {
+        frame.resources.push_back({.texture = resource.transient ? nullptr : resource.texture,
+                                   .buffer = resource.transient ? nullptr : resource.buffer});
+    }
+
+    const CompiledFrameDebug& debug = frame.record.debug;
+    frame.ops.emplace_back(BeginScopeOp{.label = "lmx.frame"});
     // Transitions are recorded in schedule order and a pass's own are contiguous, so one cursor
-    // emits each exactly where compilation placed it.
+    // gathers each exactly where compilation placed it.
     size_t nextTransition = 0;
-    for (const uint32_t passIndex : record->debug.schedule.passes) {
+    for (const uint32_t passIndex : debug.schedule.passes) {
         const Pass& pass = m_passes[passIndex];
 
-        while (nextTransition < record->debug.transitions.size() &&
-               record->debug.transitions[nextTransition].beforePass == passIndex) {
-            const DebugTransition& transition = record->debug.transitions[nextTransition];
-            const Resource& resource = m_resources[transition.resource];
-            const rojoRHI::BarrierOptions options = transition.aliasedFrom
-                                                        ? rojoRHI::BarrierOptions::ResourceAlias
-                                                        : rojoRHI::BarrierOptions::None;
+        BarriersOp barriers;
+        while (nextTransition < debug.transitions.size() &&
+               debug.transitions[nextTransition].beforePass == passIndex) {
+            const DebugTransition& transition = debug.transitions[nextTransition];
+            const bool alias = transition.aliasedFrom.has_value();
             if (transition.kind == GraphResourceKind::Buffer) {
-                commands.bufferBarrier(*resource.buffer, rojoRHI::BufferRange{},
-                                       toRhi(transition.bufferFrom), toRhi(transition.bufferTo),
-                                       options);
+                barriers.barriers.emplace_back(LoweredBufferBarrier{.resource = transition.resource,
+                                                                    .from = transition.bufferFrom,
+                                                                    .to = transition.bufferTo,
+                                                                    .alias = alias});
             } else {
-                commands.textureBarrier(*resource.texture, transition.range,
-                                        toRhi(transition.textureFrom), toRhi(transition.textureTo),
-                                        options);
+                barriers.barriers.emplace_back(
+                    LoweredTextureBarrier{.resource = transition.resource,
+                                          .range = transition.range,
+                                          .from = transition.textureFrom,
+                                          .to = transition.textureTo,
+                                          .alias = alias});
             }
             ++nextTransition;
         }
-
-        switch (pass.kind) {
-        case PassKind::Raster: {
-            LMX_ASSERT(pass.color.has_value() || pass.depth.has_value(),
-                       std::format("pass '{}' is a raster pass that declares no attachment: a pass "
-                                   "with nothing to render into is a compute or copy pass",
-                                   pass.label));
-            rojoRHI::RenderPassDesc desc;
-            desc.label = pass.label;
-            if (pass.color) {
-                fillColorTarget(*pass.color, m_resources[pass.color->handle.index].texture,
-                                pass.label, "its colour attachment", desc.colorTarget, desc.clear,
-                                desc.clearColor);
-            }
-            // Each extra carries its own load action and clear value, so a pass may clear one
-            // attachment while loading another.
-            for (uint32_t index = 0; index < pass.extraColor.size(); ++index) {
-                const ColorAttachment& extra = pass.extraColor[index];
-                fillColorTarget(extra, m_resources[extra.handle.index].texture, pass.label,
-                                std::format("extra color attachment {}", index),
-                                desc.extraColor[index].target, desc.extraColor[index].clear,
-                                desc.extraColor[index].clearColor);
-            }
-            desc.extraColorCount = static_cast<uint32_t>(pass.extraColor.size());
-            desc.renderAreaWidth = pass.renderAreaWidth;
-            desc.renderAreaHeight = pass.renderAreaHeight;
-            if (pass.depth) {
-                const DepthAttachment& depth = *pass.depth;
-                LMX_ASSERT(
-                    depth.load == LoadOp::Clear,
-                    std::format("pass '{}' loads its depth attachment, which this RHI cannot "
-                                "express -- no pass owns depth contents to load",
-                                pass.label));
-                // One load action covers both attachments in this RHI, so a depth clear beside a
-                // colour load would silently clear the colour target too.
-                LMX_ASSERT(
-                    desc.clear,
-                    std::format("pass '{}' loads its colour attachment while clearing depth: "
-                                "this RHI carries one load action for the whole pass",
-                                pass.label));
-                LMX_ASSERT(pass.color || depth.store == StoreOp::Store,
-                           std::format("pass '{}' is depth-only and discards its depth, leaving it "
-                                       "no output at all",
-                                       pass.label));
-                desc.depthTarget = m_resources[depth.handle.index].texture;
-                desc.clearDepth = depth.clearDepth;
-                desc.storeDepth = depth.store == StoreOp::Store;
-            }
-            commands.beginRenderPass(desc);
-            pass.execute(passResources(passIndex));
-            commands.endRenderPass();
-            break;
+        if (!barriers.barriers.empty()) {
+            frame.ops.emplace_back(std::move(barriers));
         }
+
+        const RunOp run{.pass = passIndex, .kind = pass.kind, .label = pass.label};
+        switch (pass.kind) {
+        case PassKind::Raster:
+            frame.ops.emplace_back(beginRenderPassOf(pass));
+            frame.ops.emplace_back(run);
+            frame.ops.emplace_back(EndRenderPassOp{});
+            break;
         case PassKind::Compute:
-            commands.beginComputePass(pass.label);
-            pass.execute(passResources(passIndex));
-            commands.endComputePass();
+        case PassKind::Copy:
+            frame.ops.emplace_back(BeginScopeOp{.label = pass.label});
+            frame.ops.emplace_back(run);
+            frame.ops.emplace_back(EndScopeOp{});
             break;
         case PassKind::External:
-            pass.execute(passResources(passIndex));
-            break;
-        case PassKind::Copy:
-            commands.beginCopyPass(pass.label);
-            pass.execute(passResources(passIndex));
-            commands.endCopyPass();
+            frame.ops.emplace_back(run);
             break;
         }
     }
-    return std::move(*record);
+    frame.ops.emplace_back(EndScopeOp{});
+    return frame;
+}
+
+//======================================================================================================================
+BeginRenderPassOp RenderGraph::beginRenderPassOf(const Pass& pass) const {
+    LMX_ASSERT(pass.color.has_value() || pass.depth.has_value(),
+               std::format("pass '{}' is a raster pass that declares no attachment: a pass "
+                           "with nothing to render into is a compute or copy pass",
+                           pass.label));
+    const auto colorOf = [](const ColorAttachment& attachment) {
+        LoweredColorAttachment lowered{.resource = attachment.handle.index,
+                                       .load = attachment.load,
+                                       .store = attachment.store};
+        std::ranges::copy(attachment.clearColor, lowered.clearColor.begin());
+        return lowered;
+    };
+
+    BeginRenderPassOp op{.label = pass.label,
+                         .renderAreaWidth = pass.renderAreaWidth,
+                         .renderAreaHeight = pass.renderAreaHeight};
+    if (pass.color) {
+        op.color = colorOf(*pass.color);
+    }
+    for (const ColorAttachment& extra : pass.extraColor) {
+        op.extraColor.push_back(colorOf(extra));
+    }
+    if (pass.depth) {
+        op.depth = LoweredDepthAttachment{.resource = pass.depth->handle.index,
+                                          .load = pass.depth->load,
+                                          .store = pass.depth->store,
+                                          .clearDepth = pass.depth->clearDepth};
+    }
+    return op;
+}
+
+//======================================================================================================================
+CompiledFrameRecord RenderGraph::execute(rojoRHI::CommandList& commands, uint64_t frameId) {
+    GraphResult<LoweredFrame> frame = lower(frameId);
+    LMX_ASSERT(frame.has_value(), frame.error().message);
+    placeTransients(frame->record.debug);
+    // Placement filled the transients' pointers in the resource list; the emitter reads them from
+    // the lowered frame alone.
+    for (const DebugTransient& entry : frame->record.debug.transients) {
+        if (!entry.used) {
+            continue;
+        }
+        const Resource& resource = m_resources[entry.resource];
+        frame->resources[entry.resource] = {.texture = resource.texture, .buffer = resource.buffer};
+    }
+    dumpCompiledFrameIfRequested(frame->record);
+
+    emit(*frame, commands,
+         [this](uint32_t passIndex) { m_passes[passIndex].execute(passResources(passIndex)); });
+    return std::move(frame->record);
 }
 
 //======================================================================================================================
