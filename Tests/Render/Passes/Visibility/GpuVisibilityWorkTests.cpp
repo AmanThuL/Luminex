@@ -94,9 +94,9 @@ struct WorkFixture {
         const auto instanceHandle = graph.importBuffer(*instances.back(), "lmx.scene.instances");
         const auto meshHandle = graph.importBuffer(*meshes, "lmx.scene.meshes");
         const auto rowHandle =
-            graph.importBuffer(*lastRows, "lmx.draw.rows", rojoRHI::BufferUse::StorageWrite);
+            graph.importBuffer(*lastRows, "lmx.draw.rows", render::BufferUse::StorageWrite);
         const auto argumentHandle =
-            graph.importBuffer(*lastArgs, "lmx.draw.args", rojoRHI::BufferUse::StorageWrite);
+            graph.importBuffer(*lastArgs, "lmx.draw.args", render::BufferUse::StorageWrite);
         render::VisibilityStatus status;
         status.frameNumber = frame;
         status.classifyMode = render::ClassifyMode::Gpu;

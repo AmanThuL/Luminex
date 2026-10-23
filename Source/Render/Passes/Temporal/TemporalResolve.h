@@ -153,7 +153,7 @@ public:
     GraphTexture importDepth(RenderGraph& graph, uint32_t slot);
 
     /// Last access recorded for a depth slot, including opaque vendor reads across temporal off.
-    rojoRHI::TextureUse depthUse(uint32_t slot) const;
+    TextureUse depthUse(uint32_t slot) const;
 
     /// Records a post-reconstruction diagnostic read of the actual depth slot.
     void recordDepthRead(uint32_t slot);
@@ -286,10 +286,8 @@ private:
     std::unique_ptr<rojoRHI::Texture> m_viewFallback;
     // What the last frame to touch each colour slot left it as. CopyDestination is what M6.1's
     // commit left, and what an untouched slot is imported as before any frame has written it.
-    rojoRHI::TextureUse m_colorUse[2] = {rojoRHI::TextureUse::CopyDestination,
-                                         rojoRHI::TextureUse::CopyDestination};
-    rojoRHI::TextureUse m_depthUse[2] = {rojoRHI::TextureUse::ShaderRead,
-                                         rojoRHI::TextureUse::ShaderRead};
+    TextureUse m_colorUse[2] = {TextureUse::CopyDestination, TextureUse::CopyDestination};
+    TextureUse m_depthUse[2] = {TextureUse::ShaderRead, TextureUse::ShaderRead};
     uint32_t m_width = 0;
     uint32_t m_height = 0;
     bool m_cpuReadback = false;

@@ -93,9 +93,9 @@ TEST_CASE("compute read roles map to their explicit RHI uses", "[render][graph]"
     INFO(errorOf(record));
     REQUIRE(record.has_value());
     REQUIRE(record->debug.transitions.size() == 3);
-    REQUIRE(record->debug.transitions[0].textureTo == rojoRHI::TextureUse::ShaderRead);
-    REQUIRE(record->debug.transitions[1].bufferTo == rojoRHI::BufferUse::ShaderRead);
-    REQUIRE(record->debug.transitions[2].bufferTo == rojoRHI::BufferUse::IndirectArgument);
+    REQUIRE(record->debug.transitions[0].textureTo == lmx::render::TextureUse::ShaderRead);
+    REQUIRE(record->debug.transitions[1].bufferTo == lmx::render::BufferUse::ShaderRead);
+    REQUIRE(record->debug.transitions[2].bufferTo == lmx::render::BufferUse::IndirectArgument);
 }
 
 //======================================================================================================================
@@ -130,8 +130,8 @@ TEST_CASE("an untouched mip keeps its earlier writer use", "[render][graph]") {
     REQUIRE(record->debug.transitions.size() == 1);
     REQUIRE(record->debug.transitions[0].beforePass == 2);
     REQUIRE(record->debug.transitions[0].range.baseMipLevel == 0);
-    REQUIRE(record->debug.transitions[0].textureFrom == rojoRHI::TextureUse::CopyDestination);
-    REQUIRE(record->debug.transitions[0].textureTo == rojoRHI::TextureUse::ShaderRead);
+    REQUIRE(record->debug.transitions[0].textureFrom == lmx::render::TextureUse::CopyDestination);
+    REQUIRE(record->debug.transitions[0].textureTo == lmx::render::TextureUse::ShaderRead);
 }
 
 //======================================================================================================================
@@ -157,8 +157,8 @@ TEST_CASE("a texture write is barriered after an earlier write", "[render][graph
     REQUIRE(record.has_value());
     REQUIRE(record->debug.transitions.size() == 1);
     REQUIRE(record->debug.transitions[0].beforePass == 1);
-    REQUIRE(record->debug.transitions[0].textureFrom == rojoRHI::TextureUse::CopyDestination);
-    REQUIRE(record->debug.transitions[0].textureTo == rojoRHI::TextureUse::StorageWrite);
+    REQUIRE(record->debug.transitions[0].textureFrom == lmx::render::TextureUse::CopyDestination);
+    REQUIRE(record->debug.transitions[0].textureTo == lmx::render::TextureUse::StorageWrite);
 }
 
 //======================================================================================================================
@@ -181,14 +181,14 @@ TEST_CASE("a buffer write is barriered after its preceding writer", "[render][gr
         const auto record = graph.compileFrame(1);
         REQUIRE(record.has_value());
         REQUIRE(record->debug.transitions.size() == 1);
-        REQUIRE(record->debug.transitions[0].bufferFrom == rojoRHI::BufferUse::CopyDestination);
-        REQUIRE(record->debug.transitions[0].bufferTo == rojoRHI::BufferUse::StorageWrite);
+        REQUIRE(record->debug.transitions[0].bufferFrom == lmx::render::BufferUse::CopyDestination);
+        REQUIRE(record->debug.transitions[0].bufferTo == lmx::render::BufferUse::StorageWrite);
     }
 
     SECTION("prior-frame producer") {
         RenderGraph graph;
         const GraphBuffer buffer =
-            graph.importBuffer(storage, "storage", rojoRHI::BufferUse::StorageWrite);
+            graph.importBuffer(storage, "storage", lmx::render::BufferUse::StorageWrite);
         ComputePassDesc overwrite;
         overwrite.bufferWrites.push_back(buffer);
         graph.addComputePass("lmx.pass.overwrite", overwrite, kNoWork);
@@ -197,8 +197,8 @@ TEST_CASE("a buffer write is barriered after its preceding writer", "[render][gr
         const auto record = graph.compileFrame(1);
         REQUIRE(record.has_value());
         REQUIRE(record->debug.transitions.size() == 1);
-        REQUIRE(record->debug.transitions[0].bufferFrom == rojoRHI::BufferUse::StorageWrite);
-        REQUIRE(record->debug.transitions[0].bufferTo == rojoRHI::BufferUse::StorageWrite);
+        REQUIRE(record->debug.transitions[0].bufferFrom == lmx::render::BufferUse::StorageWrite);
+        REQUIRE(record->debug.transitions[0].bufferTo == lmx::render::BufferUse::StorageWrite);
     }
 }
 

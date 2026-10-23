@@ -46,11 +46,12 @@ and aliasing rules; ADR 0005's import-only model still governs resources a calle
 Compiling a frame produces a `CompiledFrameRecord`: the schedule, the derived barriers, each
 transient's lifetime and placement, and the frame's transient memory totals. `CompiledFrameRecord.h`
 owns this value-only observer contract independently of the builder that produced it, so an
-observer can read or compare a record without the graph that produced it. `GraphDump.h` renders a
-record as deterministic text, the form the golden-file tests compare, the `LMX_GRAPH_DUMP`
-environment variable writes for the first executed frame, and the Render Graph window's Dump frame
-action exports; procedures for reading a graph dump and the detached Render Graph window live in
-[GPU debugging](../guides/gpu-debugging.md).
+observer can read or compare a record without the graph that produced it. Records and dumps name
+the graph's own use vocabulary (`ResourceUse.h`), converted to the RHI's only where commands are
+recorded. `GraphDump.h` renders a record as deterministic text, the form the golden-file tests
+compare, the `LMX_GRAPH_DUMP` environment variable writes for the first executed frame, and the
+Render Graph window's Dump frame action exports; procedures for reading a graph dump and the
+detached Render Graph window live in [GPU debugging](../guides/gpu-debugging.md).
 
 ## Implementation units
 

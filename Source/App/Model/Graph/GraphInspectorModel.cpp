@@ -5,60 +5,18 @@
 
 #include "App/Model/Graph/GraphInspectorModel.h"
 
+#include "Render/Graph/ResourceUse.h"
+
 #include <algorithm>
 #include <format>
 
 namespace lmx::app {
 namespace {
 
+using render::bufferUseName;
 using render::CompiledFrameDebug;
 using render::CompiledFrameRecord;
-
-//======================================================================================================================
-// Mirrors GraphDump.cpp's private naming, which the dump has no reason to export: the two clients
-// read the same enumerators and should say the same words for them, but neither owns the other's
-// vocabulary. Source/Render is out of scope for this panel, so the words are duplicated rather than
-// shared.
-std::string_view textureUseName(rojoRHI::TextureUse use) {
-    switch (use) {
-    case rojoRHI::TextureUse::RenderTarget:
-        return "RenderTarget";
-    case rojoRHI::TextureUse::ShaderRead:
-        return "ShaderRead";
-    case rojoRHI::TextureUse::StorageRead:
-        return "StorageRead";
-    case rojoRHI::TextureUse::StorageWrite:
-        return "StorageWrite";
-    case rojoRHI::TextureUse::CopySource:
-        return "CopySource";
-    case rojoRHI::TextureUse::CopyDestination:
-        return "CopyDestination";
-    case rojoRHI::TextureUse::ExternalRead:
-        return "ExternalRead";
-    case rojoRHI::TextureUse::ExternalWrite:
-        return "ExternalWrite";
-    }
-    return "ShaderRead";
-}
-
-//======================================================================================================================
-std::string_view bufferUseName(rojoRHI::BufferUse use) {
-    switch (use) {
-    case rojoRHI::BufferUse::ShaderRead:
-        return "ShaderRead";
-    case rojoRHI::BufferUse::StorageRead:
-        return "StorageRead";
-    case rojoRHI::BufferUse::StorageWrite:
-        return "StorageWrite";
-    case rojoRHI::BufferUse::CopySource:
-        return "CopySource";
-    case rojoRHI::BufferUse::CopyDestination:
-        return "CopyDestination";
-    case rojoRHI::BufferUse::IndirectArgument:
-        return "IndirectArgument";
-    }
-    return "ShaderRead";
-}
+using render::textureUseName;
 
 //======================================================================================================================
 const std::string& resourceName(const CompiledFrameDebug& debug, uint32_t index) {

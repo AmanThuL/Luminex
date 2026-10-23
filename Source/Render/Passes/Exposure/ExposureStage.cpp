@@ -240,7 +240,7 @@ void ExposureStage::declareMetering(RenderGraph& graph, rojoRHI::CommandList& co
     // frame clears it. Seeding the import with that terminal read makes the first live clear wait
     // on the real WAR edge; when auto exposure is off the chain is culled, so this costs nothing.
     const GraphBuffer histogramImport = graph.importBuffer(
-        *m_histogramBuffer, "lmx.render.histogramBuffer", rojoRHI::BufferUse::StorageRead);
+        *m_histogramBuffer, "lmx.render.histogramBuffer", BufferUse::StorageRead);
 
     declareZeroFill(graph, commands, "lmx.pass.exposure.clearHistogram", histogramImport,
                     kHistogramBufferSize);

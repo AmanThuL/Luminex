@@ -246,8 +246,8 @@ TEST_CASE("a buffer write is barriered after every kind of earlier read", "[rend
 
     // Two write-after-read transitions before the resolve, one per reading use.
     REQUIRE(record.debug.transitions.size() == 2);
-    REQUIRE(record.debug.transitions[0].bufferFrom == rojoRHI::BufferUse::ShaderRead);
-    REQUIRE(record.debug.transitions[1].bufferFrom == rojoRHI::BufferUse::StorageRead);
+    REQUIRE(record.debug.transitions[0].bufferFrom == lmx::render::BufferUse::ShaderRead);
+    REQUIRE(record.debug.transitions[1].bufferFrom == lmx::render::BufferUse::StorageRead);
     REQUIRE(record.debug.transitions[0].beforePass == 2);
     REQUIRE(record.debug.transitions[1].beforePass == 2);
 
@@ -306,11 +306,11 @@ TEST_CASE("a texture write is barriered after every kind of earlier read", "[ren
     // from the original render target producer, then two write-after-read edges from the readers.
     REQUIRE(record.debug.transitions.size() == 5);
     REQUIRE(record.debug.transitions[2].beforePass == 3);
-    REQUIRE(record.debug.transitions[2].textureFrom == rojoRHI::TextureUse::RenderTarget);
+    REQUIRE(record.debug.transitions[2].textureFrom == lmx::render::TextureUse::RenderTarget);
     REQUIRE(record.debug.transitions[3].beforePass == 3);
-    REQUIRE(record.debug.transitions[3].textureFrom == rojoRHI::TextureUse::StorageRead);
+    REQUIRE(record.debug.transitions[3].textureFrom == lmx::render::TextureUse::StorageRead);
     REQUIRE(record.debug.transitions[4].beforePass == 3);
-    REQUIRE(record.debug.transitions[4].textureFrom == rojoRHI::TextureUse::ShaderRead);
+    REQUIRE(record.debug.transitions[4].textureFrom == lmx::render::TextureUse::ShaderRead);
 
     REQUIRE(commands.events ==
             std::vector<std::string>{
@@ -629,9 +629,9 @@ TEST_CASE("a reader of another stage class is not covered by an earlier transiti
 
     REQUIRE(record.debug.transitions.size() == 2);
     REQUIRE(record.debug.transitions[0].beforePass == 1);
-    REQUIRE(record.debug.transitions[0].textureTo == rojoRHI::TextureUse::StorageRead);
+    REQUIRE(record.debug.transitions[0].textureTo == lmx::render::TextureUse::StorageRead);
     REQUIRE(record.debug.transitions[1].beforePass == 2);
-    REQUIRE(record.debug.transitions[1].textureTo == rojoRHI::TextureUse::ShaderRead);
+    REQUIRE(record.debug.transitions[1].textureTo == lmx::render::TextureUse::ShaderRead);
 
     REQUIRE(commands.events ==
             std::vector<std::string>{
@@ -678,8 +678,8 @@ TEST_CASE("a buffer reader of another stage class is not covered either", "[rend
     const CompiledFrameRecord record = graph.execute(commands, 1);
 
     REQUIRE(record.debug.transitions.size() == 2);
-    REQUIRE(record.debug.transitions[0].bufferTo == rojoRHI::BufferUse::ShaderRead);
-    REQUIRE(record.debug.transitions[1].bufferTo == rojoRHI::BufferUse::StorageRead);
+    REQUIRE(record.debug.transitions[0].bufferTo == lmx::render::BufferUse::ShaderRead);
+    REQUIRE(record.debug.transitions[1].bufferTo == lmx::render::BufferUse::StorageRead);
 
     REQUIRE(commands.events ==
             std::vector<std::string>{"begin compute lmx.pass.seed", "end compute",
@@ -699,7 +699,7 @@ TEST_CASE("a buffer imported with a prior producer transitions before its first 
     FakeTexture sceneColorTarget{64, 64, "sceneColor"};
     RenderGraph graph;
     const GraphBuffer exposure =
-        graph.importBuffer(exposureBuffer, "exposure", rojoRHI::BufferUse::StorageWrite);
+        graph.importBuffer(exposureBuffer, "exposure", lmx::render::BufferUse::StorageWrite);
     const GraphTexture sceneColor =
         graph.importTexture(sceneColorTarget, rojoRHI::Format::RGBA16Float, "sceneColor");
 
@@ -715,8 +715,8 @@ TEST_CASE("a buffer imported with a prior producer transitions before its first 
     REQUIRE(record.debug.transitions.size() == 1);
     REQUIRE(record.debug.transitions[0].beforePass == 0);
     REQUIRE(record.debug.transitions[0].kind == GraphResourceKind::Buffer);
-    REQUIRE(record.debug.transitions[0].bufferFrom == rojoRHI::BufferUse::StorageWrite);
-    REQUIRE(record.debug.transitions[0].bufferTo == rojoRHI::BufferUse::ShaderRead);
+    REQUIRE(record.debug.transitions[0].bufferFrom == lmx::render::BufferUse::StorageWrite);
+    REQUIRE(record.debug.transitions[0].bufferTo == lmx::render::BufferUse::ShaderRead);
 
     // The barrier leads the frame: nothing precedes the pass that consumes it.
     REQUIRE(commands.events == std::vector<std::string>{"barrier exposure StorageWrite->ShaderRead",
@@ -758,7 +758,7 @@ TEST_CASE("a buffer import carries its previous-frame read", "[render][graph]") 
     SECTION("prior read before current write") {
         RenderGraph graph;
         const GraphBuffer buffer =
-            graph.importBuffer(persistent, "persistent", rojoRHI::BufferUse::StorageRead);
+            graph.importBuffer(persistent, "persistent", lmx::render::BufferUse::StorageRead);
         ComputePassDesc overwrite;
         overwrite.bufferWrites.push_back(buffer);
         graph.addComputePass("lmx.pass.overwrite", overwrite, kNoWork);
@@ -767,14 +767,14 @@ TEST_CASE("a buffer import carries its previous-frame read", "[render][graph]") 
         const auto record = graph.compileFrame(1);
         REQUIRE(record.has_value());
         REQUIRE(record->debug.transitions.size() == 1);
-        REQUIRE(record->debug.transitions[0].bufferFrom == rojoRHI::BufferUse::StorageRead);
-        REQUIRE(record->debug.transitions[0].bufferTo == rojoRHI::BufferUse::StorageWrite);
+        REQUIRE(record->debug.transitions[0].bufferFrom == lmx::render::BufferUse::StorageRead);
+        REQUIRE(record->debug.transitions[0].bufferTo == lmx::render::BufferUse::StorageWrite);
     }
 
     SECTION("prior read before current read") {
         RenderGraph graph;
         const GraphBuffer buffer =
-            graph.importBuffer(persistent, "persistent", rojoRHI::BufferUse::StorageRead);
+            graph.importBuffer(persistent, "persistent", lmx::render::BufferUse::StorageRead);
         const GraphBuffer result = graph.importBuffer(output, "output");
         ComputePassDesc read;
         read.bufferReads.push_back(buffer);
@@ -797,8 +797,9 @@ TEST_CASE("a texture import carries its previous-frame access", "[render][graph]
 
     SECTION("prior read before current write") {
         RenderGraph graph;
-        const GraphTexture texture = graph.importTexture(
-            persistent, rojoRHI::Format::BGRA8Unorm, "persistent", rojoRHI::TextureUse::ShaderRead);
+        const GraphTexture texture =
+            graph.importTexture(persistent, rojoRHI::Format::BGRA8Unorm, "persistent",
+                                lmx::render::TextureUse::ShaderRead);
         PassDesc overwrite;
         overwrite.color = ColorAttachment{.handle = texture};
         graph.addPass("lmx.pass.overwrite", overwrite, kNoWork);
@@ -807,14 +808,15 @@ TEST_CASE("a texture import carries its previous-frame access", "[render][graph]
         const auto record = graph.compileFrame(1);
         REQUIRE(record.has_value());
         REQUIRE(record->debug.transitions.size() == 1);
-        REQUIRE(record->debug.transitions[0].textureFrom == rojoRHI::TextureUse::ShaderRead);
-        REQUIRE(record->debug.transitions[0].textureTo == rojoRHI::TextureUse::RenderTarget);
+        REQUIRE(record->debug.transitions[0].textureFrom == lmx::render::TextureUse::ShaderRead);
+        REQUIRE(record->debug.transitions[0].textureTo == lmx::render::TextureUse::RenderTarget);
     }
 
     SECTION("prior read before current loaded attachment") {
         RenderGraph graph;
-        const GraphTexture texture = graph.importTexture(
-            persistent, rojoRHI::Format::BGRA8Unorm, "persistent", rojoRHI::TextureUse::ShaderRead);
+        const GraphTexture texture =
+            graph.importTexture(persistent, rojoRHI::Format::BGRA8Unorm, "persistent",
+                                lmx::render::TextureUse::ShaderRead);
         PassDesc loadAndOverwrite;
         loadAndOverwrite.color =
             ColorAttachment{.handle = texture, .load = LoadOp::Load, .store = StoreOp::Store};
@@ -824,15 +826,15 @@ TEST_CASE("a texture import carries its previous-frame access", "[render][graph]
         const auto record = graph.compileFrame(1);
         REQUIRE(record.has_value());
         REQUIRE(record->debug.transitions.size() == 1);
-        REQUIRE(record->debug.transitions[0].textureFrom == rojoRHI::TextureUse::ShaderRead);
-        REQUIRE(record->debug.transitions[0].textureTo == rojoRHI::TextureUse::RenderTarget);
+        REQUIRE(record->debug.transitions[0].textureFrom == lmx::render::TextureUse::ShaderRead);
+        REQUIRE(record->debug.transitions[0].textureTo == lmx::render::TextureUse::RenderTarget);
     }
 
     SECTION("prior write before current read") {
         RenderGraph graph;
         const GraphTexture texture =
             graph.importTexture(persistent, rojoRHI::Format::BGRA8Unorm, "persistent",
-                                rojoRHI::TextureUse::RenderTarget);
+                                lmx::render::TextureUse::RenderTarget);
         const GraphTexture color =
             graph.importTexture(output, rojoRHI::Format::BGRA8Unorm, "output");
         PassDesc sample;
@@ -844,14 +846,15 @@ TEST_CASE("a texture import carries its previous-frame access", "[render][graph]
         const auto record = graph.compileFrame(1);
         REQUIRE(record.has_value());
         REQUIRE(record->debug.transitions.size() == 1);
-        REQUIRE(record->debug.transitions[0].textureFrom == rojoRHI::TextureUse::RenderTarget);
-        REQUIRE(record->debug.transitions[0].textureTo == rojoRHI::TextureUse::ShaderRead);
+        REQUIRE(record->debug.transitions[0].textureFrom == lmx::render::TextureUse::RenderTarget);
+        REQUIRE(record->debug.transitions[0].textureTo == lmx::render::TextureUse::ShaderRead);
     }
 
     SECTION("prior read before current read") {
         RenderGraph graph;
-        const GraphTexture texture = graph.importTexture(
-            persistent, rojoRHI::Format::BGRA8Unorm, "persistent", rojoRHI::TextureUse::ShaderRead);
+        const GraphTexture texture =
+            graph.importTexture(persistent, rojoRHI::Format::BGRA8Unorm, "persistent",
+                                lmx::render::TextureUse::ShaderRead);
         const GraphTexture color =
             graph.importTexture(output, rojoRHI::Format::BGRA8Unorm, "output");
         PassDesc sample;

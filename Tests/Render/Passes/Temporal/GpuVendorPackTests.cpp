@@ -45,14 +45,16 @@ TEST_CASE("vendor packing translates invalid motion and working exposure without
     pool.beginFrame();
     RenderGraph graph(pool);
     TemporalInputs inputs;
-    inputs.motion =
-        graph.importTexture(**motion, Format::RG16Float, "motion", TextureUse::ShaderRead);
-    inputs.reactive =
-        graph.importTexture(**reactive, Format::R8Unorm, "reactive", TextureUse::ShaderRead);
-    inputs.exposure = graph.importBuffer(**exposure, "exposure", BufferUse::StorageRead);
+    inputs.motion = graph.importTexture(**motion, Format::RG16Float, "motion",
+                                        lmx::render::TextureUse::ShaderRead);
+    inputs.reactive = graph.importTexture(**reactive, Format::R8Unorm, "reactive",
+                                          lmx::render::TextureUse::ShaderRead);
+    inputs.exposure =
+        graph.importBuffer(**exposure, "exposure", lmx::render::BufferUse::StorageRead);
     inputs.extents = {2, 1, 2, 1};
     const auto packed = adapter.declarePack(graph, commands, inputs);
-    const auto output = graph.importBuffer(**readback, "readback", BufferUse::CopyDestination);
+    const auto output =
+        graph.importBuffer(**readback, "readback", lmx::render::BufferUse::CopyDestination);
     CopyPassDesc desc;
     desc.textureSources = {packed.motion, packed.reactive, packed.exposure};
     desc.bufferDestinations = {output};

@@ -39,9 +39,9 @@ TEST_CASE("raw history age records the sampled slot before recycling",
     bool sawRecycledSlot = false;
     for (const auto& transition : record->debug.transitions) {
         if (record->debug.resources[transition.resource].name == "lmx.render.historyColor0" &&
-            transition.textureTo == TextureUse::CopyDestination) {
+            transition.textureTo == lmx::render::TextureUse::CopyDestination) {
             sawRecycledSlot = true;
-            CHECK(transition.textureFrom == TextureUse::ShaderRead);
+            CHECK(transition.textureFrom == lmx::render::TextureUse::ShaderRead);
         }
     }
     CHECK(sawRecycledSlot);

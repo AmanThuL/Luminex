@@ -55,8 +55,8 @@ TEST_CASE("a transient taking another's bytes is barriered against it", "[render
     REQUIRE(reuse.aliasedFrom.has_value());
     REQUIRE(*reuse.aliasedFrom == 0);
     REQUIRE(reuse.kind == GraphResourceKind::Texture);
-    REQUIRE(reuse.textureFrom == rojoRHI::TextureUse::ShaderRead);
-    REQUIRE(reuse.textureTo == rojoRHI::TextureUse::RenderTarget);
+    REQUIRE(reuse.textureFrom == lmx::render::TextureUse::ShaderRead);
+    REQUIRE(reuse.textureTo == lmx::render::TextureUse::RenderTarget);
     REQUIRE(reuse.range.mipLevelCount == rojoRHI::kAllMipLevels);
     REQUIRE(reuse.range.arrayLayerCount == rojoRHI::kAllArrayLayers);
 
@@ -117,16 +117,17 @@ TEST_CASE("an alias boundary includes every use of the closing pass", "[render][
     INFO(errorOf(record));
     REQUIRE(record.has_value());
 
-    std::vector<rojoRHI::TextureUse> closingUses;
+    std::vector<lmx::render::TextureUse> closingUses;
     for (const DebugTransition& transition : record->debug.transitions) {
         if (transition.aliasedFrom == std::optional{first.index}) {
             closingUses.push_back(transition.textureFrom);
             REQUIRE(transition.beforePass == 2);
-            REQUIRE(transition.textureTo == rojoRHI::TextureUse::StorageWrite);
+            REQUIRE(transition.textureTo == lmx::render::TextureUse::StorageWrite);
         }
     }
-    REQUIRE(closingUses == std::vector<rojoRHI::TextureUse>{rojoRHI::TextureUse::ShaderRead,
-                                                            rojoRHI::TextureUse::StorageWrite});
+    REQUIRE(closingUses ==
+            std::vector<lmx::render::TextureUse>{lmx::render::TextureUse::ShaderRead,
+                                                 lmx::render::TextureUse::StorageWrite});
 }
 
 //======================================================================================================================
@@ -478,8 +479,8 @@ TEST_CASE("transient buffers alias on the buffer path", "[render][graph]") {
         });
     REQUIRE(reuse != record->debug.transitions.end());
     REQUIRE(reuse->kind == GraphResourceKind::Buffer);
-    REQUIRE(reuse->bufferFrom == rojoRHI::BufferUse::StorageRead);
-    REQUIRE(reuse->bufferTo == rojoRHI::BufferUse::StorageWrite);
+    REQUIRE(reuse->bufferFrom == lmx::render::BufferUse::StorageRead);
+    REQUIRE(reuse->bufferTo == lmx::render::BufferUse::StorageWrite);
 }
 
 //======================================================================================================================

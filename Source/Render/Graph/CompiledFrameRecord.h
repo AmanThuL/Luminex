@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "Render/Graph/ResourceUse.h"
+
 #include <rojoRHI/Buffer.h>
 #include <rojoRHI/Texture.h>
 
@@ -137,10 +139,10 @@ struct DebugTransition {
     uint32_t resource = 0;   ///< Index into CompiledFrameDebug::resources.
     GraphResourceKind kind = GraphResourceKind::Texture; ///< Which use pair applies.
     rojoRHI::TextureSubresourceRange range;              ///< Subresources covered; textures only.
-    rojoRHI::TextureUse textureFrom = rojoRHI::TextureUse::RenderTarget; ///< Producing texture use.
-    rojoRHI::TextureUse textureTo = rojoRHI::TextureUse::ShaderRead;     ///< Consuming texture use.
-    rojoRHI::BufferUse bufferFrom = rojoRHI::BufferUse::StorageWrite;    ///< Producing buffer use.
-    rojoRHI::BufferUse bufferTo = rojoRHI::BufferUse::StorageRead;       ///< Consuming buffer use.
+    TextureUse textureFrom = TextureUse::RenderTarget;   ///< Producing texture use.
+    TextureUse textureTo = TextureUse::ShaderRead;       ///< Consuming texture use.
+    BufferUse bufferFrom = BufferUse::StorageWrite;      ///< Producing buffer use.
+    BufferUse bufferTo = BufferUse::StorageRead;         ///< Consuming buffer use.
     /// Set when this is a transient reuse boundary rather than a read-after-write of one logical
     /// resource: `resource` is placed in memory that the named transient held until this point, so
     /// the barrier orders that resource's last use against this one's first. It covers the whole

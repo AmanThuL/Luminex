@@ -27,6 +27,79 @@ namespace {
 // A cubemap face is one declared array layer.
 constexpr uint32_t kCubeFaceCount = 6;
 
+// The enumerators keep v1's values, so a conversion that drifts fails to compile rather than
+// recording the wrong barrier.
+static_assert(static_cast<int>(TextureUse::RenderTarget) ==
+              static_cast<int>(rojoRHI::TextureUse::RenderTarget));
+static_assert(static_cast<int>(TextureUse::ShaderRead) ==
+              static_cast<int>(rojoRHI::TextureUse::ShaderRead));
+static_assert(static_cast<int>(TextureUse::StorageRead) ==
+              static_cast<int>(rojoRHI::TextureUse::StorageRead));
+static_assert(static_cast<int>(TextureUse::StorageWrite) ==
+              static_cast<int>(rojoRHI::TextureUse::StorageWrite));
+static_assert(static_cast<int>(TextureUse::CopySource) ==
+              static_cast<int>(rojoRHI::TextureUse::CopySource));
+static_assert(static_cast<int>(TextureUse::CopyDestination) ==
+              static_cast<int>(rojoRHI::TextureUse::CopyDestination));
+static_assert(static_cast<int>(TextureUse::ExternalRead) ==
+              static_cast<int>(rojoRHI::TextureUse::ExternalRead));
+static_assert(static_cast<int>(TextureUse::ExternalWrite) ==
+              static_cast<int>(rojoRHI::TextureUse::ExternalWrite));
+static_assert(static_cast<int>(BufferUse::ShaderRead) ==
+              static_cast<int>(rojoRHI::BufferUse::ShaderRead));
+static_assert(static_cast<int>(BufferUse::StorageRead) ==
+              static_cast<int>(rojoRHI::BufferUse::StorageRead));
+static_assert(static_cast<int>(BufferUse::StorageWrite) ==
+              static_cast<int>(rojoRHI::BufferUse::StorageWrite));
+static_assert(static_cast<int>(BufferUse::CopySource) ==
+              static_cast<int>(rojoRHI::BufferUse::CopySource));
+static_assert(static_cast<int>(BufferUse::CopyDestination) ==
+              static_cast<int>(rojoRHI::BufferUse::CopyDestination));
+static_assert(static_cast<int>(BufferUse::IndirectArgument) ==
+              static_cast<int>(rojoRHI::BufferUse::IndirectArgument));
+
+//======================================================================================================================
+rojoRHI::TextureUse toRhi(TextureUse use) {
+    switch (use) {
+    case TextureUse::RenderTarget:
+        return rojoRHI::TextureUse::RenderTarget;
+    case TextureUse::ShaderRead:
+        return rojoRHI::TextureUse::ShaderRead;
+    case TextureUse::StorageRead:
+        return rojoRHI::TextureUse::StorageRead;
+    case TextureUse::StorageWrite:
+        return rojoRHI::TextureUse::StorageWrite;
+    case TextureUse::CopySource:
+        return rojoRHI::TextureUse::CopySource;
+    case TextureUse::CopyDestination:
+        return rojoRHI::TextureUse::CopyDestination;
+    case TextureUse::ExternalRead:
+        return rojoRHI::TextureUse::ExternalRead;
+    case TextureUse::ExternalWrite:
+        return rojoRHI::TextureUse::ExternalWrite;
+    }
+    return rojoRHI::TextureUse::ShaderRead;
+}
+
+//======================================================================================================================
+rojoRHI::BufferUse toRhi(BufferUse use) {
+    switch (use) {
+    case BufferUse::ShaderRead:
+        return rojoRHI::BufferUse::ShaderRead;
+    case BufferUse::StorageRead:
+        return rojoRHI::BufferUse::StorageRead;
+    case BufferUse::StorageWrite:
+        return rojoRHI::BufferUse::StorageWrite;
+    case BufferUse::CopySource:
+        return rojoRHI::BufferUse::CopySource;
+    case BufferUse::CopyDestination:
+        return rojoRHI::BufferUse::CopyDestination;
+    case BufferUse::IndirectArgument:
+        return rojoRHI::BufferUse::IndirectArgument;
+    }
+    return rojoRHI::BufferUse::ShaderRead;
+}
+
 //======================================================================================================================
 // One colour attachment slot of an RHI render-pass descriptor, filled from a declared attachment.
 // The primary and every extra go through it, so the store rule and its message are written once
@@ -180,7 +253,7 @@ GraphTexture RenderGraph::importTexture(rojoRHI::Texture& texture, rojoRHI::Form
 
 //======================================================================================================================
 GraphTexture RenderGraph::importTexture(rojoRHI::Texture& texture, rojoRHI::Format format,
-                                        std::string_view name, rojoRHI::TextureUse previousUse) {
+                                        std::string_view name, TextureUse previousUse) {
     LMX_ASSERT(texture.format() == rojoRHI::Format::Unknown || texture.format() == format,
                std::format("imported texture '{}' reports format {}, not the declared {}", name,
                            formatName(texture.format()), formatName(format)));
@@ -205,7 +278,7 @@ GraphBuffer RenderGraph::importBuffer(rojoRHI::Buffer& buffer, std::string_view 
 
 //======================================================================================================================
 GraphBuffer RenderGraph::importBuffer(rojoRHI::Buffer& buffer, std::string_view name,
-                                      rojoRHI::BufferUse previousUse) {
+                                      BufferUse previousUse) {
     m_resources.push_back({.kind = ResourceKind::Buffer,
                            .name = std::string(name),
                            .buffer = &buffer,
@@ -489,10 +562,12 @@ CompiledFrameRecord RenderGraph::execute(rojoRHI::CommandList& commands, uint64_
                                                         : rojoRHI::BarrierOptions::None;
             if (transition.kind == GraphResourceKind::Buffer) {
                 commands.bufferBarrier(*resource.buffer, rojoRHI::BufferRange{},
-                                       transition.bufferFrom, transition.bufferTo, options);
+                                       toRhi(transition.bufferFrom), toRhi(transition.bufferTo),
+                                       options);
             } else {
-                commands.textureBarrier(*resource.texture, transition.range, transition.textureFrom,
-                                        transition.textureTo, options);
+                commands.textureBarrier(*resource.texture, transition.range,
+                                        toRhi(transition.textureFrom), toRhi(transition.textureTo),
+                                        options);
             }
             ++nextTransition;
         }

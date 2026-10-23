@@ -130,7 +130,7 @@ TEST_CASE("occlusion GPU results equal the CPU mirror on actual raster-built rea
                 frame == 0
                     ? graph.importTexture(**depth, Format::D32Float, "lmx.test.hzbParity.depth")
                     : graph.importTexture(**depth, Format::D32Float, "lmx.test.hzbParity.depth",
-                                          TextureUse::ShaderRead);
+                                          lmx::render::TextureUse::ShaderRead);
             PassDesc rasterDesc;
             rasterDesc.depth = DepthAttachment{.handle = depthInput, .store = StoreOp::Store};
             rasterDesc.renderAreaWidth = width;

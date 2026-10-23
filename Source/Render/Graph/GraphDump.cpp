@@ -58,48 +58,6 @@ std::string_view cullReasonName(CullReason reason) {
 }
 
 //======================================================================================================================
-std::string_view textureUseName(rojoRHI::TextureUse use) {
-    switch (use) {
-    case rojoRHI::TextureUse::RenderTarget:
-        return "RenderTarget";
-    case rojoRHI::TextureUse::ShaderRead:
-        return "ShaderRead";
-    case rojoRHI::TextureUse::StorageRead:
-        return "StorageRead";
-    case rojoRHI::TextureUse::StorageWrite:
-        return "StorageWrite";
-    case rojoRHI::TextureUse::CopySource:
-        return "CopySource";
-    case rojoRHI::TextureUse::CopyDestination:
-        return "CopyDestination";
-    case rojoRHI::TextureUse::ExternalRead:
-        return "ExternalRead";
-    case rojoRHI::TextureUse::ExternalWrite:
-        return "ExternalWrite";
-    }
-    return "ShaderRead";
-}
-
-//======================================================================================================================
-std::string_view bufferUseName(rojoRHI::BufferUse use) {
-    switch (use) {
-    case rojoRHI::BufferUse::ShaderRead:
-        return "ShaderRead";
-    case rojoRHI::BufferUse::StorageRead:
-        return "StorageRead";
-    case rojoRHI::BufferUse::StorageWrite:
-        return "StorageWrite";
-    case rojoRHI::BufferUse::CopySource:
-        return "CopySource";
-    case rojoRHI::BufferUse::CopyDestination:
-        return "CopyDestination";
-    case rojoRHI::BufferUse::IndirectArgument:
-        return "IndirectArgument";
-    }
-    return "ShaderRead";
-}
-
-//======================================================================================================================
 // One pass's header line plus its uses, shared by the scheduled and the culled sections so the two
 // describe a pass identically and only the reason distinguishes them.
 void appendPass(std::string& out, const CompiledFrameDebug& debug, uint32_t index,

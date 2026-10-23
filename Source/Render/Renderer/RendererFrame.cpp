@@ -124,16 +124,15 @@ RendererFrameImports Renderer::importFrameResources(RenderGraph& graph,
     // overlap those earlier reads/writes on Metal 4's queue. Depth and display use ShaderRead
     // conservatively because their public targets may be sampled by a caller after this graph;
     // that stage set also covers their ordinary fragment attachment work.
-    const GraphTexture shadowMap =
-        graph.importTexture(*m_shadowMap, rojoRHI::Format::D32Float, "lmx.render.shadowMap",
-                            rojoRHI::TextureUse::ShaderRead);
+    const GraphTexture shadowMap = graph.importTexture(
+        *m_shadowMap, rojoRHI::Format::D32Float, "lmx.render.shadowMap", TextureUse::ShaderRead);
     // The scene colour's terminal use is the display pass's read on an ordinary frame and the
     // history commit's copy on a temporal one, so it is what the previous frame left rather than a
     // constant.
     const GraphTexture sceneColor = graph.importTexture(
         *m_hdrColor, kSceneColorFormat, "lmx.render.sceneColorHdr", m_previousSceneColorUse);
     const GraphTexture displayColor = graph.importTexture(
-        *m_color, kDisplayFormat, "lmx.render.displayColor", rojoRHI::TextureUse::ShaderRead);
+        *m_color, kDisplayFormat, "lmx.render.displayColor", TextureUse::ShaderRead);
     // A frame with temporal off imports slot 0 under the pre-temporal name and use, which is what
     // keeps its declaration exactly the one M6.1 made; a temporal frame names the slot it uses.
     const GraphTexture sceneDepth =
@@ -183,7 +182,7 @@ RendererFrameImports Renderer::importFrameResources(RenderGraph& graph,
     const GraphBuffer exposureImport =
         exposureWrittenByEarlierFrame
             ? graph.importBuffer(m_exposureStage->buffer(), "lmx.render.exposureBuffer",
-                                 rojoRHI::BufferUse::StorageWrite)
+                                 BufferUse::StorageWrite)
             : graph.importBuffer(m_exposureStage->buffer(), "lmx.render.exposureBuffer");
     const GraphBuffer exposureCurrent =
         m_exposureStage->declareSeed(graph, commands, view, exposureImport);

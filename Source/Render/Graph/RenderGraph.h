@@ -299,7 +299,7 @@ public:
     /// this frame's first write. The whole texture is assumed because no previous-frame range is
     /// available to this fresh graph.
     GraphTexture importTexture(rojoRHI::Texture& texture, rojoRHI::Format format,
-                               std::string_view name, rojoRHI::TextureUse previousUse);
+                               std::string_view name, TextureUse previousUse);
 
     /// Brings an existing buffer into the graph as version 0, on importTexture's terms. Buffers
     /// carry no format because no rule inspects one.
@@ -314,8 +314,7 @@ public:
     ///
     /// This is for persistent feedback and other buffers reused across in-flight frames. A buffer
     /// with no earlier-frame access uses the overload above.
-    GraphBuffer importBuffer(rojoRHI::Buffer& buffer, std::string_view name,
-                             rojoRHI::BufferUse previousUse);
+    GraphBuffer importBuffer(rojoRHI::Buffer& buffer, std::string_view name, BufferUse previousUse);
 
     /// Declares a texture the graph creates for this frame and nothing else, as version 0.
     ///
@@ -505,8 +504,8 @@ private:
         TransientBufferDesc bufferDesc;
         // Set only by the persistent-import overloads. A fresh per-frame graph cannot otherwise
         // see the last access still in flight in an earlier command buffer.
-        std::optional<rojoRHI::TextureUse> priorTextureAccess;
-        std::optional<rojoRHI::BufferUse> priorBufferAccess;
+        std::optional<TextureUse> priorTextureAccess;
+        std::optional<BufferUse> priorBufferAccess;
     };
 
     // Where one transient sits in the frame's heap, alongside the lifetime that justified it.

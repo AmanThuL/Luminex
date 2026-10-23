@@ -67,12 +67,11 @@ void Renderer::recordFrameStatus(const RendererFrameState& state, bool lightDebu
         // one is shown.
         m_previousMotionUse =
             state.nativeTaa || state.vendorTemporal || state.debugView != TemporalDebugView::Off
-                ? rojoRHI::TextureUse::ShaderRead
-                : rojoRHI::TextureUse::RenderTarget;
+                ? TextureUse::ShaderRead
+                : TextureUse::RenderTarget;
         // Only the resolve reads the reactive attachment, so a Raw frame ends with its own write.
-        m_previousReactiveUse = state.nativeTaa || state.vendorTemporal
-                                    ? rojoRHI::TextureUse::ShaderRead
-                                    : rojoRHI::TextureUse::RenderTarget;
+        m_previousReactiveUse = state.nativeTaa || state.vendorTemporal ? TextureUse::ShaderRead
+                                                                        : TextureUse::RenderTarget;
         m_temporalResolve->recordFrame(state.slot, state.reconstruction, state.debugView,
                                        state.historyValid, state.upscaled);
     }
@@ -82,10 +81,10 @@ void Renderer::recordFrameStatus(const RendererFrameState& state, bool lightDebu
     // commit copy is the last thing to touch it; an upscaled Raw frame samples it in the spatial
     // pass instead of copying it, and under NativeTaa and with temporal off, bloom, the histogram
     // and the display transform all read it and none copies out of it.
-    m_previousSceneColorUse = state.vendorTemporal ? rojoRHI::TextureUse::ExternalRead
+    m_previousSceneColorUse = state.vendorTemporal ? TextureUse::ExternalRead
                               : state.temporalEnabled && !state.nativeTaa && !state.upscaled
-                                  ? rojoRHI::TextureUse::CopySource
-                                  : rojoRHI::TextureUse::ShaderRead;
+                                  ? TextureUse::CopySource
+                                  : TextureUse::ShaderRead;
     if (state.temporalEnabled) {
         ++m_temporalFrame;
     }

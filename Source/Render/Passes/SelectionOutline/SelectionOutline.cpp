@@ -152,7 +152,7 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
                "selection requires a canonical instance row");
     if (!visible || (view.tables.instanceRows[selectedRow].flags & engine::kInstanceDisabled)) {
         const auto output = graph.importTexture(*m_target, kDisplayFormat, "selectionDisplay",
-                                                rojoRHI::TextureUse::ShaderRead);
+                                                TextureUse::ShaderRead);
         PassDesc passthrough;
         passthrough.textureReads = {display};
         passthrough.color = ColorAttachment{.handle = output};
@@ -232,8 +232,8 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
     const GraphTexture coverageRead = nextVersion(mask);
     const GraphTexture selectedDepthRead = nextVersion(depth);
     const GraphTexture sceneDepthRead = nextVersion(sceneDepth);
-    const GraphTexture output = graph.importTexture(*m_target, kDisplayFormat, "selectionDisplay",
-                                                    rojoRHI::TextureUse::ShaderRead);
+    const GraphTexture output =
+        graph.importTexture(*m_target, kDisplayFormat, "selectionDisplay", TextureUse::ShaderRead);
     PassDesc composite;
     composite.textureReads = {display, coverageRead, selectedDepthRead, sceneDepthRead};
     composite.color = ColorAttachment{.handle = output};

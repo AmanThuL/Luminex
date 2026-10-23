@@ -37,13 +37,13 @@ struct TransitionState {
     };
     struct TextureWriter {
         ResolvedRange range;
-        rojoRHI::TextureUse use = rojoRHI::TextureUse::RenderTarget;
+        TextureUse use = TextureUse::RenderTarget;
         bool writes = true;
         std::vector<Covered> covered;
     };
     struct WriteState {
         bool bufferWritten = false;
-        rojoRHI::BufferUse bufferUse = rojoRHI::BufferUse::StorageWrite;
+        BufferUse bufferUse = BufferUse::StorageWrite;
         std::vector<Covered> bufferCovered;
         std::vector<TextureWriter> textureWriters;
     };
@@ -68,13 +68,13 @@ struct TransitionState {
     // consuming pass emits.
     struct PendingRead {
         ResolvedRange range;
-        rojoRHI::TextureUse use = rojoRHI::TextureUse::ShaderRead;
+        TextureUse use = TextureUse::ShaderRead;
     };
     struct ReadState {
         std::vector<PendingRead> textureReads;
         // Buffers carry no subresource ranges, so a pending buffer read is always the whole
         // resource and only the distinct uses are worth keeping, in first-read order.
-        std::vector<rojoRHI::BufferUse> bufferReads;
+        std::vector<BufferUse> bufferReads;
     };
     std::vector<WriteState> pending;
     std::vector<ReadState> pendingReads;
