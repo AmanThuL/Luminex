@@ -45,6 +45,13 @@ namespace {
 constexpr uint32_t kScreenshotWidth = 1280;
 constexpr uint32_t kScreenshotHeight = 720;
 
+// A clear-only frame is intentionally uniform until scene rendering is available.
+#ifndef LMX_PENDING_SCENE
+constexpr bool kRequireImageVariation = true;
+#else
+constexpr bool kRequireImageVariation = false;
+#endif
+
 //======================================================================================================================
 bool writeCaptureImage(const std::filesystem::path& path, const std::vector<uint8_t>& bgra,
                        const render::DisplayDomain& display, std::string frameMetadata) {
@@ -71,7 +78,7 @@ bool writeCaptureImage(const std::filesystem::path& path, const std::vector<uint
 }
 
 //======================================================================================================================
-// A flat readback is a scene-independent liveness failure without imposing a golden image.
+// Compare every BGRA texel without imposing a particular rendered image.
 bool isFlatImage(const std::vector<uint8_t>& bgra) {
     if (bgra.size() < 4) {
         return true;
@@ -285,6 +292,7 @@ int runOffscreen(AppOptions options) {
         gpu.waitIdle();
         session.commitFrame();
         (*renderer)->drainVisibilityAfterIdle();
+#ifndef LMX_PENDING_LIGHTS
         (*renderer)->drainLightingAfterIdle();
         captureLighting = (*renderer)->lightingStatus();
         for (const auto& retired : (*renderer)->takeRetiredLighting()) {
@@ -302,6 +310,9 @@ int runOffscreen(AppOptions options) {
             LMX_LOG_ERROR("capture refused: {}", failure);
             return 1;
         }
+#else
+        captureLighting = {};
+#endif
         captureVisibility = (*renderer)->visibilityStatus();
         for (const auto& retired : (*renderer)->takeRetiredVisibility()) {
             if (retired.frameNumber == captureVisibility.frameNumber)
@@ -350,7 +361,8 @@ int runOffscreen(AppOptions options) {
                 if (!writeManifest(false)) {
                     return 1;
                 }
-                if (options.lightDebugView != engine::LightDebugView::Missed &&
+                if (kRequireImageVariation &&
+                    options.lightDebugView != engine::LightDebugView::Missed &&
                     isFlatImage(pixels)) {
                     LMX_LOG_ERROR("capture frame {} is flat; manifest remains incomplete", ordinal);
                     return 1;
@@ -391,7 +403,8 @@ int runOffscreen(AppOptions options) {
     LMX_LOG_INFO("screenshot written: {} ({}x{}, {} bytes of pixels)", outPath.string(),
                  kScreenshotWidth, kScreenshotHeight, pixels.size());
 
-    if (options.lightDebugView != engine::LightDebugView::Missed && isFlatImage(pixels)) {
+    if (kRequireImageVariation && options.lightDebugView != engine::LightDebugView::Missed &&
+        isFlatImage(pixels)) {
         LMX_LOG_ERROR(
             "screenshot: {} is a single flat colour across the whole image -- nothing appears "
             "to have rendered (the file was still written, open it)",

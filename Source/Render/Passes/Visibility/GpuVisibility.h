@@ -3,6 +3,8 @@
 /// @brief Owns fixed-slot GPU visibility passes and frame-keyed retired diagnostics.
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
+
+#ifndef LMX_PENDING_VISIBILITY
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Gpu/GpuBuffer.h"
 #include "Engine/Gpu/GpuContext.h"
@@ -90,3 +92,5 @@ private:
     std::optional<std::array<uint32_t, 3>> m_capacityOverride;
 };
 } // namespace lmx::render
+
+#endif

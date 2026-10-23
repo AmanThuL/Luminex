@@ -152,6 +152,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
     }
 
     shell->primeAppearance(options.appearance);
+    shell->primeWindows(options.openWindows);
     shell->onSystemThemeChanged(lmx::app::systemTheme());
     if (auto primed = shell->primeTemporal(options); !primed) {
         LMX_LOG_ERROR("startup lighting failed: {}", primed.error().message);

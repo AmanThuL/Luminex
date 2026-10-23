@@ -4,13 +4,28 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Render/Common/StageSetup.h"
+#ifndef LMX_PENDING_POST
 #include "Render/Passes/Bloom/BloomStage.h"
+#endif
 #include "Render/Passes/Display/DisplayStage.h"
+#ifndef LMX_PENDING_POST
 #include "Render/Passes/Exposure/ExposureStage.h"
+#endif
+
+#ifndef LMX_PENDING_VISIBILITY
 #include "Render/Passes/Occlusion/OcclusionReference.h"
+#endif
+
+#ifndef LMX_PENDING_TEMPORAL
 #include "Render/Passes/Temporal/VendorTemporalScaler.h"
+#endif
+
+#ifndef LMX_PENDING_VISIBILITY
 #include "Render/Passes/Visibility/GpuVisibility.h"
+#endif
 #include "Render/Renderer/Renderer.h"
+#include "Render/Renderer/RendererInternal.h"
+#include "Render/Renderer/RendererStandIns.h"
 #include <chrono>
 
 #include "Core/Diagnostics/Assert.h"
@@ -29,6 +44,7 @@ namespace lmx::render {
 
 namespace {
 
+#ifndef LMX_PENDING_SCENE
 constexpr uint32_t kShadowMapSize = 2048;
 
 // Linear white is the neutral multiplier for every per-draw material factor.
@@ -40,6 +56,9 @@ constexpr std::array<uint8_t, 4> kBlackTexel = {0, 0, 0, 255};
 // The DFG fallback's (scale, bias), as RG16Float bits. Zero makes the specular reconstruction
 // F0 * 0 + 0 vanish -- the matching answer for an environment that is itself black.
 constexpr std::array<uint16_t, 2> kZeroDfgTexel = {0, 0};
+#endif
+
+} // namespace
 
 //======================================================================================================================
 // Seeds a target resize() allocates. A replacement starts from the use its predecessor was left
@@ -55,52 +74,34 @@ void seedReplacement(TextureStateTable& states, const engine::GpuTexture& previo
     states.set(replacement, use);
 }
 
-// The temporal slots' entries, depth then colour per slot, as forgetTemporalSlots() found them.
-using TemporalSlotUses = std::array<std::optional<TextureUse>, 4>;
-
-//======================================================================================================================
-// Drops the temporal slots' entries before resize() replaces the slots, returning them so a failed
-// resize, which keeps the old slots, can put them back with restoreTemporalSlots().
-TemporalSlotUses forgetTemporalSlots(TextureStateTable& states, TemporalResolve& temporal) {
-    TemporalSlotUses outgoing{};
-    for (uint32_t slot = 0; slot < 2; ++slot) {
-        outgoing[slot] = states.find(temporal.depthTexture(slot).rhi());
-        outgoing[2 + slot] = states.find(temporal.colorTexture(slot).rhi());
-        states.forget(temporal.depthTexture(slot).rhi());
-        states.forget(temporal.colorTexture(slot).rhi());
-    }
-    return outgoing;
-}
-
-//======================================================================================================================
-// Puts back the entries forgetTemporalSlots() dropped, for slots a failed resize kept.
-void restoreTemporalSlots(TextureStateTable& states, TemporalResolve& temporal,
-                          const TemporalSlotUses& outgoing) {
-    for (uint32_t slot = 0; slot < 2; ++slot) {
-        if (outgoing[slot]) {
-            states.set(temporal.depthTexture(slot).rhi(), *outgoing[slot]);
-        }
-        if (outgoing[2 + slot]) {
-            states.set(temporal.colorTexture(slot).rhi(), *outgoing[2 + slot]);
-        }
-    }
-}
-
-} // namespace
-
 //======================================================================================================================
 void registerUniformLayoutsForCapture() {
+#ifndef LMX_PENDING_SCENE
     SceneStage::registerSceneTableLayoutsForCapture();
     ShadowStage::registerUniformLayoutsForCapture();
+#endif
+
+#ifndef LMX_PENDING_VISIBILITY
     registerVisibilityLayoutsForCapture();
+#endif
+
+#ifndef LMX_PENDING_LIGHTS
     LightClusterStage::registerLayoutsForCapture();
+#endif
+
+#ifndef LMX_PENDING_SCENE
     SceneStage::registerPassLayoutsForCapture();
+#endif
 }
 
 //======================================================================================================================
 Renderer::Renderer(engine::GpuContext& gpu, bool cpuReadback)
-    : m_gpu(gpu), m_transientPool(gpu.device()), m_drawSubmission(gpu.device()),
-      m_cpuReadback(cpuReadback) {}
+    : m_gpu(gpu), m_transientPool(gpu.device()),
+#ifndef LMX_PENDING_SCENE
+      m_drawSubmission(gpu.device()),
+#endif
+      m_cpuReadback(cpuReadback) {
+}
 
 //======================================================================================================================
 Renderer::~Renderer() = default;
@@ -116,6 +117,7 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
     rojoRHI::Device& device = gpu.device();
     std::unique_ptr<Renderer> self(new Renderer(gpu, cpuReadback));
 
+#ifndef LMX_PENDING_SCENE
     {
         auto stage = ShadowStage::create(gpu);
         if (!stage) {
@@ -130,6 +132,7 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
         }
         self->m_sceneStage = std::move(*stage);
     }
+#endif
 
     auto displayStage = DisplayStage::create(gpu);
     if (!displayStage) {
@@ -137,6 +140,7 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
     }
     self->m_displayStage = std::move(*displayStage);
 
+#ifndef LMX_PENDING_POST
     auto exposureStage = ExposureStage::create(gpu, cpuReadback);
     if (!exposureStage) {
         return std::unexpected(exposureStage.error());
@@ -148,7 +152,9 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
         return std::unexpected(bloomStage.error());
     }
     self->m_bloomStage = std::move(*bloomStage);
+#endif
 
+#ifndef LMX_PENDING_SCENE
     // The shadow map transitions from depth attachment to sampled texture each frame.
     {
         auto shadowMap = engine::GpuTexture::create(device, {.width = kShadowMapSize,
@@ -244,7 +250,9 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
         }
         self->m_iblSampler = std::move(*sampler);
     }
+#endif
 
+#ifndef LMX_PENDING_TEMPORAL
     // The reconstruction stage owns both history pairs and the passes over them, so it is built
     // before the first resize(), which is what allocates its slots at this renderer's extent.
     {
@@ -254,6 +262,7 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
         }
         self->m_temporalResolve = std::move(*stage);
     }
+#endif
 
     {
         auto targets = self->resize(width, height);
@@ -302,6 +311,7 @@ lmx::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
     m_width = width;
     m_height = height;
 
+#ifndef LMX_PENDING_TEMPORAL
     // The temporal targets follow the scene targets' extent, under the same caller idle guarantee
     // this function already requires. The histories' contents are dropped with the old textures,
     // which the extent change makes a reset anyway (HistoryResetReason::ExtentChanged). Depth is
@@ -335,6 +345,10 @@ lmx::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
                                 TextureUse::ShaderRead);
         }
     }
+
+#endif
+
+#ifndef LMX_PENDING_VISIBILITY
     if (m_hzbStage) {
         {
             auto result = m_hzbStage->resize(width, height, m_textureStates);
@@ -343,45 +357,14 @@ lmx::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
             }
         }
     }
-    return {};
-}
-
-//======================================================================================================================
-lmx::Result<void> Renderer::createTemporalTargets() {
-    LMX_ASSERT(m_width > 0 && m_height > 0,
-               "Renderer::createTemporalTargets: the render extent must be non-empty");
-
-    // Readable on the same terms as the scene targets: motion is the one output a GPU test has to
-    // compare against an arithmetic oracle rather than against a picture.
-    auto motion = engine::GpuTexture::create(m_gpu.device(), {.width = m_width,
-                                                              .height = m_height,
-                                                              .format = kMotionFormat,
-                                                              .renderTarget = true,
-                                                              .sampled = true,
-                                                              .cpuReadback = m_cpuReadback,
-                                                              .label = "lmx.render.motion"});
-    if (!motion) {
-        return std::unexpected(motion.error());
+#endif
+    auto standIns = createRendererStandIns(m_gpu.device(), width, height);
+    if (!standIns) {
+        return std::unexpected(standIns.error());
     }
-    // The per-pixel reactive weight: the scene pass's second extra attachment, read by the resolve
-    // alone. One byte per pixel, and colour-renderable rather than storage, because a fragment
-    // writes it as an ordinary attachment.
-    auto reactive = engine::GpuTexture::create(m_gpu.device(), {.width = m_width,
-                                                                .height = m_height,
-                                                                .format = kReactiveFormat,
-                                                                .renderTarget = true,
-                                                                .sampled = true,
-                                                                .cpuReadback = m_cpuReadback,
-                                                                .label = "lmx.render.reactive"});
-    if (!reactive) {
-        return std::unexpected(reactive.error());
-    }
-
-    // Both start as their own attachment write leaves them, the scene pass's.
-    seedReplacement(m_textureStates, m_motion, motion->rhi(), TextureUse::RenderTarget);
-    seedReplacement(m_textureStates, m_reactive, reactive->rhi(), TextureUse::RenderTarget);
-    m_motion = std::move(*motion);
-    m_reactive = std::move(*reactive);
+    seedReplacement(m_textureStates, m_standIns.depth, standIns->depth.rhi(),
+                    TextureUse::ShaderRead);
+    m_standIns = std::move(*standIns);
     return {};
 }
 

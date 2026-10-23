@@ -10,7 +10,9 @@
 #include "App/Panels/Shared/EditorStyle.h"
 #include "App/Panels/Viewport/ViewportGizmo.h"
 #include "Core/Diagnostics/Log.h"
+#ifndef LMX_PENDING_VISIBILITY
 #include "Render/Passes/Occlusion/HzbStage.h"
+#endif
 #include <rojoRHI/Metal4/Metal4ImGui.h>
 
 #include <imgui.h>
@@ -209,9 +211,13 @@ void drawOcclusionOverlay(const ViewportPanelContext& context, ImVec2 origin, Im
 
 //======================================================================================================================
 uint32_t viewportHzbLevels(const render::Renderer& renderer) {
+#ifndef LMX_PENDING_VISIBILITY
     if (renderer.width() == 0 || renderer.height() == 0)
         return 0;
     return render::hzbLayout(renderer.width(), renderer.height()).levelCount;
+#else
+    return 0;
+#endif
 }
 
 //======================================================================================================================
@@ -229,6 +235,7 @@ ViewportPanelResult drawViewportPanel(bool& open, const ViewportPanelContext& co
         result.measured = imageSize.x > 0.0f && imageSize.y > 0.0f;
         result.focused = ImGui::IsWindowFocused();
         if (result.measured) {
+#ifndef LMX_PENDING_POST
             const bool outlineReady =
                 context.outlineTarget.desc().width == context.renderer.width() &&
                 context.outlineTarget.desc().height == context.renderer.height();
@@ -239,6 +246,11 @@ ViewportPanelResult drawViewportPanel(bool& open, const ViewportPanelContext& co
                                  ? context.outlineTarget.rhi()
                                  : context.renderer.colorTarget().rhi()),
                          imageSize);
+#else
+            ImGui::PushStyleColor(ImGuiCol_Border, editor_style::color(ThemeRole::SurfaceViewport));
+            ImGui::Image(rojoRHI::metal4::imguiTextureID(context.renderer.colorTarget().rhi()),
+                         imageSize);
+#endif
             ImGui::PopStyleColor();
             const auto outerOrigin = ImGui::GetItemRectMin();
             const ImVec2 origin(outerOrigin.x + border, outerOrigin.y + border);

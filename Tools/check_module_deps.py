@@ -16,6 +16,11 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from Tools.pending_sources import PendingSourceError, validate_pending_sources
+
 CONTRACT_PATH = ROOT / "Tools" / "module_contract.json"
 ALLOWLIST_PATH = ROOT / "Tools" / "module_allowlist.json"
 TARGET_DUMP_SCRIPT = "Tools/xmake_targets.lua"
@@ -382,6 +387,8 @@ def load_targets(path: Path | None, root: Path) -> dict[str, dict]:
             "frameworks": [str(item) for item in as_list(target.get("frameworks"))],
             "targetfile": str(root / target["targetfile"]) if target.get("targetfile") else "",
         }
+        if "pending" in target:
+            targets[name]["pending"] = target["pending"]
     return targets
 
 
@@ -584,6 +591,7 @@ def check_ownership(
     contract: dict,
     allowlist: list[dict],
     errors: list[str],
+    pending: frozenset[str] = frozenset(),
 ) -> None:
     """Reconcile the ownership map with target membership: one unit and one target per source."""
     owners = compiling_targets(targets, contract)
@@ -597,6 +605,10 @@ def check_ownership(
             continue
         names = owners.get(text, [])
         allowed = contract["units"][unit]["targets"]
+        if text in pending:
+            if names:
+                errors.append(f"{text}: pending source is still compiled")
+            continue
         if path.suffix in COMPILED_SUFFIXES and not names:
             errors.append(f"{text}: no target compiles this source")
             continue
@@ -697,6 +709,26 @@ def context_for(
     raise ModuleContractError(f"no compilation context for {text}; regenerate compile_commands.json")
 
 
+def inactive_include_units(
+    files: list[Path], targets: dict[str, dict], compile_db: dict[str, dict],
+    contract: dict, pending: frozenset[str],
+) -> set[str]:
+    """Units with a nonempty, wholly pending source set and no real compilation context."""
+    sources: dict[str, set[str]] = {}
+    for path in files:
+        unit = owner_of(path, contract)
+        if unit is not None and path.suffix in COMPILED_SUFFIXES:
+            sources.setdefault(unit, set()).add(path.as_posix())
+    contextual = {owner_of(Path(file), contract) for file in compile_db}
+    members = compiling_targets(targets, contract)
+    return {
+        unit for unit, names in sources.items()
+        if names and names <= pending and unit not in contextual
+        and not any(name in targets for name in contract["units"][unit]["targets"])
+        and not any(members.get(name) for name in names)
+    }
+
+
 def check_includes(
     files: list[Path],
     targets: dict[str, dict],
@@ -705,7 +737,8 @@ def check_includes(
     allowlist: list[dict],
     errors: list[str],
     root: Path,
-) -> None:
+    pending: frozenset[str] = frozenset(),
+) -> tuple[int, int]:
     """Charge every direct package include, every transitively reached unit and every external
     component header against the unit table and the external consumer entries."""
     contexts: dict[str, list[Path]] = {}
@@ -714,6 +747,8 @@ def check_includes(
     private_tests = {(entry["file"], entry["header"])
                      for entry in contract.get("privateHeaderTests", [])}
     used_private_tests: set[tuple[str, str]] = set()
+    inactive = inactive_include_units(files, targets, compile_db, contract, pending)
+    deferred = 0
 
     def includes_of(path: Path) -> list[Resolved]:
         text = path.as_posix()
@@ -722,6 +757,10 @@ def check_includes(
         unit = owner_of(path, contract)
         if unit is None:
             return []
+        if unit in inactive:
+            raise ModuleContractError(
+                f"active include traversal reaches inactive unit {unit}: {text}"
+            )
         if text in compile_db:
             dirs = include_dirs(compile_db[text])
         elif unit in contexts:
@@ -753,6 +792,9 @@ def check_includes(
                     f"{text}: {unit} aliases private header {canonical.path.as_posix()} "
                     f"owned by {canonical.unit}"
                 )
+        if unit in inactive:
+            deferred += 1
+            continue
         reported_packages: set[str] = set()
         for include in includes_of(path):
             if include.kind != "third-party" or include.name in row["thirdParty"]:
@@ -831,6 +873,7 @@ def check_includes(
     for source, header in sorted(private_tests - used_private_tests):
         if source in scanned:
             errors.append(f"unused privateHeaderTests edge: {source} -> {header}")
+    return len(inactive), deferred
 
 
 def dependency_closure(name: str, targets: dict[str, dict]) -> set[str]:
@@ -1009,14 +1052,19 @@ def main(argv: list[str] | None = None) -> int:
             )
         compile_db = load_compile_commands(compile_commands_path, root)
         files = project_files(root, contract)
-        check_ownership(files, targets, contract, allowlist, errors)
-        check_includes(files, targets, compile_db, contract, allowlist, errors, root)
+        pending = validate_pending_sources(
+            root, targets, owner=lambda path: owner_of(path, contract), compiled=compile_db
+        )
+        check_ownership(files, targets, contract, allowlist, errors, pending)
+        inactive_units, deferred_roots = check_includes(
+            files, targets, compile_db, contract, allowlist, errors, root, pending
+        )
         check_target_closure(targets, contract, allowlist, errors)
         if args.link:
             check_link(targets, contract, allowlist, errors)
         check_allowlist_use(display_path(allowlist_path, root), allowlist, errors, link=args.link)
         budget_lines = report_budgets(files, contract, root)
-    except (ModuleContractError, OSError) as exc:
+    except (ModuleContractError, PendingSourceError, OSError) as exc:
         print(f"module policy could not run: {exc}", file=sys.stderr)
         return 2
 
@@ -1029,9 +1077,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"module policy failed with {len(errors)} error(s)", file=sys.stderr)
         return 1
     components = len(contract["externals"])
+    if inactive_units:
+        print(
+            f"module include coverage ({len(files) - deferred_roots} roots checked, "
+            f"{deferred_roots} roots deferred across {inactive_units} inactive units)"
+        )
+    coverage = f", {len(pending)} pending cpp files" if pending or (root / "xmake" / "port.lua").is_file() else ""
     print(
         f"module policy passed ({len(files)} files, {len(contract['units'])} units, "
-        f"{components} external component{'' if components == 1 else 's'})"
+        f"{components} external component{'' if components == 1 else 's'}"
+        f"{coverage})"
     )
     return 0
 

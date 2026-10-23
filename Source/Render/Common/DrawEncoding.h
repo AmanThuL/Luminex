@@ -5,6 +5,8 @@
 
 #pragma once
 
+#ifndef LMX_PENDING_SCENE
+
 #include "Engine/Scene/DrawItem.h"
 #include "Engine/Scene/SceneTables.h"
 #include "Render/Passes/Scene/DrawSubmission.h"
@@ -62,3 +64,5 @@ void encodeDrawRuns(rojoRHI::CommandList& commands, const DrawEncodingInputs& dr
 }
 
 } // namespace lmx::render
+
+#endif

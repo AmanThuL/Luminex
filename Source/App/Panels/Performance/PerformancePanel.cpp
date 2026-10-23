@@ -7,6 +7,7 @@
 
 #include "App/Model/Performance/PassStages.h"
 #include "App/Panels/Shared/EditorStyle.h"
+#include "Core/Diagnostics/Log.h"
 
 #include <SDL3/SDL.h>
 #include <imgui.h>
@@ -62,6 +63,8 @@ bool beginPerformanceWindow(bool& open, PerformancePanelState& state) {
             if (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED)
                 SDL_RestoreWindow(window);
             SDL_RaiseWindow(window);
+            LMX_LOG_INFO("Performance window uses platform viewport {} (SDL window {})",
+                         viewport->ID, windowId);
         }
         state.requestFocus = false;
     }

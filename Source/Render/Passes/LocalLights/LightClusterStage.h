@@ -5,6 +5,8 @@
 
 #pragma once
 
+#ifndef LMX_PENDING_LIGHTS
+
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Gpu/GpuBuffer.h"
 #include "Engine/Gpu/GpuContext.h"
@@ -121,3 +123,5 @@ private:
 };
 
 } // namespace lmx::render
+
+#endif

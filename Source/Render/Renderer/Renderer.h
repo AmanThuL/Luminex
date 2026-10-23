@@ -12,16 +12,34 @@
 #include "Engine/View/Camera.h"
 #include "Render/Common/Formats.h"
 #include "Render/Graph/RenderGraph.h"
+#ifndef LMX_PENDING_LIGHTS
 #include "Render/Passes/LocalLights/LightClusterStage.h"
+#endif
+
+#ifndef LMX_PENDING_LIGHTS
 #include "Render/Passes/LocalLights/LightDebugStage.h"
+#endif
 #include "Render/Passes/LocalLights/LightingStatus.h"
+#ifndef LMX_PENDING_VISIBILITY
 #include "Render/Passes/Occlusion/HzbStage.h"
+#endif
+
+#ifndef LMX_PENDING_SCENE
 #include "Render/Passes/Scene/DrawSubmission.h"
+#endif
+
+#ifndef LMX_PENDING_SCENE
 #include "Render/Passes/Scene/SceneStage.h"
+#endif
+
+#ifndef LMX_PENDING_SCENE
 #include "Render/Passes/Shadow/ShadowStage.h"
+#endif
 #include "Render/Passes/Temporal/Temporal.h"
 #include "Render/Passes/Temporal/TemporalHistory.h"
+#ifndef LMX_PENDING_TEMPORAL
 #include "Render/Passes/Temporal/TemporalResolve.h"
+#endif
 #include "Render/Renderer/DisplayDomain.h"
 #include "Render/Renderer/SceneView.h"
 #include <rojoRHI/RHI.h>
@@ -70,6 +88,12 @@ void registerUniformLayoutsForCapture();
 /// Shaders/Passes/Exposure/ExposureResolve.slang write the pair;
 /// Shaders/Passes/Exposure/HistogramAccumulate.slang and the auto scene/sky pipelines read index 0.
 constexpr uint32_t kExposureBufferFloats = 2;
+
+/// Owns neutral depth and exposure inputs while their stages are unavailable.
+struct RendererStandIns {
+    engine::GpuTexture depth;   ///< Output-sized reversed-depth attachment.
+    engine::GpuBuffer exposure; ///< Fixed applied/previous exposure pair.
+};
 
 /// Owns frame targets and pipelines and declares the frame's render-graph passes.
 class Renderer {
@@ -154,6 +178,7 @@ public:
     /// Reads every submitted lighting result after the caller has completed Device::waitIdle.
     void drainLightingAfterIdle();
 
+#ifndef LMX_PENDING_TEMPORAL
     /// The frame's motion target in kMotionFormat, allocated with the scene targets and so never
     /// null after a successful create(). Borrowed: the renderer owns it and replaces it on
     /// resize().
@@ -161,6 +186,12 @@ public:
     const engine::GpuTexture* motionTexture() const { return m_motion ? &m_motion : nullptr; }
     /// Borrows the reactive owner on motionTexture() ownership terms.
     const engine::GpuTexture* reactiveTexture() const { return m_reactive ? &m_reactive : nullptr; }
+#else
+    /// Returns no motion attachment while reconstruction is unavailable.
+    const engine::GpuTexture* motionTexture() const { return nullptr; }
+    /// Returns no reactive attachment while reconstruction is unavailable.
+    const engine::GpuTexture* reactiveTexture() const { return nullptr; }
+#endif
 
     /// The colour history slot the frame just declared wrote, in kSceneColorFormat: the resolve's
     /// output under NativeTaa and the raw copy under Raw, so it always holds that frame's output.
@@ -203,21 +234,29 @@ private:
                                               const SceneView& view,
                                               const RendererFrameState& state);
     void recordFrameStatus(const RendererFrameState& state);
+#ifndef LMX_PENDING_SCENE
     std::array<GraphBuffer, 2> prepareVisibility(RenderGraph& graph, rojoRHI::CommandList& commands,
                                                  const SceneView& view, const FrustumPlanes& planes,
                                                  std::span<const GraphBuffer> sceneBuffers);
+#endif
 
+#ifndef LMX_PENDING_LIGHTS
     LightClusterOutputs prepareLighting(RenderGraph& graph, rojoRHI::CommandList& commands,
                                         const SceneView& view, std::optional<GraphBuffer> lights,
                                         const FrameExtents& extents,
                                         const CameraFrameState& cameraState);
     void retireLightingThrough(uint64_t frame);
+#endif
 
+#ifndef LMX_PENDING_VISIBILITY
     GraphTexture prepareOcclusion(RenderGraph& graph, const engine::Camera& camera,
                                   const SceneView& view, const FrameExtents& extents,
                                   const CameraFrameState& cameraState);
     void declareOcclusion(RenderGraph& graph, rojoRHI::CommandList& commands, const SceneView& view,
                           GraphTexture depth, GraphTexture& display);
+#endif
+
+#ifndef LMX_PENDING_TEMPORAL
     // Creates the motion and reactive attachments at the current extent, replacing any pair
     // already held. Called from resize() -- and so from create(), which resizes once -- so both
     // exist for every frame whether or not it declares the temporal path.
@@ -225,6 +264,7 @@ private:
     // Its own function rather than resize()'s body because the two allocations answer to
     // kMotionFormat and kReactiveFormat rather than to the scene targets'.
     lmx::Result<void> createTemporalTargets();
+#endif
 
     engine::GpuContext& m_gpu;
     // render()'s own pool for bloom's transients, since a caller without a graph of its own (the
@@ -236,17 +276,27 @@ private:
     // What the last frame to touch each persistent target left it as, written back by every graph
     // declarePasses() binds it to.
     TextureStateTable m_textureStates;
+#ifndef LMX_PENDING_SCENE
     std::unique_ptr<ShadowStage> m_shadowStage;
     std::unique_ptr<SceneStage> m_sceneStage;
+#endif
+
+#ifndef LMX_PENDING_POST
     // Stage owners retain callback inputs and persistent feedback through graph execution.
     std::unique_ptr<ExposureStage> m_exposureStage;
     std::unique_ptr<BloomStage> m_bloomStage;
+#endif
     std::unique_ptr<DisplayStage> m_displayStage;
     // The scene renders into m_hdrColor and the display transform resolves it into m_color, so
     // the two always share an extent and are replaced together by resize().
     engine::GpuTexture m_hdrColor;
     engine::GpuTexture m_color;
+    RendererStandIns m_standIns;
+#ifndef LMX_PENDING_SCENE
     engine::GpuTexture m_shadowMap;
+#endif
+
+#ifndef LMX_PENDING_TEMPORAL
     // Allocated with the scene targets and replaced by resize() like them, whether or not any
     // frame declares the temporal path: the allocation is permanent and reported through
     // TemporalStatus::historyBytes. Freeing on disable would drop memory the frames still in
@@ -257,6 +307,9 @@ private:
     // into included -- and every pass that reads or writes them. Created with the renderer and
     // resized alongside the scene targets, so its slots always share their extent.
     std::unique_ptr<TemporalResolve> m_temporalResolve;
+#endif
+
+#ifndef LMX_PENDING_SCENE
     // The "nothing here" textures every draw binds when a material or a scene leaves a slot empty.
     // They exist because the fragment shader reads every texture slot unconditionally (Slang gives
     // every entry point the file's whole global set), so an empty slot has to hold something that
@@ -270,6 +323,9 @@ private:
     engine::GpuOwned<rojoRHI::Sampler> m_linearSampler;
     engine::GpuOwned<rojoRHI::Sampler> m_shadowSampler;
     engine::GpuOwned<rojoRHI::Sampler> m_iblSampler;
+#endif
+
+#ifndef LMX_PENDING_TEMPORAL
     // What the previous declared frame was, recorded every frame -- temporal on or off -- because
     // that is what makes re-enabling distinguishable from the first frame ever declared.
     std::optional<FrameSignature> m_previousSignature;
@@ -279,9 +335,14 @@ private:
     // historyTexture() report: m_temporalFrame % 2 on a temporal frame and 0 otherwise. Recorded
     // rather than recomputed because m_temporalFrame advances past it before declarePasses returns.
     uint32_t m_currentSlot = 0;
+#endif
     uint64_t m_declaredFrames = 0;
     TemporalStatus m_temporalStatus;
+#ifndef LMX_PENDING_SCENE
     DrawSubmission m_drawSubmission;
+#endif
+
+#ifndef LMX_PENDING_VISIBILITY
     std::unique_ptr<GpuVisibility> m_gpuVisibility;
     std::unique_ptr<HzbStage> m_hzbStage;
     std::unique_ptr<OcclusionReference> m_occlusionReference;
@@ -295,12 +356,17 @@ private:
     bool m_occlusionPreviouslyEnabled = false;
     bool m_occlusionStrictView = false;
     std::optional<glm::mat4> m_previousOcclusionViewProjection;
+#endif
     VisibilityStatus m_visibilityStatus;
+#ifndef LMX_PENDING_LIGHTS
     std::unique_ptr<LightClusterStage> m_lightClusters;
     std::unique_ptr<LightDebugStage> m_lightDebug;
+#endif
     LightingStatus m_lightingStatus;
+#ifndef LMX_PENDING_LIGHTS
     std::vector<LightingStatus> m_pendingLighting;
     std::vector<LightingStatus> m_retiredLighting;
+#endif
     uint32_t m_width = 0;
     uint32_t m_height = 0;
     bool m_cpuReadback = false;

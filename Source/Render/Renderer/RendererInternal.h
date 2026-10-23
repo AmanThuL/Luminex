@@ -7,10 +7,25 @@
 #include "Render/Renderer/Renderer.h"
 
 namespace lmx::render {
+
+void seedReplacement(TextureStateTable& states, const engine::GpuTexture& previous,
+                     const rojoRHI::Texture& replacement, TextureUse initial);
+
+#ifndef LMX_PENDING_TEMPORAL
+// The temporal slots' entries, depth then colour per slot, as forgetTemporalSlots() found them.
+using TemporalSlotUses = std::array<std::optional<TextureUse>, 4>;
+
+TemporalSlotUses forgetTemporalSlots(TextureStateTable& states, TemporalResolve& temporal);
+void restoreTemporalSlots(TextureStateTable& states, TemporalResolve& temporal,
+                          const TemporalSlotUses& outgoing);
+#endif
+
 // Values derived once before any frame resources or passes are declared.
 struct RendererFrameState {
     bool temporalEnabled;
+#ifndef LMX_PENDING_TEMPORAL
     ReconstructionSelection selection;
+#endif
     ReconstructionMode reconstruction;
     bool vendorTemporal;
     float renderScale;
@@ -27,7 +42,9 @@ struct RendererFrameState {
     glm::vec2 jitterPixels;
     CameraFrameState cameraState;
     CameraFrameState previousCamera;
+#ifndef LMX_PENDING_SCENE
     ShadowMatrices shadow;
+#endif
 };
 
 // Graph-local imports, in the original declaration order including exposure seeding.

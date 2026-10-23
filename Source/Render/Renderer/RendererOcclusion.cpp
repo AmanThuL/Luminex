@@ -10,6 +10,7 @@
 #include "Render/Passes/Occlusion/OcclusionReference.h"
 #include "Render/Renderer/Renderer.h"
 #include <algorithm>
+#ifndef LMX_PENDING_VISIBILITY
 namespace lmx::render {
 //======================================================================================================================
 GraphTexture Renderer::prepareOcclusion(RenderGraph& graph, const engine::Camera& camera,
@@ -127,3 +128,4 @@ void Renderer::declareOcclusion(RenderGraph& graph, rojoRHI::CommandList& comman
     display = nextVersion(display);
 }
 } // namespace lmx::render
+#endif

@@ -14,6 +14,11 @@ from typing import Any, BinaryIO
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from Tools.pending_sources import PendingSourceError, validate_pending_sources
+
 CPP_ROOTS = ("Source", "Tests", "Benchmarks")
 FUNCTION_SYMBOL_KINDS = {6, 9, 12}  # Method, Constructor, Function (LSP SymbolKind)
 RULER = re.compile(r"^\s*//.*(?:={8,}|-{8,})")
@@ -60,6 +65,28 @@ def ensure_database_covers(files: list[Path], database: Path, root: Path) -> Non
         "compile_commands.json does not cover every project .cpp file "
         f"({names}); rerun `xmake project -k compile_commands`"
     )
+
+
+def files_for_check(root: Path, database: Path, targets_path: Path | None = None) -> tuple[list[Path], int]:
+    """Select the explicit build partition, keeping full coverage outside that partition."""
+    files = project_cpp_files(root)
+    pending = frozenset()
+    port = root / "xmake" / "port.lua"
+    if port.exists() or port.is_symlink() or targets_path is not None:
+        from Tools import check_module_deps as modules
+
+        try:
+            targets = modules.load_targets(targets_path, root)
+            contract = modules.load_contract(root / "Tools" / "module_contract.json", root)
+            pending = validate_pending_sources(
+                root, targets, owner=lambda path: modules.owner_of(path, contract),
+                compiled=compilation_database_files(database),
+            )
+        except (modules.ModuleContractError, PendingSourceError) as exc:
+            raise LayoutSetupError(str(exc)) from exc
+    files = [path for path in files if path.relative_to(root).as_posix() not in pending]
+    ensure_database_covers(files, database, root)
+    return files, len(pending)
 
 
 def flatten_symbols(symbols: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -300,6 +327,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=ROOT, help=argparse.SUPPRESS)
     parser.add_argument("--compile-commands", type=Path, help="path to compile_commands.json")
+    parser.add_argument("--targets", type=Path, help="target dump JSON; xmake produces it when absent")
     parser.add_argument("--clangd", help="clangd executable (defaults to CLANGD/PATH)")
     return parser.parse_args()
 
@@ -313,10 +341,9 @@ def main() -> int:
         print("C++ layout check could not run: clangd is not on PATH", file=sys.stderr)
         return 2
 
-    files = project_cpp_files(root)
     client: ClangdClient | None = None
     try:
-        ensure_database_covers(files, database, root)
+        files, pending = files_for_check(root, database, args.targets)
         client = ClangdClient(executable, root, database)
         client.initialize()
         errors: list[str] = []
@@ -339,7 +366,8 @@ def main() -> int:
             print(f"error: {error}", file=sys.stderr)
         print(f"C++ layout check failed with {len(errors)} error(s)", file=sys.stderr)
         return 1
-    print(f"C++ layout check passed ({definitions} definitions in {len(files)} files)")
+    coverage = f", {pending} pending cpp files" if pending or (root / "xmake" / "port.lua").is_file() else ""
+    print(f"C++ layout check passed ({definitions} definitions in {len(files)} files{coverage})")
     return 0
 
 

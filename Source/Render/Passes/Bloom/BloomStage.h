@@ -4,6 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+
+#ifndef LMX_PENDING_POST
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Gpu/GpuContext.h"
 #include "Render/Graph/RenderGraph.h"
@@ -41,3 +43,5 @@ private:
 };
 
 } // namespace lmx::render
+
+#endif

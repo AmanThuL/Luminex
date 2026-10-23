@@ -51,8 +51,8 @@ contract. `externals` in `Tools/module_contract.json` holds one entry per compon
 | `includeRoots` | the include roots the `"*"` allowance covers; each must be a directory inside `paths` |
 | `consumers` | unit → the headers it may include, spelled as an `#include` writes them, or `"*"` |
 
-Today there is one entry, `rhi`: paths `RojoRHI`, its eight targets (the v1 `RojoRHILegacy*`, `RojoRHIMetalCpp`
-and the v2 `RojoRHI`, `RojoRHITests`, `RojoRHILtoProbe`, `RojoRHIBench`), include root `RojoRHI/Legacy/Include`.
+Today there is one entry, `rhi`: paths `RojoRHI`, its nine targets (the v1 `RojoRHILegacy*`, `RojoRHIMetalCpp`
+and the v2 `RojoRHI`, `RojoRHIImGui`, `RojoRHITests`, `RojoRHILtoProbe`, `RojoRHIBench`), include root `RojoRHI/Legacy/Include`.
 
 | Consumer | May include |
 |---|---|
@@ -81,9 +81,9 @@ Rules the entry carries:
   reached them.
 - The component's targets are still reconciled (`RojoRHILegacy` declares `RojoRHIMetalCpp`;
   `RojoRHILegacyMetal4ImGui` adds `RojoRHILegacy` and `ImGui`; `RojoRHILegacyTests` adds `RojoRHILegacy`;
-  `RojoRHI` declares `RojoRHIMetalCpp` on metal4 only; the other v2 targets add `RojoRHI`), and no Luminex
-  target depends on a v2 one. Nothing under `RojoRHI/` can link a Luminex target without failing the target-closure check, which is how the standalone build stays
-  standalone. `Asset`'s `forbidUndefined: rojoRHI::` still runs under `--link`.
+  `RojoRHI` declares `RojoRHIMetalCpp` on metal4 only; `RojoRHIImGui` adds `RojoRHI` and `ImGui`;
+  `RojoRHITests` adds `RojoRHI` and the adapter when declared; the other v2 targets add `RojoRHI`), and no Luminex target depends on a v2 one.
+  No component target can link a Luminex target without failing the closure check. `Asset`'s `forbidUndefined: rojoRHI::` still runs under `--link`.
 
 `tests` takes no header out of the component's own suite: the repository suite keeps its own copy of
 the GPU bootstrap, merged into `Tests/Support/GpuTestSupport.h` alongside its Asset, Render and
@@ -125,19 +125,18 @@ listed by the contract's `privateHeaders` for the `tests` unit and included as `
 
 Ownership comes from one explicit map from unit to paths, never from inference:
 
-- The longest matching path wins. A file entry beats the directory that contains it, and a nested
-  directory entry beats its parent, so `Source/App/Model` carves `app-model` out of `app-shell`
-  and a single file can be reassigned without moving it.
-- Every source and header under a mapped root matches exactly one entry. An unmatched file is a
-  failure, not an exemption; adding a file to the tree means adding it to a unit.
-- The map is reconciled with xmake target membership and disagreement fails. The compilation
-  database supplies compilation context only — include directories and defines — because a file
-  compiled by several targets cannot establish ownership on its own.
-- Every source is compiled by a target, and sources listed by targets are checked even outside
-  the walked roots. A `shared-source` allowance admits its exact target set only while that set
-  still includes an owning target. Every non-vendored target declares a dependency contract.
-- Compilation paths resolve against the entry's working directory under the selected repository
-  root. A missing compilation context is a could-not-run error, never an empty include search.
+- The longest matching path wins. A file entry beats the directory that contains it, and a nested directory entry beats its
+  parent, so `Source/App/Model` carves `app-model` out of `app-shell` and a single file can be reassigned without moving it.
+- Every source and header under a mapped root matches exactly one entry. An unmatched file is a failure, not an exemption; adding
+  a file to the tree means adding it to a unit.
+- The map is reconciled with xmake target membership and disagreement fails. The compilation database supplies compilation context
+  only — include directories and defines — because a file compiled by several targets cannot establish ownership on its own.
+- Every source is compiled by a target, and sources listed by targets are checked even outside the walked roots. A `shared-source`
+  allowance admits its exact target set only while that set still includes an owning target. Every non-vendored target declares a
+  dependency contract.
+- Partial renderer builds use the strict [pending-source contract](pending-sources.md); all other coverage remains mandatory.
+- Compilation paths resolve against the entry's working directory under the selected repository root. A missing compilation
+  context is a could-not-run error, never an empty include search.
 
 ## Placement rules
 

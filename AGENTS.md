@@ -64,9 +64,11 @@ live only in `docs/roadmap.md` and its linked parts under `docs/roadmap/`.
 - **Gotcha**: `xmake policy` run from inside a nested git worktree silently validates the outer checkout instead of the worktree: xmake resolves its project root to the outermost ancestor directory holding an `xmake.lua`. A worktree also needs `git submodule update --init` once after creation, before configuring, or `xmake f` fails at the missing `RojoRHI/` checkout.
   In a worktree, run the checkers directly from its root instead: `python3 Tools/check_project_policy.py`; `python3 Tools/check_module_deps.py`; `python3 Tools/check_source_headers.py`; `python3 Tools/check_cpp_comments.py --public-api-docs error` (first regenerate that worktree's `compile_commands.json` with `xmake project -k compile_commands -P .`, a prerequisite the comment checker reads, not a checker itself); `python3 Tools/check_cpp_layout.py`; `python3 Tools/check_submodule_pin.py`.
   `RojoRHI/`'s own checkers (`check_project_policy.py`, `check_shader_imports.py`, `check_cpp_comments.py`, `check_rhi_headers.py`, `check_cpp_layout.py`), format/policy tasks and Python suite (`python3 -m unittest discover -s RojoRHI/Tools/tests -t RojoRHI`) run from inside the mount with `-P .`, e.g. `python3 RojoRHI/Tools/check_project_policy.py`; they are no longer part of Luminex's root `policy` task, and run in `rojo-rhi`'s own CI.
-- Frame-data benchmark: `xmake build FrameDataBench` then `python3
-  Tools/Bench/frame_data_paired.py` for paired CPU-encoding measurements against a frozen baseline
-  build; both the bench binary and the driver support `--selftest`.
+- Partial renderer builds use `xmake/port.lua` as the single pending source/test/shader/FrameDataBench list.
+  Its family flags select a scene-clear/display/UI frame. Module/layout checks validate exact pending
+  cpp coverage against its schema/hash and report checked/pending counts; unlisted gaps still fail.
+  All Source headers remain checked standalone, with pure builders/types visible. Measurement waits
+  for lighting diagnostics; after BENCH returns, use `xmake build FrameDataBench` and `Tools/Bench/frame_data_paired.py` (both support `--selftest`).
 - Scenes: `xmake run App` opens the editor maximized to the display's usable bounds, with Sponza
   selected by default (File > Open Scene catalog); `--windowed` keeps the fixed 1280×720
   default size instead. Offscreen: `xmake run App --screenshot <out.bmp>` or `--scene

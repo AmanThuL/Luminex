@@ -7,6 +7,8 @@ target("Tests")
     add_files("**.cpp")
     -- Shared helpers are included as "Support/<Name>.h", rooted like Source includes.
     add_includedirs(".")
+    remove_files(lmx_pending_files("tests"))
+    add_defines(lmx_pending_defines())
     add_deps("Core", "RojoRHILegacy", "Render", "Asset", "AppModel", "Engine", "Scenes")
     add_packages("catch2", "glm")
     -- ToolsTests needs a stable path to the Python suite when launched from the test build dir.

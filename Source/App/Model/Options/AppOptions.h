@@ -15,6 +15,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace lmx::app {
 
@@ -40,6 +41,14 @@ enum class CaptureFormat : uint8_t {
     Bmp, ///< Legacy top-down BGRA bitmap with unchanged bytes.
 };
 
+/// Selects a tool window to open after the editor workspace has loaded.
+enum class DetachedWindow : uint8_t {
+    Performance,  ///< Detailed performance observations in their native window.
+    RenderGraph,  ///< Render graph diagnostics in their native window.
+    StyleGallery, ///< Session-only style gallery.
+    Session,      ///< Session proposals and history with saved workspace placement.
+};
+
 /// Returns the lowercase filename extension without a dot.
 std::string_view captureFormatName(CaptureFormat format);
 
@@ -61,6 +70,8 @@ struct AppOptions {
     bool maximized = true;
     /// Session-only appearance override; accepted only for the windowed editor.
     std::optional<Appearance> appearance;
+    /// Tool windows opened in command-line order; accepted only for the windowed editor.
+    std::vector<DetachedWindow> openWindows;
     /// Screenshot: total frames before saving the last. Sequence: number of saved frames after
     /// warmup. Both advance animation at 60 Hz and follow the scene camera track, if any.
     /// At least 1; irrelevant, but accepted, in windowed mode.

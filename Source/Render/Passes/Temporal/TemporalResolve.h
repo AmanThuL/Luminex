@@ -105,6 +105,7 @@ constexpr uint32_t kRejectionReasonDisoccluded = 3; ///< The previous frame saw 
 constexpr uint32_t kRejectionReasonReactive = 4;    ///< The pixel asked not to accumulate at all.
 constexpr uint32_t kRejectionClippedBit = 0x80;     ///< Flag: the neighbourhood clip moved it.
 
+#ifndef LMX_PENDING_TEMPORAL
 /// The frame's temporal reconstruction stage: the two history pairs, the pipelines that read and
 /// write them, and the passes that make one frame's picture out of the last one's.
 ///
@@ -283,5 +284,6 @@ private:
     uint32_t m_height = 0;
     bool m_cpuReadback = false;
 };
+#endif
 
 } // namespace lmx::render
