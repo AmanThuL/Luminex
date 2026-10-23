@@ -40,7 +40,7 @@ VisibilityStatus GpuVisibility::readback(Pending& pending) {
     result.isRetired = true;
     const auto& params = pending.params;
     std::array<uint32_t, 2 * kVisibilityCounterWords> rawCounters{};
-    pending.counters->rhi().readback(rawCounters.data(), sizeof(rawCounters));
+    pending.counters->readback(rawCounters.data(), sizeof(rawCounters));
     result.sceneCounters = decodeCounters(rawCounters.data());
     result.shadowCounters = decodeCounters(rawCounters.data() + kVisibilityCounterWords);
     result.submission.listBytes =
@@ -57,11 +57,11 @@ VisibilityStatus GpuVisibility::readback(Pending& pending) {
                                                  params.argumentCapacity)
                             : 0);
     if (!states.empty())
-        pending.states->rhi().readback(states.data(), states.size() * 4);
+        pending.states->readback(states.data(), states.size() * 4);
     if (!rows.empty())
-        pending.rows->rhi().readback(rows.data(), rows.size() * 4);
+        pending.rows->readback(rows.data(), rows.size() * 4);
     if (!arguments.empty())
-        pending.arguments->rhi().readback(arguments.data(), arguments.size() * 20);
+        pending.arguments->readback(arguments.data(), arguments.size() * 20);
     std::array<VisibilityResult*, 2> views{&result.scene, &result.shadow};
     for (uint32_t v = 0; v < 2; ++v) {
         auto& view = *views[v];

@@ -64,8 +64,10 @@ private:
         VisibilityParams params;
         std::vector<InstanceVisibility> expected;
         std::vector<rojoRHI::DrawIndexedIndirectArgs> geometry;
-        const engine::GpuBuffer *states = nullptr, *counters = nullptr, *rows = nullptr,
-                                *arguments = nullptr;
+        // The RHI buffers themselves: DrawSubmission growth move-assigns new owners into the
+        // slots these came from, so an owner address would read the replacement at retirement.
+        rojoRHI::Buffer *states = nullptr, *counters = nullptr, *rows = nullptr,
+                        *arguments = nullptr;
     };
     lmx::Result<void> prepareSlot(Slot& slot, const VisibilityTables& tables);
     VisibilityStatus readback(Pending& pending);

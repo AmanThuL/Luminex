@@ -146,10 +146,10 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rojoRHI::Command
                     .tables = tables,
                     .params = params,
                     .geometry = submission.arguments,
-                    .states = &slot.states,
-                    .counters = &slot.counters,
-                    .rows = submission.scene.rows,
-                    .arguments = submission.scene.arguments};
+                    .states = &slot.states.rhi(),
+                    .counters = &slot.counters.rhi(),
+                    .rows = &submission.scene.rows->rhi(),
+                    .arguments = &submission.scene.arguments->rhi()};
     if (view.classifyCheck)
         for (uint32_t v = 0; v < 2; ++v)
             for (uint32_t i = 0; i < tables.views[v].candidateCount; ++i) {
