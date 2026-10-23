@@ -7,6 +7,19 @@
 #include "Render/Renderer/Renderer.h"
 
 namespace lmx::render {
+
+void seedReplacement(TextureStateTable& states, const engine::GpuTexture& previous,
+                     const rojoRHI::Texture& replacement, TextureUse initial);
+
+#ifndef LMX_PENDING_TEMPORAL
+// The temporal slots' entries, depth then colour per slot, as forgetTemporalSlots() found them.
+using TemporalSlotUses = std::array<std::optional<TextureUse>, 4>;
+
+TemporalSlotUses forgetTemporalSlots(TextureStateTable& states, TemporalResolve& temporal);
+void restoreTemporalSlots(TextureStateTable& states, TemporalResolve& temporal,
+                          const TemporalSlotUses& outgoing);
+#endif
+
 // Values derived once before any frame resources or passes are declared.
 struct RendererFrameState {
     bool temporalEnabled;

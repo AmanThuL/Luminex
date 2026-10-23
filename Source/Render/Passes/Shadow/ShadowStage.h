@@ -5,6 +5,8 @@
 
 #pragma once
 
+#ifndef LMX_PENDING_SCENE
+
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Gpu/GpuContext.h"
 #include "Engine/Gpu/GpuTexture.h"
@@ -81,3 +83,5 @@ private:
 };
 
 } // namespace lmx::render
+
+#endif

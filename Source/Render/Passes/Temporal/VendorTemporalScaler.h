@@ -4,6 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
+#ifndef LMX_PENDING_TEMPORAL
+
 #include "Core/Diagnostics/Result.h"
 #include "Render/Passes/Temporal/TemporalResolve.h"
 
@@ -80,3 +82,5 @@ private:
 };
 
 } // namespace lmx::render
+
+#endif

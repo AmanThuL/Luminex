@@ -3,6 +3,8 @@
 /// @brief Declares post-display froxel diagnostics over the scene's actual depth and light lists.
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
+
+#ifndef LMX_PENDING_LIGHTS
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Gpu/GpuContext.h"
 #include "Engine/Lights/LocalLight.h"
@@ -41,3 +43,5 @@ private:
     engine::GpuOwned<rojoRHI::GraphicsPipeline> m_pipeline;
 };
 } // namespace lmx::render
+
+#endif

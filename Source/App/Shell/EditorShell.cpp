@@ -841,10 +841,16 @@ void EditorShell::commitFrame() {
 render::ReconstructionMode
 EditorShell::effectiveReconstruction(const render::Renderer& renderer,
                                      const engine::GpuContext& gpu) const {
+#ifndef LMX_PENDING_TEMPORAL
     return render::resolveReconstruction(m_settings.reconstruction, gpu.upscalerSupport(),
                                          renderer.temporalStatus().vendorFallback ==
                                              render::VendorFallback::CreationFailed)
         .mode;
+#else
+    (void)renderer;
+    (void)gpu;
+    return render::ReconstructionMode::Raw;
+#endif
 }
 
 } // namespace lmx::app

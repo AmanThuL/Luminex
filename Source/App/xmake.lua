@@ -3,6 +3,8 @@ target("App")
     add_files("Shell/*.cpp", "Headless/*.cpp", "Panels/*/*.cpp")
     add_files("Shell/*.mm")
     add_frameworks("AppKit")
+    remove_files(lmx_pending_files("sources"))
+    add_defines(lmx_pending_defines())
     add_deps("Core", "RojoRHILegacy", "RojoRHILegacyMetal4ImGui", "Render", "Asset", "AppModel", "ImGui", "ImGuiNodeEditor", "ImGuizmo", "Engine", "Scenes")
     add_packages("libsdl3", "glm")
     -- Compile every shader for App so test-only entries cannot silently drift out of build health.

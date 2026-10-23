@@ -125,19 +125,18 @@ listed by the contract's `privateHeaders` for the `tests` unit and included as `
 
 Ownership comes from one explicit map from unit to paths, never from inference:
 
-- The longest matching path wins. A file entry beats the directory that contains it, and a nested
-  directory entry beats its parent, so `Source/App/Model` carves `app-model` out of `app-shell`
-  and a single file can be reassigned without moving it.
-- Every source and header under a mapped root matches exactly one entry. An unmatched file is a
-  failure, not an exemption; adding a file to the tree means adding it to a unit.
-- The map is reconciled with xmake target membership and disagreement fails. The compilation
-  database supplies compilation context only — include directories and defines — because a file
-  compiled by several targets cannot establish ownership on its own.
-- Every source is compiled by a target, and sources listed by targets are checked even outside
-  the walked roots. A `shared-source` allowance admits its exact target set only while that set
-  still includes an owning target. Every non-vendored target declares a dependency contract.
-- Compilation paths resolve against the entry's working directory under the selected repository
-  root. A missing compilation context is a could-not-run error, never an empty include search.
+- The longest matching path wins. A file entry beats the directory that contains it, and a nested directory entry beats its
+  parent, so `Source/App/Model` carves `app-model` out of `app-shell` and a single file can be reassigned without moving it.
+- Every source and header under a mapped root matches exactly one entry. An unmatched file is a failure, not an exemption; adding
+  a file to the tree means adding it to a unit.
+- The map is reconciled with xmake target membership and disagreement fails. The compilation database supplies compilation context
+  only — include directories and defines — because a file compiled by several targets cannot establish ownership on its own.
+- Every source is compiled by a target, and sources listed by targets are checked even outside the walked roots. A `shared-source`
+  allowance admits its exact target set only while that set still includes an owning target. Every non-vendored target declares a
+  dependency contract.
+- Partial renderer builds use the strict [pending-source contract](pending-sources.md); all other coverage remains mandatory.
+- Compilation paths resolve against the entry's working directory under the selected repository root. A missing compilation
+  context is a could-not-run error, never an empty include search.
 
 ## Placement rules
 

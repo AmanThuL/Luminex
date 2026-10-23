@@ -18,12 +18,6 @@
 
 namespace lmx::render {
 //======================================================================================================================
-uint32_t hzbLevelExtent(uint32_t sourceExtent, uint32_t level) {
-    LMX_ASSERT(sourceExtent > 0 && level < 31, "Invalid HZB source extent or level");
-    return divRoundUp(sourceExtent, uint32_t{1} << (level + 1));
-}
-
-//======================================================================================================================
 HzbLayout hzbLayout(uint32_t outputWidth, uint32_t outputHeight) {
     LMX_ASSERT(outputWidth > 0 && outputHeight > 0, "HZB output extent must be nonzero");
     HzbLayout layout;

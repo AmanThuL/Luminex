@@ -1,0 +1,106 @@
+# Renderer test coverage on the integration branch
+
+**Status**: In progress
+
+The pending-family list in `xmake/port.lua` temporarily leaves concrete stages and their tests out
+of the build. Every case keeps its name, explicit tags and assertions and returns with its family.
+The inventory below was measured before exclusion at `9a82612` with Catch2 file tags; ordinary GPU
+counts use `[gpu]~[.]`. Hidden diagnostics are tracked separately.
+
+## Left out on the integration branch
+
+### SCENE
+
+| Test file | CPU | GPU | Hidden |
+|---|---:|---:|---:|
+| `Tests/Engine/Scene/GpuSceneTableAbiTests.cpp` | 0 | 3 | 0 |
+| `Tests/Engine/Scene/GpuSceneTableTests.cpp` | 0 | 9 | 0 |
+| `Tests/Render/Passes/Scene/GpuAlphaMaskTests.cpp` | 0 | 3 | 0 |
+| `Tests/Render/Passes/Scene/GpuRendererTests.cpp` | 0 | 8 | 0 |
+| `Tests/Render/Passes/Scene/GpuSceneShadingTests.cpp` | 0 | 3 | 0 |
+| `Tests/Render/Passes/Shadow/GpuRendererShadowTests.cpp` | 0 | 4 | 0 |
+| `Tests/Render/Passes/Shadow/RenderShadowFitTests.cpp` | 4 | 0 | 0 |
+| `Tests/Render/Passes/Visibility/VisibilityTablesTests.cpp` | 4 | 0 | 0 |
+| `Tests/Render/Passes/Visibility/VisibilityTests.cpp` | 3 | 0 | 0 |
+| `Tests/Scenes/EngineSceneTests.cpp` | 2 | 12 | 0 |
+| `Tests/Scenes/SceneMaterialLabTests.cpp` | 1 | 9 | 0 |
+
+### VISIBILITY
+
+| Test file | CPU | GPU | Hidden |
+|---|---:|---:|---:|
+| `Tests/Render/Passes/Occlusion/GpuHzbGraphTests.cpp` | 0 | 1 | 0 |
+| `Tests/Render/Passes/Occlusion/GpuHzbOcclusionTests.cpp` | 0 | 1 | 0 |
+| `Tests/Render/Passes/Occlusion/GpuHzbTests.cpp` | 0 | 1 | 0 |
+| `Tests/Render/Passes/Occlusion/GpuOcclusionProbeTests.cpp` | 0 | 1 | 0 |
+| `Tests/Render/Passes/Occlusion/GpuOcclusionReferenceTests.cpp` | 0 | 4 | 0 |
+| `Tests/Render/Passes/Occlusion/GpuOcclusionTests.cpp` | 0 | 5 | 0 |
+| `Tests/Render/Passes/Occlusion/HzbTests.cpp` | 2 | 0 | 0 |
+| `Tests/Render/Passes/Visibility/GpuDisabledInstanceTests.cpp` | 0 | 2 | 0 |
+| `Tests/Render/Passes/Visibility/GpuVisibilityContributionTests.cpp` | 0 | 2 | 0 |
+| `Tests/Render/Passes/Visibility/GpuVisibilityGraphTests.cpp` | 0 | 2 | 0 |
+| `Tests/Render/Passes/Visibility/GpuVisibilityRailTests.cpp` | 0 | 2 | 0 |
+| `Tests/Render/Passes/Visibility/GpuVisibilityTests.cpp` | 0 | 3 | 0 |
+| `Tests/Render/Passes/Visibility/GpuVisibilityWorkTests.cpp` | 0 | 6 | 0 |
+| `Tests/Render/Renderer/RendererCaptureLayoutTests.cpp` | 3 | 0 | 0 |
+| `Tests/App/Model/Performance/MeasurementSampleTests.cpp` | 1 | 0 | 0 |
+
+### LIGHTS
+
+| Test file | CPU | GPU | Hidden |
+|---|---:|---:|---:|
+| `Tests/Render/Passes/LocalLights/GpuLightClusterTests.cpp` | 0 | 8 | 0 |
+| `Tests/Render/Passes/LocalLights/GpuLightDebugViewTests.cpp` | 0 | 5 | 0 |
+| `Tests/Render/Passes/LocalLights/GpuLocalLightTests.cpp` | 0 | 1 | 0 |
+| `Tests/Render/Passes/LocalLights/GpuRendererLightingTests.cpp` | 0 | 7 | 0 |
+| `Tests/Render/Passes/LocalLights/RenderZeroLightInvariantTests.cpp` | 1 | 0 | 0 |
+
+### POST
+
+| Test file | CPU | GPU | Hidden |
+|---|---:|---:|---:|
+| `Tests/Render/Graph/GpuAppFrameDeclarationTests.cpp` | 0 | 1 | 0 |
+| `Tests/Render/Passes/Bloom/GpuBloomTests.cpp` | 0 | 3 | 0 |
+| `Tests/Render/Passes/Exposure/GpuExposureBloomTests.cpp` | 0 | 7 | 0 |
+| `Tests/Render/Passes/Exposure/GpuRendererDisplayTests.cpp` | 0 | 5 | 0 |
+| `Tests/Render/Passes/SelectionOutline/GpuSelectionOutlineTests.cpp` | 0 | 8 | 0 |
+
+### TEMPORAL
+
+| Test file | CPU | GPU | Hidden |
+|---|---:|---:|---:|
+| `Tests/App/Model/Graph/GpuGraphInspectorTests.cpp` | 0 | 2 | 0 |
+| `Tests/Render/Passes/Temporal/GpuTemporalAccumulationTests.cpp` | 0 | 8 | 0 |
+| `Tests/Render/Passes/Temporal/GpuTemporalHistoryTests.cpp` | 0 | 6 | 0 |
+| `Tests/Render/Passes/Temporal/GpuTemporalMotionTests.cpp` | 0 | 10 | 0 |
+| `Tests/Render/Passes/Temporal/GpuTemporalTests.cpp` | 0 | 7 | 0 |
+| `Tests/Render/Passes/Temporal/GpuTemporalUpscaleTests.cpp` | 0 | 9 | 0 |
+| `Tests/Render/Passes/Temporal/GpuVendorPackTests.cpp` | 0 | 1 | 0 |
+| `Tests/Render/Passes/Temporal/GpuVendorTemporalTests.cpp` | 0 | 7 | 0 |
+| `Tests/Render/Passes/Temporal/GpuZeroLightHistoryTests.cpp` | 0 | 1 | 1 |
+| `Tests/Render/Passes/Temporal/RenderVendorTemporalTests.cpp` | 5 | 0 | 0 |
+
+## Totals
+
+Full-source baseline: **1256 CPU / 229 ordinary GPU** cases. Excluded: **26 CPU / 177 GPU**.
+Kept: **1230 CPU / 52 GPU**. Thus 1230+26=1256 CPU and 52+177=229 GPU.
+The excluded files also contain 1 hidden diagnostic case; it is outside the ordinary totals.
+
+All nine pure FrameData families/tests remain compiled, as do the three checkpoint cases and
+the direct graph dump goldens. HzbTests needs hzbLayout from excluded HzbStage; shadow-fit tests
+need excluded ShadowStage. VisibilityTablesTests needs buildDrawSubmission from excluded SCENE.
+The mixed inspector file needs Native TAA history alternation and waits for TEMPORAL. The shared
+frame-declaration file requires bloom transients and waits for POST. Mixed scene pixel files wait
+for SCENE. Their complete registered file inventories are counted above; assertions are unchanged.
+
+The optional detached-window CLI change adds two retained CPU cases when integrated; update the
+full-source equivalent to 1256+2=1258 and kept CPU by two at that point.
+
+The original seven-case CaptureSchemaTests file was split without changing a case block: four
+generic schema API cases remain kept, and three full-renderer registration cases move to
+RendererCaptureLayoutTests under VISIBILITY. That family returns after SCENE and LIGHTS, when
+all required layouts are available. The three moved cases were selected by exact names in the
+original full binary; their new file tag did not exist in that inventory.
+
+MeasurementSampleTests requires real declaration candidates and GPU-classifier counters before
+retirement, so its unchanged case waits for VISIBILITY after SCENE returns.

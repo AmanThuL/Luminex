@@ -4,11 +4,14 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
+#ifndef LMX_PENDING_VISIBILITY
+
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Gpu/GpuBuffer.h"
 #include "Engine/Gpu/GpuContext.h"
 #include "Engine/Gpu/GpuTexture.h"
 #include "Render/Graph/RenderGraph.h"
+#include "Render/Passes/Occlusion/HzbFrameData.h"
 
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
@@ -26,8 +29,6 @@ struct HzbLayout {
     uint64_t bytes = 0;      ///< Exact texel bytes for both pyramids, excluding driver padding.
 };
 
-/// Returns the ceil-sized active dimension at pyramid level; source extent is nonzero.
-uint32_t hzbLevelExtent(uint32_t sourceExtent, uint32_t level);
 /// Pads half the output extent so every floor-sized mip contains its ceil-sized active region.
 HzbLayout hzbLayout(uint32_t outputWidth, uint32_t outputHeight);
 
@@ -92,3 +93,5 @@ private:
 };
 
 } // namespace lmx::render
+
+#endif

@@ -4,11 +4,18 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Render/Passes/Occlusion/HzbFrameData.h"
-#include "Render/Passes/Occlusion/HzbStage.h"
+#include "Core/Diagnostics/Assert.h"
+#include "Core/Math/Scalar.h"
 
 #include <algorithm>
 
 namespace lmx::render {
+
+//======================================================================================================================
+uint32_t hzbLevelExtent(uint32_t sourceExtent, uint32_t level) {
+    LMX_ASSERT(sourceExtent > 0 && level < 31, "Invalid HZB source extent or level");
+    return divRoundUp(sourceExtent, uint32_t{1} << (level + 1));
+}
 
 //======================================================================================================================
 HzbReduceParams buildHzbReduceParams(uint32_t activeWidth, uint32_t activeHeight, uint32_t level) {

@@ -4,6 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+
+#ifndef LMX_PENDING_TEMPORAL
 #include "Render/Passes/Temporal/TemporalFrameData.h"
 #include "Render/Passes/Temporal/TemporalResolve.h"
 
@@ -45,3 +47,5 @@ bool viewReadsRejection(TemporalDebugView view);
 bool viewReadsReprojected(TemporalDebugView view);
 
 } // namespace lmx::render::temporal_detail
+
+#endif

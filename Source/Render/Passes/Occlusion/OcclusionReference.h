@@ -3,6 +3,8 @@
 /// @brief Owns independent all-candidate ID rendering and paced reference readback.
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
+
+#ifndef LMX_PENDING_VISIBILITY
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Gpu/GpuBuffer.h"
 #include "Engine/Gpu/GpuContext.h"
@@ -70,3 +72,5 @@ private:
     OcclusionCheckHistory m_history;
 };
 } // namespace lmx::render
+
+#endif
