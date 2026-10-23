@@ -1,6 +1,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file GpuBuffer.h
-/// @brief Declares the owner of one GPU buffer and the descriptor it was created with.
+/// @brief Declares buffer ownership, GPU addresses and mapped CPU access.
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
@@ -8,55 +8,49 @@
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Gpu/GpuOwned.h"
 
-#include <rojoRHI/Buffer.h>
-#include <rojoRHI/Device.h>
+#include <rojoRHI/RHI.h>
 
-#include <memory>
+#include <span>
 #include <string>
 
 namespace lmx::engine {
 
-/// Owns one GPU buffer together with a copy of the descriptor it was created with.
-///
-/// The owner exposes no size getter by design: v2 buffers are handles without getters, so callers
-/// read `desc()` instead. The descriptor's `label` views a string the owner holds, so it stays
-/// valid after the caller's string dies and across moves. Phase B adds the buffer's GPU address
-/// here. The owner must not outlive the device that created the buffer.
+/// Owns a buffer and a descriptor whose label survives caller strings and owner moves.
+/// The creating context must outlive the owner; CPU pointer access does not synchronize GPU work.
 class GpuBuffer {
 public:
     /// Constructs an empty owner.
     GpuBuffer() = default;
-
-    /// Creates a buffer on `device` from `desc`, filled from `initial` (`desc.size` bytes) when
-    /// given.
-    static Result<GpuBuffer> create(rojoRHI::Device& device, const rojoRHI::BufferDesc& desc,
-                                    const void* initial = nullptr);
-    /// Takes ownership of a buffer created elsewhere from `desc`.
-    static GpuBuffer adopt(std::unique_ptr<rojoRHI::Buffer> buffer,
-                           const rojoRHI::BufferDesc& desc);
-
-    /// Non-copyable: a GPU buffer has exactly one owner.
+    /// Creates a buffer with optional initial bytes, returning the original creation error.
+    static Result<GpuBuffer> create(rojoRHI::Device device, const rojoRHI::BufferDesc& desc,
+                                    std::span<const std::byte> initial = {});
+    /// A buffer has exactly one owner.
     GpuBuffer(const GpuBuffer&) = delete;
-    /// Non-assignable, for the reason the copy constructor is deleted.
+    /// A buffer cannot acquire a second owner by assignment.
     GpuBuffer& operator=(const GpuBuffer&) = delete;
-    /// Moves the buffer and its descriptor, re-pointing the label at this owner's string.
+    /// Transfers the buffer and descriptor, preserving its owned label.
     GpuBuffer(GpuBuffer&& other) noexcept;
-    /// Releases the held buffer, then moves `other`'s, re-pointing the label at this owner.
+    /// Releases this buffer then transfers other's ownership.
     GpuBuffer& operator=(GpuBuffer&& other) noexcept;
-    /// Releases the owned buffer.
-    ~GpuBuffer() = default;
-
-    /// Returns the descriptor the buffer was created with; its label views this owner's string.
+    /// Unregisters the resource and defers native destruction.
+    ~GpuBuffer();
+    /// Returns the creation descriptor; label borrows this owner's string.
     const rojoRHI::BufferDesc& desc() const { return m_desc; }
-    /// Returns the owned buffer; the owner must not be empty.
-    rojoRHI::Buffer& rhi() const;
-    /// Returns whether the owner holds a buffer.
+    /// Returns the owned handle; the owner must not be empty.
+    rojoRHI::Buffer rhi() const;
+    /// Returns a GPU address at a valid byte offset; memory must be Gpu or Upload.
+    rojoRHI::Addr address(uint64_t offset = 0) const;
+    /// Returns the mapped pointer for Upload or Readback; callers synchronize GPU use themselves.
+    std::byte* cpuPointer() const;
+    /// Returns whether this owner holds a buffer.
     explicit operator bool() const { return static_cast<bool>(m_buffer); }
 
 private:
-    GpuBuffer(GpuOwned<rojoRHI::Buffer> buffer, const rojoRHI::BufferDesc& desc);
+    void reset();
 
     GpuOwned<rojoRHI::Buffer> m_buffer;
+    rojoRHI::Addr m_address{};
+    std::byte* m_cpuPointer = nullptr;
     rojoRHI::BufferDesc m_desc;
     std::string m_label;
 };

@@ -19,9 +19,9 @@ source for material preview, deterministic offline texture mip baking (`TextureB
 clip data and sampling, and the asset error domain. The glTF loader carries its own MASK
 cutoff/double-sided vocabulary and rejects referenced BLEND materials.
 
-Asset depends on `core` alone and links no GPU target: its RojoRHI header allowance admits only
-`rojoRHI/Format.h` (images are `asset::ImageData`; Engine converts at upload), so a tool such as
-`TextureBake` links Asset without Metal. The
+Asset depends on `core` alone and has no RojoRHI header permission or GPU dependency. Images use
+`asset::ImageData`, converted to GPU descriptors by Engine at upload, so `TextureBake` links Asset
+without Metal. The
 [module contract](../conventions/modules.md#asset-independence) states the include, framework and
 archive checks that hold this boundary.
 
@@ -84,16 +84,32 @@ adds content, such as lights, before `finalize` runs.
 
 `Gpu/` holds the GPU layer. `gpuError` is the one place a RojoRHI error becomes a `lmx::Error`.
 
-`GpuContext` owns the frame loop (`beginFrame`, `submitAndEndFrame`), idle waits, the frame
-number, pass timings (`PassTiming`, `PassTimingFrame`), upscaler support (`UpscalerSupportInfo`)
-and shader loading by bare name; `GpuOwned<T>` owns one GPU object. On RojoRHI v1 every
-`GpuContext` body forwards to the device call it replaces, in the same order, and the frame number
-is the device's. Code that only creates resources keeps a `rojoRHI::Device&` from `device()`.
+`GpuContext` owns the device, graphics queue, numbered frame and idle fences, frame counter,
+shader loading and retired timing cache. `beginFrame` acquires a list; `submit` ends and submits it,
+`present` presents prepared images, and `endFrame` closes the device frame. The composite
+`submitAndEndFrame` also handles frames without presentation. Idle waits submit an empty graphics
+signal and wait without opening a frame. Every GPU owner must be released before its context.
 
-Textures and buffers are held in `GpuTexture` and `GpuBuffer`, which keep a descriptor copy with
-an owned label; callers read `desc()` and `rhi()` and there are no extent or format getters.
-Libraries, pipelines, samplers and the scaler are held in `GpuOwned` through `adoptGpu`.
-`CaptureSchema.h` is the capture vocabulary and forwards to the v1 schema until the switch.
+`GpuOwned<T>` owns one value handle and defers its destruction through the creating device;
+view/sampler index zero remains valid. `GpuTexture` owns sampled and requested per-mip storage
+views, destroying them before its texture. `GpuBuffer` exposes a cached GPU address for Gpu/Upload
+memory and a mapped pointer for Upload/Readback, with caller synchronization. Both keep descriptor
+copies with owned labels across moves. `TextureRef` borrows a texture/view and its underlying
+mip/layer counts plus immutable creation layout: initial data means ShaderRead, otherwise Undefined.
+Current texture state belongs to Render, not these creation facts.
+
+Timings copy depth-one rows beneath the graphics `lmx.frame` scope and its duration, retaining the
+actual retired frame ID published at `beginFrame`. The owned span stays valid until the next
+`endFrame`; callers consume each publication before another frame or readback replaces it.
+Shader libraries load selected-backend bytes from `Shaders/<name><extension>`.
+
+`CaptureSchema` keeps actual owner resource metadata, named root layouts and capture-window
+name/address records in Luminex. Resource moves preserve registry identity; logical release removes
+it independently of deferred native retirement. Capture writes `<bundle>.schema.json`, schema
+version 2 with context, resources, uniformStructs and frameRoots; it has no binding-slot or arena-page
+records. Existing version-1-only GPU debug tools reject new sidecars until their decoder migration
+([RojoRHI #145](https://github.com/AmanThuL/rojo-rhi/issues/145)). JSON escaping, finite-number handling
+and atomic sidecar replacement preserve existing behavior.
 
 ## GPU uploads
 

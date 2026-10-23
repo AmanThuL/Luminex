@@ -107,3 +107,23 @@ original full binary; their new file tag did not exist in that inventory.
 
 MeasurementSampleTests requires real declaration candidates and GPU-classifier counters before
 retirement, so its unchanged case waits for VISIBILITY after SCENE returns.
+
+## GPU owner and error conversion
+
+The error cases `gpuError maps InvalidDesc to InvalidArgument and keeps the message` and
+`gpuError maps creation failures to Gpu and DeviceUnsupported to Unsupported` become
+`gpuError keeps v2 error messages` and
+`gpuError maps driver failures to Gpu and Unsupported to Unsupported`. RojoRHI no longer returns
+InvalidDesc: invalid interface descriptors are fatal misuse. All four real categories preserve
+messages; Unsupported maps to Unsupported and the other three map to Gpu. No fictitious descriptor
+error is kept to satisfy the old assertion.
+
+The four existing EngineGpuOwnerTests cases retain their names and run as `[engine][device]`
+against the configured backend because handles replace subclass stubs. Descriptor/label and move
+identity assertions remain; readback buffer memory replaces obsolete descriptor booleans.
+Deferred release is checked after actual frame-slot recycling rather than immediate destruction.
+Additional owner cases cover reset/move exactly-once retirement and immutable color/depth creation
+layout, underlying mip/layer metadata and storage-view presence. Existing Engine capture facade
+assertions keep field names, offsets and size; schema version 2 replaces the removed numeric slot
+assertion with explicit no-slot/no-page-channel assertions. The generic capture suite moves and
+converts separately with its resource/root-window coverage.
