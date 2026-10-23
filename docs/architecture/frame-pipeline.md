@@ -208,8 +208,8 @@ It writes neither scene targets nor temporal histories. Ordinary Renderer and of
 Console shares the bottom dock with Performance summary/Session; Rendering tabs beside Inspector. Detailed Performance/Graph are detached, initially closed. Workspace schema 6 stores nine visibilities, scale, appearance/density and bounds; schema 5 restores with Session hidden, schema 4 with Auto/Comfortable, schema 3 keeps six visibilities/scale/detached bounds and rebuilds docks once.
 Window > Performance toggles the detailed window; summary Details opens/focuses Live, and its Measure tab owns runs. ImGui vertex/index uploads stay in per-slot used lists until the next paced visit, so native windows cannot overwrite main-frame GPU reads. Log ingestion remains independent of GPU/panel freeze; see the [guide](../guides/gpu-debugging.md).
 
-Neutral interfaces/capture schema live in `RojoRHI/Include/rojoRHI/`, shared implementation in `RojoRHI/Source/`,
-and the backend in `RojoRHI/Backends/Metal4/Source/`; optional `RojoRHIMetal4ImGui` contains UI dependencies.
+Neutral interfaces/capture schema live in `RojoRHI/Legacy/Include/rojoRHI/`, shared implementation in `RojoRHI/Legacy/Source/`,
+and the backend in `RojoRHI/Legacy/Backends/Metal4/Source/`; optional `RojoRHILegacyMetal4ImGui` contains UI dependencies.
 
 ## Resources and lifetime
 
