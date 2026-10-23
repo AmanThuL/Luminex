@@ -7,6 +7,7 @@
 #include "Render/Common/GraphResources.h"
 #include "Render/Common/PacedSlots.h"
 #include "Render/Common/StageSetup.h"
+#include "Render/Passes/LocalLights/LightClusterFrameData.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"
@@ -17,26 +18,6 @@
 
 namespace lmx::render {
 namespace {
-
-// Mirrors Shaders/Passes/LocalLights/LightCluster.slang's LightClusterParams. Matrices travel as
-// their four glm columns because a Slang float4x4 in a cbuffer leaves the column/row convention to
-// codegen, while `column[c][r]` names exactly what `m[c][r]` names here; the slice table rides in
-// float4s because cbuffer packing pads a scalar array element to sixteen bytes.
-struct LightClusterKernelParams {
-    std::array<glm::vec4, 4> view{};
-    std::array<glm::vec4, 4> inverseProjection{};
-    uint32_t rowCount = 0;
-    uint32_t activeWidth = 0;
-    uint32_t activeHeight = 0;
-    uint32_t perClusterCap = 0;
-    uint32_t globalCapacity = 0;
-    uint32_t froxelCount = 0;
-    uint32_t padding0 = 0;
-    uint32_t padding1 = 0;
-    std::array<glm::vec4, 7> sliceDepth{};
-};
-static_assert(sizeof(LightClusterKernelParams) == 272,
-              "must match LightCluster.slang's LightClusterParams");
 
 // The shared buffer binding space; see CommandList::bindBuffer on why one index space serves the
 // constant, read-only and storage bindings alike.
@@ -51,25 +32,6 @@ constexpr uint32_t kThreadsPerGroup = 256;
 constexpr uint64_t kGridBytes = uint64_t{kClusterCount} * sizeof(ClusterRecord);
 constexpr uint64_t kIndexBytes = uint64_t{kLightClusterIndexCapacity} * sizeof(uint32_t);
 constexpr uint64_t kCountBytes = uint64_t{kClusterCount} * sizeof(uint32_t);
-
-//======================================================================================================================
-LightClusterKernelParams makeKernelParams(const LightClusterInputs& inputs, uint32_t perClusterCap,
-                                          uint32_t globalCapacity) {
-    LightClusterKernelParams params{.rowCount = inputs.rowCount,
-                                    .activeWidth = inputs.activeWidth,
-                                    .activeHeight = inputs.activeHeight,
-                                    .perClusterCap = perClusterCap,
-                                    .globalCapacity = globalCapacity,
-                                    .froxelCount = kClusterCount};
-    for (uint32_t column = 0; column < 4; ++column) {
-        params.view[column] = inputs.view[int(column)];
-        params.inverseProjection[column] = inputs.inverseJitteredProjection[int(column)];
-    }
-    for (uint32_t boundary = 0; boundary < kClusterSliceBoundaryCount; ++boundary) {
-        params.sliceDepth[boundary / 4][int(boundary % 4)] = inputs.sliceDepth[boundary];
-    }
-    return params;
-}
 
 } // namespace
 
@@ -177,7 +139,15 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rojoRHI::Comm
                                     }),
                "retire a light-cluster slot before reusing its GPU buffers");
     auto& slot = m_slots[inputs.frameNumber % 3];
-    const auto params = makeKernelParams(inputs, m_perClusterCap, m_globalCapacity);
+    const auto params = buildLightClusterKernelParams(
+        {.view = inputs.view,
+         .inverseJitteredProjection = inputs.inverseJitteredProjection,
+         .rowCount = inputs.rowCount,
+         .activeWidth = inputs.activeWidth,
+         .activeHeight = inputs.activeHeight,
+         .perClusterCap = m_perClusterCap,
+         .globalCapacity = m_globalCapacity,
+         .sliceDepth = inputs.sliceDepth});
     m_pending.push_back({.frameNumber = inputs.frameNumber,
                          .captureLists = inputs.captureLists,
                          .grid = &slot.grid,

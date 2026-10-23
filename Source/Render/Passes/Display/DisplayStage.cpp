@@ -6,6 +6,7 @@
 #include "Render/Passes/Display/DisplayStage.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Common/StageSetup.h"
+#include "Render/Passes/Display/DisplayFrameData.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Engine/Gpu/GpuOwned.h"
@@ -17,12 +18,6 @@
 
 namespace lmx::render {
 namespace {
-
-// Mirrors Shaders/Passes/Display/DisplayTransform.slang's DisplayParams.
-struct DisplayParams {
-    float bloomIntensity;
-};
-static_assert(sizeof(DisplayParams) == 4, "must match DisplayTransform.slang's DisplayParams");
 
 // DisplayTransform.slang's own resource set: unrelated to the scene pass's slots above.
 constexpr uint32_t kSceneColorTextureSlot = 0;
@@ -97,27 +92,27 @@ void DisplayStage::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
     // action the RHI requires; no fragment reads what it wrote.
     displayDesc.color = ColorAttachment{
         .handle = displayColor, .load = LoadOp::Clear, .store = StoreOp::Store, .clearColor = {}};
-    graph.addPass(
-        "lmx.pass.display", std::move(displayDesc),
-        [this, &commands, displayInput, bloomResult, bloomEnabled,
-         bloomIntensity](const PassResources& resources) {
-            auto& hdrTexture = lmx::render::texture(resources, displayInput);
+    graph.addPass("lmx.pass.display", std::move(displayDesc),
+                  [this, &commands, displayInput, bloomResult, bloomEnabled,
+                   bloomIntensity](const PassResources& resources) {
+                      auto& hdrTexture = lmx::render::texture(resources, displayInput);
 
-            commands.bindPipeline(*m_displayPipeline);
-            commands.bindTexture(kSceneColorTextureSlot, hdrTexture);
-            // Disabled bloom binds a valid 1x1 resource and sets the exact zero that
-            // makes the shader skip its texture load: scene color + 0 stays bit-identical
-            // to scene color alone without addressing outside the fallback texture.
-            if (bloomEnabled) {
-                auto& bloomTexture = lmx::render::texture(resources, bloomResult);
-                commands.bindTexture(kDisplayBloomTextureSlot, bloomTexture);
-            } else {
-                commands.bindTexture(kDisplayBloomTextureSlot, m_blackBloomFallback.rhi());
-            }
-            const DisplayParams params{.bloomIntensity = bloomEnabled ? bloomIntensity : 0.0f};
-            commands.bindFrameData(kDisplayParamsSlot, params);
-            commands.draw(3);
-        });
+                      commands.bindPipeline(*m_displayPipeline);
+                      commands.bindTexture(kSceneColorTextureSlot, hdrTexture);
+                      // Disabled bloom binds a valid 1x1 resource and sets the exact zero that
+                      // makes the shader skip its texture load: scene color + 0 stays bit-identical
+                      // to scene color alone without addressing outside the fallback texture.
+                      if (bloomEnabled) {
+                          auto& bloomTexture = lmx::render::texture(resources, bloomResult);
+                          commands.bindTexture(kDisplayBloomTextureSlot, bloomTexture);
+                      } else {
+                          commands.bindTexture(kDisplayBloomTextureSlot,
+                                               m_blackBloomFallback.rhi());
+                      }
+                      const DisplayParams params = buildDisplayParams(bloomEnabled, bloomIntensity);
+                      commands.bindFrameData(kDisplayParamsSlot, params);
+                      commands.draw(3);
+                  });
 }
 
 } // namespace lmx::render

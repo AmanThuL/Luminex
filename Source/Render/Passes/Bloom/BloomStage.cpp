@@ -6,6 +6,7 @@
 #include "Render/Passes/Bloom/BloomStage.h"
 #include "Render/Common/Dispatch.h"
 #include "Render/Common/GraphResources.h"
+#include "Render/Passes/Bloom/BloomFrameData.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"
@@ -18,37 +19,6 @@
 
 namespace lmx::render {
 namespace {
-
-// Mirrors Shaders/Passes/Bloom/BloomThreshold.slang's BloomThresholdParams.
-struct BloomThresholdParams {
-    float threshold;
-    uint32_t srcWidth;
-    uint32_t srcHeight;
-    uint32_t dstWidth;
-    uint32_t dstHeight;
-};
-static_assert(sizeof(BloomThresholdParams) == 20,
-              "must match BloomThreshold.slang's BloomThresholdParams");
-
-// Mirrors Shaders/Passes/Bloom/BloomDownsample.slang's BloomDownsampleParams.
-struct BloomDownsampleParams {
-    uint32_t srcWidth;
-    uint32_t srcHeight;
-    uint32_t dstWidth;
-    uint32_t dstHeight;
-};
-static_assert(sizeof(BloomDownsampleParams) == 16,
-              "must match BloomDownsample.slang's BloomDownsampleParams");
-
-// Mirrors Shaders/Passes/Bloom/BloomUpsample.slang's BloomUpsampleParams.
-struct BloomUpsampleParams {
-    uint32_t smallWidth;
-    uint32_t smallHeight;
-    uint32_t dstWidth;
-    uint32_t dstHeight;
-};
-static_assert(sizeof(BloomUpsampleParams) == 16,
-              "must match BloomUpsample.slang's BloomUpsampleParams");
 
 // BloomThreshold.slang's slot map.
 constexpr uint32_t kBloomThresholdSceneColorSlot = 0; // texture
@@ -187,11 +157,12 @@ GraphTexture BloomStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
                              auto& scene = lmx::render::texture(resources, displayInput);
                              auto& chain = lmx::render::texture(resources, bloomChain);
 
-                             const BloomThresholdParams params{.threshold = bloomThreshold,
-                                                               .srcWidth = sceneWidth,
-                                                               .srcHeight = sceneHeight,
-                                                               .dstWidth = bloomWidth,
-                                                               .dstHeight = bloomHeight};
+                             const BloomThresholdParams params =
+                                 buildBloomThresholdParams({.threshold = bloomThreshold,
+                                                            .sceneWidth = sceneWidth,
+                                                            .sceneHeight = sceneHeight,
+                                                            .bloomWidth = bloomWidth,
+                                                            .bloomHeight = bloomHeight});
                              commands.bindComputePipeline(*m_bloomThresholdPipeline);
                              commands.bindTexture(kBloomThresholdSceneColorSlot, scene);
                              commands.bindStorageTexture(
@@ -209,10 +180,8 @@ GraphTexture BloomStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
     // many there are.
     GraphTexture bloomChainVersion = nextVersion(bloomChain); // after the threshold wrote mip 0
     for (uint32_t level = 1; level < bloomMipCount; ++level) {
-        const uint32_t srcWidth = std::max(bloomWidth >> (level - 1), 1u);
-        const uint32_t srcHeight = std::max(bloomHeight >> (level - 1), 1u);
-        const uint32_t dstWidth = std::max(bloomWidth >> level, 1u);
-        const uint32_t dstHeight = std::max(bloomHeight >> level, 1u);
+        const BloomDownsampleParams params =
+            buildBloomDownsampleParams(bloomWidth, bloomHeight, level);
         const rojoRHI::TextureSubresourceRange srcRange{.baseMipLevel = level - 1,
                                                         .mipLevelCount = 1};
         const rojoRHI::TextureSubresourceRange dstRange{.baseMipLevel = level, .mipLevelCount = 1};
@@ -222,14 +191,10 @@ GraphTexture BloomStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
         downsampleDesc.textureWrites.push_back(TextureUseDesc(bloomChainVersion, dstRange));
         graph.addComputePass(
             std::format("lmx.pass.bloom.downsample{}", level - 1), std::move(downsampleDesc),
-            [this, &commands, bloomChainVersion, srcRange, dstRange, srcWidth, srcHeight, dstWidth,
-             dstHeight](const PassResources& resources) {
+            [this, &commands, bloomChainVersion, srcRange, dstRange,
+             params](const PassResources& resources) {
                 auto& chain = lmx::render::texture(resources, bloomChainVersion);
 
-                const BloomDownsampleParams params{.srcWidth = srcWidth,
-                                                   .srcHeight = srcHeight,
-                                                   .dstWidth = dstWidth,
-                                                   .dstHeight = dstHeight};
                 commands.bindComputePipeline(*m_bloomDownsamplePipeline);
                 commands.bindStorageTexture(kBloomDownsampleSrcSlot, chain,
                                             rojoRHI::TextureViewDesc{.range = srcRange},
@@ -238,7 +203,7 @@ GraphTexture BloomStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
                                             rojoRHI::TextureViewDesc{.range = dstRange},
                                             rojoRHI::StorageAccess::Write);
                 commands.bindFrameData(kBloomDownsampleParamsSlot, params);
-                const auto groups = dispatchGroups2D(dstWidth, dstHeight);
+                const auto groups = dispatchGroups2D(params.dstWidth, params.dstHeight);
                 commands.dispatch(groups[0], groups[1], 1);
             });
         bloomChainVersion = nextVersion(bloomChainVersion);
@@ -263,10 +228,8 @@ GraphTexture BloomStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
         for (uint32_t stepsRemaining = bloomMipCount - 1; stepsRemaining > 0; --stepsRemaining) {
             const uint32_t level = stepsRemaining - 1; // walks bloomMipCount - 2 down to 0
             const bool smallFromChain = level == bloomMipCount - 2;
-            const uint32_t baseWidth = std::max(bloomWidth >> level, 1u);
-            const uint32_t baseHeight = std::max(bloomHeight >> level, 1u);
-            const uint32_t smallWidth = std::max(bloomWidth >> (level + 1), 1u);
-            const uint32_t smallHeight = std::max(bloomHeight >> (level + 1), 1u);
+            const BloomUpsampleParams params =
+                buildBloomUpsampleParams(bloomWidth, bloomHeight, level);
             const rojoRHI::TextureSubresourceRange baseRange{.baseMipLevel = level,
                                                              .mipLevelCount = 1};
             const rojoRHI::TextureSubresourceRange smallRange{.baseMipLevel = level + 1,
@@ -280,16 +243,11 @@ GraphTexture BloomStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
             graph.addComputePass(
                 std::format("lmx.pass.bloom.upsample{}", level), std::move(upsampleDesc),
                 [this, &commands, bloomChainFinal, bloomBlurVersion, smallFromChain, baseRange,
-                 smallRange, baseWidth, baseHeight, smallWidth,
-                 smallHeight](const PassResources& resources) {
+                 smallRange, params](const PassResources& resources) {
                     auto& chain = lmx::render::texture(resources, bloomChainFinal);
                     auto& blur = lmx::render::texture(resources, bloomBlurVersion);
                     rojoRHI::Texture& smallTexture = smallFromChain ? chain : blur;
 
-                    const BloomUpsampleParams params{.smallWidth = smallWidth,
-                                                     .smallHeight = smallHeight,
-                                                     .dstWidth = baseWidth,
-                                                     .dstHeight = baseHeight};
                     commands.bindComputePipeline(*m_bloomUpsamplePipeline);
                     commands.bindStorageTexture(kBloomUpsampleBaseSlot, chain,
                                                 rojoRHI::TextureViewDesc{.range = baseRange},
@@ -301,7 +259,7 @@ GraphTexture BloomStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
                                                 rojoRHI::TextureViewDesc{.range = baseRange},
                                                 rojoRHI::StorageAccess::Write);
                     commands.bindFrameData(kBloomUpsampleParamsSlot, params);
-                    const auto groups = dispatchGroups2D(baseWidth, baseHeight);
+                    const auto groups = dispatchGroups2D(params.dstWidth, params.dstHeight);
                     commands.dispatch(groups[0], groups[1], 1);
                 });
             bloomBlurVersion = nextVersion(bloomBlurVersion);

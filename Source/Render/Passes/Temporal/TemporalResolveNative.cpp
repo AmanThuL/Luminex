@@ -34,23 +34,7 @@ using temporal_detail::kResolveReprojectedSlot;
 using temporal_detail::kResolveSamplerSlot;
 using temporal_detail::kResolveSceneColorSlot;
 
-namespace {
-
-// Mirrors Shaders/Passes/Temporal/TemporalResolve.slang's TemporalResolveParams.
-struct TemporalResolveParams {
-    uint32_t width = 0;
-    uint32_t height = 0;
-    uint32_t historyValid = 0;
-    uint32_t writeDiagnostics = 0; // Bit 0: rejection; bit 1: reprojected history.
-    glm::mat4 inverseViewProjection{1.0f};
-    glm::mat4 previousViewProjection{1.0f};
-    float previousNearZ = 0.0f;
-    float pad[3] = {0.0f, 0.0f, 0.0f};
-};
-static_assert(sizeof(TemporalResolveParams) == 160,
-              "must match TemporalResolve.slang's TemporalResolveParams");
-
-} // namespace
+using temporal_detail::TemporalResolveParams;
 
 //======================================================================================================================
 void TemporalResolve::declareResolve(RenderGraph& graph, rojoRHI::CommandList& commands,
@@ -62,14 +46,13 @@ void TemporalResolve::declareResolve(RenderGraph& graph, rojoRHI::CommandList& c
     const uint32_t width = inputs.extents.outputWidth;
     const uint32_t height = inputs.extents.outputHeight;
     const bool historyValid = inputs.resetReason == HistoryResetReason::None;
-    const TemporalResolveParams params{
-        .width = width,
-        .height = height,
-        .historyValid = historyValid ? 1u : 0u,
-        .writeDiagnostics = (rejectionWanted ? 1u : 0u) | (reprojectedWanted ? 2u : 0u),
-        .inverseViewProjection = inputs.camera.inverseViewProjection,
-        .previousViewProjection = inputs.previousCamera.viewProjection,
-        .previousNearZ = inputs.previousCamera.nearZ};
+    const TemporalResolveParams params =
+        buildTemporalResolveParams({.extents = inputs.extents,
+                                    .camera = inputs.camera,
+                                    .previousCamera = inputs.previousCamera,
+                                    .historyValid = historyValid,
+                                    .rejectionWanted = rejectionWanted,
+                                    .reprojectedWanted = reprojectedWanted});
 
     declareReconstruction(graph, commands, inputs,
                           {.parameters = std::as_bytes(std::span{&params, 1}),

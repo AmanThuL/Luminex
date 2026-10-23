@@ -26,7 +26,6 @@ using temporal_detail::kResolveParamsSlot;
 using temporal_detail::kResolvePreviousDepthSlot;
 using temporal_detail::kResolveReprojectedSlot;
 using temporal_detail::kResolveSamplerSlot;
-using temporal_detail::temporalUpscaleParams;
 
 //======================================================================================================================
 ReconstructionSelection TemporalResolve::prepare(ReconstructionMode requested, uint32_t width,
@@ -64,7 +63,13 @@ GraphTexture TemporalResolve::declareVendorHistory(RenderGraph& graph,
     desc.bufferReads = {inputs.exposure};
     desc.textureWrites = {target};
     const auto params =
-        temporalUpscaleParams(inputs, inputs.resetReason == HistoryResetReason::None, 2);
+        buildTemporalUpscaleParams({.extents = inputs.extents,
+                                    .previousExtents = inputs.previousExtents,
+                                    .camera = inputs.camera,
+                                    .previousCamera = inputs.previousCamera,
+                                    .historyValid = inputs.resetReason == HistoryResetReason::None,
+                                    .rejectionWanted = false,
+                                    .reprojectedWanted = true});
     graph.addComputePass(
         "lmx.pass.temporal.reprojectedHistory", std::move(desc),
         [this, &commands, inputs, target, params](const PassResources& resources) {

@@ -9,35 +9,10 @@
 #include "Core/Math/Color.h"
 #include "Render/Passes/Scene/SceneStageInternal.h"
 
-#include <algorithm>
-#include <cmath>
-#include <iterator>
 #include <utility>
 
 namespace lmx::render {
 using namespace scene_detail;
-namespace {
-
-//======================================================================================================================
-// A zero-light frame must not index even a fallback grid.
-engine::LocalLightMode resolveLocalLightMode(engine::LocalLightMode requested,
-                                             uint32_t liveLightCount, bool hasClusters) {
-    if (requested == engine::LocalLightMode::Off || liveLightCount == 0)
-        return engine::LocalLightMode::Off;
-    LMX_ASSERT(requested != engine::LocalLightMode::Clustered || hasClusters,
-               "clustered shading requires this frame's grid and list");
-    return requested;
-}
-
-//======================================================================================================================
-DirLightUniform toUniform(const engine::DirectionalLight& light) {
-    return {.strength = light.strength,
-            .strengthPadding = 0.0f,
-            .direction = light.direction,
-            .directionPadding = 0.0f};
-}
-
-} // namespace
 
 //======================================================================================================================
 GraphTexture SceneStage::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
@@ -59,53 +34,35 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
 
     // Rasterisation takes the jitter; motion never does. With temporal off the two are the same
     // matrix, derived exactly as this frame's projection * view was before jitter existed.
-    const glm::mat4 viewProj =
-        temporalEnabled ? cameraState.viewProjectionJittered : cameraState.viewProjection;
-
-    // One stop is one doubling, so the slider's unit becomes a multiply here. This is what every
-    // fragment applies in manual mode -- ScenePass.slang/Sky.slang, unchanged from before auto-
-    // exposure existed, which is what parity with pre-M5 output when auto is off rests on. Auto
-    // mode binds the ScenePassAuto.slang/SkyAuto.slang pipelines below, which multiply by
+    //
+    // One stop is one doubling, so the slider's unit becomes a multiply in the builder. This is
+    // what every fragment applies in manual mode -- ScenePass.slang/Sky.slang, unchanged from
+    // before auto-exposure existed, which is what parity with pre-M5 output when auto is off rests
+    // on. Auto mode binds the ScenePassAuto.slang/SkyAuto.slang pipelines below, which multiply by
     // gExposureOverride instead (spec 9) and never read PassUniforms.preExposure at all. This CPU
     // value still seeds a reset frame's exposure buffer above and pre-exposes the clear colour
     // below.
-    const float preExposure = std::exp2(view.exposureEv);
-
-    PassUniforms passUniforms{};
-    passUniforms.viewProj = viewProj;
-    passUniforms.shadowTransform = inputs.shadowTransform;
-    passUniforms.eyePos = inputs.eyePosition;
-    passUniforms.time = inputs.timeSeconds;
-    passUniforms.preExposure = preExposure;
-    for (size_t i = 0; i < std::size(passUniforms.lights); ++i) {
-        passUniforms.lights[i] = toUniform(view.lights[i]);
-    }
-    passUniforms.shadowCaster = view.shadowCaster;
-    passUniforms.shadowFilter =
-        view.shadowFilter == ShadowFilter::PCSS ? kShadowFilterPcss : kShadowFilterPcf;
-    passUniforms.viewProjUnjittered = cameraState.viewProjection;
-    passUniforms.previousViewProjUnjittered = previousCamera.viewProjection;
+    const PassUniforms passUniforms = buildPassUniforms({.camera = cameraState,
+                                                         .previousCamera = previousCamera,
+                                                         .temporalEnabled = temporalEnabled,
+                                                         .shadowTransform = inputs.shadowTransform,
+                                                         .eyePosition = inputs.eyePosition,
+                                                         .timeSeconds = inputs.timeSeconds,
+                                                         .exposureEv = view.exposureEv,
+                                                         .lights = view.lights,
+                                                         .shadowCaster = view.shadowCaster,
+                                                         .shadowFilter = view.shadowFilter});
+    const float preExposure = passUniforms.preExposure;
 
     LMX_ASSERT(inputs.lightGrid.has_value() == inputs.lightIndices.has_value(),
                "cluster grid and index list must be supplied together");
-    // The render area is origin-anchored; lookup uses its active extent and reversed-Z boundaries.
-    const engine::LocalLightMode localLightMode =
-        resolveLocalLightMode(view.localLightMode, view.tables.liveLightCount,
-                              inputs.lightGrid.has_value() && inputs.lightIndices.has_value());
-    LocalLightParams localLightParams{
-        .mode = static_cast<uint32_t>(localLightMode),
-        .rowCount = localLightMode == engine::LocalLightMode::Off ? 0u : view.tables.lightRowCount,
-        .gridX = kClusterTilesX,
-        .gridY = kClusterTilesY,
-        .gridZ = kClusterSliceCount,
-        .activeOriginX = 0,
-        .activeOriginY = 0,
-        .activeWidth = extents.renderWidth,
-        .activeHeight = extents.renderHeight,
-        .sliceDepth = {}};
-    LMX_ASSERT(cameraState.nearZ > 0.0f, "the froxel slice table needs a positive near plane");
-    const auto sliceDepths = clusterSliceDepths(cameraState.nearZ);
-    std::copy(sliceDepths.begin(), sliceDepths.end(), std::begin(localLightParams.sliceDepth));
+    const LocalLightParams localLightParams = buildLocalLightParams(
+        {.requestedMode = view.localLightMode,
+         .liveLightCount = view.tables.liveLightCount,
+         .lightRowCount = view.tables.lightRowCount,
+         .hasClusters = inputs.lightGrid.has_value() && inputs.lightIndices.has_value(),
+         .extents = extents,
+         .nearZ = cameraState.nearZ});
 
     // The clear has to be the value a fragment writing that colour would have produced, or the
     // background and the geometry would disagree about what space the target holds. That means

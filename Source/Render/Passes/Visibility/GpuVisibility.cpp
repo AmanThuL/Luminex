@@ -7,6 +7,7 @@
 #include "Render/Common/GraphResources.h"
 #include "Render/Common/PacedSlots.h"
 #include "Render/Common/StageSetup.h"
+#include "Render/Passes/Visibility/VisibilityFrameData.h"
 #include "Render/Renderer/SceneView.h"
 #include <algorithm>
 #include <cstring>
@@ -126,17 +127,13 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rojoRHI::Command
     auto& slot = m_slots[m_gpu.frameNumber() % 3];
     const auto prepared = prepareSlot(slot, tables);
     LMX_ASSERT(prepared.has_value(), prepared.error().message);
-    VisibilityParams params{
-        .layout = view.submission == SubmissionMode::Batched ? 1u : 0u,
-        .rowCapacity = static_cast<uint32_t>(submission.scene.rows->desc().size / 4),
-        .argumentCapacity = static_cast<uint32_t>(submission.scene.arguments->desc().size / 20),
-        .stateCapacity = slot.capacity,
-        .candidateCount = static_cast<uint32_t>(tables.candidates.size())};
-    if (m_capacityOverride) {
-        params.rowCapacity = std::min(params.rowCapacity, (*m_capacityOverride)[0]);
-        params.argumentCapacity = std::min(params.argumentCapacity, (*m_capacityOverride)[1]);
-        params.stateCapacity = std::min(params.stateCapacity, (*m_capacityOverride)[2]);
-    }
+    const VisibilityParams params =
+        buildVisibilityParams({.dense = view.submission == SubmissionMode::Batched,
+                               .rowBufferBytes = submission.scene.rows->desc().size,
+                               .argumentBufferBytes = submission.scene.arguments->desc().size,
+                               .stateCapacity = slot.capacity,
+                               .candidateCount = static_cast<uint32_t>(tables.candidates.size()),
+                               .capacityOverride = m_capacityOverride});
     status.submission.candidateBytes = tables.candidates.size() * sizeof(CandidateRecord);
     status.submission.runBytes = tables.runs.size() * sizeof(RunRecord);
     status.submission.chunkBytes = tables.chunks.size() * sizeof(ChunkRecord);

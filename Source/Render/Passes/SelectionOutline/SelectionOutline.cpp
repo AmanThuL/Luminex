@@ -7,6 +7,7 @@
 #include "Render/Common/Formats.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Common/StageSetup.h"
+#include "Render/Passes/SelectionOutline/SelectionOutlineFrameData.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Engine/Gpu/GpuOwned.h"
@@ -19,24 +20,6 @@
 #include <vector>
 
 namespace lmx::render {
-namespace {
-// Matches SelectionMask.slang. Coverage is non-color data; all scene transforms remain borrowed.
-struct MaskParams {
-    glm::mat4 viewProj;
-    uint32_t instanceRow;
-    float selected;
-    uint32_t padding[2]{};
-};
-static_assert(sizeof(MaskParams) == 80);
-static_assert(offsetof(MaskParams, instanceRow) == 64);
-static_assert(offsetof(MaskParams, selected) == 68);
-
-struct OutlineParams {
-    float radius;
-};
-static_assert(sizeof(OutlineParams) == 4);
-} // namespace
-
 //======================================================================================================================
 SelectionOutline::SelectionOutline(rojoRHI::Device& device, bool readback)
     : m_device(device), m_readback(readback) {}
@@ -235,8 +218,7 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
                 selectedOnly ? (doubleSided ? *m_doubleSidedPipeline : *m_maskPipeline)
                              : (doubleSided ? *m_doubleSidedDepthPipeline : *m_depthPipeline));
             commands.bindTexture(0, item.diffuse ? item.diffuse->rhi() : m_white.rhi());
-            const MaskParams params{
-                .viewProj = viewProjection, .instanceRow = item.instanceRow, .selected = 1.0f};
+            const MaskParams params = buildMaskParams(viewProjection, item.instanceRow);
             commands.bindFrameData(1, params);
             commands.drawIndexed(view.tables.indices->rhi(), item.mesh.indexCount,
                                  item.mesh.firstIndex);
@@ -266,10 +248,10 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
     PassDesc composite;
     composite.textureReads = {display, coverageRead, selectedDepthRead, sceneDepthRead};
     composite.color = ColorAttachment{.handle = output};
-    const float radius = std::clamp(backingScale * 1.5f, 1.0f, 6.0f);
+    const OutlineParams outlineParams = buildOutlineParams(backingScale);
     graph.addPass("lmx.pass.selection.outline", std::move(composite),
                   [this, &commands, display, coverageRead, selectedDepthRead, sceneDepthRead,
-                   radius](const PassResources& resources) {
+                   outlineParams](const PassResources& resources) {
                       auto& source = lmx::render::texture(resources, display);
                       auto& coverageTexture = lmx::render::texture(resources, coverageRead);
                       auto& selectedDepthTexture =
@@ -280,7 +262,7 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
                       commands.bindTexture(1, coverageTexture);
                       commands.bindTexture(2, selectedDepthTexture);
                       commands.bindTexture(3, sceneDepthTexture);
-                      commands.bindFrameData(0, OutlineParams{radius});
+                      commands.bindFrameData(0, outlineParams);
                       commands.draw(3);
                   });
     return nextVersion(output);
