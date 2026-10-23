@@ -122,7 +122,7 @@ jobs:
 
       - name: Configure and generate compile_commands
         run: |
-          xmake f -m release -y --ccache=n
+          xmake f -m release -y --ccache=n --rojorhi_backend=null
           xmake project -k compile_commands
 
       - name: C++ layout policy
@@ -142,7 +142,7 @@ jobs:
       - name: Unit tests
         run: |
           xmake test Tests/unit
-          xmake test RojoRHITests/unit
+          xmake test RojoRHILegacyTests/unit
 
       - name: Validate scene documents
         run: python3 Tools/Scenes/validate_documents.py
@@ -152,15 +152,15 @@ jobs:
       - name: Confirm GPU suite is discoverable
         run: |
           xmake build Tests
-          xmake build RojoRHITests
+          xmake build RojoRHILegacyTests
           gpu_count=$(./build/macosx/arm64/release/test/Tests --list-tests "[gpu]" | \
             sed -n 's/^\([0-9][0-9]*\) matching test cases$/\1/p')
           test -n "$gpu_count" && test "$gpu_count" -gt 0
           echo "$gpu_count Metal 4 GPU cases compiled in Tests"
-          rhi_gpu_count=$(./build/macosx/arm64/release/rojorhi-test/RojoRHITests --list-tests "[gpu]" | \
+          rhi_gpu_count=$(./build/macosx/arm64/release/rojorhi-legacy-test/RojoRHILegacyTests --list-tests "[gpu]" | \
             sed -n 's/^\([0-9][0-9]*\) matching test cases$/\1/p')
           test -n "$rhi_gpu_count" && test "$rhi_gpu_count" -gt 0
-          echo "$rhi_gpu_count Metal 4 GPU cases compiled in RojoRHITests"
+          echo "$rhi_gpu_count Metal 4 GPU cases compiled in RojoRHILegacyTests"
 
       - name: Checkpoint A inventory
         run: python3 Tools/check_checkpoint_a.py
@@ -197,7 +197,7 @@ jobs:
         run: xmake setup
       - name: Configure and generate compile_commands
         run: |
-          xmake f -m debug -y --ccache=n
+          xmake f -m debug -y --ccache=n --rojorhi_backend=null
           xmake project -k compile_commands
       - name: clang-tidy (non-blocking)
         run: |
