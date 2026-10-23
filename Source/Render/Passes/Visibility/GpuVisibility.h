@@ -64,9 +64,9 @@ private:
     };
     // Recorded by the passes that write each buffer, after the write. A ticket names the buffer
     // the frame wrote, not its owner: DrawSubmission growth move-assigns new owners into the slots
-    // the row and argument buffers came from while this frame is still pending. The passes share
-    // the tickets with the pending entry, so an entry outlives no body and a body outlives no
-    // entry. A ticket stays empty when its graph never executed.
+    // the row and argument buffers came from while this frame is still pending. Pending entries
+    // and pass bodies share the tickets; their storage remains alive until its final owner releases
+    // it. A ticket stays empty when its graph pass did not execute.
     struct Tickets {
         std::optional<ReadbackTicket> states, counters, rows, arguments;
     };

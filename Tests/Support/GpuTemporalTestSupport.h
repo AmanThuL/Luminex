@@ -128,11 +128,6 @@ inline glm::mat4 facingPlaneModel(float z) {
 //======================================================================================================================
 // One declared and executed frame through the renderer's own graph, which is the path --screenshot
 // and the GPU tests take.
-//======================================================================================================================
-// The same frame without the drain: exactly what App/Shell/main.cpp submits every frame, so a
-// temporal resource a frame still in flight holds is left held rather than quietly retired by a
-// waitIdle the shipped loop never performs.
-//======================================================================================================================
 inline void renderFrame(lmx::engine::GpuContext& gpu, Renderer& renderer, const Camera& camera,
                         const FixtureSceneView& view) {
     auto frame = gpu.beginFrame();
@@ -142,6 +137,9 @@ inline void renderFrame(lmx::engine::GpuContext& gpu, Renderer& renderer, const 
 }
 
 //======================================================================================================================
+// The same frame without the drain: exactly what App/Shell/main.cpp submits every frame, so a
+// temporal resource a frame still in flight holds is left held rather than quietly retired by a
+// waitIdle the shipped loop never performs.
 inline void renderFrameInFlight(lmx::engine::GpuContext& gpu, Renderer& renderer,
                                 const Camera& camera, const FixtureSceneView& view) {
     auto frame = gpu.beginFrame();
