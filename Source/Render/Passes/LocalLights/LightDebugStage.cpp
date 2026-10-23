@@ -8,19 +8,9 @@
 #include "Render/Common/Formats.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Common/StageSetup.h"
+#include "Render/Passes/LocalLights/LightClusterFrameData.h"
 
 namespace lmx::render {
-namespace {
-// Scalar storage matches LightDebugView.slang's constant block, including the scalar depth array.
-struct DebugParams {
-    glm::mat4 inverseViewProjection;
-    uint32_t mode, rowCount, activeWidth, activeHeight, outputWidth, outputHeight;
-    std::array<float, kClusterSliceBoundaryCount> sliceDepth;
-};
-static_assert(offsetof(DebugParams, sliceDepth) == 88);
-static_assert(sizeof(DebugParams) == 188);
-} // namespace
-
 //======================================================================================================================
 lmx::Result<std::unique_ptr<LightDebugStage>> LightDebugStage::create(engine::GpuContext& gpu) {
     rojoRHI::Device& device = gpu.device();
@@ -47,10 +37,12 @@ GraphTexture LightDebugStage::declare(RenderGraph& graph, rojoRHI::CommandList& 
     LMX_ASSERT(inputs.clusters.activeWidth && inputs.clusters.activeHeight && inputs.outputWidth &&
                    inputs.outputHeight,
                "light debug extents must be nonzero");
-    const DebugParams params{inputs.inverseViewProjection, uint32_t(inputs.mode),
-                             inputs.clusters.rowCount,     inputs.clusters.activeWidth,
-                             inputs.clusters.activeHeight, inputs.outputWidth,
-                             inputs.outputHeight,          inputs.clusters.sliceDepth};
+    const LightDebugParams params =
+        buildLightDebugParams({.mode = inputs.mode,
+                               .clusters = inputs.clusters,
+                               .inverseViewProjection = inputs.inverseViewProjection,
+                               .outputWidth = inputs.outputWidth,
+                               .outputHeight = inputs.outputHeight});
     PassDesc pass;
     pass.color = ColorAttachment{.handle = inputs.output};
     pass.textureReads = {inputs.depth, inputs.display};

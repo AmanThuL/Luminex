@@ -5,6 +5,7 @@
 #include "Render/Passes/Occlusion/HzbStage.h"
 #include "Render/Common/Dispatch.h"
 #include "Render/Common/GraphResources.h"
+#include "Render/Passes/Occlusion/HzbFrameData.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Align.h"
@@ -16,19 +17,6 @@
 #include <utility>
 
 namespace lmx::render {
-namespace {
-
-struct HzbReduceParams {
-    uint32_t sourceWidth;
-    uint32_t sourceHeight;
-    uint32_t destinationWidth;
-    uint32_t destinationHeight;
-    uint32_t sourceLevel;
-};
-static_assert(sizeof(HzbReduceParams) == 20);
-
-} // namespace
-
 //======================================================================================================================
 uint32_t hzbLevelExtent(uint32_t sourceExtent, uint32_t level) {
     LMX_ASSERT(sourceExtent > 0 && level < 31, "Invalid HZB source extent or level");
@@ -180,14 +168,8 @@ GraphTexture HzbStage::declare(RenderGraph& graph, rojoRHI::CommandList& command
                                                           .mipLevelCount = 1};
         const rojoRHI::TextureSubresourceRange outputRange{.baseMipLevel = level,
                                                            .mipLevelCount = 1};
-        const HzbReduceParams params{
-            .sourceWidth =
-                fromDepth ? source.activeWidth : hzbLevelExtent(source.activeWidth, level - 1),
-            .sourceHeight =
-                fromDepth ? source.activeHeight : hzbLevelExtent(source.activeHeight, level - 1),
-            .destinationWidth = hzbLevelExtent(source.activeWidth, level),
-            .destinationHeight = hzbLevelExtent(source.activeHeight, level),
-            .sourceLevel = inputRange.baseMipLevel};
+        const HzbReduceParams params =
+            buildHzbReduceParams(source.activeWidth, source.activeHeight, level);
         ComputePassDesc desc;
         desc.shaderTextureReads.emplace_back(input, inputRange);
         desc.textureWrites.emplace_back(pyramid, outputRange);
