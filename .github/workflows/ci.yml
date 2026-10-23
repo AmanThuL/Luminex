@@ -201,6 +201,45 @@ jobs:
           xmake project -k compile_commands
       - name: clang-tidy (non-blocking)
         run: |
-          $(brew --prefix llvm)/bin/clang-tidy --version
-          find Source -name '*.cpp' ! -path '*Metal4*' -print0 | \
-            xargs -0 $(brew --prefix llvm)/bin/clang-tidy -p .
+          tidy="$(brew --prefix llvm)/bin/clang-tidy"
+          "$tidy" --version
+          python3 - "$tidy" <<'PY'
+          import json
+          from pathlib import Path
+          import subprocess
+          import sys
+
+          root = Path.cwd()
+          entries = json.loads((root / "compile_commands.json").read_text())
+          if not isinstance(entries, list) or not entries:
+              raise SystemExit("compile_commands.json must contain a nonempty array")
+          files = set()
+          for index, entry in enumerate(entries):
+              if not isinstance(entry, dict) or any(
+                  not isinstance(entry.get(key), str) or not entry[key]
+                  for key in ("directory", "file")
+              ):
+                  raise SystemExit(f"invalid compilation database entry {index}")
+              arguments = entry.get("arguments")
+              has_arguments = isinstance(arguments, list) and arguments and all(
+                  isinstance(argument, str) for argument in arguments
+              )
+              command = entry.get("command")
+              if not (has_arguments or isinstance(command, str) and command):
+                  raise SystemExit(f"compilation database entry {index} has no compiler command")
+              directory = (root / entry["directory"]).resolve()
+              path = (directory / entry["file"]).resolve()
+              if (
+                  path.is_relative_to(root / "Source")
+                  and path.suffix == ".cpp"
+                  and "Metal4" not in str(path.relative_to(root))
+              ):
+                  if not path.is_file():
+                      raise SystemExit(f"configured source does not exist: {path}")
+                  files.add(str(path))
+          if not files:
+              raise SystemExit("compilation database has no configured Source C++ files")
+          files = sorted(files)
+          print(f"clang-tidy: {len(files)} configured Source C++ files", flush=True)
+          sys.exit(subprocess.run([sys.argv[1], "-p", str(root), *files]).returncode)
+          PY
