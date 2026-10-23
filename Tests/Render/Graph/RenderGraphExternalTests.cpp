@@ -32,6 +32,12 @@ TEST_CASE("external passes order inputs and outputs without opening an RHI scope
                   kNoWork);
     graph.presentTexture(nextVersion(c));
 
+    REQUIRE(describe(lowered(graph, 3)) ==
+            std::vector<std::string>{"scope lmx.frame", "scope pack", "run pack", "end scope",
+                                     "barrier input StorageWrite->ExternalRead", "run vendor",
+                                     "barrier output ExternalWrite->ShaderRead", "begin display",
+                                     "run display", "end", "end scope"});
+
     const auto record = graph.execute(commands, 3);
     REQUIRE(record.debug.passes[1].kind == PassKind::External);
     REQUIRE(record.debug.transitions.size() == 2);

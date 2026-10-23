@@ -89,8 +89,8 @@ TEST_CASE("execute emits exactly the transitions the record lists", "[render][gr
     graph.addPass("lmx.pass.scene", scene, kNoWork);
     graph.exportTexture(nextVersion(sceneColor));
 
-    RecordingCommandList commands;
-    const CompiledFrameRecord record = graph.execute(commands, 7);
+    const LoweredFrame frame = lowered(graph, 7);
+    const CompiledFrameRecord& record = frame.record;
 
     REQUIRE(record.debug.transitions.size() == 2);
     REQUIRE(record.debug.transitions[0].beforePass == 2);
@@ -103,11 +103,17 @@ TEST_CASE("execute emits exactly the transitions the record lists", "[render][gr
     REQUIRE(record.debug.transitions[1].bufferFrom == lmx::render::BufferUse::CopyDestination);
     REQUIRE(record.debug.transitions[1].bufferTo == lmx::render::BufferUse::ShaderRead);
 
-    REQUIRE(commands.events ==
-            std::vector<std::string>{"begin lmx.pass.shadow", "end", "begin copy lmx.pass.clear",
-                                     "end copy", "barrier shadowMap RenderTarget->ShaderRead",
-                                     "barrier histogram CopyDestination->ShaderRead",
-                                     "begin lmx.pass.scene", "end"});
+    REQUIRE(
+        describe(frame) ==
+        std::vector<std::string>{"scope lmx.frame", "begin lmx.pass.shadow", "run lmx.pass.shadow",
+                                 "end", "scope lmx.pass.clear", "run lmx.pass.clear", "end scope",
+                                 "barrier shadowMap RenderTarget->ShaderRead",
+                                 "barrier histogram CopyDestination->ShaderRead",
+                                 "begin lmx.pass.scene", "run lmx.pass.scene", "end", "end scope"});
+
+    RecordingCommandList commands;
+    const CompiledFrameRecord executed = graph.execute(commands, 7);
+    REQUIRE(executed.frameId == 7);
 }
 
 //======================================================================================================================
@@ -293,6 +299,9 @@ TEST_CASE("execute runs none of a culled pass", "[render][graph]") {
 
     REQUIRE(orphanRan);
     REQUIRE(commands.events == std::vector<std::string>{"begin lmx.pass.orphan", "end"});
+    REQUIRE(describe(lowered(graph)) ==
+            std::vector<std::string>{"scope lmx.frame", "begin lmx.pass.orphan",
+                                     "run lmx.pass.orphan", "end", "end scope"});
 }
 
 //======================================================================================================================

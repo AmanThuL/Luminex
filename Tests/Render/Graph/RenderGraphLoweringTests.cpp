@@ -2,63 +2,12 @@
 
 #include "Render/Graph/LoweredFrame.h"
 
+#include <algorithm>
 #include <format>
+#include <iterator>
 #include <string>
 #include <variant>
 #include <vector>
-
-namespace {
-
-//======================================================================================================================
-// One line per op, naming resources by the name they were declared under, so an assertion reads as
-// the frame's command shape rather than as variant indices.
-std::vector<std::string> describe(const LoweredFrame& frame) {
-    const auto nameOf = [&](uint32_t resource) {
-        return frame.record.debug.resources[resource].name;
-    };
-    std::vector<std::string> lines;
-    for (const LoweredOp& op : frame.ops) {
-        if (const auto* barriers = std::get_if<BarriersOp>(&op)) {
-            std::string line = "barriers[";
-            for (size_t index = 0; index < barriers->barriers.size(); ++index) {
-                if (index > 0) {
-                    line += ", ";
-                }
-                if (const auto* texture =
-                        std::get_if<LoweredTextureBarrier>(&barriers->barriers[index])) {
-                    line += std::format("{} {}->{}", nameOf(texture->resource),
-                                        textureUseName(texture->from), textureUseName(texture->to));
-                } else {
-                    const auto& buffer = std::get<LoweredBufferBarrier>(barriers->barriers[index]);
-                    line += std::format("{} {}->{}", nameOf(buffer.resource),
-                                        bufferUseName(buffer.from), bufferUseName(buffer.to));
-                }
-            }
-            lines.push_back(line + "]");
-        } else if (const auto* begin = std::get_if<BeginRenderPassOp>(&op)) {
-            lines.push_back("begin " + begin->label);
-        } else if (std::holds_alternative<EndRenderPassOp>(op)) {
-            lines.emplace_back("end");
-        } else if (const auto* scope = std::get_if<BeginScopeOp>(&op)) {
-            lines.push_back("scope " + scope->label);
-        } else if (std::holds_alternative<EndScopeOp>(op)) {
-            lines.emplace_back("end scope");
-        } else {
-            lines.push_back("run " + std::get<RunOp>(op).label);
-        }
-    }
-    return lines;
-}
-
-//======================================================================================================================
-LoweredFrame lowered(const RenderGraph& graph) {
-    GraphResult<LoweredFrame> frame = graph.lower(1);
-    INFO(errorOf(frame));
-    REQUIRE(frame.has_value());
-    return std::move(*frame);
-}
-
-} // namespace
 
 //======================================================================================================================
 // The frame scope is unconditional: an observer timing or labelling the frame sees it even when
@@ -102,7 +51,7 @@ TEST_CASE("a raster pass lowers to its render pass around its body", "[render][g
     REQUIRE(
         describe(frame) ==
         std::vector<std::string>{"scope lmx.frame", "begin lmx.pass.shadow", "run lmx.pass.shadow",
-                                 "end", "barriers[shadowMap RenderTarget->ShaderRead]",
+                                 "end", "barrier shadowMap RenderTarget->ShaderRead",
                                  "begin lmx.pass.scene", "run lmx.pass.scene", "end", "end scope"});
     const auto& begin = std::get<BeginRenderPassOp>(frame.ops[5]);
     REQUIRE(begin.color.has_value());
@@ -136,7 +85,7 @@ TEST_CASE("compute and copy passes lower to labelled scopes", "[render][graph]")
 
     REQUIRE(describe(frame) == std::vector<std::string>{
                                    "scope lmx.frame", "scope lmx.pass.clear", "run lmx.pass.clear",
-                                   "end scope", "barriers[histogram CopyDestination->StorageWrite]",
+                                   "end scope", "barrier histogram CopyDestination->StorageWrite",
                                    "scope lmx.pass.accumulate", "run lmx.pass.accumulate",
                                    "end scope", "end scope"});
     REQUIRE(std::get<RunOp>(frame.ops[2]).kind == PassKind::Copy);
@@ -208,14 +157,22 @@ TEST_CASE("one transition point keeps texture and buffer barriers in record orde
                               textureUseName(transition.textureTo)));
     }
     REQUIRE(expected.size() == 2);
-    std::string joined = "barriers[";
-    for (size_t index = 0; index < expected.size(); ++index) {
-        joined += (index > 0 ? ", " : "") + expected[index];
+    for (std::string& line : expected) {
+        line.insert(0, "barrier ");
     }
-    joined += "]";
 
-    const std::vector<std::string> lines = describe(frame);
-    REQUIRE(std::ranges::count(lines, joined) == 1);
+    // The consumer's scope is preceded by exactly one barrier op, which holds both entries.
+    const auto consumeScope = std::ranges::find_if(frame.ops, [](const LoweredOp& op) {
+        const auto* scope = std::get_if<BeginScopeOp>(&op);
+        return scope != nullptr && scope->label == "lmx.pass.consume";
+    });
+    REQUIRE(consumeScope != frame.ops.end());
+    REQUIRE(consumeScope != frame.ops.begin());
+    const LoweredOp& transitionPoint = *std::prev(consumeScope);
+    REQUIRE(std::holds_alternative<BarriersOp>(transitionPoint));
+    LoweredFrame single = frame;
+    single.ops = {transitionPoint};
+    REQUIRE(describe(single) == expected);
 }
 
 //======================================================================================================================

@@ -2,6 +2,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "Render/Graph/LoweredFrame.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Graph/TransientPool.h"
 #include "Support/GraphTestSupport.h"
@@ -12,6 +13,7 @@
 #include <limits>
 #include <ranges>
 #include <string>
+#include <variant>
 #include <vector>
 
 using namespace lmx;
@@ -94,6 +96,60 @@ template <typename T>
 //======================================================================================================================
 inline std::string errorOf(const GraphResult<T>& result) {
     return result ? std::string{} : result.error().message;
+}
+
+//======================================================================================================================
+// The graph's ordering is a property of the lowered frame, so a case asserts it there with no
+// device and no command list. One string per op, with a barrier entry as one string of its own,
+// named by the resource's declared name and spelled like the recording log below, so the barrier
+// strings read the same in both. A narrowed texture range is spelled out, a whole-resource one is
+// left out, because a barrier covering the wrong subresources is what these cases look for.
+inline std::vector<std::string> describe(const LoweredFrame& frame) {
+    const auto nameOf = [&](uint32_t resource) {
+        return frame.record.debug.resources[resource].name;
+    };
+    std::vector<std::string> lines;
+    for (const LoweredOp& op : frame.ops) {
+        if (const auto* barriers = std::get_if<BarriersOp>(&op)) {
+            for (const LoweredBarrier& barrier : barriers->barriers) {
+                if (const auto* texture = std::get_if<LoweredTextureBarrier>(&barrier)) {
+                    const rojoRHI::TextureSubresourceRange& range = texture->range;
+                    const bool wholeResource = range.baseMipLevel == 0 &&
+                                               range.mipLevelCount == rojoRHI::kAllMipLevels &&
+                                               range.baseArrayLayer == 0 &&
+                                               range.arrayLayerCount == rojoRHI::kAllArrayLayers;
+                    lines.push_back("barrier " + nameOf(texture->resource) +
+                                    (wholeResource ? "" : " " + describeRange(range)) + " " +
+                                    std::string{textureUseName(texture->from)} + "->" +
+                                    std::string{textureUseName(texture->to)});
+                } else {
+                    const auto& buffer = std::get<LoweredBufferBarrier>(barrier);
+                    lines.push_back("barrier " + nameOf(buffer.resource) + " " +
+                                    std::string{bufferUseName(buffer.from)} + "->" +
+                                    std::string{bufferUseName(buffer.to)});
+                }
+            }
+        } else if (const auto* begin = std::get_if<BeginRenderPassOp>(&op)) {
+            lines.push_back("begin " + begin->label);
+        } else if (std::holds_alternative<EndRenderPassOp>(op)) {
+            lines.emplace_back("end");
+        } else if (const auto* scope = std::get_if<BeginScopeOp>(&op)) {
+            lines.push_back("scope " + scope->label);
+        } else if (std::holds_alternative<EndScopeOp>(op)) {
+            lines.emplace_back("end scope");
+        } else {
+            lines.push_back("run " + std::get<RunOp>(op).label);
+        }
+    }
+    return lines;
+}
+
+//======================================================================================================================
+inline LoweredFrame lowered(const RenderGraph& graph, uint64_t frameId = 1) {
+    GraphResult<LoweredFrame> frame = graph.lower(frameId);
+    INFO(errorOf(frame));
+    REQUIRE(frame.has_value());
+    return std::move(*frame);
 }
 
 //======================================================================================================================
