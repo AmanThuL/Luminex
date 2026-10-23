@@ -1,5 +1,7 @@
 #include "Support/GpuTestSupport.h"
 
+#include <cstring>
+
 #include "Render/Passes/Temporal/VendorTemporalScaler.h"
 
 #include <array>
@@ -16,46 +18,51 @@ TEST_CASE("vendor packing translates invalid motion and working exposure without
     const std::array<uint8_t, 2> reactiveBytes{64, 128};
     const TextureMip motionMip{motionBits.data(), 8};
     const TextureMip reactiveMip{reactiveBytes.data(), 2};
-    auto motion = gpu->device().createTexture({.width = 2,
-                                               .height = 1,
-                                               .format = Format::RG16Float,
-                                               .sampled = true,
-                                               .label = "lmx.test.vendor.pack.motion"},
-                                              {&motionMip, 1});
-    auto reactive = gpu->device().createTexture({.width = 2,
-                                                 .height = 1,
-                                                 .format = Format::R8Unorm,
-                                                 .sampled = true,
-                                                 .label = "lmx.test.vendor.pack.reactive"},
-                                                {&reactiveMip, 1});
+    auto motion = lmx::engine::GpuTexture::create(gpu->device(),
+                                                  {.width = 2,
+                                                   .height = 1,
+                                                   .format = Format::RG16Float,
+                                                   .sampled = true,
+                                                   .label = "lmx.test.vendor.pack.motion"},
+                                                  {&motionMip, 1});
+    auto reactive = lmx::engine::GpuTexture::create(gpu->device(),
+                                                    {.width = 2,
+                                                     .height = 1,
+                                                     .format = Format::R8Unorm,
+                                                     .sampled = true,
+                                                     .label = "lmx.test.vendor.pack.reactive"},
+                                                    {&reactiveMip, 1});
     const float exposurePair[] = {4.0f, 2.0f};
-    auto exposure = gpu->device().createBuffer({.size = sizeof(exposurePair),
-                                                .storageRead = true,
-                                                .label = "lmx.test.vendor.pack.exposure"},
-                                               exposurePair);
-    auto readback = gpu->device().createBuffer(
-        {.size = 12, .cpuReadback = true, .label = "lmx.test.vendor.pack.readback"}, nullptr);
+    auto exposure = lmx::engine::GpuBuffer::create(gpu->device(),
+                                                   {.size = sizeof(exposurePair),
+                                                    .storageRead = true,
+                                                    .label = "lmx.test.vendor.pack.exposure"},
+                                                   exposurePair);
+    auto readback = lmx::engine::GpuBuffer::create(
+        gpu->device(), {.size = 12, .cpuReadback = true, .label = "lmx.test.vendor.pack.readback"},
+        nullptr);
     REQUIRE(motion);
     REQUIRE(reactive);
     REQUIRE(exposure);
     REQUIRE(readback);
-    auto& commands = gpu->device().beginFrame();
+    auto commandsFrame = gpu->beginFrame();
+    auto& commands = commandsFrame.commands;
     TransientPool pool(gpu->device());
     pool.beginFrame();
     TextureStateTable states;
-    states.set(**motion, lmx::render::TextureUse::ShaderRead);
-    states.set(**reactive, lmx::render::TextureUse::ShaderRead);
+    states.set(motion->rhi(), lmx::render::TextureUse::ShaderRead);
+    states.set(reactive->rhi(), lmx::render::TextureUse::ShaderRead);
     RenderGraph graph(pool);
     graph.bindTextureStates(states);
     TemporalInputs inputs;
-    inputs.motion = graph.importPersistentTexture(**motion, Format::RG16Float, "motion");
-    inputs.reactive = graph.importPersistentTexture(**reactive, Format::R8Unorm, "reactive");
+    inputs.motion = graph.importPersistentTexture(motion->rhi(), Format::RG16Float, "motion");
+    inputs.reactive = graph.importPersistentTexture(reactive->rhi(), Format::R8Unorm, "reactive");
     inputs.exposure =
-        graph.importBuffer(**exposure, "exposure", lmx::render::BufferUse::StorageRead);
+        graph.importBuffer(exposure->rhi(), "exposure", lmx::render::BufferUse::StorageRead);
     inputs.extents = {2, 1, 2, 1};
     const auto packed = adapter.declarePack(graph, commands, inputs);
     const auto output =
-        graph.importBuffer(**readback, "readback", lmx::render::BufferUse::CopyDestination);
+        graph.importBuffer(readback->rhi(), "readback", lmx::render::BufferUse::CopyDestination);
     CopyPassDesc desc;
     desc.textureSources = {packed.motion, packed.reactive, packed.exposure};
     desc.bufferDestinations = {output};
@@ -67,19 +74,23 @@ TEST_CASE("vendor packing translates invalid motion and working exposure without
             REQUIRE(packedMotion);
             REQUIRE(packedReactive);
             REQUIRE(packedExposure);
-            commands.copyTextureToBuffer(**packedMotion, {.width = 2, .height = 1}, **readback,
+            commands.copyTextureToBuffer(**packedMotion, {.width = 2, .height = 1}, readback->rhi(),
                                          {.offset = 0, .bytesPerRow = 8});
-            commands.copyTextureToBuffer(**packedReactive, {.width = 2, .height = 1}, **readback,
-                                         {.offset = 8, .bytesPerRow = 2});
-            commands.copyTextureToBuffer(**packedExposure, {.width = 1, .height = 1}, **readback,
-                                         {.offset = 10, .bytesPerRow = 2});
+            commands.copyTextureToBuffer(**packedReactive, {.width = 2, .height = 1},
+                                         readback->rhi(), {.offset = 8, .bytesPerRow = 2});
+            commands.copyTextureToBuffer(**packedExposure, {.width = 1, .height = 1},
+                                         readback->rhi(), {.offset = 10, .bytesPerRow = 2});
         });
     graph.exportBuffer(nextVersion(output));
-    graph.execute(commands, gpu->device().frameNumber());
-    gpu->device().endFrame(nullptr);
-    gpu->device().waitIdle();
+    graph.execute(commands, gpu->frameNumber());
+    gpu->submitAndEndFrame(commandsFrame);
+    gpu->waitIdle();
     std::array<uint16_t, 6> result{};
-    (*readback)->readback(result.data(), sizeof(result));
+    {
+        const auto readbackBytes = lmx::render::readbackNow(
+            *gpu, *readback, lmx::render::BufferUse::CopyDestination, {0, sizeof(result)});
+        std::memcpy(result.data(), readbackBytes.data(), sizeof(result));
+    }
     REQUIRE(result[0] == 0);
     REQUIRE(result[1] == 0);
     REQUIRE(result[2] == motionBits[2]);

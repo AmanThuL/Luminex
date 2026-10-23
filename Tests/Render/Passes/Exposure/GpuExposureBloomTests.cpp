@@ -10,7 +10,10 @@
 // instead of the whole frame's wiring (spec 9/10).
 
 #include "Support/DisplayTransformOracle.h"
+
 #include "Support/ExposureBloomTestSupport.h"
+#include "Support/GpuTestSupport.h"
+#include <cstring>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -41,7 +44,6 @@ namespace {
 
 using namespace rojoRHI;
 
-using lmx::test::errorOf;
 using lmx::test::halfPow2;
 using lmx::test::makeSceneColorTexture;
 
@@ -141,9 +143,8 @@ TEST_CASE("the GPU histogram matches a CPU reference on a known image", "[gpu]")
     constexpr uint32_t kWidth = 4, kHeight = 4;
     constexpr float kPreExposure = 1.0f;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
+    REQUIRE(gpu != nullptr);
 
     std::vector<glm::vec3> pixels(size_t{kWidth} * kHeight,
                                   glm::vec3(1.0f)); // luminance 1 (bin 192)
@@ -162,34 +163,37 @@ TEST_CASE("the GPU histogram matches a CPU reference on a known image", "[gpu]")
     }
 
     auto sceneColor =
-        makeSceneColorTexture(**device, kWidth, kHeight, rgbaHalf, "lmx.test.histogramImage");
-    INFO(errorOf(sceneColor));
+        makeSceneColorTexture(*gpu, kWidth, kHeight, rgbaHalf, "lmx.test.histogramImage");
+    INFO(lmx::test::errorOf(sceneColor));
     REQUIRE(sceneColor.has_value());
 
-    auto library = (*device)->loadShaderLibrary("Shaders/HistogramAccumulate");
-    INFO(errorOf(library));
+    auto library = gpu->loadShaderLibrary("HistogramAccumulate");
+    INFO(lmx::test::errorOf(library));
     REQUIRE(library.has_value());
-    auto pipeline = (*device)->createComputePipeline({.library = library->get(),
-                                                      .computeEntry = "computeHistogramAccumulate",
-                                                      .threadsPerThreadgroup = {8, 8, 1},
-                                                      .label = "lmx.test.histogramPipeline"});
-    INFO(errorOf(pipeline));
+    auto pipeline =
+        gpu->device().createComputePipeline({.library = library->get(),
+                                             .computeEntry = "computeHistogramAccumulate",
+                                             .threadsPerThreadgroup = {8, 8, 1},
+                                             .label = "lmx.test.histogramPipeline"});
+    INFO(lmx::test::errorOf(pipeline));
     REQUIRE(pipeline.has_value());
 
-    auto histogram = (*device)->createBuffer({.size = kBins * sizeof(uint32_t),
-                                              .storageRead = true,
-                                              .storageWrite = true,
-                                              .cpuReadback = true,
-                                              .label = "lmx.test.histogramBuffer"},
-                                             nullptr);
-    INFO(errorOf(histogram));
+    auto histogram = lmx::engine::GpuBuffer::create(gpu->device(),
+                                                    {.size = kBins * sizeof(uint32_t),
+                                                     .storageRead = true,
+                                                     .storageWrite = true,
+                                                     .cpuReadback = true,
+                                                     .label = "lmx.test.histogramBuffer"},
+                                                    nullptr);
+    INFO(lmx::test::errorOf(histogram));
     REQUIRE(histogram.has_value());
     // The kernel reads this frame's applied preExposure from a buffer, not a uniform (spec 9: the
     // same buffer ScenePass.slang/Sky.slang read in auto mode). A plain initial-data buffer stands
     // in for it here.
-    auto exposure = (*device)->createBuffer(
-        {.size = sizeof(float), .label = "lmx.test.histogramExposureBuffer"}, &kPreExposure);
-    INFO(errorOf(exposure));
+    auto exposure = lmx::engine::GpuBuffer::create(
+        gpu->device(), {.size = sizeof(float), .label = "lmx.test.histogramExposureBuffer"},
+        &kPreExposure);
+    INFO(lmx::test::errorOf(exposure));
     REQUIRE(exposure.has_value());
 
     struct HistogramParams {
@@ -203,25 +207,31 @@ TEST_CASE("the GPU histogram matches a CPU reference on a known image", "[gpu]")
                                  .width = kWidth,
                                  .height = kHeight};
 
-    CommandList& commands = (*device)->beginFrame();
+    auto commandsFrame = gpu->beginFrame();
+    auto& commands = commandsFrame.commands;
     commands.beginCopyPass("lmx.test.clearHistogram");
-    commands.fillBuffer(**histogram, 0, kBins * sizeof(uint32_t), 0);
+    commands.fillBuffer(histogram->rhi(), 0, kBins * sizeof(uint32_t), 0);
     commands.endCopyPass();
-    commands.bufferBarrier(**histogram, BufferUse::CopyDestination, BufferUse::StorageWrite);
+    commands.bufferBarrier(histogram->rhi(), BufferUse::CopyDestination, BufferUse::StorageWrite);
 
     commands.beginComputePass("lmx.test.histogram");
     commands.bindComputePipeline(**pipeline);
-    commands.bindTexture(0, **sceneColor);
-    commands.bindStorageBuffer(0, **histogram, StorageAccess::ReadWrite);
-    commands.bindBuffer(1, **exposure);
+    commands.bindTexture(0, sceneColor->rhi());
+    commands.bindStorageBuffer(0, histogram->rhi(), StorageAccess::ReadWrite);
+    commands.bindBuffer(1, exposure->rhi());
     commands.bindFrameData(2, params);
     commands.dispatch(1, 1, 1); // 4x4 fits one 8x8 threadgroup; the kernel bounds-checks the rest.
     commands.endComputePass();
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->submitAndEndFrame(commandsFrame);
+    gpu->waitIdle();
 
     std::array<uint32_t, kBins> gpuBins{};
-    (*histogram)->readback(gpuBins.data(), gpuBins.size() * sizeof(uint32_t));
+    {
+        const auto readbackBytes =
+            lmx::render::readbackNow(*gpu, *histogram, lmx::render::BufferUse::StorageWrite,
+                                     {0, gpuBins.size() * sizeof(uint32_t)});
+        std::memcpy(gpuBins.data(), readbackBytes.data(), gpuBins.size() * sizeof(uint32_t));
+    }
 
     const std::array<uint32_t, kBins> expected = cpuHistogram(pixels, kPreExposure);
     for (uint32_t bin = 0; bin < kBins; ++bin) {
@@ -258,9 +268,8 @@ TEST_CASE("auto exposure converges to the CPU-predicted target after one frame",
     constexpr float kAdaptUp = 0.0f, kAdaptDown = 0.0f; // adaptation disabled -- instantaneous
     constexpr float kDeltaSeconds = 1.0f / 60.0f;       // Renderer.cpp's kExposureFrameSeconds
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
+    REQUIRE(gpu != nullptr);
 
     std::vector<uint16_t> rgbaHalf(size_t{kWidth} * kHeight * 4);
     const uint16_t channel = halfPow2(1); // 2.0
@@ -271,59 +280,63 @@ TEST_CASE("auto exposure converges to the CPU-predicted target after one frame",
         rgbaHalf[i * 4 + 3] = halfPow2(0);
     }
     auto sceneColor =
-        makeSceneColorTexture(**device, kWidth, kHeight, rgbaHalf, "lmx.test.convergenceImage");
-    INFO(errorOf(sceneColor));
+        makeSceneColorTexture(*gpu, kWidth, kHeight, rgbaHalf, "lmx.test.convergenceImage");
+    INFO(lmx::test::errorOf(sceneColor));
     REQUIRE(sceneColor.has_value());
 
-    auto histogramLibrary = (*device)->loadShaderLibrary("Shaders/HistogramAccumulate");
-    INFO(errorOf(histogramLibrary));
+    auto histogramLibrary = gpu->loadShaderLibrary("HistogramAccumulate");
+    INFO(lmx::test::errorOf(histogramLibrary));
     REQUIRE(histogramLibrary.has_value());
     auto histogramPipeline =
-        (*device)->createComputePipeline({.library = histogramLibrary->get(),
-                                          .computeEntry = "computeHistogramAccumulate",
-                                          .threadsPerThreadgroup = {8, 8, 1},
-                                          .label = "lmx.test.convergenceHistogramPipeline"});
-    INFO(errorOf(histogramPipeline));
+        gpu->device().createComputePipeline({.library = histogramLibrary->get(),
+                                             .computeEntry = "computeHistogramAccumulate",
+                                             .threadsPerThreadgroup = {8, 8, 1},
+                                             .label = "lmx.test.convergenceHistogramPipeline"});
+    INFO(lmx::test::errorOf(histogramPipeline));
     REQUIRE(histogramPipeline.has_value());
 
-    auto resolveLibrary = (*device)->loadShaderLibrary("Shaders/ExposureResolve");
-    INFO(errorOf(resolveLibrary));
+    auto resolveLibrary = gpu->loadShaderLibrary("ExposureResolve");
+    INFO(lmx::test::errorOf(resolveLibrary));
     REQUIRE(resolveLibrary.has_value());
     auto resolvePipeline =
-        (*device)->createComputePipeline({.library = resolveLibrary->get(),
-                                          .computeEntry = "computeExposureResolve",
-                                          .threadsPerThreadgroup = {1, 1, 1},
-                                          .label = "lmx.test.resolvePipeline"});
-    INFO(errorOf(resolvePipeline));
+        gpu->device().createComputePipeline({.library = resolveLibrary->get(),
+                                             .computeEntry = "computeExposureResolve",
+                                             .threadsPerThreadgroup = {1, 1, 1},
+                                             .label = "lmx.test.resolvePipeline"});
+    INFO(lmx::test::errorOf(resolvePipeline));
     REQUIRE(resolvePipeline.has_value());
 
-    auto histogram = (*device)->createBuffer({.size = kBins * sizeof(uint32_t),
-                                              .storageRead = true,
-                                              .storageWrite = true,
-                                              .label = "lmx.test.convergenceHistogramBuffer"},
-                                             nullptr);
-    INFO(errorOf(histogram));
+    auto histogram =
+        lmx::engine::GpuBuffer::create(gpu->device(),
+                                       {.size = kBins * sizeof(uint32_t),
+                                        .storageRead = true,
+                                        .storageWrite = true,
+                                        .label = "lmx.test.convergenceHistogramBuffer"},
+                                       nullptr);
+    INFO(lmx::test::errorOf(histogram));
     REQUIRE(histogram.has_value());
     // The buffer the histogram kernel reads "this frame's applied preExposure" from (spec 9) --
     // separate from `exposure` below (what the resolve pass writes for *next* frame), exactly as
     // Renderer.cpp's two-buffer-role read/write is, just without the graph's version-chain naming
     // both roles onto one physical buffer.
-    auto appliedExposure = (*device)->createBuffer(
+    auto appliedExposure = lmx::engine::GpuBuffer::create(
+        gpu->device(),
         {.size = sizeof(float), .label = "lmx.test.convergenceAppliedExposureBuffer"},
         &kPreExposure);
-    INFO(errorOf(appliedExposure));
+    INFO(lmx::test::errorOf(appliedExposure));
     REQUIRE(appliedExposure.has_value());
     // The resolve reads the applied exposure it steps from out of index 0 and shifts it into
     // index 1, so the buffer it writes is the two-float pair and is seeded rather than left
     // uninitialised.
     constexpr std::array<float, 2> kInitialPair{kPreExposure, kPreExposure};
-    auto exposure = (*device)->createBuffer({.size = sizeof(kInitialPair),
-                                             .storageRead = true,
-                                             .storageWrite = true,
-                                             .cpuReadback = true,
-                                             .label = "lmx.test.convergenceExposureBuffer"},
-                                            kInitialPair.data());
-    INFO(errorOf(exposure));
+    auto exposure = lmx::engine::GpuBuffer::create(gpu->device(),
+                                                   {.size = sizeof(kInitialPair),
+                                                    .storageRead = true,
+                                                    .storageWrite = true,
+                                                    .cpuReadback = true,
+                                                    .label = "lmx.test.convergenceExposureBuffer"},
+                                                   kInitialPair.data());
+    INFO(lmx::test::errorOf(exposure));
     REQUIRE(exposure.has_value());
 
     struct HistogramParams {
@@ -354,35 +367,40 @@ TEST_CASE("auto exposure converges to the CPU-predicted target after one frame",
                                               .deltaSeconds = kDeltaSeconds,
                                               .pad = 0.0f};
 
-    CommandList& commands = (*device)->beginFrame();
+    auto commandsFrame = gpu->beginFrame();
+    auto& commands = commandsFrame.commands;
     commands.beginCopyPass("lmx.test.convergenceClear");
-    commands.fillBuffer(**histogram, 0, kBins * sizeof(uint32_t), 0);
+    commands.fillBuffer(histogram->rhi(), 0, kBins * sizeof(uint32_t), 0);
     commands.endCopyPass();
-    commands.bufferBarrier(**histogram, BufferUse::CopyDestination, BufferUse::StorageWrite);
+    commands.bufferBarrier(histogram->rhi(), BufferUse::CopyDestination, BufferUse::StorageWrite);
 
     commands.beginComputePass("lmx.test.convergenceHistogram");
     commands.bindComputePipeline(**histogramPipeline);
-    commands.bindTexture(0, **sceneColor);
-    commands.bindStorageBuffer(0, **histogram, StorageAccess::ReadWrite);
-    commands.bindBuffer(1, **appliedExposure);
+    commands.bindTexture(0, sceneColor->rhi());
+    commands.bindStorageBuffer(0, histogram->rhi(), StorageAccess::ReadWrite);
+    commands.bindBuffer(1, appliedExposure->rhi());
     commands.bindFrameData(2, histogramParams);
     commands.dispatch(1, 1, 1);
     commands.endComputePass();
 
-    commands.bufferBarrier(**histogram, BufferUse::StorageWrite, BufferUse::StorageRead);
+    commands.bufferBarrier(histogram->rhi(), BufferUse::StorageWrite, BufferUse::StorageRead);
 
     commands.beginComputePass("lmx.test.convergenceResolve");
     commands.bindComputePipeline(**resolvePipeline);
-    commands.bindStorageBuffer(0, **histogram, StorageAccess::Read);
-    commands.bindStorageBuffer(1, **exposure, StorageAccess::ReadWrite);
+    commands.bindStorageBuffer(0, histogram->rhi(), StorageAccess::Read);
+    commands.bindStorageBuffer(1, exposure->rhi(), StorageAccess::ReadWrite);
     commands.bindFrameData(2, resolveParams);
     commands.dispatch(1, 1, 1);
     commands.endComputePass();
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->submitAndEndFrame(commandsFrame);
+    gpu->waitIdle();
 
     std::array<float, 2> gpuPair{};
-    (*exposure)->readback(gpuPair.data(), sizeof(gpuPair));
+    {
+        const auto readbackBytes = lmx::render::readbackNow(
+            *gpu, *exposure, lmx::render::BufferUse::StorageWrite, {0, sizeof(gpuPair)});
+        std::memcpy(gpuPair.data(), readbackBytes.data(), sizeof(gpuPair));
+    }
     const float gpuExposure = gpuPair[0];
 
     const std::array<uint32_t, kBins> bins = cpuHistogram(
@@ -412,18 +430,17 @@ TEST_CASE("auto exposure converges to the CPU-predicted target after one frame",
 // one thing shouldResetExposure()'s unit tests cannot cover: that the kernel a reset actually
 // dispatches does the right GPU-side thing with the seed value it is given.
 TEST_CASE("the exposure seed kernel writes exp2(manual EV) when a reset is applied", "[gpu]") {
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
+    REQUIRE(gpu != nullptr);
 
-    auto library = (*device)->loadShaderLibrary("Shaders/ExposureSeed");
-    INFO(errorOf(library));
+    auto library = gpu->loadShaderLibrary("ExposureSeed");
+    INFO(lmx::test::errorOf(library));
     REQUIRE(library.has_value());
-    auto pipeline = (*device)->createComputePipeline({.library = library->get(),
-                                                      .computeEntry = "computeExposureSeed",
-                                                      .threadsPerThreadgroup = {1, 1, 1},
-                                                      .label = "lmx.test.exposureSeedPipeline"});
-    INFO(errorOf(pipeline));
+    auto pipeline = gpu->device().createComputePipeline({.library = library->get(),
+                                                         .computeEntry = "computeExposureSeed",
+                                                         .threadsPerThreadgroup = {1, 1, 1},
+                                                         .label = "lmx.test.exposureSeedPipeline"});
+    INFO(lmx::test::errorOf(pipeline));
     REQUIRE(pipeline.has_value());
 
     struct ExposureSeedParams {
@@ -435,26 +452,32 @@ TEST_CASE("the exposure seed kernel writes exp2(manual EV) when a reset is appli
         // previous scene/session/size left in it -- the seed dispatch must overwrite index 0
         // regardless of what it was.
         constexpr std::array<float, 2> kStalePair{0.1f, 0.2f};
-        auto exposure = (*device)->createBuffer({.size = sizeof(kStalePair),
-                                                 .storageRead = true,
-                                                 .storageWrite = true,
-                                                 .cpuReadback = true,
-                                                 .label = "lmx.test.seedExposureBuffer"},
-                                                kStalePair.data());
+        auto exposure = lmx::engine::GpuBuffer::create(gpu->device(),
+                                                       {.size = sizeof(kStalePair),
+                                                        .storageRead = true,
+                                                        .storageWrite = true,
+                                                        .cpuReadback = true,
+                                                        .label = "lmx.test.seedExposureBuffer"},
+                                                       kStalePair.data());
         const ExposureSeedParams params{.exposure = std::exp2(manualEv)};
 
-        CommandList& commands = (*device)->beginFrame();
+        auto commandsFrame = gpu->beginFrame();
+        auto& commands = commandsFrame.commands;
         commands.beginComputePass("lmx.test.exposureSeed");
         commands.bindComputePipeline(**pipeline);
-        commands.bindStorageBuffer(0, **exposure, StorageAccess::ReadWrite);
+        commands.bindStorageBuffer(0, exposure->rhi(), StorageAccess::ReadWrite);
         commands.bindFrameData(1, params);
         commands.dispatch(1, 1, 1);
         commands.endComputePass();
-        (*device)->endFrame(nullptr);
-        (*device)->waitIdle();
+        gpu->submitAndEndFrame(commandsFrame);
+        gpu->waitIdle();
 
         std::array<float, 2> result{};
-        (*exposure)->readback(result.data(), sizeof(result));
+        {
+            const auto readbackBytes = lmx::render::readbackNow(
+                *gpu, *exposure, lmx::render::BufferUse::StorageWrite, {0, sizeof(result)});
+            std::memcpy(result.data(), readbackBytes.data(), sizeof(result));
+        }
         return result[0];
     };
 
@@ -471,18 +494,18 @@ TEST_CASE("the exposure seed kernel writes exp2(manual EV) when a reset is appli
 // history has to be corrected by. Two dispatches over one buffer is the smallest thing that can
 // tell a shift from an overwrite.
 TEST_CASE("the exposure seed shifts the applied exposure into previous", "[gpu]") {
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
+    REQUIRE(gpu != nullptr);
 
-    auto library = (*device)->loadShaderLibrary("Shaders/ExposureSeed");
-    INFO(errorOf(library));
+    auto library = gpu->loadShaderLibrary("ExposureSeed");
+    INFO(lmx::test::errorOf(library));
     REQUIRE(library.has_value());
-    auto pipeline = (*device)->createComputePipeline({.library = library->get(),
-                                                      .computeEntry = "computeExposureSeed",
-                                                      .threadsPerThreadgroup = {1, 1, 1},
-                                                      .label = "lmx.test.exposureShiftPipeline"});
-    INFO(errorOf(pipeline));
+    auto pipeline =
+        gpu->device().createComputePipeline({.library = library->get(),
+                                             .computeEntry = "computeExposureSeed",
+                                             .threadsPerThreadgroup = {1, 1, 1},
+                                             .label = "lmx.test.exposureShiftPipeline"});
+    INFO(lmx::test::errorOf(pipeline));
     REQUIRE(pipeline.has_value());
 
     struct ExposureSeedParams {
@@ -490,29 +513,35 @@ TEST_CASE("the exposure seed shifts the applied exposure into previous", "[gpu]"
     };
 
     constexpr std::array<float, 2> kInitialPair{0.1f, 0.2f};
-    auto exposure = (*device)->createBuffer({.size = sizeof(kInitialPair),
-                                             .storageRead = true,
-                                             .storageWrite = true,
-                                             .cpuReadback = true,
-                                             .label = "lmx.test.shiftExposureBuffer"},
-                                            kInitialPair.data());
-    INFO(errorOf(exposure));
+    auto exposure = lmx::engine::GpuBuffer::create(gpu->device(),
+                                                   {.size = sizeof(kInitialPair),
+                                                    .storageRead = true,
+                                                    .storageWrite = true,
+                                                    .cpuReadback = true,
+                                                    .label = "lmx.test.shiftExposureBuffer"},
+                                                   kInitialPair.data());
+    INFO(lmx::test::errorOf(exposure));
     REQUIRE(exposure.has_value());
 
     const auto seed = [&](float value) {
         const ExposureSeedParams params{.exposure = value};
-        CommandList& commands = (*device)->beginFrame();
+        auto commandsFrame = gpu->beginFrame();
+        auto& commands = commandsFrame.commands;
         commands.beginComputePass("lmx.test.exposureSeedShift");
         commands.bindComputePipeline(**pipeline);
-        commands.bindStorageBuffer(0, **exposure, StorageAccess::ReadWrite);
+        commands.bindStorageBuffer(0, exposure->rhi(), StorageAccess::ReadWrite);
         commands.bindFrameData(1, params);
         commands.dispatch(1, 1, 1);
         commands.endComputePass();
-        (*device)->endFrame(nullptr);
-        (*device)->waitIdle();
+        gpu->submitAndEndFrame(commandsFrame);
+        gpu->waitIdle();
 
         std::array<float, 2> pair{};
-        (*exposure)->readback(pair.data(), sizeof(pair));
+        {
+            const auto readbackBytes = lmx::render::readbackNow(
+                *gpu, *exposure, lmx::render::BufferUse::StorageWrite, {0, sizeof(pair)});
+            std::memcpy(pair.data(), readbackBytes.data(), sizeof(pair));
+        }
         return pair;
     };
 
@@ -541,28 +570,28 @@ TEST_CASE("auto exposure adapts toward its target at the stated stops per second
     constexpr float kLowPercentile = 0.0f, kHighPercentile = 100.0f;
     constexpr float kDeltaSeconds = 1.0f / 60.0f; // Renderer.cpp's kExposureFrameSeconds
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
+    REQUIRE(gpu != nullptr);
 
-    auto library = (*device)->loadShaderLibrary("Shaders/ExposureResolve");
-    INFO(errorOf(library));
+    auto library = gpu->loadShaderLibrary("ExposureResolve");
+    INFO(lmx::test::errorOf(library));
     REQUIRE(library.has_value());
-    auto pipeline = (*device)->createComputePipeline({.library = library->get(),
-                                                      .computeEntry = "computeExposureResolve",
-                                                      .threadsPerThreadgroup = {1, 1, 1},
-                                                      .label = "lmx.test.adaptResolvePipeline"});
-    INFO(errorOf(pipeline));
+    auto pipeline = gpu->device().createComputePipeline({.library = library->get(),
+                                                         .computeEntry = "computeExposureResolve",
+                                                         .threadsPerThreadgroup = {1, 1, 1},
+                                                         .label = "lmx.test.adaptResolvePipeline"});
+    INFO(lmx::test::errorOf(pipeline));
     REQUIRE(pipeline.has_value());
 
     // A histogram the resolve re-reads unchanged every frame, so the target it meters is one
     // constant the adaptation walks toward.
     const std::array<uint32_t, kBins> bins = cpuHistogram(
         std::vector<glm::vec3>(size_t{kWidth} * kHeight, glm::vec3(kSceneLuminance)), 1.0f);
-    auto histogram = (*device)->createBuffer(
+    auto histogram = lmx::engine::GpuBuffer::create(
+        gpu->device(),
         {.size = sizeof(bins), .storageRead = true, .label = "lmx.test.adaptHistogramBuffer"},
         bins.data());
-    INFO(errorOf(histogram));
+    INFO(lmx::test::errorOf(histogram));
     REQUIRE(histogram.has_value());
 
     struct ExposureResolveParams {
@@ -582,13 +611,14 @@ TEST_CASE("auto exposure adapts toward its target at the stated stops per second
     const auto runFrames = [&](float initialApplied, float adaptUp, float adaptDown,
                                uint32_t frames) {
         const std::array<float, 2> initial{initialApplied, initialApplied};
-        auto exposure = (*device)->createBuffer({.size = sizeof(initial),
-                                                 .storageRead = true,
-                                                 .storageWrite = true,
-                                                 .cpuReadback = true,
-                                                 .label = "lmx.test.adaptExposureBuffer"},
-                                                initial.data());
-        INFO(errorOf(exposure));
+        auto exposure = lmx::engine::GpuBuffer::create(gpu->device(),
+                                                       {.size = sizeof(initial),
+                                                        .storageRead = true,
+                                                        .storageWrite = true,
+                                                        .cpuReadback = true,
+                                                        .label = "lmx.test.adaptExposureBuffer"},
+                                                       initial.data());
+        INFO(lmx::test::errorOf(exposure));
         REQUIRE(exposure.has_value());
 
         const ExposureResolveParams params{.lowPercentile = kLowPercentile,
@@ -605,20 +635,25 @@ TEST_CASE("auto exposure adapts toward its target at the stated stops per second
                                            .pad = 0.0f};
 
         for (uint32_t frame = 0; frame < frames; ++frame) {
-            CommandList& commands = (*device)->beginFrame();
+            auto commandsFrame = gpu->beginFrame();
+            auto& commands = commandsFrame.commands;
             commands.beginComputePass("lmx.test.adaptResolve");
             commands.bindComputePipeline(**pipeline);
-            commands.bindStorageBuffer(0, **histogram, StorageAccess::Read);
-            commands.bindStorageBuffer(1, **exposure, StorageAccess::ReadWrite);
+            commands.bindStorageBuffer(0, histogram->rhi(), StorageAccess::Read);
+            commands.bindStorageBuffer(1, exposure->rhi(), StorageAccess::ReadWrite);
             commands.bindFrameData(2, params);
             commands.dispatch(1, 1, 1);
             commands.endComputePass();
-            (*device)->endFrame(nullptr);
-            (*device)->waitIdle();
+            gpu->submitAndEndFrame(commandsFrame);
+            gpu->waitIdle();
         }
 
         std::array<float, 2> pair{};
-        (*exposure)->readback(pair.data(), sizeof(pair));
+        {
+            const auto readbackBytes = lmx::render::readbackNow(
+                *gpu, *exposure, lmx::render::BufferUse::StorageWrite, {0, sizeof(pair)});
+            std::memcpy(pair.data(), readbackBytes.data(), sizeof(pair));
+        }
         return pair;
     };
 
@@ -677,16 +712,16 @@ TEST_CASE("a manual temporal frame records the EV edit and the value before it",
     constexpr uint32_t kExtent = 32;
 
     auto created = lmx::engine::GpuContext::create({});
-    INFO(errorOf(created));
+    INFO(lmx::test::errorOf(created));
     REQUIRE(created);
     auto gpu = std::move(*created);
 
     auto cube = fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.exposurePairCube");
-    INFO(errorOf(cube));
+    INFO(lmx::test::errorOf(cube));
     REQUIRE(cube.has_value());
 
     auto renderer = Renderer::create(*gpu, kExtent, kExtent, /*cpuReadback=*/true);
-    INFO(errorOf(renderer));
+    INFO(lmx::test::errorOf(renderer));
     REQUIRE(renderer.has_value());
 
     lmx::engine::Camera camera;
@@ -701,13 +736,19 @@ TEST_CASE("a manual temporal frame records the EV edit and the value before it",
     const auto renderOneFrame = [&](float exposureEv, bool temporalEnabled) {
         view.exposureEv = exposureEv;
         view.temporal.enabled = temporalEnabled;
-        CommandList& commands = gpu->device().beginFrame();
-        (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, gpu->device()));
-        gpu->device().endFrame(nullptr);
-        gpu->device().waitIdle();
+        auto commandsFrame = gpu->beginFrame();
+        auto& commands = commandsFrame.commands;
+        (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, *gpu));
+        gpu->submitAndEndFrame(commandsFrame);
+        gpu->waitIdle();
 
         std::array<float, lmx::render::kExposureBufferFloats> pair{};
-        (*renderer)->exposureBuffer().readback(pair.data(), sizeof(pair));
+        {
+            const auto readbackBytes =
+                lmx::render::readbackNow(*gpu, (*renderer)->exposureBufferOwner(),
+                                         lmx::render::BufferUse::StorageWrite, {0, sizeof(pair)});
+            std::memcpy(pair.data(), readbackBytes.data(), sizeof(pair));
+        }
         return pair;
     };
 
@@ -732,19 +773,18 @@ TEST_CASE("a manual temporal frame records the EV edit and the value before it",
 // in the full-resolution scene blue channel must remain sharp; bloom's red/green ramps must
 // interpolate before the display transform. The disabled case binds the actual 1x1 fallback shape.
 TEST_CASE("display composition filters bloom while preserving exact scene texels", "[gpu]") {
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
-    auto library = (*device)->loadShaderLibrary("Shaders/DisplayTransform");
-    INFO(errorOf(library));
+    auto gpu = createTestGpu();
+    REQUIRE(gpu != nullptr);
+    auto library = gpu->loadShaderLibrary("DisplayTransform");
+    INFO(lmx::test::errorOf(library));
     REQUIRE(library.has_value());
     auto pipeline =
-        (*device)->createGraphicsPipeline({.library = library->get(),
-                                           .vertexEntry = "vertexMain",
-                                           .fragmentEntry = "fragmentMain",
-                                           .colorFormat = Format::BGRA8Unorm,
-                                           .label = "lmx.test.filteredDisplayPipeline"});
-    INFO(errorOf(pipeline));
+        gpu->device().createGraphicsPipeline({.library = library->get(),
+                                              .vertexEntry = "vertexMain",
+                                              .fragmentEntry = "fragmentMain",
+                                              .colorFormat = Format::BGRA8Unorm,
+                                              .label = "lmx.test.filteredDisplayPipeline"});
+    INFO(lmx::test::errorOf(pipeline));
     REQUIRE(pipeline.has_value());
     const std::array<uint16_t, 16> bloomPixels{0,
                                                0,
@@ -762,12 +802,12 @@ TEST_CASE("display composition filters bloom while preserving exact scene texels
                                                halfPow2(-1),
                                                0,
                                                halfPow2(0)};
-    auto bloom = makeSceneColorTexture(**device, 2, 2, bloomPixels, "lmx.test.displayBloomRamp");
-    INFO(errorOf(bloom));
+    auto bloom = makeSceneColorTexture(*gpu, 2, 2, bloomPixels, "lmx.test.displayBloomRamp");
+    INFO(lmx::test::errorOf(bloom));
     REQUIRE(bloom.has_value());
     const std::array<uint16_t, 4> black{};
-    auto fallback = makeSceneColorTexture(**device, 1, 1, black, "lmx.test.displayBloomFallback");
-    INFO(errorOf(fallback));
+    auto fallback = makeSceneColorTexture(*gpu, 1, 1, black, "lmx.test.displayBloomFallback");
+    INFO(lmx::test::errorOf(fallback));
     REQUIRE(fallback.has_value());
 
     struct Probe {
@@ -786,33 +826,39 @@ TEST_CASE("display composition filters bloom while preserving exact scene texels
                     (x + y) % 2 == 0 ? halfPow2(-3) : halfPow2(-1);
             }
         }
-        auto scene = makeSceneColorTexture(**device, probe.width, probe.height, scenePixels,
+        auto scene = makeSceneColorTexture(*gpu, probe.width, probe.height, scenePixels,
                                            "lmx.test.displayExactScene");
-        INFO(errorOf(scene));
+        INFO(lmx::test::errorOf(scene));
         REQUIRE(scene.has_value());
-        auto dst = (*device)->createTexture({.width = probe.width,
-                                             .height = probe.height,
-                                             .format = Format::BGRA8Unorm,
-                                             .renderTarget = true,
-                                             .cpuReadback = true,
-                                             .label = "lmx.test.filteredDisplayDst"});
-        INFO(errorOf(dst));
+        auto dst = lmx::engine::GpuTexture::create(gpu->device(),
+                                                   {.width = probe.width,
+                                                    .height = probe.height,
+                                                    .format = Format::BGRA8Unorm,
+                                                    .renderTarget = true,
+                                                    .cpuReadback = true,
+                                                    .label = "lmx.test.filteredDisplayDst"});
+        INFO(lmx::test::errorOf(dst));
         REQUIRE(dst.has_value());
         for (const bool enabled : {false, true}) {
             const float intensity = enabled ? 1.0f : 0.0f;
-            CommandList& commands = (*device)->beginFrame();
+            auto commandsFrame = gpu->beginFrame();
+            auto& commands = commandsFrame.commands;
             commands.beginRenderPass(
-                {.colorTarget = dst->get(), .clear = true, .label = "lmx.test.filteredDisplay"});
+                {.colorTarget = &dst->rhi(), .clear = true, .label = "lmx.test.filteredDisplay"});
             commands.bindPipeline(**pipeline);
-            commands.bindTexture(0, **scene);
-            commands.bindTexture(1, enabled ? **bloom : **fallback);
+            commands.bindTexture(0, scene->rhi());
+            commands.bindTexture(1, enabled ? bloom->rhi() : fallback->rhi());
             commands.bindFrameData(0, intensity);
             commands.draw(3);
             commands.endRenderPass();
-            (*device)->endFrame(nullptr);
-            (*device)->waitIdle();
+            gpu->submitAndEndFrame(commandsFrame);
+            gpu->waitIdle();
             std::vector<uint8_t> result(size_t{probe.width} * probe.height * 4);
-            (*dst)->readback(result.data(), result.size());
+            {
+                const auto readbackBytes =
+                    lmx::render::readbackNow(*gpu, *dst, lmx::render::TextureUse::RenderTarget);
+                std::memcpy(result.data(), readbackBytes.data(), result.size());
+            }
             for (uint32_t y = 0; y < probe.height; ++y) {
                 for (uint32_t x = 0; x < probe.width; ++x) {
                     INFO(probe.width << "x" << probe.height << " bloom=" << enabled << " texel "

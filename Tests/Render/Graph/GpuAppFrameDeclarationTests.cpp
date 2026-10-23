@@ -1,5 +1,7 @@
 #include "Support/GpuTestSupport.h"
 
+#include <cstring>
+
 #include "App/Model/Graph/FrameRecordRing.h"
 #include "Render/Graph/FrameDeclaration.h"
 
@@ -49,30 +51,39 @@ TEST_CASE("FrameDeclaration preserves headless rendering and retains its caller-
 
     // More than three frames reuses every transient slot; toggling pooling also replaces heaps.
     for (uint32_t index = 0; index < 5; ++index) {
-        CommandList& referenceCommands = gpu->device().beginFrame();
-        (*reference)
-            ->render(referenceCommands, camera, lmx::test::prepareSceneView(view, gpu->device()));
-        gpu->device().endFrame(nullptr);
-        gpu->device().waitIdle();
+        auto referenceCommandsFrame = gpu->beginFrame();
+        auto& referenceCommands = referenceCommandsFrame.commands;
+        (*reference)->render(referenceCommands, camera, lmx::test::prepareSceneView(view, *gpu));
+        gpu->submitAndEndFrame(referenceCommandsFrame);
+        gpu->waitIdle();
         std::vector<uint8_t> expected(size_t{kSize} * kSize * 4);
-        (*reference)->colorTarget().rhi().readback(expected.data(), expected.size());
+        {
+            const auto readbackBytes = lmx::render::readbackNow(
+                *gpu, (*reference)->colorTarget(), lmx::render::TextureUse::RenderTarget);
+            std::memcpy(expected.data(), readbackBytes.data(), expected.size());
+        }
 
-        CommandList& commands = gpu->device().beginFrame();
-        const uint64_t frameId = gpu->device().frameNumber();
+        auto commandsFrame = gpu->beginFrame();
+        auto& commands = commandsFrame.commands;
+        const uint64_t frameId = gpu->frameNumber();
         if (index == 0) {
             firstSharedFrame = frameId;
         }
         const bool poolingEnabled = index % 2 == 0;
-        const auto prepared = view.prepare(gpu->device());
+        const auto prepared = view.prepare(*gpu);
         lmx::render::FrameDeclaration frame(pool, **shared, commands, camera, prepared,
                                             poolingEnabled);
         frame.graph().exportTexture(frame.displayColor());
         records.retain(frame.execute());
-        gpu->device().endFrame(nullptr);
-        gpu->device().waitIdle();
+        gpu->submitAndEndFrame(commandsFrame);
+        gpu->waitIdle();
 
         std::vector<uint8_t> actual(expected.size());
-        (*shared)->colorTarget().rhi().readback(actual.data(), actual.size());
+        {
+            const auto readbackBytes = lmx::render::readbackNow(
+                *gpu, (*shared)->colorTarget(), lmx::render::TextureUse::RenderTarget);
+            std::memcpy(actual.data(), readbackBytes.data(), actual.size());
+        }
         REQUIRE(actual == expected);
         const lmx::app::RetainedFrame* retained = records.find(frameId);
         REQUIRE(retained != nullptr);

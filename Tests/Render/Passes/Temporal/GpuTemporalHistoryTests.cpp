@@ -1,5 +1,7 @@
 #include "Support/GpuTemporalTestSupport.h"
+
 #include "Support/SceneTableTestSupport.h"
+#include <cstring>
 
 using lmx::test::FixtureDrawItem;
 using lmx::test::FixtureMaterial;
@@ -22,16 +24,17 @@ TEST_CASE("raw history age records the sampled slot before recycling",
     view.temporal.enabled = true;
     view.temporal.reconstruction = lmx::render::ReconstructionMode::Raw;
     view.temporal.debugView = lmx::render::TemporalDebugView::HistoryAge;
-    renderFrame(gpu->device(), **renderer, temporalCamera(), view);
+    renderFrame(*gpu, **renderer, temporalCamera(), view);
     view.temporal.debugView = lmx::render::TemporalDebugView::Off;
-    renderFrame(gpu->device(), **renderer, temporalCamera(), view);
+    renderFrame(*gpu, **renderer, temporalCamera(), view);
 
     lmx::render::TransientPool transients(gpu->device());
-    CommandList& commands = gpu->device().beginFrame();
+    auto commandsFrame = gpu->beginFrame();
+    auto& commands = commandsFrame.commands;
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
-    graph.presentTexture((*renderer)->declarePasses(
-        graph, commands, temporalCamera(), lmx::test::prepareSceneView(view, gpu->device())));
+    graph.presentTexture((*renderer)->declarePasses(graph, commands, temporalCamera(),
+                                                    lmx::test::prepareSceneView(view, *gpu)));
     const auto record = graph.compileFrame(3);
     REQUIRE(record.has_value());
     bool sawRecycledSlot = false;
@@ -43,8 +46,8 @@ TEST_CASE("raw history age records the sampled slot before recycling",
         }
     }
     CHECK(sawRecycledSlot);
-    gpu->device().endFrame(nullptr);
-    gpu->device().waitIdle();
+    gpu->submitAndEndFrame(commandsFrame);
+    gpu->waitIdle();
 }
 
 //======================================================================================================================
@@ -53,38 +56,40 @@ TEST_CASE("raw history age records the sampled slot before recycling",
 TEST_CASE("temporal resolve writes only enabled diagnostics", "[gpu][temporal][taa-diagnostics]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
-    auto library = (*device)->loadShaderLibrary("Shaders/TemporalResolve");
+    auto gpu = createTestGpu();
+    REQUIRE(gpu != nullptr);
+    auto library = gpu->loadShaderLibrary("TemporalResolve");
     INFO(errorOf(library));
     REQUIRE(library.has_value());
-    auto pipeline = (*device)->createComputePipeline({.library = library->get(),
-                                                      .computeEntry = "computeTemporalResolve",
-                                                      .threadsPerThreadgroup = {8, 8, 1},
-                                                      .label = "lmx.test.diagnosticWritePipeline"});
+    auto pipeline =
+        gpu->device().createComputePipeline({.library = library->get(),
+                                             .computeEntry = "computeTemporalResolve",
+                                             .threadsPerThreadgroup = {8, 8, 1},
+                                             .label = "lmx.test.diagnosticWritePipeline"});
     INFO(errorOf(pipeline));
     REQUIRE(pipeline.has_value());
-    auto sampler = (*device)->createSampler({.filter = FilterMode::Linear,
-                                             .addressMode = AddressMode::Clamp,
-                                             .label = "lmx.test.diagnosticSampler"});
+    auto sampler = gpu->device().createSampler({.filter = FilterMode::Linear,
+                                                .addressMode = AddressMode::Clamp,
+                                                .label = "lmx.test.diagnosticSampler"});
     REQUIRE(sampler.has_value());
     constexpr std::array<float, 2> kExposure{1.0f, 1.0f};
-    auto exposure = (*device)->createBuffer(
+    auto exposure = lmx::engine::GpuBuffer::create(
+        gpu->device(),
         {.size = sizeof(kExposure), .storageRead = true, .label = "lmx.test.diagnosticExposure"},
         kExposure.data());
     REQUIRE(exposure.has_value());
 
     const auto makeTexel = [&](const std::array<uint16_t, 4>& texel, const char* label) {
         const TextureMip mip{.data = texel.data(), .bytesPerRow = sizeof(texel)};
-        return (*device)->createTexture({.width = 1,
-                                         .height = 1,
-                                         .format = Format::RGBA16Float,
-                                         .sampled = true,
-                                         .storageWrite = true,
-                                         .cpuReadback = true,
-                                         .label = label},
-                                        std::span{&mip, 1});
+        return lmx::engine::GpuTexture::create(gpu->device(),
+                                               {.width = 1,
+                                                .height = 1,
+                                                .format = Format::RGBA16Float,
+                                                .sampled = true,
+                                                .storageWrite = true,
+                                                .cpuReadback = true,
+                                                .label = label},
+                                               std::span{&mip, 1});
     };
     auto input = makeTexel({0, 0, 0, 0x3c00}, "lmx.test.diagnosticInput");
     REQUIRE(input.has_value());
@@ -110,27 +115,36 @@ TEST_CASE("temporal resolve writes only enabled diagnostics", "[gpu][temporal][t
             REQUIRE(output.has_value());
             REQUIRE(rejection.has_value());
             REQUIRE(reprojected.has_value());
-            CommandList& commands = (*device)->beginFrame();
+            auto commandsFrame = gpu->beginFrame();
+            auto& commands = commandsFrame.commands;
             commands.beginComputePass("lmx.test.diagnosticWrites");
             commands.bindComputePipeline(**pipeline);
             for (uint32_t slot = 0; slot < 6; ++slot) {
-                commands.bindTexture(slot, **input);
+                commands.bindTexture(slot, input->rhi());
             }
-            commands.bindStorageTexture(6, **output, {}, StorageAccess::Write);
-            commands.bindStorageTexture(7, **rejection, {}, StorageAccess::Write);
-            commands.bindStorageTexture(8, **reprojected, {}, StorageAccess::Write);
-            commands.bindStorageBuffer(0, **exposure, StorageAccess::Read);
+            commands.bindStorageTexture(6, output->rhi(), {}, StorageAccess::Write);
+            commands.bindStorageTexture(7, rejection->rhi(), {}, StorageAccess::Write);
+            commands.bindStorageTexture(8, reprojected->rhi(), {}, StorageAccess::Write);
+            commands.bindStorageBuffer(0, exposure->rhi(), StorageAccess::Read);
             commands.bindFrameData(1,
                                    ResolveParams{.historyValid = valid, .writeDiagnostics = mask});
             commands.bindSampler(0, **sampler);
             commands.dispatch(1, 1, 1);
             commands.endComputePass();
-            (*device)->endFrame(nullptr);
-            (*device)->waitIdle();
+            gpu->submitAndEndFrame(commandsFrame);
+            gpu->waitIdle();
             std::array<uint16_t, 4> actual{};
-            (*rejection)->readback(actual.data(), sizeof(actual));
+            {
+                const auto readbackBytes = lmx::render::readbackNow(
+                    *gpu, *rejection, lmx::render::TextureUse::StorageWrite);
+                std::memcpy(actual.data(), readbackBytes.data(), sizeof(actual));
+            }
             CHECK((actual != kPoison) == ((mask & 1u) != 0u));
-            (*reprojected)->readback(actual.data(), sizeof(actual));
+            {
+                const auto readbackBytes = lmx::render::readbackNow(
+                    *gpu, *reprojected, lmx::render::TextureUse::StorageWrite);
+                std::memcpy(actual.data(), readbackBytes.data(), sizeof(actual));
+            }
             CHECK((actual != kPoison) == ((mask & 2u) != 0u));
         }
     }
@@ -160,47 +174,47 @@ TEST_CASE("history reset reasons follow the frames that caused them", "[gpu][tem
     const Camera camera = temporalCamera();
 
     view.temporal.enabled = true;
-    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(*gpu, **renderer, camera, view);
     REQUIRE((*renderer)->temporalStatus().lastReset == HistoryResetReason::FirstFrame);
     const uint64_t historyBytes = (*renderer)->temporalStatus().historyBytes;
     REQUIRE(historyBytes > 0);
 
-    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(*gpu, **renderer, camera, view);
     REQUIRE((*renderer)->temporalStatus().lastReset == HistoryResetReason::None);
     REQUIRE((*renderer)->temporalStatus().historyValid);
 
     view.temporal.enabled = false;
-    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(*gpu, **renderer, camera, view);
     REQUIRE((*renderer)->temporalStatus().lastReset == HistoryResetReason::None);
     // Disabling keeps the allocation rather than freeing it under frames still in flight.
     REQUIRE((*renderer)->temporalStatus().historyBytes == historyBytes);
 
     view.temporal.enabled = true;
-    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(*gpu, **renderer, camera, view);
     REQUIRE((*renderer)->temporalStatus().lastReset == HistoryResetReason::TemporalEnabled);
 
-    gpu->device().waitIdle();
+    gpu->waitIdle();
     const auto resized = (*renderer)->resize(kSize / 2, kSize / 2);
     INFO((resized.has_value() ? std::string{} : resized.error().message));
     REQUIRE(resized.has_value());
-    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(*gpu, **renderer, camera, view);
     REQUIRE((*renderer)->temporalStatus().lastReset == HistoryResetReason::ExtentChanged);
     REQUIRE((*renderer)->temporalStatus().historyBytes == historyBytes / 4);
 
     view.temporal.cameraCut = true;
-    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(*gpu, **renderer, camera, view);
     REQUIRE((*renderer)->temporalStatus().lastReset == HistoryResetReason::CameraCut);
     REQUIRE_FALSE((*renderer)->temporalStatus().historyValid);
 
     // A render-scale change is not an extent change: the history lives at the output extent and is
     // reprojected in UV, so it survives and the frame reports the change instead of resetting.
     view.temporal.cameraCut = false;
-    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(*gpu, **renderer, camera, view);
     REQUIRE((*renderer)->temporalStatus().lastReset == HistoryResetReason::None);
     const uint64_t beforeChange = (*renderer)->temporalStatus().lastRenderExtentChangeFrame;
 
     view.temporal.renderScale = 0.5f;
-    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(*gpu, **renderer, camera, view);
     const lmx::render::TemporalStatus scaled = (*renderer)->temporalStatus();
     REQUIRE(scaled.lastReset == HistoryResetReason::None);
     REQUIRE(scaled.historyValid);
@@ -211,7 +225,7 @@ TEST_CASE("history reset reasons follow the frames that caused them", "[gpu][tem
     REQUIRE(scaled.historyBytes == historyBytes / 4);
 
     // Holding the scale leaves the count where the change put it.
-    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(*gpu, **renderer, camera, view);
     REQUIRE((*renderer)->temporalStatus().lastRenderExtentChangeFrame ==
             scaled.lastRenderExtentChangeFrame);
 }
@@ -247,7 +261,7 @@ TEST_CASE("history age restarts across temporal off and survives a mode switch",
 
     // Three accumulated frames: the first is the reset that starts the count at 1.
     for (uint32_t frame = 1; frame <= 3; ++frame) {
-        renderFrame(gpu->device(), **renderer, camera, view);
+        renderFrame(*gpu, **renderer, camera, view);
         REQUIRE((*renderer)->temporalStatus().historyAge == frame);
     }
     REQUIRE((*renderer)->temporalStatus().historyAge >= 3);
@@ -255,27 +269,27 @@ TEST_CASE("history age restarts across temporal off and survives a mode switch",
 
     // Temporal off: no history is kept, so nothing is counted.
     view.temporal.enabled = false;
-    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(*gpu, **renderer, camera, view);
     REQUIRE((*renderer)->temporalStatus().historyAge == 0);
     REQUIRE_FALSE((*renderer)->temporalStatus().warmupComplete);
     REQUIRE_FALSE((*renderer)->temporalStatus().historyValid);
 
     // Re-enabling is a reset, so the count starts over at the reset frame's own 1.
     view.temporal.enabled = true;
-    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(*gpu, **renderer, camera, view);
     REQUIRE((*renderer)->temporalStatus().lastReset == HistoryResetReason::TemporalEnabled);
     REQUIRE((*renderer)->temporalStatus().historyAge == 1);
 
     // A change of reconstruction is not a reset: the raw commit leaves a real frame in the slot,
     // so the count keeps running through it and through the switch back.
     view.temporal.reconstruction = ReconstructionMode::Raw;
-    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(*gpu, **renderer, camera, view);
     REQUIRE((*renderer)->temporalStatus().lastReset == HistoryResetReason::None);
     REQUIRE((*renderer)->temporalStatus().reconstruction == ReconstructionMode::Raw);
     REQUIRE((*renderer)->temporalStatus().historyAge == 2);
 
     view.temporal.reconstruction = ReconstructionMode::NativeTaa;
-    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(*gpu, **renderer, camera, view);
     REQUIRE((*renderer)->temporalStatus().lastReset == HistoryResetReason::None);
     REQUIRE((*renderer)->temporalStatus().reconstruction == ReconstructionMode::NativeTaa);
     REQUIRE((*renderer)->temporalStatus().historyAge == 3);
@@ -308,21 +322,22 @@ TEST_CASE("a re-enabling frame imports motion as the last temporal frame left it
 
     view.temporal.enabled = true;
     view.temporal.debugView = lmx::render::TemporalDebugView::ReprojectionError;
-    renderFrame(gpu->device(), **renderer, camera, view);
-    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(*gpu, **renderer, camera, view);
+    renderFrame(*gpu, **renderer, camera, view);
 
     view.temporal.enabled = false;
     view.temporal.debugView = lmx::render::TemporalDebugView::Off;
-    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(*gpu, **renderer, camera, view);
 
     view.temporal.enabled = true;
     view.temporal.debugView = lmx::render::TemporalDebugView::ReprojectionError;
     lmx::render::TransientPool transients(gpu->device());
-    CommandList& commands = gpu->device().beginFrame();
+    auto commandsFrame = gpu->beginFrame();
+    auto& commands = commandsFrame.commands;
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
     const lmx::render::GraphTexture display = (*renderer)->declarePasses(
-        graph, commands, camera, lmx::test::prepareSceneView(view, gpu->device()));
+        graph, commands, camera, lmx::test::prepareSceneView(view, *gpu));
     graph.presentTexture(display);
 
     const auto record = graph.compileFrame(1);
@@ -333,8 +348,8 @@ TEST_CASE("a re-enabling frame imports motion as the last temporal frame left it
     REQUIRE(dump.contains("r4 texture \"lmx.render.motion\" RG16Float"));
     REQUIRE(dump.contains("texture r4 mips[0..] layers[0..] ShaderRead -> RenderTarget"));
 
-    gpu->device().endFrame(nullptr);
-    gpu->device().waitIdle();
+    gpu->submitAndEndFrame(commandsFrame);
+    gpu->waitIdle();
 }
 
 //======================================================================================================================
@@ -367,27 +382,27 @@ TEST_CASE("temporal frames overlap in flight over one history", "[gpu][temporal]
     // the reprojection dispatch and not just the attachment write.
     view.temporal.enabled = true;
     view.temporal.debugView = TemporalDebugView::ReprojectionError;
-    renderFrameInFlight(gpu->device(), **renderer, camera, view);
+    renderFrameInFlight(*gpu, **renderer, camera, view);
     REQUIRE((*renderer)->temporalStatus().lastReset == HistoryResetReason::FirstFrame);
     const uint64_t historyBytes = (*renderer)->temporalStatus().historyBytes;
     REQUIRE(historyBytes > 0);
 
-    renderFrameInFlight(gpu->device(), **renderer, camera, view);
+    renderFrameInFlight(*gpu, **renderer, camera, view);
     REQUIRE((*renderer)->temporalStatus().lastReset == HistoryResetReason::None);
     REQUIRE((*renderer)->temporalStatus().historyValid);
 
     view.temporal.enabled = false;
     view.temporal.debugView = TemporalDebugView::Off;
-    renderFrameInFlight(gpu->device(), **renderer, camera, view);
+    renderFrameInFlight(*gpu, **renderer, camera, view);
     REQUIRE((*renderer)->temporalStatus().lastReset == HistoryResetReason::None);
     REQUIRE_FALSE((*renderer)->temporalStatus().historyValid);
 
     view.temporal.enabled = true;
     view.temporal.debugView = TemporalDebugView::MotionVectors;
-    renderFrameInFlight(gpu->device(), **renderer, camera, view);
+    renderFrameInFlight(*gpu, **renderer, camera, view);
     REQUIRE((*renderer)->temporalStatus().lastReset == HistoryResetReason::TemporalEnabled);
 
-    renderFrameInFlight(gpu->device(), **renderer, camera, view);
+    renderFrameInFlight(*gpu, **renderer, camera, view);
     REQUIRE((*renderer)->temporalStatus().lastReset == HistoryResetReason::None);
     REQUIRE((*renderer)->temporalStatus().historyValid);
 
@@ -399,7 +414,7 @@ TEST_CASE("temporal frames overlap in flight over one history", "[gpu][temporal]
     for (uint32_t frame = 0; frame < 5; ++frame) {
         view.temporal.debugView =
             frame % 2 == 0 ? TemporalDebugView::RejectionMask : TemporalDebugView::Off;
-        renderFrameInFlight(gpu->device(), **renderer, camera, view);
+        renderFrameInFlight(*gpu, **renderer, camera, view);
     }
     REQUIRE((*renderer)->temporalStatus().reconstruction ==
             lmx::render::ReconstructionMode::NativeTaa);
@@ -412,14 +427,14 @@ TEST_CASE("temporal frames overlap in flight over one history", "[gpu][temporal]
         view.temporal.renderScale = frame % 2 == 0 ? 0.5f : 1.0f;
         view.temporal.debugView =
             frame % 2 == 0 ? TemporalDebugView::MotionVectors : TemporalDebugView::Off;
-        renderFrameInFlight(gpu->device(), **renderer, camera, view);
+        renderFrameInFlight(*gpu, **renderer, camera, view);
         REQUIRE((*renderer)->temporalStatus().lastReset == HistoryResetReason::None);
     }
     REQUIRE((*renderer)->temporalStatus().upscaled);
 
     // The one drain, after every submission: the targets were never reallocated, so the run's own
     // completion is the assertion the overlap makes.
-    gpu->device().waitIdle();
+    gpu->waitIdle();
     REQUIRE((*renderer)->temporalStatus().historyBytes == historyBytes);
     REQUIRE((*renderer)->temporalStatus().depthHistoryBytes > 0);
 }

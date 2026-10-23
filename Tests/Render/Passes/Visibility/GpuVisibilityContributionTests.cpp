@@ -1,6 +1,8 @@
 #include "Engine/Scene/Scene.h"
+
 #include "Render/Renderer/SceneViewBuilder.h"
 #include "Support/GpuTestSupport.h"
+#include <cstring>
 
 #include <algorithm>
 #include <cmath>
@@ -13,8 +15,9 @@ namespace engine = lmx::engine;
 constexpr uint32_t kRejectedCount = 15;
 
 struct ContributionTargets {
-    std::array<rojoRHI::Texture*, 4> textures{};
-    std::unique_ptr<rojoRHI::Buffer> depth;
+    std::array<const engine::GpuTexture*, 4> textures{};
+    render::TextureUse hdrUse = render::TextureUse::CopySource;
+    engine::GpuBuffer depth;
 };
 
 //======================================================================================================================
@@ -95,7 +98,7 @@ std::unique_ptr<render::Renderer> contributionRenderer(engine::GpuContext& gpu) 
 }
 
 //======================================================================================================================
-ContributionTargets contributionTargets(rojoRHI::Device& device, render::Renderer& renderer,
+ContributionTargets contributionTargets(engine::GpuContext& gpu, render::Renderer& renderer,
                                         render::TransientPool& pool, rojoRHI::CommandList& commands,
                                         const engine::Camera& camera, const render::SceneView& view,
                                         uint64_t frame, rojoRHI::ComputePipeline& depthPipeline) {
@@ -106,8 +109,8 @@ ContributionTargets contributionTargets(rojoRHI::Device& device, render::Rendere
     REQUIRE(compiled);
     const auto& record = *compiled;
     ContributionTargets targets;
-    targets.textures = {&renderer.hdrColorTarget(), &renderer.depthTarget(),
-                        renderer.motionTarget(), nullptr};
+    targets.textures = {&renderer.hdrColorTexture(), &renderer.depthTexture(),
+                        renderer.motionTexture(), nullptr};
     render::GraphTexture depthHandle;
     for (uint32_t pass = 0; pass < record.debug.passes.size(); ++pass) {
         if (record.debug.passes[pass].label != "lmx.pass.scene")
@@ -121,19 +124,24 @@ ContributionTargets contributionTargets(rojoRHI::Device& device, render::Rendere
             REQUIRE(use.role == render::UseRole::ColorAttachment);
             const auto texture = graph.passResources(pass).texture({use.resource, use.version});
             REQUIRE(texture);
-            targets.textures[3] = *texture;
+            targets.textures[3] = renderer.reactiveTexture();
+            REQUIRE(targets.textures[3] != nullptr);
+            REQUIRE(&targets.textures[3]->rhi() == *texture);
         }
     }
     REQUIRE(std::ranges::all_of(targets.textures,
                                 [](const auto* texture) { return texture != nullptr; }));
-    auto depth = device.createBuffer({.size = uint64_t{kSize} * kSize * 4,
-                                      .storageWrite = true,
-                                      .cpuReadback = true,
-                                      .label = "lmx.test.visibility.depth"},
-                                     nullptr);
+    auto depth = engine::GpuBuffer::create(gpu.device(),
+                                           {.size = uint64_t{kSize} * kSize * 4,
+                                            .storageWrite = true,
+                                            .cpuReadback = true,
+                                            .label = "lmx.test.visibility.depth"},
+                                           nullptr);
     REQUIRE(depth);
     targets.depth = std::move(*depth);
-    const auto depthBuffer = graph.importBuffer(*targets.depth, "lmx.test.visibility.depth");
+    targets.hdrUse = renderer.temporalStatus().upscaled ? render::TextureUse::ShaderRead
+                                                        : render::TextureUse::CopySource;
+    const auto depthBuffer = graph.importBuffer(targets.depth.rhi(), "lmx.test.visibility.depth");
     graph.addComputePass("lmx.test.visibility.readDepth",
                          {.shaderTextureReads = {depthHandle}, .bufferWrites = {depthBuffer}},
                          [&](const render::PassResources& resources) {
@@ -153,16 +161,23 @@ ContributionTargets contributionTargets(rojoRHI::Device& device, render::Rendere
 }
 
 //======================================================================================================================
-std::array<std::vector<uint8_t>, 4> contributionBytes(const ContributionTargets& targets) {
+std::array<std::vector<uint8_t>, 4> contributionBytes(engine::GpuContext& gpu,
+                                                      const ContributionTargets& targets) {
     constexpr std::array<uint32_t, 4> bytesPerPixel{8, 4, 4, 1};
     std::array<std::vector<uint8_t>, 4> result;
     for (uint32_t attachment = 0; attachment < result.size(); ++attachment) {
         result[attachment].resize(size_t{kSize} * kSize * bytesPerPixel[attachment]);
-        if (attachment == 1)
-            targets.depth->readback(result[attachment].data(), result[attachment].size());
-        else
-            targets.textures[attachment]->readback(result[attachment].data(),
-                                                   result[attachment].size());
+        if (attachment == 1) {
+            const auto readbackBytes =
+                lmx::render::readbackNow(gpu, targets.depth, lmx::render::BufferUse::StorageWrite,
+                                         {0, result[attachment].size()});
+            std::memcpy(result[attachment].data(), readbackBytes.data(), result[attachment].size());
+        } else {
+            const auto readbackBytes = lmx::render::readbackNow(
+                gpu, *targets.textures[attachment],
+                attachment == 0 ? targets.hdrUse : render::TextureUse::RenderTarget);
+            std::memcpy(result[attachment].data(), readbackBytes.data(), result[attachment].size());
+        }
     }
     return result;
 }
@@ -183,17 +198,34 @@ void requireOutsideClip(const engine::Scene& scene, const glm::mat4& viewProject
 }
 
 //======================================================================================================================
-void requireSentinelCoverage(const ContributionTargets& targets, uint32_t width,
-                             const engine::Scene& scene, const glm::mat4& viewProjection,
-                             bool expectRigidMotion) {
+void requireSentinelCoverage(engine::GpuContext& gpu, const ContributionTargets& targets,
+                             uint32_t width, const engine::Scene& scene,
+                             const glm::mat4& viewProjection, bool expectRigidMotion) {
     std::vector<uint16_t> hdr(size_t{kSize} * kSize * 4);
     std::vector<float> depth(size_t{kSize} * kSize);
     std::vector<uint16_t> motion(size_t{kSize} * kSize * 2);
     std::vector<uint8_t> reactive(size_t{kSize} * kSize);
-    targets.textures[0]->readback(hdr.data(), hdr.size() * sizeof(uint16_t));
-    targets.depth->readback(depth.data(), depth.size() * sizeof(float));
-    targets.textures[2]->readback(motion.data(), motion.size() * sizeof(uint16_t));
-    targets.textures[3]->readback(reactive.data(), reactive.size());
+    {
+        const auto readbackBytes =
+            lmx::render::readbackNow(gpu, *targets.textures[0], targets.hdrUse);
+        std::memcpy(hdr.data(), readbackBytes.data(), hdr.size() * sizeof(uint16_t));
+    }
+    {
+        const auto readbackBytes =
+            lmx::render::readbackNow(gpu, targets.depth, lmx::render::BufferUse::StorageWrite,
+                                     {0, depth.size() * sizeof(float)});
+        std::memcpy(depth.data(), readbackBytes.data(), depth.size() * sizeof(float));
+    }
+    {
+        const auto readbackBytes =
+            lmx::render::readbackNow(gpu, *targets.textures[2], render::TextureUse::RenderTarget);
+        std::memcpy(motion.data(), readbackBytes.data(), motion.size() * sizeof(uint16_t));
+    }
+    {
+        const auto readbackBytes =
+            lmx::render::readbackNow(gpu, *targets.textures[3], render::TextureUse::RenderTarget);
+        std::memcpy(reactive.data(), readbackBytes.data(), reactive.size());
+    }
     std::array<uint32_t, 3> covered{};
     uint32_t rigidMotion = 0;
     for (uint32_t y = 0; y < width; ++y) {
@@ -247,7 +279,7 @@ void requireSentinelCoverage(const ContributionTargets& targets, uint32_t width,
 TEST_CASE("rejected geometry contributes no camera attachments through the jitter cycle",
           "[gpu][visibility][visibility-contribution]") {
     auto gpu = createTestGpu();
-    auto library = gpu->device().loadShaderLibrary("Shaders/VisibilityDepthReadback");
+    auto library = gpu->loadShaderLibrary("VisibilityDepthReadback");
     INFO(errorOf(library));
     REQUIRE(library);
     auto depthPipeline =
@@ -270,8 +302,9 @@ TEST_CASE("rejected geometry contributes no camera attachments through the jitte
             for (uint32_t phase = 0; phase < render::kJitterSequenceLength; ++phase) {
                 CAPTURE(scale, sentinels, phase);
                 scene.objects.back().position.x = phase % 2 == 0 ? 0.7f : 0.72f;
-                auto& commands = gpu->device().beginFrame();
-                REQUIRE(scene.prepareFrame(gpu->device().frameNumber()));
+                auto commandsFrame = gpu->beginFrame();
+                auto& commands = commandsFrame.commands;
+                REQUIRE(scene.prepareFrame(gpu->frameNumber()));
                 std::vector<engine::DrawItem> items;
                 auto view = render::buildSceneView(scene, items, false);
                 if (!sentinels)
@@ -289,21 +322,18 @@ TEST_CASE("rejected geometry contributes no camera attachments through the jitte
                                                 camera, extents, render::haltonJitterPixels(phase))
                                                 .viewProjectionJittered;
                 requireOutsideClip(scene, viewProjection);
-                const auto frame = gpu->device().frameNumber();
-                const auto culledTargets =
-                    contributionTargets(gpu->device(), *culled, culledPool, commands, camera, view,
-                                        frame, **depthPipeline);
+                const auto frame = gpu->frameNumber();
+                const auto culledTargets = contributionTargets(
+                    *gpu, *culled, culledPool, commands, camera, view, frame, **depthPipeline);
                 view.visibilityEnabled = false;
-                const auto unculledTargets =
-                    contributionTargets(gpu->device(), *unculled, unculledPool, commands, camera,
-                                        view, frame, **depthPipeline);
+                const auto unculledTargets = contributionTargets(
+                    *gpu, *unculled, unculledPool, commands, camera, view, frame, **depthPipeline);
                 view.items = {};
-                const auto emptyTargets =
-                    contributionTargets(gpu->device(), *empty, emptyPool, commands, camera, view,
-                                        frame, **depthPipeline);
-                gpu->device().endFrame(nullptr);
+                const auto emptyTargets = contributionTargets(*gpu, *empty, emptyPool, commands,
+                                                              camera, view, frame, **depthPipeline);
+                gpu->submitAndEndFrame(commandsFrame);
                 scene.commitFrame();
-                gpu->device().waitIdle();
+                gpu->waitIdle();
                 REQUIRE(culled->temporalStatus().jitterIndex == phase);
                 REQUIRE(unculled->temporalStatus().jitterIndex == phase);
                 REQUIRE(empty->temporalStatus().jitterIndex == phase);
@@ -313,9 +343,9 @@ TEST_CASE("rejected geometry contributes no camera attachments through the jitte
                 REQUIRE(culled->visibilityStatus().submission.sceneCommands == (sentinels ? 3 : 0));
                 REQUIRE(unculled->visibilityStatus().submission.sceneCommands ==
                         kRejectedCount + (sentinels ? 3 : 0));
-                const auto actual = contributionBytes(culledTargets);
-                const auto submitted = contributionBytes(unculledTargets);
-                const auto clear = contributionBytes(emptyTargets);
+                const auto actual = contributionBytes(*gpu, culledTargets);
+                const auto submitted = contributionBytes(*gpu, unculledTargets);
+                const auto clear = contributionBytes(*gpu, emptyTargets);
                 for (uint32_t attachment = 1; attachment < clear.size(); ++attachment)
                     REQUIRE(
                         std::ranges::all_of(clear[attachment], [](uint8_t b) { return b == 0; }));
@@ -328,7 +358,7 @@ TEST_CASE("rejected geometry contributes no camera attachments through the jitte
                         REQUIRE(actual[attachment] != clear[attachment]);
                 }
                 if (sentinels)
-                    requireSentinelCoverage(culledTargets, extents.renderWidth, scene,
+                    requireSentinelCoverage(*gpu, culledTargets, extents.renderWidth, scene,
                                             viewProjection, phase > 0);
             }
         }
@@ -339,7 +369,7 @@ TEST_CASE("rejected geometry contributes no camera attachments through the jitte
 TEST_CASE("GPU classification preserves every camera attachment through the jitter cycle",
           "[gpu][visibility][visibility-contribution][gpu-classify]") {
     auto gpuContext = createTestGpu();
-    auto library = gpuContext->device().loadShaderLibrary("Shaders/VisibilityDepthReadback");
+    auto library = gpuContext->loadShaderLibrary("VisibilityDepthReadback");
     INFO(errorOf(library));
     REQUIRE(library);
     auto depthPipeline =
@@ -360,8 +390,9 @@ TEST_CASE("GPU classification preserves every camera attachment through the jitt
             for (uint32_t phase = 0; phase < render::kJitterSequenceLength; ++phase) {
                 CAPTURE(static_cast<int>(submission), scale, phase);
                 scene.objects.back().position.x = phase % 2 == 0 ? 0.7f : 0.72f;
-                auto& commands = gpuContext->device().beginFrame();
-                REQUIRE(scene.prepareFrame(gpuContext->device().frameNumber()));
+                auto commandsFrame = gpuContext->beginFrame();
+                auto& commands = commandsFrame.commands;
+                REQUIRE(scene.prepareFrame(gpuContext->frameNumber()));
                 std::vector<engine::DrawItem> items;
                 auto view = render::buildSceneView(scene, items, false);
                 view.bloomEnabled = false;
@@ -372,21 +403,19 @@ TEST_CASE("GPU classification preserves every camera attachment through the jitt
                 view.temporal.reconstruction = render::ReconstructionMode::Raw;
                 view.temporal.renderScale = scale;
                 view.temporal.sceneGeneration = scene.objects.front().id.store;
-                const auto frame = gpuContext->device().frameNumber();
-                const auto expected =
-                    contributionTargets(gpuContext->device(), *cpu, cpuPool, commands, camera, view,
-                                        frame, **depthPipeline);
+                const auto frame = gpuContext->frameNumber();
+                const auto expected = contributionTargets(*gpuContext, *cpu, cpuPool, commands,
+                                                          camera, view, frame, **depthPipeline);
                 view.classifyMode = render::ClassifyMode::Gpu;
-                const auto actual =
-                    contributionTargets(gpuContext->device(), *gpu, gpuPool, commands, camera, view,
-                                        frame, **depthPipeline);
-                gpuContext->device().endFrame(nullptr);
+                const auto actual = contributionTargets(*gpuContext, *gpu, gpuPool, commands,
+                                                        camera, view, frame, **depthPipeline);
+                gpuContext->submitAndEndFrame(commandsFrame);
                 scene.commitFrame();
-                gpuContext->device().waitIdle();
+                gpuContext->waitIdle();
                 REQUIRE(cpu->temporalStatus().jitterIndex == phase);
                 REQUIRE(gpu->temporalStatus().jitterIndex == phase);
-                const auto expectedBytes = contributionBytes(expected);
-                const auto actualBytes = contributionBytes(actual);
+                const auto expectedBytes = contributionBytes(*gpuContext, expected);
+                const auto actualBytes = contributionBytes(*gpuContext, actual);
                 for (uint32_t attachment = 0; attachment < expectedBytes.size(); ++attachment) {
                     CAPTURE(attachment);
                     REQUIRE(actualBytes[attachment] == expectedBytes[attachment]);

@@ -18,8 +18,9 @@ TEST_CASE("GPU visibility declares writers and precise draw consumers in both la
         auto renderer = Renderer::create(*gpu, kSize, kSize, true);
         REQUIRE(renderer);
         TransientPool pool(gpu->device());
-        auto& commands = gpu->device().beginFrame();
-        REQUIRE((*scene)->prepareFrame(gpu->device().frameNumber()));
+        auto commandsFrame = gpu->beginFrame();
+        auto& commands = commandsFrame.commands;
+        REQUIRE((*scene)->prepareFrame(gpu->frameNumber()));
         std::vector<lmx::engine::DrawItem> items;
         auto view = buildSceneView(**scene, items, false);
         view.classifyMode = ClassifyMode::Gpu;
@@ -29,7 +30,7 @@ TEST_CASE("GPU visibility declares writers and precise draw consumers in both la
         RenderGraph graph(pool);
         const auto camera = lmx::engine::cameraFromScene((*scene)->initialCamera);
         graph.presentTexture((*renderer)->declarePasses(graph, commands, camera, view));
-        const auto record = graph.compileFrame(gpu->device().frameNumber());
+        const auto record = graph.compileFrame(gpu->frameNumber());
         INFO((record ? "" : record.error().message));
         REQUIRE(record);
         const auto& debug = record->debug;
@@ -54,9 +55,9 @@ TEST_CASE("GPU visibility declares writers and precise draw consumers in both la
         };
         REQUIRE(transition("lmx.draw.rows", lmx::render::BufferUse::ShaderRead));
         REQUIRE(transition("lmx.draw.args", lmx::render::BufferUse::IndirectArgument));
-        graph.execute(commands, gpu->device().frameNumber());
-        gpu->device().endFrame(nullptr);
-        gpu->device().waitIdle();
+        graph.execute(commands, gpu->frameNumber());
+        gpu->submitAndEndFrame(commandsFrame);
+        gpu->waitIdle();
         const auto name = mode == SubmissionMode::Batched ? "frame-visibility-batched.txt"
                                                           : "frame-visibility-indirect.txt";
         requireMatchesGolden(dumpCompiledFrame(*record), name);
@@ -72,8 +73,9 @@ TEST_CASE("empty GPU views preserve readable diagnostics as graph sinks",
     REQUIRE(scene);
     auto renderer = Renderer::create(*gpu, kSize, kSize, true);
     REQUIRE(renderer);
-    auto& commands = gpu->device().beginFrame();
-    REQUIRE((*scene)->prepareFrame(gpu->device().frameNumber()));
+    auto commandsFrame = gpu->beginFrame();
+    auto& commands = commandsFrame.commands;
+    REQUIRE((*scene)->prepareFrame(gpu->frameNumber()));
     std::vector<lmx::engine::DrawItem> items;
     auto view = buildSceneView(**scene, items, false);
     view.items = {};
@@ -84,7 +86,7 @@ TEST_CASE("empty GPU views preserve readable diagnostics as graph sinks",
     pool.beginFrame();
     RenderGraph graph(pool);
     graph.exportTexture((*renderer)->declarePasses(graph, commands, lmx::engine::Camera{}, view));
-    const auto record = graph.compileFrame(gpu->device().frameNumber());
+    const auto record = graph.compileFrame(gpu->frameNumber());
     INFO((record ? "" : record.error().message));
     REQUIRE(record);
     const auto& debug = record->debug;
@@ -96,7 +98,7 @@ TEST_CASE("empty GPU views preserve readable diagnostics as graph sinks",
         return debug.resources[sink.resource].name == "lmx.draw.counters" &&
                sink.kind == SinkKind::Readback;
     }));
-    graph.execute(commands, gpu->device().frameNumber());
-    gpu->device().endFrame(nullptr);
-    gpu->device().waitIdle();
+    graph.execute(commands, gpu->frameNumber());
+    gpu->submitAndEndFrame(commandsFrame);
+    gpu->waitIdle();
 }
