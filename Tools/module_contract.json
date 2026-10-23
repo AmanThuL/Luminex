@@ -298,8 +298,7 @@
       ],
       "consumers": {
         "asset": [
-          "rojoRHI/Format.h",
-          "rojoRHI/TextureDesc.h"
+          "rojoRHI/Format.h"
         ],
         "engine": [
           "*"
@@ -321,8 +320,7 @@
           "*"
         ],
         "texture-bake": [
-          "rojoRHI/Format.h",
-          "rojoRHI/TextureDesc.h"
+          "rojoRHI/Format.h"
         ],
         "benchmarks": [
           "*"

@@ -5,6 +5,7 @@
 #include "Engine/Asset/Texture/TextureBake.h"
 #include "Engine/Scene/SceneDocumentContent.h"
 #include "Engine/Scene/SceneInstantiate.h"
+#include "Engine/Upload/DdsUpload.h"
 #include "Scenes/SceneDocuments.h"
 #include "Support/EngineTestSupport.h"
 #include "Support/GpuTestSupport.h"
@@ -857,7 +858,7 @@ TEST_CASE("document content mip filtering follows each image color space",
              .mipLevels = 3,
              .sampled = true,
              .label = "expected document mips"},
-            baked.mips);
+            engine::toTextureMips(baked));
         REQUIRE(expected);
         auto destination = makeProbeTarget(**device, "document mip probe");
         auto library = (*device)->loadShaderLibrary("Shaders/SamplerSmoke");

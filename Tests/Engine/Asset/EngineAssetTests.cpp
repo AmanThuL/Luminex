@@ -136,10 +136,10 @@ TEST_CASE("loadDds accepts a 4x4 single-mip BC1 2D texture", "[asset]") {
     REQUIRE(result->width == 4);
     REQUIRE(result->height == 4);
     REQUIRE(result->mipLevels == 1);
-    REQUIRE(result->kind == rojoRHI::TextureKind::Tex2D);
+    REQUIRE(result->kind == ImageKind::Tex2D);
     REQUIRE(result->bc1);
     REQUIRE(result->mips.size() == 1);
-    REQUIRE(result->mips[0].bytesPerRow == 8);
+    REQUIRE(result->mips[0].rowPitch == 8);
     REQUIRE(result->payload.size() == 8);
 }
 
@@ -170,10 +170,10 @@ TEST_CASE("loadDds accepts a 1x1 RGBA8 (A8R8G8B8) texture, swizzled to RGBA", "[
     REQUIRE(result->width == 1);
     REQUIRE(result->height == 1);
     REQUIRE(result->mipLevels == 1);
-    REQUIRE(result->kind == rojoRHI::TextureKind::Tex2D);
+    REQUIRE(result->kind == ImageKind::Tex2D);
     REQUIRE_FALSE(result->bc1);
     REQUIRE(result->mips.size() == 1);
-    REQUIRE(result->mips[0].bytesPerRow == 4);
+    REQUIRE(result->mips[0].rowPitch == 4);
     REQUIRE(result->payload.size() == 4);
     REQUIRE(static_cast<unsigned char>(result->payload[0]) == 0x11); // R
     REQUIRE(static_cast<unsigned char>(result->payload[1]) == 0x22); // G
@@ -196,7 +196,7 @@ TEST_CASE("loadDds accepts an 8x8 BC1 cubemap with 3 mips, correctly face-major 
 
     const AssetResult<DdsImage> result = loadDds(file.string());
     REQUIRE(result.has_value());
-    REQUIRE(result->kind == rojoRHI::TextureKind::Cube);
+    REQUIRE(result->kind == ImageKind::Cube);
     REQUIRE(result->mipLevels == 3);
     REQUIRE(result->mips.size() == 18); // 6 faces * 3 mips
 
@@ -205,10 +205,10 @@ TEST_CASE("loadDds accepts an 8x8 BC1 cubemap with 3 mips, correctly face-major 
     constexpr uint32_t kExpectedStride[3] = {16, 8, 8};
     for (uint32_t face = 0; face < 6; ++face) {
         for (uint32_t level = 0; level < 3; ++level) {
-            const rojoRHI::TextureMip& mip = result->mips[face * 3 + level];
-            REQUIRE(mip.bytesPerRow == kExpectedStride[level]);
-            // Read through TextureMip to pin the face-major, mip-major span used by GPU upload.
-            REQUIRE(*static_cast<const uint8_t*>(mip.data) ==
+            const ImageMip& mip = result->mips[face * 3 + level];
+            REQUIRE(mip.rowPitch == kExpectedStride[level]);
+            // Read through the range to pin the face-major, mip-major order used by GPU upload.
+            REQUIRE(static_cast<uint8_t>(result->payload[mip.offset]) ==
                     static_cast<uint8_t>(face * 16 + level));
         }
     }
@@ -251,8 +251,8 @@ TEST_CASE("loadDds BC1 stride uses the ceiling of width/4 and height/4, not trun
 
     const AssetResult<DdsImage> result = loadDds(file.string());
     REQUIRE(result.has_value());
-    REQUIRE(result->mips[0].bytesPerRow == 16); // ((6+3)/4)*8 = 2*8
-    REQUIRE(result->payload.size() == 32);      // ((6+3)/4)*((5+3)/4)*8 = 2*2*8
+    REQUIRE(result->mips[0].rowPitch == 16); // ((6+3)/4)*8 = 2*8
+    REQUIRE(result->payload.size() == 32);   // ((6+3)/4)*((5+3)/4)*8 = 2*2*8
 }
 
 namespace {
@@ -487,7 +487,7 @@ TEST_CASE("writeDds then loadDds round-trips a baked chain's dimensions and payl
     REQUIRE(loaded->height == baked.height);
     REQUIRE(loaded->mipLevels == baked.mipLevels);
     REQUIRE_FALSE(loaded->bc1);
-    REQUIRE(loaded->kind == rojoRHI::TextureKind::Tex2D);
+    REQUIRE(loaded->kind == ImageKind::Tex2D);
     REQUIRE(loaded->payload.size() == baked.payload.size());
     REQUIRE(loaded->payload == baked.payload);
 }

@@ -9,6 +9,7 @@
 #include "Core/Math/Sphere.h"
 #include "Engine/Asset/Document/Orientation.h"
 #include "Engine/Asset/Texture/TextureBake.h"
+#include "Engine/Upload/DdsUpload.h"
 
 #include <algorithm>
 #include <array>
@@ -44,7 +45,7 @@ asset::AssetResult<std::vector<TextureId>> uploadImages(rojoRHI::Device& device,
                                            .mipLevels = baked.mipLevels,
                                            .sampled = true,
                                            .label = label},
-                                          baked.mips);
+                                          toTextureMips(baked));
             }
             const rojoRHI::TextureMip level{.data = image.rgba8.data(),
                                             .bytesPerRow = image.width * 4};

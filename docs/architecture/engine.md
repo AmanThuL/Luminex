@@ -20,7 +20,7 @@ clip data and sampling, and the asset error domain. The glTF loader carries its 
 cutoff/double-sided vocabulary and rejects referenced BLEND materials.
 
 Asset depends on `core` alone and links no GPU target: its RojoRHI header allowance admits only
-`rojoRHI/Format.h` and `rojoRHI/TextureDesc.h`, so a tool such as `TextureBake` links Asset without
+`rojoRHI/Format.h` (images are `asset::ImageData`; Engine converts at upload), so a tool such as `TextureBake` links Asset without
 Metal. The [module contract](../conventions/modules.md#asset-independence) states the include,
 framework and archive checks that hold this boundary.
 

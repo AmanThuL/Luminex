@@ -1669,11 +1669,10 @@ class RepositoryContractTests(unittest.TestCase):
     def test_engine_consumes_every_public_rhi_header(self) -> None:
         self.assertEqual(self.contract["externals"]["rhi"]["consumers"]["engine"], ["*"])
 
-    def test_asset_still_consumes_only_the_two_descriptor_headers(self) -> None:
-        self.assertEqual(
-            self.contract["externals"]["rhi"]["consumers"]["asset"],
-            ["rojoRHI/Format.h", "rojoRHI/TextureDesc.h"],
-        )
+    def test_asset_and_texture_bake_consume_only_the_format_header(self) -> None:
+        consumers = self.contract["externals"]["rhi"]["consumers"]
+        self.assertEqual(consumers["asset"], ["rojoRHI/Format.h"])
+        self.assertEqual(consumers["texture-bake"], ["rojoRHI/Format.h"])
 
     def test_the_old_asset_and_scene_folders_belong_to_no_unit(self) -> None:
         for path in ("Source/Scene/Scene.h", "Source/Asset/Asset.h"):

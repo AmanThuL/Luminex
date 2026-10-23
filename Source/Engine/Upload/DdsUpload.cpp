@@ -7,9 +7,21 @@
 
 #include "Engine/Asset/Image/DdsLoader.h"
 
+#include <rojoRHI/TextureDesc.h>
+
 #include <utility>
 
 namespace lmx::engine {
+
+//======================================================================================================================
+std::vector<rojoRHI::TextureMip> toTextureMips(const asset::ImageData& image) {
+    std::vector<rojoRHI::TextureMip> mips;
+    mips.reserve(image.mips.size());
+    for (const asset::ImageMip& mip : image.mips) {
+        mips.push_back({image.payload.data() + mip.offset, mip.rowPitch});
+    }
+    return mips;
+}
 
 //======================================================================================================================
 asset::AssetResult<GpuTexture> createTextureFromDds(rojoRHI::Device& device, std::string_view path,
@@ -30,12 +42,13 @@ asset::AssetResult<GpuTexture> createTextureFromDds(rojoRHI::Device& device, std
         .width = image->width,
         .height = image->height,
         .format = format,
-        .kind = image->kind,
+        .kind = image->kind == asset::ImageKind::Cube ? rojoRHI::TextureKind::Cube
+                                                      : rojoRHI::TextureKind::Tex2D,
         .mipLevels = image->mipLevels,
         .sampled = true,
         .label = label,
     };
-    auto texture = GpuTexture::create(device, desc, image->mips);
+    auto texture = GpuTexture::create(device, desc, toTextureMips(*image));
     if (!texture) {
         return std::unexpected(asset::AssetError{asset::AssetErrorCode::UploadFailed,
                                                  std::move(texture.error().message)});

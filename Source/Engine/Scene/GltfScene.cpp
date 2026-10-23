@@ -132,7 +132,7 @@ asset::AssetResult<void> appendGltfScene(rojoRHI::Device& device, Scene& target,
              .mipLevels = bakedChain.mipLevels,
              .sampled = true,
              .label = label},
-            bakedChain.mips);
+            toTextureMips(bakedChain));
         if (!texture) {
             return std::unexpected(uploadFailure(std::move(texture.error())));
         }
