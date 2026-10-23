@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Core/Diagnostics/Result.h"
+#include "Engine/Gpu/GpuContext.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/LocalLights/LightClusters.h"
 
@@ -64,7 +65,7 @@ public:
     static void registerLayoutsForCapture();
 
     /// Loads the safe-math clustering kernels and allocates every paced slot.
-    static lmx::Result<std::unique_ptr<LightClusterStage>> create(rojoRHI::Device& device);
+    static lmx::Result<std::unique_ptr<LightClusterStage>> create(engine::GpuContext& gpu);
 
     /// Declares the four passes and retains the declaration's readback context. Returns an
     /// undeclared result when the frame is not clustered or has no live light.
@@ -101,7 +102,7 @@ private:
     RetiredLightClusters readback(const Pending& pending) const;
 
     rojoRHI::Device& m_device;
-    std::array<std::unique_ptr<rojoRHI::ShaderLibrary>, 3> m_libraries;
+    std::array<engine::GpuOwned<rojoRHI::ShaderLibrary>, 3> m_libraries;
     std::array<std::unique_ptr<rojoRHI::ComputePipeline>, 3> m_pipelines;
     std::array<Slot, 3> m_slots;
     std::vector<Pending> m_pending;

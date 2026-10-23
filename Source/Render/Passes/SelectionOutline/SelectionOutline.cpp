@@ -43,16 +43,17 @@ SelectionOutline::SelectionOutline(rojoRHI::Device& device, bool readback)
 
 //======================================================================================================================
 lmx::Result<std::unique_ptr<SelectionOutline>>
-SelectionOutline::create(rojoRHI::Device& device, uint32_t width, uint32_t height, bool readback) {
+SelectionOutline::create(engine::GpuContext& gpu, uint32_t width, uint32_t height, bool readback) {
+    rojoRHI::Device& device = gpu.device();
     auto self = std::unique_ptr<SelectionOutline>(new SelectionOutline(device, readback));
-    auto maskLibrary = device.loadShaderLibrary("Shaders/SelectionMask");
+    auto maskLibrary = gpu.loadShaderLibrary("SelectionMask");
     if (!maskLibrary) {
-        return std::unexpected(engine::gpuError(maskLibrary.error()));
+        return std::unexpected(maskLibrary.error());
     }
     self->m_maskLibrary = std::move(*maskLibrary);
-    auto outlineLibrary = device.loadShaderLibrary("Shaders/SelectionOutline");
+    auto outlineLibrary = gpu.loadShaderLibrary("SelectionOutline");
     if (!outlineLibrary) {
-        return std::unexpected(engine::gpuError(outlineLibrary.error()));
+        return std::unexpected(outlineLibrary.error());
     }
     self->m_outlineLibrary = std::move(*outlineLibrary);
     for (bool doubleSided : {false, true}) {

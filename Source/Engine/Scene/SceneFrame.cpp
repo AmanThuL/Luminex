@@ -105,8 +105,7 @@ lmx::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
     auto& storage = *m_storage;
     validateObjects();
     LMX_ASSERT(storage.device, "scene must be finalized before preparing a frame");
-    LMX_ASSERT(frameNumber == storage.device->frameNumber() && frameNumber > storage.lastFrame,
-               "prepareFrame requires a newly paced device frame");
+    LMX_ASSERT(frameNumber > storage.lastFrame, "prepareFrame requires a newly paced device frame");
     const auto retired = std::erase_if(storage.retiring, [frameNumber](const auto& buffer) {
         return frameNumber >= buffer.releaseAtFrame;
     });

@@ -61,7 +61,7 @@ DrawSubmission::DrawSubmission(rojoRHI::Device& device) : m_device(device) {}
 lmx::Result<void> DrawSubmission::prepare(uint64_t frameNumber, const SceneView& view,
                                           const VisibilityResult& scene,
                                           const VisibilityResult& shadow) {
-    LMX_ASSERT(frameNumber == m_device.frameNumber() && frameNumber > m_lastFrame,
+    LMX_ASSERT(frameNumber > m_lastFrame,
                "submission preparation requires a newly paced device frame");
     std::erase_if(m_retiring,
                   [frameNumber](const auto& entry) { return frameNumber >= entry.releaseFrame; });

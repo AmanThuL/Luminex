@@ -22,16 +22,14 @@ using lmx::test::FixtureSceneView;
 TEST_CASE("the display transform tone maps and encodes the scene's linear output", "[gpu]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(2.0f), "lmx.test.encodePlane");
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(2.0f), "lmx.test.encodePlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -48,11 +46,11 @@ TEST_CASE("the display transform tone maps and encodes the scene's linear output
     }
     view.boundingSphere = {0.0f, 0.0f, 0.0f, 4.0f};
 
-    CommandList& commands = (*device)->beginFrame();
-    (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, device),
+    CommandList& commands = gpu->device().beginFrame();
+    (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, gpu->device()),
                         /*barrierForSampling=*/false);
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->device().endFrame(nullptr);
+    gpu->device().waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
     (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
@@ -80,16 +78,14 @@ TEST_CASE("the display transform tone maps and encodes the scene's linear output
 TEST_CASE("the scene target holds radiance above 1.0 and exposure scales it exactly", "[gpu]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(2.0f), "lmx.test.exposurePlane");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(2.0f),
+                                        "lmx.test.exposurePlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -112,11 +108,12 @@ TEST_CASE("the scene target holds radiance above 1.0 and exposure scales it exac
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
     const auto renderAtExposure = [&](float exposureEv) {
         view.exposureEv = exposureEv;
-        CommandList& commands = (*device)->beginFrame();
-        (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, device),
+        CommandList& commands = gpu->device().beginFrame();
+        (*renderer)->render(commands, sceneCamera(),
+                            lmx::test::prepareSceneView(view, gpu->device()),
                             /*barrierForSampling=*/false);
-        (*device)->endFrame(nullptr);
-        (*device)->waitIdle();
+        gpu->device().endFrame(nullptr);
+        gpu->device().waitIdle();
         (*renderer)->hdrColorTarget().readback(texels.data(), texels.size() * sizeof(uint16_t));
         (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
     };
@@ -164,16 +161,14 @@ TEST_CASE("the scene target holds radiance above 1.0 and exposure scales it exac
 TEST_CASE("auto exposure applies through the real scene pass with no CPU readback", "[gpu]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto plane = lmx::test::fixtureMesh(**device, lmx::engine::makePlane(2.0f),
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(2.0f),
                                         "lmx.test.autoExposurePlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -193,10 +188,11 @@ TEST_CASE("auto exposure applies through the real scene pass with no CPU readbac
     view.exposureEv = 0.0f; // reset frame's manual value: exp2(0) == 1
 
     const auto submitFrame = [&]() {
-        CommandList& commands = (*device)->beginFrame();
-        (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, device),
+        CommandList& commands = gpu->device().beginFrame();
+        (*renderer)->render(commands, sceneCamera(),
+                            lmx::test::prepareSceneView(view, gpu->device()),
                             /*barrierForSampling=*/false);
-        (*device)->endFrame(nullptr);
+        gpu->device().endFrame(nullptr);
     };
 
     view.exposureReset = true;
@@ -204,7 +200,7 @@ TEST_CASE("auto exposure applies through the real scene pass with no CPU readbac
 
     view.exposureReset = false;
     submitFrame();
-    (*device)->waitIdle();
+    gpu->device().waitIdle();
 
     std::vector<uint16_t> texels(size_t{kSize} * kSize * 4);
     (*renderer)->hdrColorTarget().readback(texels.data(), texels.size() * sizeof(uint16_t));
@@ -223,29 +219,27 @@ TEST_CASE("auto exposure applies through the real scene pass with no CPU readbac
 TEST_CASE("a depth sample is ordered before the next frame overwrites depth", "[gpu]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
-    auto renderer = Renderer::create(**device, kSize, kSize);
+    auto gpu = createTestGpu();
+    auto renderer = Renderer::create(*gpu, kSize, kSize);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
-    auto library = (*device)->loadShaderLibrary("Shaders/BloomThreshold");
+    auto library = gpu->device().loadShaderLibrary("Shaders/BloomThreshold");
     INFO(errorOf(library));
     REQUIRE(library.has_value());
-    auto pipeline = (*device)->createComputePipeline({.library = library->get(),
-                                                      .computeEntry = "computeBloomThreshold",
-                                                      .threadsPerThreadgroup = {8, 8, 1},
-                                                      .label = "lmx.test.depthSamplePipeline"});
+    auto pipeline = gpu->device().createComputePipeline({.library = library->get(),
+                                                         .computeEntry = "computeBloomThreshold",
+                                                         .threadsPerThreadgroup = {8, 8, 1},
+                                                         .label = "lmx.test.depthSamplePipeline"});
     INFO(errorOf(pipeline));
     REQUIRE(pipeline.has_value());
 
     constexpr uint32_t kProbeSize = kSize / 2;
-    auto probe = (*device)->createTexture({.width = kProbeSize,
-                                           .height = kProbeSize,
-                                           .format = Format::RGBA16Float,
-                                           .storageWrite = true,
-                                           .label = "lmx.test.depthSampleProbe"});
+    auto probe = gpu->device().createTexture({.width = kProbeSize,
+                                              .height = kProbeSize,
+                                              .format = Format::RGBA16Float,
+                                              .storageWrite = true,
+                                              .label = "lmx.test.depthSampleProbe"});
     INFO(errorOf(probe));
     REQUIRE(probe.has_value());
 
@@ -263,8 +257,8 @@ TEST_CASE("a depth sample is ordered before the next frame overwrites depth", "[
                                            .dstHeight = kProbeSize};
     FixtureSceneView view;
 
-    CommandList& first = (*device)->beginFrame();
-    (*renderer)->render(first, sceneCamera(), lmx::test::prepareSceneView(view, device),
+    CommandList& first = gpu->device().beginFrame();
+    (*renderer)->render(first, sceneCamera(), lmx::test::prepareSceneView(view, gpu->device()),
                         /*barrierForSampling=*/false);
     first.textureBarrier((*renderer)->depthTarget(), TextureUse::RenderTarget,
                          TextureUse::ShaderRead);
@@ -275,13 +269,13 @@ TEST_CASE("a depth sample is ordered before the next frame overwrites depth", "[
     first.bindFrameData(0, kParams);
     first.dispatch(kProbeSize / 8, kProbeSize / 8, 1);
     first.endComputePass();
-    (*device)->endFrame(nullptr);
+    gpu->device().endFrame(nullptr);
 
-    CommandList& second = (*device)->beginFrame();
-    (*renderer)->render(second, sceneCamera(), lmx::test::prepareSceneView(view, device),
+    CommandList& second = gpu->device().beginFrame();
+    (*renderer)->render(second, sceneCamera(), lmx::test::prepareSceneView(view, gpu->device()),
                         /*barrierForSampling=*/false);
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->device().endFrame(nullptr);
+    gpu->device().waitIdle();
 }
 
 //======================================================================================================================
@@ -293,21 +287,20 @@ TEST_CASE("odd renderer extents and disabled bloom stay within the bloom texture
     using namespace rojoRHI;
 
     constexpr uint32_t kOddWidth = 5, kOddHeight = 3;
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
-    auto renderer = Renderer::create(**device, kOddWidth, kOddHeight, /*cpuReadback=*/true);
+    auto gpu = createTestGpu();
+    auto renderer = Renderer::create(*gpu, kOddWidth, kOddHeight, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
     FixtureSceneView view;
     const auto renderWithBloom = [&](bool enabled) {
         view.bloomEnabled = enabled;
-        CommandList& commands = (*device)->beginFrame();
-        (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, device),
+        CommandList& commands = gpu->device().beginFrame();
+        (*renderer)->render(commands, sceneCamera(),
+                            lmx::test::prepareSceneView(view, gpu->device()),
                             /*barrierForSampling=*/false);
-        (*device)->endFrame(nullptr);
-        (*device)->waitIdle();
+        gpu->device().endFrame(nullptr);
+        gpu->device().waitIdle();
 
         std::vector<uint8_t> pixels(size_t{kOddWidth} * kOddHeight * 4);
         (*renderer)->colorTarget().readback(pixels.data(), pixels.size());

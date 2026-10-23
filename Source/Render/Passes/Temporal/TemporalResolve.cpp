@@ -47,50 +47,51 @@ bool sameExtents(const FrameExtents& a, const FrameExtents& b) {
 } // namespace
 
 //======================================================================================================================
-TemporalResolve::TemporalResolve(rojoRHI::Device& device, bool cpuReadback)
-    : m_device(device), m_vendor(std::make_unique<VendorTemporalScaler>(device)),
+TemporalResolve::TemporalResolve(engine::GpuContext& gpu, bool cpuReadback)
+    : m_device(gpu.device()), m_vendor(std::make_unique<VendorTemporalScaler>(gpu)),
       m_cpuReadback(cpuReadback) {}
 
 //======================================================================================================================
 TemporalResolve::~TemporalResolve() = default;
 
 //======================================================================================================================
-lmx::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(rojoRHI::Device& device,
+lmx::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(engine::GpuContext& gpu,
                                                                       bool cpuReadback) {
-    auto self = std::unique_ptr<TemporalResolve>(new TemporalResolve(device, cpuReadback));
+    rojoRHI::Device& device = gpu.device();
+    auto self = std::unique_ptr<TemporalResolve>(new TemporalResolve(gpu, cpuReadback));
 
     {
-        auto library = device.loadShaderLibrary("Shaders/TemporalReproject");
+        auto library = gpu.loadShaderLibrary("TemporalReproject");
         if (!library) {
-            return std::unexpected(engine::gpuError(library.error()));
+            return std::unexpected(library.error());
         }
         self->m_reprojectLibrary = std::move(*library);
     }
     {
-        auto library = device.loadShaderLibrary("Shaders/TemporalResolve");
+        auto library = gpu.loadShaderLibrary("TemporalResolve");
         if (!library) {
-            return std::unexpected(engine::gpuError(library.error()));
+            return std::unexpected(library.error());
         }
         self->m_resolveLibrary = std::move(*library);
     }
     {
-        auto library = device.loadShaderLibrary("Shaders/TemporalDebugView");
+        auto library = gpu.loadShaderLibrary("TemporalDebugView");
         if (!library) {
-            return std::unexpected(engine::gpuError(library.error()));
+            return std::unexpected(library.error());
         }
         self->m_debugViewLibrary = std::move(*library);
     }
     {
-        auto library = device.loadShaderLibrary("Shaders/SpatialUpscale");
+        auto library = gpu.loadShaderLibrary("SpatialUpscale");
         if (!library) {
-            return std::unexpected(engine::gpuError(library.error()));
+            return std::unexpected(library.error());
         }
         self->m_spatialUpscaleLibrary = std::move(*library);
     }
     {
-        auto library = device.loadShaderLibrary("Shaders/TemporalUpscale");
+        auto library = gpu.loadShaderLibrary("TemporalUpscale");
         if (!library) {
-            return std::unexpected(engine::gpuError(library.error()));
+            return std::unexpected(library.error());
         }
         self->m_temporalUpscaleLibrary = std::move(*library);
     }

@@ -27,11 +27,12 @@ static_assert(offsetof(ReferenceParams, instanceRow) == 64);
 
 //======================================================================================================================
 lmx::Result<std::unique_ptr<OcclusionReference>>
-OcclusionReference::create(rojoRHI::Device& device) {
-    auto self = std::unique_ptr<OcclusionReference>(new OcclusionReference(device));
-    auto library = device.loadShaderLibrary("Shaders/OcclusionReference");
+OcclusionReference::create(engine::GpuContext& gpu) {
+    rojoRHI::Device& device = gpu.device();
+    auto self = std::unique_ptr<OcclusionReference>(new OcclusionReference(gpu));
+    auto library = gpu.loadShaderLibrary("OcclusionReference");
     if (!library) {
-        return std::unexpected(engine::gpuError(library.error()));
+        return std::unexpected(library.error());
     }
     self->m_library = std::move(*library);
     for (uint32_t wireframe = 0; wireframe < 2; ++wireframe) {
@@ -83,7 +84,7 @@ lmx::Result<void> OcclusionReference::declare(RenderGraph& graph, rojoRHI::Comma
     const auto height = inputs.height;
     const auto strictView = inputs.strictView;
     LMX_ASSERT(width != 0 && height != 0, "reference requires a nonempty active extent");
-    const uint64_t frame = m_device.frameNumber();
+    const uint64_t frame = m_gpu.frameNumber();
     LMX_ASSERT(frame > 0, "reference requires an open paced frame");
     if (frame > 3)
         retireThrough(frame - 3);

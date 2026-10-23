@@ -69,27 +69,28 @@ constexpr uint32_t kBloomUpsampleParamsSlot = 0; // buffer
 } // namespace
 
 //======================================================================================================================
-lmx::Result<std::unique_ptr<BloomStage>> BloomStage::create(rojoRHI::Device& device) {
+lmx::Result<std::unique_ptr<BloomStage>> BloomStage::create(engine::GpuContext& gpu) {
+    rojoRHI::Device& device = gpu.device();
     std::unique_ptr<BloomStage> self(new BloomStage);
 
     {
-        auto library = device.loadShaderLibrary("Shaders/BloomThreshold");
+        auto library = gpu.loadShaderLibrary("BloomThreshold");
         if (!library) {
-            return std::unexpected(engine::gpuError(library.error()));
+            return std::unexpected(library.error());
         }
         self->m_bloomThresholdLibrary = std::move(*library);
     }
     {
-        auto library = device.loadShaderLibrary("Shaders/BloomDownsample");
+        auto library = gpu.loadShaderLibrary("BloomDownsample");
         if (!library) {
-            return std::unexpected(engine::gpuError(library.error()));
+            return std::unexpected(library.error());
         }
         self->m_bloomDownsampleLibrary = std::move(*library);
     }
     {
-        auto library = device.loadShaderLibrary("Shaders/BloomUpsample");
+        auto library = gpu.loadShaderLibrary("BloomUpsample");
         if (!library) {
-            return std::unexpected(engine::gpuError(library.error()));
+            return std::unexpected(library.error());
         }
         self->m_bloomUpsampleLibrary = std::move(*library);
     }

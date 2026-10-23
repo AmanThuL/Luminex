@@ -172,7 +172,7 @@ int runMeasurement(const AppOptions& options) {
         return 1;
     }
     render::TransientPool pool(gpu.device());
-    auto renderer = render::Renderer::create(gpu.device(), plan.width, plan.height);
+    auto renderer = render::Renderer::create(gpu, plan.width, plan.height);
     if (!renderer) {
         run.cancel(renderer.error().message);
         writeReport(options.measurementPath, run);

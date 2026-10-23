@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Core/Diagnostics/Result.h"
+#include "Engine/Gpu/GpuContext.h"
 #include "Engine/Gpu/PassTiming.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/Temporal/Temporal.h"
@@ -130,7 +131,7 @@ public:
     /// `cpuReadback` puts both history pairs in shared storage so Texture::readback() works, on
     /// Renderer::create()'s terms: it is what the GPU tests and the offscreen path need, and the
     /// windowed App leaves it false.
-    static lmx::Result<std::unique_ptr<TemporalResolve>> create(rojoRHI::Device& device,
+    static lmx::Result<std::unique_ptr<TemporalResolve>> create(engine::GpuContext& gpu,
                                                                 bool cpuReadback);
 
     /// Non-copyable: it owns GPU targets whose identity is what the frame's imports name.
@@ -203,7 +204,7 @@ public:
     uint64_t depthBytes() const;
 
 private:
-    explicit TemporalResolve(rojoRHI::Device& device, bool cpuReadback);
+    explicit TemporalResolve(engine::GpuContext& gpu, bool cpuReadback);
 
     // The reprojection diagnostic (ADR 0013), unchanged from M6.1 but now reading the previous
     // colour slot: it measures the motion vectors and the history, and nothing downstream shades
@@ -259,11 +260,11 @@ private:
 
     rojoRHI::Device& m_device;
     std::unique_ptr<VendorTemporalScaler> m_vendor;
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_reprojectLibrary;
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_resolveLibrary;
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_debugViewLibrary;
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_spatialUpscaleLibrary;
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_temporalUpscaleLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_reprojectLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_resolveLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_debugViewLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_spatialUpscaleLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_temporalUpscaleLibrary;
     std::unique_ptr<rojoRHI::ComputePipeline> m_reprojectPipeline;
     std::unique_ptr<rojoRHI::ComputePipeline> m_resolvePipeline;
     std::unique_ptr<rojoRHI::ComputePipeline> m_spatialUpscalePipeline;

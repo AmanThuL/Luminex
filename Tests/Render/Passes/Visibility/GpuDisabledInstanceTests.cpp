@@ -106,9 +106,8 @@ ToggleFrame toggleFrame(rojoRHI::Device& device, engine::Scene& scene, render::R
 //======================================================================================================================
 TEST_CASE("Sponza column toggles restore exact temporal-off pixels and invalidate HZB coverage",
           "[gpu][visibility][disabled-instance][sponza-toggle]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
-    auto loaded = test::loadCatalogScene(**device, "sponza");
+    auto gpu = createTestGpu();
+    auto loaded = test::loadCatalogScene(gpu->device(), "sponza");
     INFO(errorOf(loaded));
     REQUIRE(loaded);
     auto& scene = **loaded;
@@ -129,12 +128,12 @@ TEST_CASE("Sponza column toggles restore exact temporal-off pixels and invalidat
                 continue;
             const auto label = std::to_string(static_cast<int>(classifier)) + "-" +
                                std::to_string(static_cast<int>(mode));
-            auto renderer = render::Renderer::create(**device, 320, 180, true);
+            auto renderer = render::Renderer::create(*gpu, 320, 180, true);
             REQUIRE(renderer);
-            const auto before = toggleFrame(**device, scene, **renderer, camera, classifier, mode,
-                                            false, label + "-on");
+            const auto before = toggleFrame(gpu->device(), scene, **renderer, camera, classifier,
+                                            mode, false, label + "-on");
             scene.setObjectEnabled(index, false);
-            const auto off = toggleFrame(**device, scene, **renderer, camera, classifier, mode,
+            const auto off = toggleFrame(gpu->device(), scene, **renderer, camera, classifier, mode,
                                          false, label + "-off");
             REQUIRE(off.digest != before.digest);
             REQUIRE(off.visibility.sceneCounters.disabled == 1);
@@ -144,8 +143,8 @@ TEST_CASE("Sponza column toggles restore exact temporal-off pixels and invalidat
             REQUIRE(off.visibility.scene.candidates[index].reason ==
                     render::VisibilityReason::AuthoredOff);
             scene.setObjectEnabled(index, true);
-            const auto restored = toggleFrame(**device, scene, **renderer, camera, classifier, mode,
-                                              false, label + "-restored");
+            const auto restored = toggleFrame(gpu->device(), scene, **renderer, camera, classifier,
+                                              mode, false, label + "-restored");
             CAPTURE(label, before.digest, off.digest, restored.digest);
             REQUIRE(restored.digest == before.digest);
             REQUIRE(scene.objects.size() == population);
@@ -153,15 +152,15 @@ TEST_CASE("Sponza column toggles restore exact temporal-off pixels and invalidat
         }
     }
     for (auto mode : {render::SubmissionMode::Indirect, render::SubmissionMode::Batched}) {
-        auto renderer = render::Renderer::create(**device, 320, 180, true);
+        auto renderer = render::Renderer::create(*gpu, 320, 180, true);
         REQUIRE(renderer);
         const auto label = "hzb-" + std::to_string(static_cast<int>(mode));
         for (uint32_t frame = 0; frame < 8; ++frame) {
             const bool enabled = frame < 2 || frame >= 4;
             scene.setObjectEnabled(index, enabled);
             const auto result =
-                toggleFrame(**device, scene, **renderer, camera, render::ClassifyMode::Gpu, mode,
-                            true, label + "-" + std::to_string(frame));
+                toggleFrame(gpu->device(), scene, **renderer, camera, render::ClassifyMode::Gpu,
+                            mode, true, label + "-" + std::to_string(frame));
             REQUIRE(result.visibility.sceneCounters.disabled == (enabled ? 0 : 1));
             if (frame == 2 || frame == 4)
                 REQUIRE(result.visibility.occlusionInvalidReason ==

@@ -79,7 +79,7 @@ rojoRHI::TemporalScaleParams vendorTemporalParams(const FrameExtents& extents,
 //======================================================================================================================
 ReconstructionSelection VendorTemporalScaler::prepare(ReconstructionMode requested, uint32_t width,
                                                       uint32_t height) {
-    const auto support = engine::toUpscalerSupport(m_device.capabilities().temporalScaler);
+    const auto support = m_gpu.upscalerSupport();
     auto selection = resolveReconstruction(requested, support);
     if (selection.mode != ReconstructionMode::VendorTemporal) {
         if (selection.fallback == VendorFallback::Unsupported && !m_warnedUnsupported) {
@@ -107,9 +107,9 @@ ReconstructionSelection VendorTemporalScaler::prepare(ReconstructionMode request
         return fail(packed.error());
     }
     if (!m_historyLibrary) {
-        auto library = m_device.loadShaderLibrary("Shaders/VendorTemporalHistory");
+        auto library = m_gpu.loadShaderLibrary("VendorTemporalHistory");
         if (!library) {
-            return fail(engine::gpuError(library.error()));
+            return fail(library.error());
         }
         m_historyLibrary = std::move(*library);
     }
@@ -158,9 +158,9 @@ rojoRHI::ComputePipeline& VendorTemporalScaler::historyPipeline() const {
 //======================================================================================================================
 lmx::Result<void> VendorTemporalScaler::preparePacking() {
     if (!m_packLibrary) {
-        auto library = m_device.loadShaderLibrary("Shaders/VendorTemporalPack");
+        auto library = m_gpu.loadShaderLibrary("VendorTemporalPack");
         if (!library) {
-            return std::unexpected(engine::gpuError(library.error()));
+            return std::unexpected(library.error());
         }
         m_packLibrary = std::move(*library);
     }

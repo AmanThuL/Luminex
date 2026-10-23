@@ -78,14 +78,13 @@ FixtureSceneView cutoutView(std::span<const FixtureDrawItem> items) {
 TEST_CASE("alpha mask shares color depth and motion coverage", "[gpu][alpha-mask]") {
     using namespace lmx::render;
     using namespace rojoRHI;
-    auto device = createDevice();
-    REQUIRE(device);
-    auto renderer = Renderer::create(**device, kSize, kSize, true);
+    auto gpu = createTestGpu();
+    auto renderer = Renderer::create(*gpu, kSize, kSize, true);
     INFO(errorOf(renderer));
     REQUIRE(renderer);
-    auto mesh = fixtureMesh(**device, cutoutQuad(), "lmx.test.cutout.quad");
+    auto mesh = fixtureMesh(gpu->device(), cutoutQuad(), "lmx.test.cutout.quad");
     REQUIRE(mesh);
-    auto texture = cutoutTexture(**device);
+    auto texture = cutoutTexture(gpu->device());
     std::array<FixtureDrawItem, 2> items;
     items[0].mesh = &*mesh;
     items[0].material.diffuse = texture.get();
@@ -119,7 +118,7 @@ TEST_CASE("alpha mask shares color depth and motion coverage", "[gpu][alpha-mask
         items[0].material.doubleSided = true;
         view.temporal.enabled = true;
     }
-    auto pixels = cutoutFrame(**device, **renderer, view);
+    auto pixels = cutoutFrame(gpu->device(), **renderer, view);
     REQUIRE(cutoutChannel(pixels, 25, 0) < 0.01f);
     REQUIRE(cutoutChannel(pixels, 25, 1) > 1.0f);
     REQUIRE(cutoutChannel(pixels, 39, 0) > 1.0f);
@@ -138,14 +137,14 @@ TEST_CASE("alpha mask shares color depth and motion coverage", "[gpu][alpha-mask
         items[0].motionClass = lmx::engine::MotionClass::Rigid;
         items[0].previousModel =
             glm::translate(glm::mat4{1}, glm::vec3{-0.1f, 0, 0}) * items[0].model;
-        cutoutFrame(**device, **renderer, view);
+        cutoutFrame(gpu->device(), **renderer, view);
         (*renderer)->motionTarget()->readback(motion.data(), motion.size() * 2);
         REQUIRE(glm::unpackHalf1x16(motion[hole]) == 0.0f);
         REQUIRE(glm::unpackHalf1x16(motion[solid]) > 0.005f);
     }
     items[0].material.alphaMode = lmx::engine::AlphaMode::Opaque;
     items[0].model = glm::mat4{1};
-    pixels = cutoutFrame(**device, **renderer, view);
+    pixels = cutoutFrame(gpu->device(), **renderer, view);
     REQUIRE(cutoutChannel(pixels, 25, 0) > 1.0f);
     REQUIRE(cutoutChannel(pixels, 25, 1) < 0.01f);
 }
@@ -154,14 +153,13 @@ TEST_CASE("alpha mask shares color depth and motion coverage", "[gpu][alpha-mask
 TEST_CASE("alpha mask shadows preserve holes and transformed UV coverage", "[gpu][alpha-mask]") {
     using namespace lmx::render;
     using namespace rojoRHI;
-    auto device = createDevice();
-    REQUIRE(device);
-    auto renderer = Renderer::create(**device, kSize, kSize, true);
+    auto gpu = createTestGpu();
+    auto renderer = Renderer::create(*gpu, kSize, kSize, true);
     INFO(errorOf(renderer));
     REQUIRE(renderer);
-    auto mesh = fixtureMesh(**device, cutoutQuad(), "lmx.test.cutout.shadowQuad");
+    auto mesh = fixtureMesh(gpu->device(), cutoutQuad(), "lmx.test.cutout.shadowQuad");
     REQUIRE(mesh);
-    auto texture = cutoutTexture(**device);
+    auto texture = cutoutTexture(gpu->device());
     std::array<FixtureDrawItem, 2> items;
     items[0].mesh = &*mesh;
     items[0].material.diffuse = texture.get();
@@ -176,15 +174,15 @@ TEST_CASE("alpha mask shadows preserve holes and transformed UV coverage", "[gpu
     auto view = cutoutView(items);
     view.temporal.enabled = false;
     view.lights[0].direction = glm::normalize(glm::vec3{-1, 0, -1});
-    const auto masked = cutoutFrame(**device, **renderer, view);
+    const auto masked = cutoutFrame(gpu->device(), **renderer, view);
     items[0].material.alphaMode = lmx::engine::AlphaMode::Opaque;
-    const auto opaque = cutoutFrame(**device, **renderer, view);
+    const auto opaque = cutoutFrame(gpu->device(), **renderer, view);
     INFO("masked=" << cutoutChannel(masked, 18, 0) << " opaque=" << cutoutChannel(opaque, 18, 0));
     REQUIRE(cutoutChannel(masked, 18, 0) > cutoutChannel(opaque, 18, 0) + 0.05f);
     items[0].material.alphaMode = lmx::engine::AlphaMode::Mask;
     items[0].material.uvTransform[0][0] = -1;
     items[0].material.uvTransform[3][0] = 1;
-    const auto flipped = cutoutFrame(**device, **renderer, view);
+    const auto flipped = cutoutFrame(gpu->device(), **renderer, view);
     REQUIRE(cutoutChannel(flipped, 18, 0) < cutoutChannel(masked, 18, 0) - 0.05f);
 }
 
@@ -192,12 +190,11 @@ TEST_CASE("alpha mask shadows preserve holes and transformed UV coverage", "[gpu
 TEST_CASE("double sided alpha masks reverse back-face lighting normals", "[gpu][alpha-mask]") {
     using namespace lmx::render;
     using namespace rojoRHI;
-    auto device = createDevice();
-    REQUIRE(device);
-    auto renderer = Renderer::create(**device, kSize, kSize, true);
+    auto gpu = createTestGpu();
+    auto renderer = Renderer::create(*gpu, kSize, kSize, true);
     INFO(errorOf(renderer));
     REQUIRE(renderer);
-    auto mesh = fixtureMesh(**device, cutoutQuad(), "lmx.test.cutout.backFace");
+    auto mesh = fixtureMesh(gpu->device(), cutoutQuad(), "lmx.test.cutout.backFace");
     REQUIRE(mesh);
     FixtureDrawItem item;
     item.mesh = &*mesh;
@@ -207,12 +204,12 @@ TEST_CASE("double sided alpha masks reverse back-face lighting normals", "[gpu][
     item.material.doubleSided = true;
     auto view = cutoutView(std::span{&item, 1});
     view.temporal.enabled = false;
-    const auto front = cutoutFrame(**device, **renderer, view);
+    const auto front = cutoutFrame(gpu->device(), **renderer, view);
     item.model = glm::rotate(glm::mat4{1}, glm::pi<float>(), glm::vec3{0, 1, 0});
-    const auto back = cutoutFrame(**device, **renderer, view);
+    const auto back = cutoutFrame(gpu->device(), **renderer, view);
     REQUIRE(cutoutChannel(front, 32, 0) > 0.15f);
     REQUIRE(std::abs(cutoutChannel(front, 32, 0) - cutoutChannel(back, 32, 0)) < 0.002f);
     item.material.doubleSided = false;
-    const auto culled = cutoutFrame(**device, **renderer, view);
+    const auto culled = cutoutFrame(gpu->device(), **renderer, view);
     REQUIRE(cutoutChannel(culled, 32, 0) < 0.1f);
 }

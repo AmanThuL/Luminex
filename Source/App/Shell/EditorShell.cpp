@@ -99,7 +99,7 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, engine::Gpu
     int pixelWidth = 0;
     int pixelHeight = 0;
     SDL_GetWindowSizeInPixels(window, &pixelWidth, &pixelHeight);
-    auto outline = render::SelectionOutline::create(gpu.device(), static_cast<uint32_t>(pixelWidth),
+    auto outline = render::SelectionOutline::create(gpu, static_cast<uint32_t>(pixelWidth),
                                                     static_cast<uint32_t>(pixelHeight));
     if (!outline) {
         LMX_LOG_ERROR("Selection presentation creation failed: {}", outline.error().message);

@@ -5,6 +5,7 @@
 #pragma once
 
 #include "Core/Diagnostics/Result.h"
+#include "Engine/Gpu/GpuContext.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Renderer/SceneView.h"
 
@@ -31,7 +32,7 @@ class SelectionOutline {
 public:
     /// Creates pipelines and a sampled BGRA8 target; readback is intended for GPU oracles.
     static lmx::Result<std::unique_ptr<SelectionOutline>>
-    create(rojoRHI::Device& device, uint32_t width, uint32_t height, bool readback = false);
+    create(engine::GpuContext& gpu, uint32_t width, uint32_t height, bool readback = false);
     /// Replaces the output even at unchanged extents, only after successful allocation.
     /// Caller must idle the device and forget UI bindings.
     lmx::Result<void> resize(uint32_t width, uint32_t height);
@@ -48,8 +49,8 @@ private:
     explicit SelectionOutline(rojoRHI::Device& device, bool readback);
     rojoRHI::Device& m_device;
     bool m_readback;
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_maskLibrary;
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_outlineLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_maskLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_outlineLibrary;
     std::unique_ptr<rojoRHI::GraphicsPipeline> m_maskPipeline;
     std::unique_ptr<rojoRHI::GraphicsPipeline> m_doubleSidedPipeline;
     std::unique_ptr<rojoRHI::GraphicsPipeline> m_depthPipeline;

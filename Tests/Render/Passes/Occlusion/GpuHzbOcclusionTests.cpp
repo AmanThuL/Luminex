@@ -50,42 +50,41 @@ TEST_CASE("occlusion GPU results equal the CPU mirror on actual raster-built rea
     using namespace rojoRHI;
     constexpr uint32_t outputWidth = 129;
     constexpr uint32_t outputHeight = 75;
-    auto device = createDevice();
-    REQUIRE(device);
-    auto stage = HzbStage::create(**device);
+    auto gpu = createTestGpu();
+    auto stage = HzbStage::create(*gpu);
     REQUIRE(stage);
     REQUIRE((*stage)->resize(outputWidth, outputHeight));
-    auto depth = (*device)->createTexture({.width = outputWidth,
-                                           .height = outputHeight,
-                                           .format = Format::D32Float,
-                                           .renderTarget = true,
-                                           .sampled = true,
-                                           .label = "lmx.test.hzbParity.depth"});
+    auto depth = gpu->device().createTexture({.width = outputWidth,
+                                              .height = outputHeight,
+                                              .format = Format::D32Float,
+                                              .renderTarget = true,
+                                              .sampled = true,
+                                              .label = "lmx.test.hzbParity.depth"});
     REQUIRE(depth);
-    auto rasterLibrary = (*device)->loadShaderLibrary("Shaders/HzbDepthFixture");
-    auto readLibrary = (*device)->loadShaderLibrary("Shaders/HzbReadbackFixture");
-    auto probeLibrary = (*device)->loadShaderLibrary("Shaders/OcclusionProbe");
+    auto rasterLibrary = gpu->device().loadShaderLibrary("Shaders/HzbDepthFixture");
+    auto readLibrary = gpu->device().loadShaderLibrary("Shaders/HzbReadbackFixture");
+    auto probeLibrary = gpu->device().loadShaderLibrary("Shaders/OcclusionProbe");
     REQUIRE(rasterLibrary);
     REQUIRE(readLibrary);
     REQUIRE(probeLibrary);
-    auto raster = (*device)->createGraphicsPipeline({.library = rasterLibrary->get(),
-                                                     .vertexEntry = "vertexMain",
-                                                     .fragmentEntry = "fragmentMain",
-                                                     .colorFormat = Format::Unknown,
-                                                     .depthFormat = Format::D32Float,
-                                                     .depthTestEnable = true,
-                                                     .depthWriteEnable = true,
-                                                     .cullMode = CullMode::None,
-                                                     .depthCompare = DepthCompare::Greater,
-                                                     .label = "lmx.test.hzbParity.raster"});
-    auto reader = (*device)->createComputePipeline({.library = readLibrary->get(),
-                                                    .computeEntry = "computeMain",
-                                                    .threadsPerThreadgroup = {8, 8, 1},
-                                                    .label = "lmx.test.hzbParity.reader"});
-    auto probe = (*device)->createComputePipeline({.library = probeLibrary->get(),
-                                                   .computeEntry = "computeMain",
-                                                   .threadsPerThreadgroup = {1, 1, 1},
-                                                   .label = "lmx.test.hzbParity.probe"});
+    auto raster = gpu->device().createGraphicsPipeline({.library = rasterLibrary->get(),
+                                                        .vertexEntry = "vertexMain",
+                                                        .fragmentEntry = "fragmentMain",
+                                                        .colorFormat = Format::Unknown,
+                                                        .depthFormat = Format::D32Float,
+                                                        .depthTestEnable = true,
+                                                        .depthWriteEnable = true,
+                                                        .cullMode = CullMode::None,
+                                                        .depthCompare = DepthCompare::Greater,
+                                                        .label = "lmx.test.hzbParity.raster"});
+    auto reader = gpu->device().createComputePipeline({.library = readLibrary->get(),
+                                                       .computeEntry = "computeMain",
+                                                       .threadsPerThreadgroup = {8, 8, 1},
+                                                       .label = "lmx.test.hzbParity.reader"});
+    auto probe = gpu->device().createComputePipeline({.library = probeLibrary->get(),
+                                                      .computeEntry = "computeMain",
+                                                      .threadsPerThreadgroup = {1, 1, 1},
+                                                      .label = "lmx.test.hzbParity.probe"});
     REQUIRE(raster);
     REQUIRE(reader);
     REQUIRE(probe);
@@ -93,7 +92,7 @@ TEST_CASE("occlusion GPU results equal the CPU mirror on actual raster-built rea
     std::vector<HzbProbeBounds> inputData;
     for (const auto& box : bounds)
         inputData.push_back({glm::vec4(box.minimum, 0), glm::vec4(box.maximum, 0)});
-    auto input = (*device)->createBuffer(
+    auto input = gpu->device().createBuffer(
         {.size = inputData.size() * sizeof(HzbProbeBounds), .label = "lmx.test.hzbParity.bounds"},
         inputData.data());
     REQUIRE(input);
@@ -112,19 +111,19 @@ TEST_CASE("occlusion GPU results equal the CPU mirror on actual raster-built rea
                 readParams.push_back(params);
                 readCount += params.width * params.height;
             }
-            auto readback = (*device)->createBuffer({.size = readCount * sizeof(float),
-                                                     .storageWrite = true,
-                                                     .cpuReadback = true,
-                                                     .label = "lmx.test.hzbParity.readback"},
-                                                    nullptr);
-            auto output = (*device)->createBuffer({.size = bounds.size() * 8 * sizeof(uint32_t),
-                                                   .storageWrite = true,
-                                                   .cpuReadback = true,
-                                                   .label = "lmx.test.hzbParity.output"},
-                                                  nullptr);
+            auto readback = gpu->device().createBuffer({.size = readCount * sizeof(float),
+                                                        .storageWrite = true,
+                                                        .cpuReadback = true,
+                                                        .label = "lmx.test.hzbParity.readback"},
+                                                       nullptr);
+            auto output = gpu->device().createBuffer({.size = bounds.size() * 8 * sizeof(uint32_t),
+                                                      .storageWrite = true,
+                                                      .cpuReadback = true,
+                                                      .label = "lmx.test.hzbParity.output"},
+                                                     nullptr);
             REQUIRE(readback);
             REQUIRE(output);
-            auto& commands = (*device)->beginFrame();
+            auto& commands = gpu->device().beginFrame();
             RenderGraph graph;
             const auto depthInput =
                 frame == 0
@@ -142,7 +141,7 @@ TEST_CASE("occlusion GPU results equal the CPU mirror on actual raster-built rea
                               commands.draw(3);
                           });
             const auto pyramid = (*stage)->declare(graph, commands, nextVersion(depthInput),
-                                                   {.frameNumber = (*device)->frameNumber(),
+                                                   {.frameNumber = gpu->device().frameNumber(),
                                                     .activeWidth = width,
                                                     .activeHeight = height});
             auto buffer = graph.importBuffer(**readback, "lmx.test.hzbParity.readback");
@@ -197,9 +196,9 @@ TEST_CASE("occlusion GPU results equal the CPU mirror on actual raster-built rea
             const auto compiled = graph.compile();
             INFO((compiled ? "" : compiled.error().message));
             REQUIRE(compiled);
-            graph.execute(commands, (*device)->frameNumber());
-            (*device)->endFrame(nullptr);
-            (*device)->waitIdle();
+            graph.execute(commands, gpu->device().frameNumber());
+            gpu->device().endFrame(nullptr);
+            gpu->device().waitIdle();
             std::vector<float> values(readCount);
             (*readback)->readback(values.data(), values.size() * sizeof(float));
             std::vector<uint32_t> actual(bounds.size() * 8);

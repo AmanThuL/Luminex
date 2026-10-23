@@ -85,8 +85,8 @@ engine::Scene contributionScene(rojoRHI::Device& device) {
 }
 
 //======================================================================================================================
-std::unique_ptr<render::Renderer> contributionRenderer(rojoRHI::Device& device) {
-    auto result = render::Renderer::create(device, kSize, kSize, true);
+std::unique_ptr<render::Renderer> contributionRenderer(engine::GpuContext& gpu) {
+    auto result = render::Renderer::create(gpu, kSize, kSize, true);
     INFO(errorOf(result));
     REQUIRE(result);
     std::fill_n((*result)->clearColor, 3, 0.0f);
@@ -245,32 +245,32 @@ void requireSentinelCoverage(const ContributionTargets& targets, uint32_t width,
 //======================================================================================================================
 TEST_CASE("rejected geometry contributes no camera attachments through the jitter cycle",
           "[gpu][visibility][visibility-contribution]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
-    auto library = (*device)->loadShaderLibrary("Shaders/VisibilityDepthReadback");
+    auto gpu = createTestGpu();
+    auto library = gpu->device().loadShaderLibrary("Shaders/VisibilityDepthReadback");
     INFO(errorOf(library));
     REQUIRE(library);
     auto depthPipeline =
-        (*device)->createComputePipeline({.library = library->get(),
-                                          .computeEntry = "computeMain",
-                                          .threadsPerThreadgroup = {8, 8, 1},
-                                          .label = "lmx.test.visibility.depthReadback"});
+        gpu->device().createComputePipeline({.library = library->get(),
+                                             .computeEntry = "computeMain",
+                                             .threadsPerThreadgroup = {8, 8, 1},
+                                             .label = "lmx.test.visibility.depthReadback"});
     INFO(errorOf(depthPipeline));
     REQUIRE(depthPipeline);
-    auto scene = contributionScene(**device);
+    auto scene = contributionScene(gpu->device());
     engine::Camera camera;
     camera.fovY = glm::half_pi<float>();
     for (const float scale : {1.0f, 0.5f}) {
-        auto culled = contributionRenderer(**device);
-        auto unculled = contributionRenderer(**device);
-        auto empty = contributionRenderer(**device);
-        render::TransientPool culledPool(**device), unculledPool(**device), emptyPool(**device);
+        auto culled = contributionRenderer(*gpu);
+        auto unculled = contributionRenderer(*gpu);
+        auto empty = contributionRenderer(*gpu);
+        render::TransientPool culledPool(gpu->device()), unculledPool(gpu->device()),
+            emptyPool(gpu->device());
         for (const bool sentinels : {false, true}) {
             for (uint32_t phase = 0; phase < render::kJitterSequenceLength; ++phase) {
                 CAPTURE(scale, sentinels, phase);
                 scene.objects.back().position.x = phase % 2 == 0 ? 0.7f : 0.72f;
-                auto& commands = (*device)->beginFrame();
-                REQUIRE(scene.prepareFrame((*device)->frameNumber()));
+                auto& commands = gpu->device().beginFrame();
+                REQUIRE(scene.prepareFrame(gpu->device().frameNumber()));
                 std::vector<engine::DrawItem> items;
                 auto view = render::buildSceneView(scene, items, false);
                 if (!sentinels)
@@ -288,7 +288,7 @@ TEST_CASE("rejected geometry contributes no camera attachments through the jitte
                                                 camera, extents, render::haltonJitterPixels(phase))
                                                 .viewProjectionJittered;
                 requireOutsideClip(scene, viewProjection);
-                const auto frame = (*device)->frameNumber();
+                const auto frame = gpu->device().frameNumber();
                 const auto culledTargets = contributionTargets(
                     *culled, culledPool, commands, camera, view, frame, **depthPipeline);
                 view.visibilityEnabled = false;
@@ -297,9 +297,9 @@ TEST_CASE("rejected geometry contributes no camera attachments through the jitte
                 view.items = {};
                 const auto emptyTargets = contributionTargets(*empty, emptyPool, commands, camera,
                                                               view, frame, **depthPipeline);
-                (*device)->endFrame(nullptr);
+                gpu->device().endFrame(nullptr);
                 scene.commitFrame();
-                (*device)->waitIdle();
+                gpu->device().waitIdle();
                 REQUIRE(culled->temporalStatus().jitterIndex == phase);
                 REQUIRE(unculled->temporalStatus().jitterIndex == phase);
                 REQUIRE(empty->temporalStatus().jitterIndex == phase);
@@ -334,31 +334,30 @@ TEST_CASE("rejected geometry contributes no camera attachments through the jitte
 //======================================================================================================================
 TEST_CASE("GPU classification preserves every camera attachment through the jitter cycle",
           "[gpu][visibility][visibility-contribution][gpu-classify]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
-    auto library = (*device)->loadShaderLibrary("Shaders/VisibilityDepthReadback");
+    auto gpuContext = createTestGpu();
+    auto library = gpuContext->device().loadShaderLibrary("Shaders/VisibilityDepthReadback");
     INFO(errorOf(library));
     REQUIRE(library);
     auto depthPipeline =
-        (*device)->createComputePipeline({.library = library->get(),
-                                          .computeEntry = "computeMain",
-                                          .threadsPerThreadgroup = {8, 8, 1},
-                                          .label = "lmx.test.visibility.depthReadback"});
+        gpuContext->device().createComputePipeline({.library = library->get(),
+                                                    .computeEntry = "computeMain",
+                                                    .threadsPerThreadgroup = {8, 8, 1},
+                                                    .label = "lmx.test.visibility.depthReadback"});
     REQUIRE(depthPipeline);
-    auto scene = contributionScene(**device);
+    auto scene = contributionScene(gpuContext->device());
     engine::Camera camera;
     camera.fovY = glm::half_pi<float>();
     for (const auto submission :
          {render::SubmissionMode::Indirect, render::SubmissionMode::Batched}) {
         for (const float scale : {1.0f, 0.5f}) {
-            auto cpu = contributionRenderer(**device);
-            auto gpu = contributionRenderer(**device);
-            render::TransientPool cpuPool(**device), gpuPool(**device);
+            auto cpu = contributionRenderer(*gpuContext);
+            auto gpu = contributionRenderer(*gpuContext);
+            render::TransientPool cpuPool(gpuContext->device()), gpuPool(gpuContext->device());
             for (uint32_t phase = 0; phase < render::kJitterSequenceLength; ++phase) {
                 CAPTURE(static_cast<int>(submission), scale, phase);
                 scene.objects.back().position.x = phase % 2 == 0 ? 0.7f : 0.72f;
-                auto& commands = (*device)->beginFrame();
-                REQUIRE(scene.prepareFrame((*device)->frameNumber()));
+                auto& commands = gpuContext->device().beginFrame();
+                REQUIRE(scene.prepareFrame(gpuContext->device().frameNumber()));
                 std::vector<engine::DrawItem> items;
                 auto view = render::buildSceneView(scene, items, false);
                 view.bloomEnabled = false;
@@ -369,15 +368,15 @@ TEST_CASE("GPU classification preserves every camera attachment through the jitt
                 view.temporal.reconstruction = render::ReconstructionMode::Raw;
                 view.temporal.renderScale = scale;
                 view.temporal.sceneGeneration = scene.objects.front().id.store;
-                const auto frame = (*device)->frameNumber();
+                const auto frame = gpuContext->device().frameNumber();
                 const auto expected = contributionTargets(*cpu, cpuPool, commands, camera, view,
                                                           frame, **depthPipeline);
                 view.classifyMode = render::ClassifyMode::Gpu;
                 const auto actual = contributionTargets(*gpu, gpuPool, commands, camera, view,
                                                         frame, **depthPipeline);
-                (*device)->endFrame(nullptr);
+                gpuContext->device().endFrame(nullptr);
                 scene.commitFrame();
-                (*device)->waitIdle();
+                gpuContext->device().waitIdle();
                 REQUIRE(cpu->temporalStatus().jitterIndex == phase);
                 REQUIRE(gpu->temporalStatus().jitterIndex == phase);
                 const auto expectedBytes = contributionBytes(expected);

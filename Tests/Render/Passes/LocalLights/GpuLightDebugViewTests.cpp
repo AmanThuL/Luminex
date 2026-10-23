@@ -61,55 +61,54 @@ DebugFixture makeDebugFixture() {
 
 //======================================================================================================================
 std::vector<uint8_t> renderDebug(const DebugFixture& f, lmx::engine::LightDebugView mode) {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    auto stage = LightDebugStage::create(**device);
+    auto gpu = createTestGpu();
+    auto stage = LightDebugStage::create(*gpu);
     INFO(errorOf(stage));
     REQUIRE(stage.has_value());
     const rojoRHI::TextureMip depthMip{.data = f.depths.data(), .bytesPerRow = f.width * 4};
-    auto depth = (*device)->createTexture({.width = f.width,
-                                           .height = f.height,
-                                           .format = rojoRHI::Format::R32Float,
-                                           .sampled = true,
-                                           .label = "lmx.test.lightDebug.depth"},
-                                          std::span{&depthMip, 1});
+    auto depth = gpu->device().createTexture({.width = f.width,
+                                              .height = f.height,
+                                              .format = rojoRHI::Format::R32Float,
+                                              .sampled = true,
+                                              .label = "lmx.test.lightDebug.depth"},
+                                             std::span{&depthMip, 1});
     REQUIRE(depth.has_value());
     std::vector<uint8_t> source(f.outputWidth * f.outputHeight * 4, 128);
     for (size_t i = 3; i < source.size(); i += 4)
         source[i] = 255;
     const rojoRHI::TextureMip sourceMip{.data = source.data(), .bytesPerRow = f.outputWidth * 4};
-    auto display = (*device)->createTexture({.width = f.outputWidth,
-                                             .height = f.outputHeight,
-                                             .format = rojoRHI::Format::BGRA8Unorm,
-                                             .sampled = true,
-                                             .label = "lmx.test.lightDebug.source"},
-                                            std::span{&sourceMip, 1});
+    auto display = gpu->device().createTexture({.width = f.outputWidth,
+                                                .height = f.outputHeight,
+                                                .format = rojoRHI::Format::BGRA8Unorm,
+                                                .sampled = true,
+                                                .label = "lmx.test.lightDebug.source"},
+                                               std::span{&sourceMip, 1});
     REQUIRE(display.has_value());
-    auto output = (*device)->createTexture({.width = f.outputWidth,
-                                            .height = f.outputHeight,
-                                            .format = rojoRHI::Format::BGRA8Unorm,
-                                            .renderTarget = true,
-                                            .cpuReadback = true,
-                                            .label = "lmx.test.lightDebug.output"});
+    auto output = gpu->device().createTexture({.width = f.outputWidth,
+                                               .height = f.outputHeight,
+                                               .format = rojoRHI::Format::BGRA8Unorm,
+                                               .renderTarget = true,
+                                               .cpuReadback = true,
+                                               .label = "lmx.test.lightDebug.output"});
     REQUIRE(output.has_value());
-    auto lights = (*device)->createBuffer({.size = f.rows.size() * sizeof(lmx::engine::LightRow),
-                                           .storageRead = true,
-                                           .label = "lmx.test.lightDebug.lights"},
-                                          f.rows.data());
-    auto grid = (*device)->createBuffer({.size = f.lists.grid.size() * sizeof(ClusterRecord),
-                                         .storageRead = true,
-                                         .label = "lmx.test.lightDebug.grid"},
-                                        f.lists.grid.data());
+    auto lights = gpu->device().createBuffer({.size = f.rows.size() * sizeof(lmx::engine::LightRow),
+                                              .storageRead = true,
+                                              .label = "lmx.test.lightDebug.lights"},
+                                             f.rows.data());
+    auto grid = gpu->device().createBuffer({.size = f.lists.grid.size() * sizeof(ClusterRecord),
+                                            .storageRead = true,
+                                            .label = "lmx.test.lightDebug.grid"},
+                                           f.lists.grid.data());
     const uint32_t dummy = 0;
     auto indices =
-        (*device)->createBuffer({.size = std::max(size_t{1}, f.lists.indices.size()) * 4,
-                                 .storageRead = true,
-                                 .label = "lmx.test.lightDebug.indices"},
-                                f.lists.indices.empty() ? &dummy : f.lists.indices.data());
+        gpu->device().createBuffer({.size = std::max(size_t{1}, f.lists.indices.size()) * 4,
+                                    .storageRead = true,
+                                    .label = "lmx.test.lightDebug.indices"},
+                                   f.lists.indices.empty() ? &dummy : f.lists.indices.data());
     REQUIRE(lights.has_value());
     REQUIRE(grid.has_value());
     REQUIRE(indices.has_value());
-    auto& commands = (*device)->beginFrame();
+    auto& commands = gpu->device().beginFrame();
     RenderGraph graph;
     const auto result = (*stage)->declare(
         graph, commands,
@@ -128,9 +127,9 @@ std::vector<uint8_t> renderDebug(const DebugFixture& f, lmx::engine::LightDebugV
     auto compiled = graph.compile();
     INFO((compiled ? "" : compiled.error().message));
     REQUIRE(compiled.has_value());
-    graph.execute(commands, (*device)->frameNumber());
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    graph.execute(commands, gpu->device().frameNumber());
+    gpu->device().endFrame(nullptr);
+    gpu->device().waitIdle();
     std::vector<uint8_t> image(source.size());
     (*output)->readback(image.data(), image.size());
     return image;
@@ -245,20 +244,19 @@ TEST_CASE("light count and overflow views use exact pixel-aligned froxel records
 //======================================================================================================================
 TEST_CASE("light diagnostics reuse actual temporal depth without contaminating history",
           "[gpu][light-debug]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    auto scene = lmx::test::loadCatalogScene(**device, "light-lab", 256, 0);
+    auto gpu = createTestGpu();
+    auto scene = lmx::test::loadCatalogScene(gpu->device(), "light-lab", 256, 0);
     REQUIRE(scene.has_value());
     const auto camera = lmx::engine::cameraFromScene((*scene)->initialCamera);
     for (const auto reconstruction :
          {ReconstructionMode::NativeTaa, ReconstructionMode::VendorTemporal}) {
         std::vector<uint8_t> reference;
         for (bool debug : {false, true}) {
-            auto renderer = Renderer::create(**device, 67, 43, true);
+            auto renderer = Renderer::create(*gpu, 67, 43, true);
             REQUIRE(renderer.has_value());
             for (uint32_t frame = 0; frame < 7; ++frame) {
-                auto& commands = (*device)->beginFrame();
-                REQUIRE((*scene)->prepareFrame((*device)->frameNumber()).has_value());
+                auto& commands = gpu->device().beginFrame();
+                REQUIRE((*scene)->prepareFrame(gpu->device().frameNumber()).has_value());
                 std::vector<lmx::engine::DrawItem> items;
                 auto view = buildSceneView(**scene, items, false);
                 view.localLightMode = lmx::engine::LocalLightMode::Clustered;
@@ -270,8 +268,8 @@ TEST_CASE("light diagnostics reuse actual temporal depth without contaminating h
                 view.lightDebugView = debug && frame < 6 ? lmx::engine::LightDebugView::Missed
                                                          : lmx::engine::LightDebugView::Off;
                 (*renderer)->render(commands, camera, view, false);
-                (*device)->endFrame(nullptr);
-                (*device)->waitIdle();
+                gpu->device().endFrame(nullptr);
+                gpu->device().waitIdle();
                 if (debug && frame < 6) {
                     std::vector<uint8_t> pixels(67 * 43 * 4);
                     (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
@@ -296,18 +294,17 @@ TEST_CASE("light diagnostics reuse actual temporal depth without contaminating h
 
 //======================================================================================================================
 TEST_CASE("zero-live light debug leaves the graph unchanged after removal", "[gpu][light-debug]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    auto scene = lmx::test::loadCatalogScene(**device, "light-lab", 64, 0);
+    auto gpu = createTestGpu();
+    auto scene = lmx::test::loadCatalogScene(gpu->device(), "light-lab", 64, 0);
     REQUIRE(scene.has_value());
     const auto ids = (*scene)->localLights();
     const std::vector<lmx::engine::LightId> removed(ids.begin(), ids.end());
     for (const auto id : removed)
         REQUIRE((*scene)->removeLight(id));
-    auto renderer = Renderer::create(**device, 64, 48, true);
+    auto renderer = Renderer::create(*gpu, 64, 48, true);
     REQUIRE(renderer.has_value());
-    auto& commands = (*device)->beginFrame();
-    REQUIRE((*scene)->prepareFrame((*device)->frameNumber()).has_value());
+    auto& commands = gpu->device().beginFrame();
+    REQUIRE((*scene)->prepareFrame(gpu->device().frameNumber()).has_value());
     std::vector<lmx::engine::DrawItem> items;
     auto view = buildSceneView(**scene, items, false);
     view.localLightMode = lmx::engine::LocalLightMode::Clustered;
@@ -315,16 +312,16 @@ TEST_CASE("zero-live light debug leaves the graph unchanged after removal", "[gp
     view.temporal.enabled = false;
     REQUIRE(view.tables.liveLightCount == 0);
     REQUIRE(view.tables.lightRowCount == 64);
-    TransientPool pool(**device);
+    TransientPool pool(gpu->device());
     pool.beginFrame();
     RenderGraph graph(pool);
     graph.exportTexture((*renderer)->declarePasses(
         graph, commands, lmx::engine::cameraFromScene((*scene)->initialCamera), view));
-    const auto record = graph.compileFrame((*device)->frameNumber());
+    const auto record = graph.compileFrame(gpu->device().frameNumber());
     REQUIRE(record.has_value());
     for (const auto& pass : record->debug.passes)
         REQUIRE_FALSE(pass.label.starts_with("lmx.pass.light."));
-    graph.execute(commands, (*device)->frameNumber());
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    graph.execute(commands, gpu->device().frameNumber());
+    gpu->device().endFrame(nullptr);
+    gpu->device().waitIdle();
 }

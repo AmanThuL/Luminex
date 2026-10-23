@@ -15,15 +15,14 @@ using lmx::test::FixtureSceneView;
 TEST_CASE("accumulation settles a static jittered frame", "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.scenarioCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(64.0f), "lmx.test.scenarioFloor");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(64.0f),
+                                        "lmx.test.scenarioFloor");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -40,20 +39,20 @@ TEST_CASE("accumulation settles a static jittered frame", "[gpu][temporal]") {
     const FixtureSceneView base = scenarioSceneView(items, {0.0f, -1.0f, -0.4f});
 
     auto rawRenderer =
-        Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
+        Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     INFO(errorOf(rawRenderer));
     REQUIRE(rawRenderer.has_value());
     const std::vector<ScenarioFrame> raw =
-        renderSequence(**device, **rawRenderer, 32, ReconstructionMode::Raw, base, camera,
+        renderSequence(gpu->device(), **rawRenderer, 32, ReconstructionMode::Raw, base, camera,
                        TemporalDebugView::Off, nullptr);
 
     auto taaRenderer =
-        Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
+        Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     INFO(errorOf(taaRenderer));
     REQUIRE(taaRenderer.has_value());
     const std::vector<ScenarioFrame> taa =
-        renderSequence(**device, **taaRenderer, 32, ReconstructionMode::NativeTaa, base, camera,
-                       TemporalDebugView::Off, nullptr);
+        renderSequence(gpu->device(), **taaRenderer, 32, ReconstructionMode::NativeTaa, base,
+                       camera, TemporalDebugView::Off, nullptr);
 
     const std::vector<uint32_t> pixels = allPixels();
     const float rawChange = frameToFrameChange(raw, pixels);
@@ -74,15 +73,14 @@ TEST_CASE("accumulation settles a static jittered frame", "[gpu][temporal]") {
 TEST_CASE("accumulation keeps thin geometry's brightness", "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.scenarioCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(64.0f), "lmx.test.scenarioFloor");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(64.0f),
+                                        "lmx.test.scenarioFloor");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -105,17 +103,17 @@ TEST_CASE("accumulation keeps thin geometry's brightness", "[gpu][temporal]") {
     const FixtureSceneView base = scenarioSceneView(items, {0.0f, 0.0f, -1.0f});
 
     auto rawRenderer =
-        Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
+        Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(rawRenderer.has_value());
     const std::vector<ScenarioFrame> raw =
-        renderSequence(**device, **rawRenderer, 32, ReconstructionMode::Raw, base, camera,
+        renderSequence(gpu->device(), **rawRenderer, 32, ReconstructionMode::Raw, base, camera,
                        TemporalDebugView::Off, nullptr);
     auto taaRenderer =
-        Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
+        Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(taaRenderer.has_value());
     const std::vector<ScenarioFrame> taa =
-        renderSequence(**device, **taaRenderer, 32, ReconstructionMode::NativeTaa, base, camera,
-                       TemporalDebugView::Off, nullptr);
+        renderSequence(gpu->device(), **taaRenderer, 32, ReconstructionMode::NativeTaa, base,
+                       camera, TemporalDebugView::Off, nullptr);
 
     // A pole pixel is one the poles covered on at least one measured jitter sample; the floor never
     // reaches this luminance under a light that grazes it.
@@ -157,14 +155,13 @@ TEST_CASE("accumulation keeps thin geometry's brightness", "[gpu][temporal]") {
 TEST_CASE("a moving quad leaves no trail behind it", "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(32.0f), "lmx.test.scenarioWall");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(32.0f),
+                                        "lmx.test.scenarioWall");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 0.0f, 4.0f}, 0.0f);
@@ -195,18 +192,18 @@ TEST_CASE("a moving quad leaves no trail behind it", "[gpu][temporal]") {
 
     constexpr uint32_t kFrames = 28;
     auto rawRenderer =
-        Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
+        Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(rawRenderer.has_value());
     const std::vector<ScenarioFrame> raw =
-        renderSequence(**device, **rawRenderer, kFrames, ReconstructionMode::Raw, base, camera,
+        renderSequence(gpu->device(), **rawRenderer, kFrames, ReconstructionMode::Raw, base, camera,
                        TemporalDebugView::Off, animate);
     // The debug view replaces the display target and nothing else, so one accumulated run answers
     // both halves: its colour slot is the picture, its display target the rejection mask.
     auto taaRenderer =
-        Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
+        Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(taaRenderer.has_value());
     const std::vector<ScenarioFrame> taa =
-        renderSequence(**device, **taaRenderer, kFrames, ReconstructionMode::NativeTaa, base,
+        renderSequence(gpu->device(), **taaRenderer, kFrames, ReconstructionMode::NativeTaa, base,
                        camera, TemporalDebugView::RejectionMask, animate);
 
     // The quad's screen span, from the same projection the scene was authored against.
@@ -285,14 +282,13 @@ TEST_CASE("a moving quad leaves no trail behind it", "[gpu][temporal]") {
 TEST_CASE("a reactive emissive step lands without a fade", "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(32.0f), "lmx.test.scenarioWall");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(32.0f),
+                                        "lmx.test.scenarioWall");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 0.0f, 4.0f}, 0.0f);
@@ -309,26 +305,26 @@ TEST_CASE("a reactive emissive step lands without a fade", "[gpu][temporal]") {
     const FixtureSceneView base = scenarioSceneView(items, {0.0f, 0.0f, -1.0f});
 
     auto rawRenderer =
-        Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
+        Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(rawRenderer.has_value());
     const std::vector<ScenarioFrame> raw =
-        renderSequence(**device, **rawRenderer, kStepFrame + 1, ReconstructionMode::Raw, base,
+        renderSequence(gpu->device(), **rawRenderer, kStepFrame + 1, ReconstructionMode::Raw, base,
                        camera, TemporalDebugView::Off, animate);
     // The debug view replaces the display target and nothing else, so the accumulated run answers
     // both halves at once: its colour slot is the picture the frozen tolerances measure, its
     // display target the reason the resolve chose. A second run reads the weight the same way.
     auto taaRenderer =
-        Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
+        Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(taaRenderer.has_value());
     const std::vector<ScenarioFrame> taa =
-        renderSequence(**device, **taaRenderer, kStepFrame + 1, ReconstructionMode::NativeTaa, base,
-                       camera, TemporalDebugView::RejectionMask, animate);
+        renderSequence(gpu->device(), **taaRenderer, kStepFrame + 1, ReconstructionMode::NativeTaa,
+                       base, camera, TemporalDebugView::RejectionMask, animate);
     auto weightRenderer =
-        Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
+        Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(weightRenderer.has_value());
-    const std::vector<ScenarioFrame> weights =
-        renderSequence(**device, **weightRenderer, kStepFrame + 1, ReconstructionMode::NativeTaa,
-                       base, camera, TemporalDebugView::BlendWeight, animate);
+    const std::vector<ScenarioFrame> weights = renderSequence(
+        gpu->device(), **weightRenderer, kStepFrame + 1, ReconstructionMode::NativeTaa, base,
+        camera, TemporalDebugView::BlendWeight, animate);
 
     // A block at the quad's centre, far enough inside that no jittered edge reaches it.
     std::vector<uint32_t> center;
@@ -375,14 +371,13 @@ TEST_CASE("a reactive emissive step lands without a fade", "[gpu][temporal]") {
 TEST_CASE("an exposure step is corrected in the history it blends", "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(64.0f), "lmx.test.scenarioFloor");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(64.0f),
+                                        "lmx.test.scenarioFloor");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
@@ -396,17 +391,17 @@ TEST_CASE("an exposure step is corrected in the history it blends", "[gpu][tempo
     };
 
     auto rawRenderer =
-        Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
+        Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(rawRenderer.has_value());
     const std::vector<ScenarioFrame> raw =
-        renderSequence(**device, **rawRenderer, kStepFrame, ReconstructionMode::Raw, base, camera,
-                       TemporalDebugView::Off, animate);
+        renderSequence(gpu->device(), **rawRenderer, kStepFrame, ReconstructionMode::Raw, base,
+                       camera, TemporalDebugView::Off, animate);
     auto taaRenderer =
-        Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
+        Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(taaRenderer.has_value());
     const std::vector<ScenarioFrame> taa =
-        renderSequence(**device, **taaRenderer, kStepFrame, ReconstructionMode::NativeTaa, base,
-                       camera, TemporalDebugView::Off, animate);
+        renderSequence(gpu->device(), **taaRenderer, kStepFrame, ReconstructionMode::NativeTaa,
+                       base, camera, TemporalDebugView::Off, animate);
 
     const std::vector<uint32_t> pixels = allPixels();
     const float rawMean = meanOver(luminances(raw.back().history), pixels);
@@ -424,14 +419,13 @@ TEST_CASE("a camera cut restarts the accumulation and its warmup", "[gpu][tempor
     using namespace rojoRHI;
     using lmx::render::HistoryResetReason;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(64.0f), "lmx.test.scenarioFloor");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(64.0f),
+                                        "lmx.test.scenarioFloor");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
@@ -445,12 +439,11 @@ TEST_CASE("a camera cut restarts the accumulation and its warmup", "[gpu][tempor
         view.temporal.cameraCut = frame == kCutFrame;
     };
 
-    auto renderer =
-        Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(renderer.has_value());
     const std::vector<ScenarioFrame> frames =
-        renderSequence(**device, **renderer, kFrames, ReconstructionMode::NativeTaa, base, camera,
-                       TemporalDebugView::Off, animate);
+        renderSequence(gpu->device(), **renderer, kFrames, ReconstructionMode::NativeTaa, base,
+                       camera, TemporalDebugView::Off, animate);
 
     const ScenarioFrame& cut = frames[kCutFrame - 1];
     REQUIRE(cut.status.lastReset == HistoryResetReason::CameraCut);
@@ -484,14 +477,13 @@ TEST_CASE("switching from raw to native TAA needs no reset", "[gpu][temporal]") 
     using namespace rojoRHI;
     using lmx::render::HistoryResetReason;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(64.0f), "lmx.test.scenarioFloor");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(64.0f),
+                                        "lmx.test.scenarioFloor");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
@@ -501,20 +493,19 @@ TEST_CASE("switching from raw to native TAA needs no reset", "[gpu][temporal]") 
     view.temporal.enabled = true;
     view.temporal.jitterEnabled = true;
 
-    auto renderer =
-        Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(renderer.has_value());
 
     view.temporal.reconstruction = ReconstructionMode::Raw;
     for (uint32_t frame = 0; frame < 4; ++frame) {
-        renderFrame(**device, **renderer, camera, view);
+        renderFrame(gpu->device(), **renderer, camera, view);
     }
     REQUIRE((*renderer)->temporalStatus().reconstruction == ReconstructionMode::Raw);
     const uint32_t ageBeforeSwitch = (*renderer)->temporalStatus().historyAge;
     const std::vector<glm::vec4> rawCommit = readHalf4(*(*renderer)->historyTarget());
 
     view.temporal.reconstruction = ReconstructionMode::NativeTaa;
-    renderFrame(**device, **renderer, camera, view);
+    renderFrame(gpu->device(), **renderer, camera, view);
     const lmx::render::TemporalStatus status = (*renderer)->temporalStatus();
     REQUIRE(status.lastReset == HistoryResetReason::None);
     REQUIRE(status.reconstruction == ReconstructionMode::NativeTaa);
@@ -540,14 +531,13 @@ TEST_CASE("switching from raw to native TAA needs no reset", "[gpu][temporal]") 
 TEST_CASE("the raw bypass matches the temporal-off picture", "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(64.0f), "lmx.test.scenarioFloor");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(64.0f),
+                                        "lmx.test.scenarioFloor");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
@@ -557,13 +547,13 @@ TEST_CASE("the raw bypass matches the temporal-off picture", "[gpu][temporal]") 
 
     const auto capture = [&](bool temporal) {
         auto renderer =
-            Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
+            Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
         REQUIRE(renderer.has_value());
         FixtureSceneView view = base;
         view.temporal.enabled = temporal;
         view.temporal.jitterEnabled = false;
         view.temporal.reconstruction = ReconstructionMode::Raw;
-        renderFrame(**device, **renderer, camera, view);
+        renderFrame(gpu->device(), **renderer, camera, view);
         std::vector<uint8_t> display(kScenarioPixels * 4);
         (*renderer)->colorTarget().readback(display.data(), display.size());
         return display;

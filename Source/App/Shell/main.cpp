@@ -132,7 +132,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
     lmx::render::TransientPool transientPool(gpu.device());
 
     // The viewport adopts its panel size after the first UI layout.
-    auto renderer = lmx::render::Renderer::create(gpu.device(), static_cast<uint32_t>(pixelWidth),
+    auto renderer = lmx::render::Renderer::create(gpu, static_cast<uint32_t>(pixelWidth),
                                                   static_cast<uint32_t>(pixelHeight));
     if (!renderer) {
         LMX_LOG_ERROR("Renderer::create failed: {}", renderer.error().message);

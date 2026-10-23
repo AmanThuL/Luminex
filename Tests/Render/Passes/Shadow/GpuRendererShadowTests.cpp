@@ -168,19 +168,18 @@ TEST_CASE("shadow filters resolve a quad's shadow on a plane", "[gpu]") {
 TEST_CASE("renderer shadows a floating cube onto the ground", "[gpu]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto ground =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(8.0f), "lmx.test.shadowGround");
+    auto ground = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(8.0f),
+                                         "lmx.test.shadowGround");
     INFO(errorOf(ground));
     REQUIRE(ground.has_value());
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.shadowCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.shadowCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
-    auto renderer = Renderer::create(**device, kSceneProbeSize, kSceneProbeSize,
+    auto renderer = Renderer::create(*gpu, kSceneProbeSize, kSceneProbeSize,
                                      /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
@@ -207,11 +206,11 @@ TEST_CASE("renderer shadows a floating cube onto the ground", "[gpu]") {
     camera.position = {0.0f, 12.0f, 16.0f};
     camera.pitch = -0.62f;
 
-    CommandList& commands = (*device)->beginFrame();
-    (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, device),
+    CommandList& commands = gpu->device().beginFrame();
+    (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, gpu->device()),
                         /*barrierForSampling=*/false);
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->device().endFrame(nullptr);
+    gpu->device().waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kSceneProbeSize} * kSceneProbeSize * 4);
     (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
@@ -438,8 +437,7 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
 TEST_CASE("renderer applies the chosen directional caster and leaves none or disabled unshadowed",
           "[gpu][scene-doc][composition][caster]") {
     using namespace lmx;
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
     engine::Scene scene;
     const auto ground = scene.addMesh(engine::makePlane(8.0f), "caster.ground");
     const auto cube = scene.addMesh(engine::makeCube(), "caster.cube");
@@ -449,8 +447,8 @@ TEST_CASE("renderer applies the chosen directional caster and leaves none or dis
     scene.addObject(
         {.position = {0, 3, 0}, .scale = glm::vec3(2), .mesh = cube, .material = material});
     scene.boundingSphere = {0, 0, 0, 12};
-    REQUIRE(scene.finalize(**device));
-    auto renderer = render::Renderer::create(**device, kSceneProbeSize, kSceneProbeSize, true);
+    REQUIRE(scene.finalize(gpu->device()));
+    auto renderer = render::Renderer::create(*gpu, kSceneProbeSize, kSceneProbeSize, true);
     REQUIRE(renderer);
     engine::Camera camera;
     camera.position = {0, 12, 16};
@@ -471,8 +469,8 @@ TEST_CASE("renderer applies the chosen directional caster and leaves none or dis
                 if (disabled)
                     scene.lights[caster] = {
                         .strength = glm::vec3(0.8f), .direction = direction, .enabled = false};
-                auto& commands = (*device)->beginFrame();
-                REQUIRE(scene.prepareFrame((*device)->frameNumber()));
+                auto& commands = gpu->device().beginFrame();
+                REQUIRE(scene.prepareFrame(gpu->device().frameNumber()));
                 std::vector<engine::DrawItem> items;
                 auto view = render::buildSceneView(scene, items, false);
                 view.bloomEnabled = false;
@@ -481,8 +479,8 @@ TEST_CASE("renderer applies the chosen directional caster and leaves none or dis
                 view.exposureAdaptUpStopsPerSecond = 0;
                 view.exposureAdaptDownStopsPerSecond = 0;
                 (*renderer)->render(commands, camera, view, false);
-                (*device)->endFrame(nullptr);
-                (*device)->waitIdle();
+                gpu->device().endFrame(nullptr);
+                gpu->device().waitIdle();
                 std::vector<uint8_t> pixels(size_t{kSceneProbeSize} * kSceneProbeSize * 4);
                 (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
                 return pixels;

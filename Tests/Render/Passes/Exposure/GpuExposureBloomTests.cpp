@@ -676,15 +676,16 @@ TEST_CASE("a manual temporal frame records the EV edit and the value before it",
 
     constexpr uint32_t kExtent = 32;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto created = lmx::engine::GpuContext::create({});
+    INFO(errorOf(created));
+    REQUIRE(created);
+    auto gpu = std::move(*created);
 
-    auto cube = fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.exposurePairCube");
+    auto cube = fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.exposurePairCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
-    auto renderer = Renderer::create(**device, kExtent, kExtent, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kExtent, kExtent, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -700,11 +701,11 @@ TEST_CASE("a manual temporal frame records the EV edit and the value before it",
     const auto renderOneFrame = [&](float exposureEv, bool temporalEnabled) {
         view.exposureEv = exposureEv;
         view.temporal.enabled = temporalEnabled;
-        CommandList& commands = (*device)->beginFrame();
-        (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, device),
+        CommandList& commands = gpu->device().beginFrame();
+        (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, gpu->device()),
                             /*barrierForSampling=*/false);
-        (*device)->endFrame(nullptr);
-        (*device)->waitIdle();
+        gpu->device().endFrame(nullptr);
+        gpu->device().waitIdle();
 
         std::array<float, lmx::render::kExposureBufferFloats> pair{};
         (*renderer)->exposureBuffer().readback(pair.data(), sizeof(pair));

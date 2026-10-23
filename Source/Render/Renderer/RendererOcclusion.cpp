@@ -17,7 +17,7 @@ GraphTexture Renderer::prepareOcclusion(RenderGraph& graph, const engine::Camera
                    (view.classifyMode == ClassifyMode::Gpu && view.visibilityEnabled),
                "occlusion requires GPU classification and culling");
     LMX_ASSERT(!view.occlusionCheck || view.occlusionEnabled, "occlusion check requires occlusion");
-    const OcclusionFrameFacts current{.frameNumber = m_device.frameNumber(),
+    const OcclusionFrameFacts current{.frameNumber = m_gpu.frameNumber(),
                                       .sceneGeneration = view.temporal.sceneGeneration,
                                       .coverageEpoch = view.coverageEpoch,
                                       .outputWidth = m_width,
@@ -64,7 +64,7 @@ GraphTexture Renderer::prepareOcclusion(RenderGraph& graph, const engine::Camera
     if (!view.occlusionEnabled)
         return {};
     if (!m_hzbStage) {
-        auto stage = HzbStage::create(m_device, m_cpuReadback);
+        auto stage = HzbStage::create(m_gpu, m_cpuReadback);
         LMX_ASSERT(stage.has_value(), stage.error().message);
         m_hzbStage = std::move(*stage);
         const auto resized = m_hzbStage->resize(m_width, m_height);
@@ -81,7 +81,7 @@ void Renderer::declareOcclusion(RenderGraph& graph, rojoRHI::CommandList& comman
     m_occlusionSource = m_hzbStage->previousSource();
     if (view.occlusionCheck) {
         if (!m_occlusionReference) {
-            auto reference = OcclusionReference::create(m_device);
+            auto reference = OcclusionReference::create(m_gpu);
             LMX_ASSERT(reference.has_value(), reference.error().message);
             m_occlusionReference = std::move(*reference);
         }
@@ -96,7 +96,7 @@ void Renderer::declareOcclusion(RenderGraph& graph, rojoRHI::CommandList& comman
     if (view.hzbDebugLevel < 0)
         return;
     if (!m_hzbDebugPipeline) {
-        auto library = m_device.loadShaderLibrary("Shaders/HzbDebugView");
+        auto library = m_gpu.loadShaderLibrary("HzbDebugView");
         LMX_ASSERT(library.has_value(), library.error().message);
         m_hzbDebugLibrary = std::move(*library);
         auto pipeline = m_device.createGraphicsPipeline(

@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 #include "Core/Diagnostics/Result.h"
+#include "Engine/Gpu/GpuContext.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/Visibility/VisibilityTables.h"
 
@@ -30,7 +31,7 @@ struct GpuVisibilityOutputs {
 class GpuVisibility {
 public:
     /// Loads safe-math visibility kernels and their fixed threadgroup pipelines.
-    static lmx::Result<std::unique_ptr<GpuVisibility>> create(rojoRHI::Device& device);
+    static lmx::Result<std::unique_ptr<GpuVisibility>> create(engine::GpuContext& gpu);
     /// Declares the four visibility passes and retains the declaration's readback context.
     GpuVisibilityOutputs declare(RenderGraph& graph, rojoRHI::CommandList& commands,
                                  const SceneView& view, const GpuVisibilityInputs& inputs,
@@ -49,7 +50,7 @@ public:
     }
 
 private:
-    explicit GpuVisibility(rojoRHI::Device& device) : m_device(device) {}
+    explicit GpuVisibility(engine::GpuContext& gpu) : m_gpu(gpu), m_device(gpu.device()) {}
     struct Slot {
         std::unique_ptr<rojoRHI::Buffer> candidates, runs, chunks, views, states, counters;
         std::vector<std::byte> candidateBytes, runBytes, chunkBytes, viewBytes;
@@ -67,8 +68,9 @@ private:
     };
     lmx::Result<void> prepareSlot(Slot& slot, const VisibilityTables& tables);
     VisibilityStatus readback(Pending& pending);
+    engine::GpuContext& m_gpu;
     rojoRHI::Device& m_device;
-    std::array<std::unique_ptr<rojoRHI::ShaderLibrary>, 5> m_libraries;
+    std::array<engine::GpuOwned<rojoRHI::ShaderLibrary>, 5> m_libraries;
     std::array<std::unique_ptr<rojoRHI::ComputePipeline>, 5> m_pipelines;
     std::unique_ptr<rojoRHI::Buffer> m_emptyInstances, m_emptyMeshes;
     std::array<Slot, 3> m_slots;

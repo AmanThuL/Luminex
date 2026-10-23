@@ -79,13 +79,14 @@ ShadowMatrices fitShadowOrtho(const glm::vec4& boundingSphere, const glm::vec3& 
 }
 
 //======================================================================================================================
-lmx::Result<std::unique_ptr<ShadowStage>> ShadowStage::create(rojoRHI::Device& device) {
+lmx::Result<std::unique_ptr<ShadowStage>> ShadowStage::create(engine::GpuContext& gpu) {
+    rojoRHI::Device& device = gpu.device();
     std::unique_ptr<ShadowStage> self(new ShadowStage);
 
     {
-        auto library = device.loadShaderLibrary("Shaders/ShadowPass");
+        auto library = gpu.loadShaderLibrary("ShadowPass");
         if (!library) {
-            return std::unexpected(engine::gpuError(library.error()));
+            return std::unexpected(library.error());
         }
         self->m_shadowLibrary = std::move(*library);
     }
@@ -113,9 +114,9 @@ lmx::Result<std::unique_ptr<ShadowStage>> ShadowStage::create(rojoRHI::Device& d
         self->m_shadowPipeline = std::move(*pipeline);
     }
 
-    auto shadowMaskLibrary = device.loadShaderLibrary("Shaders/ShadowPassMask");
+    auto shadowMaskLibrary = gpu.loadShaderLibrary("ShadowPassMask");
     if (!shadowMaskLibrary) {
-        return std::unexpected(engine::gpuError(shadowMaskLibrary.error()));
+        return std::unexpected(shadowMaskLibrary.error());
     }
     self->m_maskShadowLibrary = std::move(*shadowMaskLibrary);
     for (uint32_t doubleSided = 0; doubleSided < 2; ++doubleSided) {

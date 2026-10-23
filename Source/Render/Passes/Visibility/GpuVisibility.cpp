@@ -14,12 +14,13 @@
 
 namespace lmx::render {
 //======================================================================================================================
-lmx::Result<std::unique_ptr<GpuVisibility>> GpuVisibility::create(rojoRHI::Device& device) {
-    std::unique_ptr<GpuVisibility> self(new GpuVisibility(device));
+lmx::Result<std::unique_ptr<GpuVisibility>> GpuVisibility::create(engine::GpuContext& gpu) {
+    rojoRHI::Device& device = gpu.device();
+    std::unique_ptr<GpuVisibility> self(new GpuVisibility(gpu));
     constexpr std::array names{"VisibilityClassify", "VisibilityScan", "VisibilityEmit",
                                "VisibilityEmitSparse", "VisibilityClassifyOcclusion"};
     auto pipelines =
-        createComputePipelines(device, names, "lmx.visibility.", [](uint32_t) { return 256u; });
+        createComputePipelines(gpu, names, "lmx.visibility.", [](uint32_t) { return 256u; });
     if (!pipelines) {
         return std::unexpected(pipelines.error());
     }
@@ -60,7 +61,7 @@ lmx::Result<void> GpuVisibility::prepareSlot(Slot& slot, const VisibilityTables&
                  .storageWrite = writable,
                  .cpuReadback = writable,
                  .cpuWrite = !writable,
-                 .label = std::string(name) + "." + std::to_string(m_device.frameNumber() % 3)},
+                 .label = std::string(name) + "." + std::to_string(m_gpu.frameNumber() % 3)},
                 nullptr);
             if (!result) {
                 return std::unexpected(engine::gpuError(result.error()));
@@ -122,7 +123,7 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rojoRHI::Command
     const auto pyramid = inputs.pyramid;
     auto occlusion = inputs.occlusion;
     auto tables = buildVisibilityTables(view, submission, planes);
-    auto& slot = m_slots[m_device.frameNumber() % 3];
+    auto& slot = m_slots[m_gpu.frameNumber() % 3];
     const auto prepared = prepareSlot(slot, tables);
     LMX_ASSERT(prepared.has_value(), prepared.error().message);
     VisibilityParams params{.layout = view.submission == SubmissionMode::Batched ? 1u : 0u,

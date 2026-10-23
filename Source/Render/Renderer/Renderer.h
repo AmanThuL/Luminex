@@ -6,6 +6,7 @@
 #pragma once
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Geometry/Mesh.h"
+#include "Engine/Gpu/GpuContext.h"
 #include "Engine/View/Camera.h"
 #include "Render/Common/Formats.h"
 #include "Render/Graph/RenderGraph.h"
@@ -76,7 +77,7 @@ public:
 
     /// cpuReadback puts the color target in shared storage so Texture::readback() works. It exists
     /// for the GPU tests and the --screenshot path; the windowed App leaves it false.
-    static lmx::Result<std::unique_ptr<Renderer>> create(rojoRHI::Device& device, uint32_t width,
+    static lmx::Result<std::unique_ptr<Renderer>> create(engine::GpuContext& gpu, uint32_t width,
                                                          uint32_t height, bool cpuReadback = false);
 
     /// Recreates the scene targets -- and the motion and history targets alongside them -- at the
@@ -191,7 +192,7 @@ public:
     float timeSeconds = 0.0f;
 
 private:
-    Renderer(rojoRHI::Device& device, bool cpuReadback);
+    Renderer(engine::GpuContext& gpu, bool cpuReadback);
     RendererFrameState deriveFrameState(const engine::Camera& camera, const SceneView& view);
     RendererFrameImports importFrameResources(RenderGraph& graph, rojoRHI::CommandList& commands,
                                               const SceneView& view,
@@ -220,6 +221,7 @@ private:
     // kMotionFormat and kReactiveFormat rather than to the scene targets'.
     lmx::Result<void> createTemporalTargets();
 
+    engine::GpuContext& m_gpu;
     rojoRHI::Device& m_device;
     // render()'s own pool for bloom's transients, since a caller without a graph of its own (the
     // --screenshot path, most GPU tests) has no pool to hand declarePasses(); a caller building a
@@ -286,7 +288,7 @@ private:
     std::unique_ptr<GpuVisibility> m_gpuVisibility;
     std::unique_ptr<HzbStage> m_hzbStage;
     std::unique_ptr<OcclusionReference> m_occlusionReference;
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_hzbDebugLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_hzbDebugLibrary;
     std::unique_ptr<rojoRHI::GraphicsPipeline> m_hzbDebugPipeline;
     HzbSource m_occlusionSource;
     HzbSource m_currentOcclusionSource;

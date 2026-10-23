@@ -16,8 +16,9 @@
 namespace lmx::render {
 
 //======================================================================================================================
-lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device& device,
+lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(engine::GpuContext& gpu,
                                                             rojoRHI::Format sceneColorFormat) {
+    rojoRHI::Device& device = gpu.device();
     std::unique_ptr<SceneStage> self(new SceneStage);
 
     // Minimal immutable storage keeps every declared slot valid when its selection path is unused.
@@ -50,30 +51,30 @@ lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device& dev
     }
 
     {
-        auto library = device.loadShaderLibrary("Shaders/ScenePass");
+        auto library = gpu.loadShaderLibrary("ScenePass");
         if (!library) {
-            return std::unexpected(engine::gpuError(library.error()));
+            return std::unexpected(library.error());
         }
         self->m_sceneLibrary = std::move(*library);
     }
     {
-        auto library = device.loadShaderLibrary("Shaders/ScenePassAuto");
+        auto library = gpu.loadShaderLibrary("ScenePassAuto");
         if (!library) {
-            return std::unexpected(engine::gpuError(library.error()));
+            return std::unexpected(library.error());
         }
         self->m_sceneAutoLibrary = std::move(*library);
     }
     {
-        auto library = device.loadShaderLibrary("Shaders/Sky");
+        auto library = gpu.loadShaderLibrary("Sky");
         if (!library) {
-            return std::unexpected(engine::gpuError(library.error()));
+            return std::unexpected(library.error());
         }
         self->m_skyLibrary = std::move(*library);
     }
     {
-        auto library = device.loadShaderLibrary("Shaders/SkyAuto");
+        auto library = gpu.loadShaderLibrary("SkyAuto");
         if (!library) {
-            return std::unexpected(engine::gpuError(library.error()));
+            return std::unexpected(library.error());
         }
         self->m_skyAutoLibrary = std::move(*library);
     }
@@ -252,10 +253,9 @@ lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device& dev
     }
 
     for (uint32_t automatic = 0; automatic < 2; ++automatic) {
-        auto library = device.loadShaderLibrary(automatic ? "Shaders/ScenePassAutoMask"
-                                                          : "Shaders/ScenePassMask");
+        auto library = gpu.loadShaderLibrary(automatic ? "ScenePassAutoMask" : "ScenePassMask");
         if (!library) {
-            return std::unexpected(engine::gpuError(library.error()));
+            return std::unexpected(library.error());
         }
         self->m_maskSceneLibraries[automatic] = std::move(*library);
         for (uint32_t doubleSided = 0; doubleSided < 2; ++doubleSided) {

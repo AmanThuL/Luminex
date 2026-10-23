@@ -312,25 +312,24 @@ TEST_CASE("the inspector model agrees with the dump for the same frame", "[gpu]"
 TEST_CASE("Native TAA physical history alternates without changing canvas topology", "[gpu]") {
     using namespace rojoRHI;
     using namespace lmx::render;
-    auto device = createDevice();
-    REQUIRE(device.has_value());
-    auto renderer = Renderer::create(**device, 64, 64, true);
+    auto gpu = createTestGpu();
+    auto renderer = Renderer::create(*gpu, 64, 64, true);
     REQUIRE(renderer.has_value());
     FixtureSceneView view = temporalSceneView({});
     view.temporal.enabled = true;
     view.temporal.reconstruction = ReconstructionMode::NativeTaa;
-    TransientPool pool(**device);
+    TransientPool pool(gpu->device());
     std::vector<CompiledFrameRecord> records;
     for (uint32_t frame = 0; frame < 4; ++frame) {
-        CommandList& commands = (*device)->beginFrame();
+        CommandList& commands = gpu->device().beginFrame();
         pool.beginFrame();
         RenderGraph graph(pool);
-        const auto display = (*renderer)->declarePasses(graph, commands, temporalCamera(),
-                                                        lmx::test::prepareSceneView(view, device));
+        const auto display = (*renderer)->declarePasses(
+            graph, commands, temporalCamera(), lmx::test::prepareSceneView(view, gpu->device()));
         graph.presentTexture(display);
-        records.push_back(graph.execute(commands, (*device)->frameNumber()));
-        (*device)->endFrame(nullptr);
-        (*device)->waitIdle();
+        records.push_back(graph.execute(commands, gpu->device().frameNumber()));
+        gpu->device().endFrame(nullptr);
+        gpu->device().waitIdle();
     }
     const auto first = lmx::app::buildGraphNodeModel(records[2], {});
     const auto second = lmx::app::buildGraphNodeModel(records[3], {});

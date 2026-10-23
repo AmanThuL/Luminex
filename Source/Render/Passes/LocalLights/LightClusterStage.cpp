@@ -96,12 +96,13 @@ void LightClusterStage::registerLayoutsForCapture() {
 }
 
 //======================================================================================================================
-lmx::Result<std::unique_ptr<LightClusterStage>> LightClusterStage::create(rojoRHI::Device& device) {
+lmx::Result<std::unique_ptr<LightClusterStage>> LightClusterStage::create(engine::GpuContext& gpu) {
+    rojoRHI::Device& device = gpu.device();
     std::unique_ptr<LightClusterStage> self(new LightClusterStage(device));
     constexpr std::array names{"LightClusterCount", "LightClusterScan", "LightClusterFill"};
     // The scan is a single thread on purpose: 3,456 counts summed in froxel order is what
     // makes every range and every counter a function of the declarations alone.
-    auto pipelines = createComputePipelines(device, names, "lmx.light.", [](uint32_t index) {
+    auto pipelines = createComputePipelines(gpu, names, "lmx.light.", [](uint32_t index) {
         return index == 1 ? 1u : kThreadsPerGroup;
     });
     if (!pipelines) {

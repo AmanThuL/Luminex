@@ -22,11 +22,12 @@ static_assert(sizeof(DebugParams) == 188);
 } // namespace
 
 //======================================================================================================================
-lmx::Result<std::unique_ptr<LightDebugStage>> LightDebugStage::create(rojoRHI::Device& device) {
+lmx::Result<std::unique_ptr<LightDebugStage>> LightDebugStage::create(engine::GpuContext& gpu) {
+    rojoRHI::Device& device = gpu.device();
     auto stage = std::unique_ptr<LightDebugStage>(new LightDebugStage);
-    auto library = device.loadShaderLibrary("Shaders/LightDebugView");
+    auto library = gpu.loadShaderLibrary("LightDebugView");
     if (!library) {
-        return std::unexpected(engine::gpuError(library.error()));
+        return std::unexpected(library.error());
     }
     stage->m_library = std::move(*library);
     auto pipeline = device.createGraphicsPipeline(fullscreenPipelineDesc(

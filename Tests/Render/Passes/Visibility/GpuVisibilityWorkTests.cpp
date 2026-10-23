@@ -9,7 +9,8 @@ namespace {
 namespace render = lmx::render;
 
 struct WorkFixture {
-    std::unique_ptr<rojoRHI::Device> device;
+    std::unique_ptr<lmx::engine::GpuContext> gpu;
+    rojoRHI::Device* device = nullptr;
     std::unique_ptr<render::GpuVisibility> visibility;
     std::unique_ptr<render::DrawSubmission> submission;
     std::unique_ptr<render::TransientPool> pool;
@@ -24,10 +25,9 @@ struct WorkFixture {
 
     //==================================================================================================================
     explicit WorkFixture(uint32_t count) {
-        auto created = rojoRHI::createDevice();
-        REQUIRE(created);
-        device = std::move(*created);
-        auto stage = render::GpuVisibility::create(*device);
+        gpu = createTestGpu();
+        device = &gpu->device();
+        auto stage = render::GpuVisibility::create(*gpu);
         INFO(errorOf(stage));
         REQUIRE(stage);
         visibility = std::move(*stage);

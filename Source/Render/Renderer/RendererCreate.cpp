@@ -52,51 +52,52 @@ void registerUniformLayoutsForCapture() {
 }
 
 //======================================================================================================================
-Renderer::Renderer(rojoRHI::Device& device, bool cpuReadback)
-    : m_device(device), m_transientPool(device), m_drawSubmission(device),
-      m_cpuReadback(cpuReadback) {}
+Renderer::Renderer(engine::GpuContext& gpu, bool cpuReadback)
+    : m_gpu(gpu), m_device(gpu.device()), m_transientPool(gpu.device()),
+      m_drawSubmission(gpu.device()), m_cpuReadback(cpuReadback) {}
 
 //======================================================================================================================
 Renderer::~Renderer() = default;
 
 //======================================================================================================================
-lmx::Result<std::unique_ptr<Renderer>> Renderer::create(rojoRHI::Device& device, uint32_t width,
+lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu, uint32_t width,
                                                         uint32_t height, bool cpuReadback) {
     LMX_ASSERT(width > 0 && height > 0, "Renderer::create: width and height must be non-zero");
 
     // Registration is idempotent and keeps capture startup independent of Renderer state.
     registerUniformLayoutsForCapture();
 
-    std::unique_ptr<Renderer> self(new Renderer(device, cpuReadback));
+    rojoRHI::Device& device = gpu.device();
+    std::unique_ptr<Renderer> self(new Renderer(gpu, cpuReadback));
 
     {
-        auto stage = ShadowStage::create(device);
+        auto stage = ShadowStage::create(gpu);
         if (!stage) {
             return std::unexpected(stage.error());
         }
         self->m_shadowStage = std::move(*stage);
     }
     {
-        auto stage = SceneStage::create(device, kSceneColorFormat);
+        auto stage = SceneStage::create(gpu, kSceneColorFormat);
         if (!stage) {
             return std::unexpected(stage.error());
         }
         self->m_sceneStage = std::move(*stage);
     }
 
-    auto displayStage = DisplayStage::create(device);
+    auto displayStage = DisplayStage::create(gpu);
     if (!displayStage) {
         return std::unexpected(displayStage.error());
     }
     self->m_displayStage = std::move(*displayStage);
 
-    auto exposureStage = ExposureStage::create(device, cpuReadback);
+    auto exposureStage = ExposureStage::create(gpu, cpuReadback);
     if (!exposureStage) {
         return std::unexpected(exposureStage.error());
     }
     self->m_exposureStage = std::move(*exposureStage);
 
-    auto bloomStage = BloomStage::create(device);
+    auto bloomStage = BloomStage::create(gpu);
     if (!bloomStage) {
         return std::unexpected(bloomStage.error());
     }
@@ -196,7 +197,7 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(rojoRHI::Device& device,
     // The reconstruction stage owns both history pairs and the passes over them, so it is built
     // before the first resize(), which is what allocates its slots at this renderer's extent.
     {
-        auto stage = TemporalResolve::create(device, self->m_cpuReadback);
+        auto stage = TemporalResolve::create(gpu, self->m_cpuReadback);
         if (!stage) {
             return std::unexpected(stage.error());
         }

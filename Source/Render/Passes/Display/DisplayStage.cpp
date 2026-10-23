@@ -32,13 +32,14 @@ constexpr uint32_t kDisplayParamsSlot = 0;
 } // namespace
 
 //======================================================================================================================
-lmx::Result<std::unique_ptr<DisplayStage>> DisplayStage::create(rojoRHI::Device& device) {
+lmx::Result<std::unique_ptr<DisplayStage>> DisplayStage::create(engine::GpuContext& gpu) {
+    rojoRHI::Device& device = gpu.device();
     std::unique_ptr<DisplayStage> self(new DisplayStage);
 
     {
-        auto library = device.loadShaderLibrary("Shaders/DisplayTransform");
+        auto library = gpu.loadShaderLibrary("DisplayTransform");
         if (!library) {
-            return std::unexpected(engine::gpuError(library.error()));
+            return std::unexpected(library.error());
         }
         self->m_displayLibrary = std::move(*library);
     }

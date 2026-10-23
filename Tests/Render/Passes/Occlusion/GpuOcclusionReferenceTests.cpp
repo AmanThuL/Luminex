@@ -55,13 +55,12 @@ VisibilityStatus referenceFrame(Device& device, TransientPool& pool, OcclusionRe
 //======================================================================================================================
 TEST_CASE("independent occlusion reference draws rejected candidates and shares masked coverage",
           "[gpu][occlusion-reference]") {
-    auto device = createDevice();
-    REQUIRE(device);
-    auto reference = OcclusionReference::create(**device);
+    auto gpu = createTestGpu();
+    auto reference = OcclusionReference::create(*gpu);
     INFO(errorOf(reference));
     REQUIRE(reference);
-    TransientPool pool(**device);
-    auto mesh = lmx::test::fixtureMesh(**device, referenceQuad(), "lmx.test.reference.quad");
+    TransientPool pool(gpu->device());
+    auto mesh = lmx::test::fixtureMesh(gpu->device(), referenceQuad(), "lmx.test.reference.quad");
     REQUIRE(mesh);
     std::array<FixtureDrawItem, 2> items;
     for (auto& item : items)
@@ -71,8 +70,8 @@ TEST_CASE("independent occlusion reference draws rejected candidates and shares 
     items[0].material.albedo.a = 0;
     FixtureSceneView fixture;
     fixture.items = items;
-    auto status = referenceFrame(**device, pool, **reference, fixture);
-    (*device)->waitIdle();
+    auto status = referenceFrame(gpu->device(), pool, **reference, fixture);
+    gpu->device().waitIdle();
     (*reference)->retireThrough(status.frameNumber);
     auto check = (*reference)->check(status);
     REQUIRE(check);
@@ -84,8 +83,8 @@ TEST_CASE("independent occlusion reference draws rejected candidates and shares 
     REQUIRE_FALSE(check->passed());
     REQUIRE_FALSE((*reference)->check(status));
     items[0].material.albedo.a = 1;
-    status = referenceFrame(**device, pool, **reference, fixture);
-    (*device)->waitIdle();
+    status = referenceFrame(gpu->device(), pool, **reference, fixture);
+    gpu->device().waitIdle();
     (*reference)->retireThrough(status.frameNumber);
     check = (*reference)->check(status);
     REQUIRE(check);
@@ -97,12 +96,11 @@ TEST_CASE("independent occlusion reference draws rejected candidates and shares 
 //======================================================================================================================
 TEST_CASE("reference byte IDs and transient readback survive three paced slot recycles",
           "[gpu][occlusion-reference]") {
-    auto device = createDevice();
-    REQUIRE(device);
-    auto reference = OcclusionReference::create(**device);
+    auto gpu = createTestGpu();
+    auto reference = OcclusionReference::create(*gpu);
     REQUIRE(reference);
-    TransientPool pool(**device);
-    auto mesh = lmx::test::fixtureMesh(**device, referenceQuad(), "lmx.test.reference.ids");
+    TransientPool pool(gpu->device());
+    auto mesh = lmx::test::fixtureMesh(gpu->device(), referenceQuad(), "lmx.test.reference.ids");
     REQUIRE(mesh);
     std::vector<FixtureDrawItem> items(258);
     for (auto& item : items) {
@@ -114,9 +112,9 @@ TEST_CASE("reference byte IDs and transient readback survive three paced slot re
     fixture.items = items;
     std::vector<VisibilityStatus> statuses;
     for (uint32_t frame = 0; frame < 8; ++frame)
-        statuses.push_back(
-            referenceFrame(**device, pool, **reference, fixture, frame % 2 == 0 ? 64 : 80, 64));
-    (*device)->waitIdle();
+        statuses.push_back(referenceFrame(gpu->device(), pool, **reference, fixture,
+                                          frame % 2 == 0 ? 64 : 80, 64));
+    gpu->device().waitIdle();
     (*reference)->retireThrough(statuses.back().frameNumber);
     for (const auto& status : statuses) {
         const auto check = (*reference)->check(status);
@@ -132,20 +130,19 @@ TEST_CASE("reference byte IDs and transient readback survive three paced slot re
 
 //======================================================================================================================
 TEST_CASE("independent ID reference preserves wireframe coverage", "[gpu][occlusion-reference]") {
-    auto device = createDevice();
-    REQUIRE(device);
-    auto reference = OcclusionReference::create(**device);
+    auto gpu = createTestGpu();
+    auto reference = OcclusionReference::create(*gpu);
     REQUIRE(reference);
-    TransientPool pool(**device);
-    auto mesh = lmx::test::fixtureMesh(**device, referenceQuad(), "lmx.test.reference.wire");
+    TransientPool pool(gpu->device());
+    auto mesh = lmx::test::fixtureMesh(gpu->device(), referenceQuad(), "lmx.test.reference.wire");
     REQUIRE(mesh);
     FixtureDrawItem item;
     item.mesh = &*mesh;
     FixtureSceneView fixture;
     fixture.items = std::span{&item, 1};
     fixture.wireframe = true;
-    const auto status = referenceFrame(**device, pool, **reference, fixture);
-    (*device)->waitIdle();
+    const auto status = referenceFrame(gpu->device(), pool, **reference, fixture);
+    gpu->device().waitIdle();
     (*reference)->retireThrough(status.frameNumber);
     const auto check = (*reference)->check(status);
     REQUIRE(check);
@@ -158,12 +155,12 @@ TEST_CASE("independent ID reference preserves wireframe coverage", "[gpu][occlus
 //======================================================================================================================
 TEST_CASE("independent reference excludes disabled geometry without losing row identity",
           "[gpu][occlusion-reference][disabled-instance]") {
-    auto device = createDevice();
-    REQUIRE(device);
-    auto reference = OcclusionReference::create(**device);
+    auto gpu = createTestGpu();
+    auto reference = OcclusionReference::create(*gpu);
     REQUIRE(reference);
-    TransientPool pool(**device);
-    auto mesh = lmx::test::fixtureMesh(**device, referenceQuad(), "lmx.test.reference.disabled");
+    TransientPool pool(gpu->device());
+    auto mesh =
+        lmx::test::fixtureMesh(gpu->device(), referenceQuad(), "lmx.test.reference.disabled");
     REQUIRE(mesh);
     std::array<FixtureDrawItem, 2> items;
     for (auto& item : items)
@@ -174,8 +171,8 @@ TEST_CASE("independent reference excludes disabled geometry without losing row i
     fixture.items = items;
     for (bool backgroundEnabled : {true, false}) {
         items[1].enabled = backgroundEnabled;
-        const auto status = referenceFrame(**device, pool, **reference, fixture);
-        (*device)->waitIdle();
+        const auto status = referenceFrame(gpu->device(), pool, **reference, fixture);
+        gpu->device().waitIdle();
         (*reference)->retireThrough(status.frameNumber);
         const auto check = (*reference)->check(status);
         REQUIRE(check);

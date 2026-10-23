@@ -89,28 +89,29 @@ constexpr float kExposureFrameSeconds = 1.0f / 60.0f;
 } // namespace
 
 //======================================================================================================================
-lmx::Result<std::unique_ptr<ExposureStage>> ExposureStage::create(rojoRHI::Device& device,
+lmx::Result<std::unique_ptr<ExposureStage>> ExposureStage::create(engine::GpuContext& gpu,
                                                                   bool cpuReadback) {
+    rojoRHI::Device& device = gpu.device();
     std::unique_ptr<ExposureStage> self(new ExposureStage);
 
     {
-        auto library = device.loadShaderLibrary("Shaders/HistogramAccumulate");
+        auto library = gpu.loadShaderLibrary("HistogramAccumulate");
         if (!library) {
-            return std::unexpected(engine::gpuError(library.error()));
+            return std::unexpected(library.error());
         }
         self->m_histogramLibrary = std::move(*library);
     }
     {
-        auto library = device.loadShaderLibrary("Shaders/ExposureResolve");
+        auto library = gpu.loadShaderLibrary("ExposureResolve");
         if (!library) {
-            return std::unexpected(engine::gpuError(library.error()));
+            return std::unexpected(library.error());
         }
         self->m_exposureResolveLibrary = std::move(*library);
     }
     {
-        auto library = device.loadShaderLibrary("Shaders/ExposureSeed");
+        auto library = gpu.loadShaderLibrary("ExposureSeed");
         if (!library) {
-            return std::unexpected(engine::gpuError(library.error()));
+            return std::unexpected(library.error());
         }
         self->m_exposureSeedLibrary = std::move(*library);
     }

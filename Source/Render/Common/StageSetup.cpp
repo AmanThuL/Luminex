@@ -44,7 +44,7 @@ createTexel(rojoRHI::Device& device, rojoRHI::Format format, rojoRHI::TextureKin
 }
 
 //======================================================================================================================
-lmx::Result<ComputePipelines> createComputePipelines(rojoRHI::Device& device,
+lmx::Result<ComputePipelines> createComputePipelines(engine::GpuContext& gpu,
                                                      std::span<const char* const> names,
                                                      std::string_view labelPrefix,
                                                      uint32_t (*threadsFor)(uint32_t)) {
@@ -52,16 +52,16 @@ lmx::Result<ComputePipelines> createComputePipelines(rojoRHI::Device& device,
     result.libraries.reserve(names.size());
     result.pipelines.reserve(names.size());
     for (uint32_t index = 0; index < names.size(); ++index) {
-        auto library = device.loadShaderLibrary("Shaders/" + std::string(names[index]));
+        auto library = gpu.loadShaderLibrary(names[index]);
         if (!library) {
-            return std::unexpected(engine::gpuError(library.error()));
+            return std::unexpected(library.error());
         }
         result.libraries.push_back(std::move(*library));
         auto pipeline =
-            device.createComputePipeline({.library = result.libraries.back().get(),
-                                          .computeEntry = "computeMain",
-                                          .threadsPerThreadgroup = {threadsFor(index), 1, 1},
-                                          .label = std::string(labelPrefix) + names[index]});
+            gpu.device().createComputePipeline({.library = result.libraries.back().get(),
+                                                .computeEntry = "computeMain",
+                                                .threadsPerThreadgroup = {threadsFor(index), 1, 1},
+                                                .label = std::string(labelPrefix) + names[index]});
         if (!pipeline) {
             return std::unexpected(engine::gpuError(pipeline.error()));
         }

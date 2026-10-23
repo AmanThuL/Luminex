@@ -171,7 +171,7 @@ int runOffscreen(AppOptions options) {
     render::TransientPool transientPool(gpu.device());
 
     // Shared storage permits direct CPU readback after GPU completion.
-    auto renderer = render::Renderer::create(gpu.device(), kScreenshotWidth, kScreenshotHeight,
+    auto renderer = render::Renderer::create(gpu, kScreenshotWidth, kScreenshotHeight,
                                              /*cpuReadback=*/true);
     if (!renderer) {
         LMX_LOG_ERROR("Renderer::create failed: {}", renderer.error().message);

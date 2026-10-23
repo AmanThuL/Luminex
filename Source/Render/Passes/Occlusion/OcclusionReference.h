@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 #include "Core/Diagnostics/Result.h"
+#include "Engine/Gpu/GpuContext.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/Occlusion/OcclusionCheck.h"
 #include "Render/Renderer/SceneView.h"
@@ -24,7 +25,7 @@ struct OcclusionReferenceInputs {
 class OcclusionReference {
 public:
     /// Loads opaque and masked reference pipelines; reports GPU allocation/compiler errors.
-    static lmx::Result<std::unique_ptr<OcclusionReference>> create(rojoRHI::Device& device);
+    static lmx::Result<std::unique_ptr<OcclusionReference>> create(engine::GpuContext& gpu);
     /// Declares private depth and exact byte IDs for every candidate, with no visibility inputs.
     /// Call only inside an open paced frame. Scene bindings outlive graph execution. Extents
     /// are the active render rectangle; viewProjection is its current jittered raster matrix.
@@ -39,7 +40,7 @@ public:
     std::optional<OcclusionCheckResult> check(const VisibilityStatus& status);
 
 private:
-    explicit OcclusionReference(rojoRHI::Device& device) : m_device(device) {}
+    explicit OcclusionReference(engine::GpuContext& gpu) : m_gpu(gpu), m_device(gpu.device()) {}
     struct Slot {
         std::unique_ptr<rojoRHI::Buffer> buffer;
         bool used = false;
@@ -52,8 +53,9 @@ private:
         std::vector<OcclusionCheckObservation> observations;
         uint64_t invalidPixels = 0;
     };
+    engine::GpuContext& m_gpu;
     rojoRHI::Device& m_device;
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_library;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_library;
     std::array<std::unique_ptr<rojoRHI::GraphicsPipeline>, 8> m_pipelines;
     std::unique_ptr<rojoRHI::Sampler> m_sampler;
     std::unique_ptr<rojoRHI::Texture> m_white;

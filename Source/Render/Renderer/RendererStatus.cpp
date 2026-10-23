@@ -24,7 +24,7 @@ void Renderer::recordFrameStatus(const RendererFrameState& state, bool lightDebu
     m_temporalStatus.depthHistoryBytes = m_temporalResolve->depthBytes();
     m_temporalStatus.reconstruction = state.reconstruction;
     m_temporalStatus.vendorFallback = state.selection.fallback;
-    m_temporalStatus.vendorName = m_device.capabilities().temporalScaler.name;
+    m_temporalStatus.vendorName = m_gpu.upscalerSupport().name;
     m_temporalStatus.vendorReset = state.vendorTemporal && m_temporalResolve->vendorReset();
     m_temporalStatus.vendorScalerGeneration = m_temporalResolve->vendorScalerGeneration();
     // The age counts declared temporal frames since the last non-None reason, whatever the mode:

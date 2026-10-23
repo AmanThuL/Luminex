@@ -20,17 +20,16 @@ TEST_CASE("FrameDeclaration preserves headless rendering and retains its caller-
     using namespace rojoRHI;
     using namespace lmx::render;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
-    TransientPool pool(**device);
-    auto reference = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto gpu = createTestGpu();
+    TransientPool pool(gpu->device());
+    auto reference = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(reference));
     REQUIRE(reference.has_value());
-    auto shared = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto shared = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(shared));
     REQUIRE(shared.has_value());
-    auto cube = fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.frameDeclaration.cube");
+    auto cube =
+        fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.frameDeclaration.cube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
@@ -50,28 +49,28 @@ TEST_CASE("FrameDeclaration preserves headless rendering and retains its caller-
 
     // More than three frames reuses every transient slot; toggling pooling also replaces heaps.
     for (uint32_t index = 0; index < 5; ++index) {
-        CommandList& referenceCommands = (*device)->beginFrame();
+        CommandList& referenceCommands = gpu->device().beginFrame();
         (*reference)
-            ->render(referenceCommands, camera, lmx::test::prepareSceneView(view, device),
+            ->render(referenceCommands, camera, lmx::test::prepareSceneView(view, gpu->device()),
                      /*barrierForSampling=*/false);
-        (*device)->endFrame(nullptr);
-        (*device)->waitIdle();
+        gpu->device().endFrame(nullptr);
+        gpu->device().waitIdle();
         std::vector<uint8_t> expected(size_t{kSize} * kSize * 4);
         (*reference)->colorTarget().readback(expected.data(), expected.size());
 
-        CommandList& commands = (*device)->beginFrame();
-        const uint64_t frameId = (*device)->frameNumber();
+        CommandList& commands = gpu->device().beginFrame();
+        const uint64_t frameId = gpu->device().frameNumber();
         if (index == 0) {
             firstSharedFrame = frameId;
         }
         const bool poolingEnabled = index % 2 == 0;
-        const auto prepared = view.prepare(**device);
+        const auto prepared = view.prepare(gpu->device());
         lmx::render::FrameDeclaration frame(pool, **shared, commands, camera, prepared,
                                             poolingEnabled);
         frame.graph().exportTexture(frame.displayColor());
         records.retain(frame.execute());
-        (*device)->endFrame(nullptr);
-        (*device)->waitIdle();
+        gpu->device().endFrame(nullptr);
+        gpu->device().waitIdle();
 
         std::vector<uint8_t> actual(expected.size());
         (*shared)->colorTarget().readback(actual.data(), actual.size());

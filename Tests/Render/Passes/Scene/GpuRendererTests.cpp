@@ -12,26 +12,24 @@ using lmx::test::FixtureSceneView;
 TEST_CASE("renderer draws per-object uniforms in one pass", "[gpu]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.cube");
+    auto cube = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.cube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
     const std::array<FixtureDrawItem, 2> items = twoCubeScene(*cube);
 
-    CommandList& commands = (*device)->beginFrame();
+    CommandList& commands = gpu->device().beginFrame();
     (*renderer)->render(commands, sceneCamera(),
-                        lmx::test::prepareSceneView(litSceneView(items), device),
+                        lmx::test::prepareSceneView(litSceneView(items), gpu->device()),
                         /*barrierForSampling=*/false);
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->device().endFrame(nullptr);
+    gpu->device().waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
     (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
@@ -43,15 +41,14 @@ TEST_CASE("renderer draws per-object uniforms in one pass", "[gpu]") {
 TEST_CASE("renderer depth test beats draw order", "[gpu]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto plane = lmx::test::fixtureMesh(**device, lmx::engine::makePlane(1.0f), "lmx.test.plane");
+    auto plane =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(1.0f), "lmx.test.plane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -72,12 +69,12 @@ TEST_CASE("renderer depth test beats draw order", "[gpu]") {
 
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
     for (size_t i = 0; i < orderings.size(); ++i) {
-        CommandList& commands = (*device)->beginFrame();
+        CommandList& commands = gpu->device().beginFrame();
         (*renderer)->render(commands, sceneCamera(),
-                            lmx::test::prepareSceneView(litSceneView(orderings[i]), device),
+                            lmx::test::prepareSceneView(litSceneView(orderings[i]), gpu->device()),
                             /*barrierForSampling=*/false);
-        (*device)->endFrame(nullptr);
-        (*device)->waitIdle();
+        gpu->device().endFrame(nullptr);
+        gpu->device().waitIdle();
         (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
 
         INFO(std::string("ordering: ") + names[i]);
@@ -99,46 +96,45 @@ TEST_CASE("renderer depth test beats draw order", "[gpu]") {
 TEST_CASE("renderer scene survives a barrier into a sampling pass", "[gpu]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.barrierCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.barrierCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/false);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/false);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
-    auto destination = (*device)->createTexture({.width = kSize,
-                                                 .height = kSize,
-                                                 .format = Format::BGRA8Unorm,
-                                                 .renderTarget = true,
-                                                 .cpuReadback = true,
-                                                 .label = "lmx.test.barrierDestination"});
+    auto destination = gpu->device().createTexture({.width = kSize,
+                                                    .height = kSize,
+                                                    .format = Format::BGRA8Unorm,
+                                                    .renderTarget = true,
+                                                    .cpuReadback = true,
+                                                    .label = "lmx.test.barrierDestination"});
     INFO(errorOf(destination));
     REQUIRE(destination.has_value());
 
-    auto library = (*device)->loadShaderLibrary("Shaders/FullscreenSample");
+    auto library = gpu->device().loadShaderLibrary("Shaders/FullscreenSample");
     INFO(errorOf(library));
     REQUIRE(library.has_value());
 
     auto copyPipeline =
-        (*device)->createGraphicsPipeline({.library = library->get(),
-                                           .vertexEntry = "vertexMain",
-                                           .fragmentEntry = "fragmentMain",
-                                           .colorFormat = Format::BGRA8Unorm,
-                                           .label = "lmx.test.fullscreenSamplePipeline"});
+        gpu->device().createGraphicsPipeline({.library = library->get(),
+                                              .vertexEntry = "vertexMain",
+                                              .fragmentEntry = "fragmentMain",
+                                              .colorFormat = Format::BGRA8Unorm,
+                                              .label = "lmx.test.fullscreenSamplePipeline"});
     INFO(errorOf(copyPipeline));
     REQUIRE(copyPipeline.has_value());
 
     constexpr uint32_t kSourceTextureSlot = 0;
 
-    CommandList& commands = (*device)->beginFrame();
+    CommandList& commands = gpu->device().beginFrame();
     const std::array<FixtureDrawItem, 2> items = twoCubeScene(*cube);
     (*renderer)->render(commands, sceneCamera(),
-                        lmx::test::prepareSceneView(litSceneView(items), device),
+                        lmx::test::prepareSceneView(litSceneView(items), gpu->device()),
                         /*barrierForSampling=*/true);
 
     commands.beginRenderPass({.colorTarget = destination->get(),
@@ -149,8 +145,8 @@ TEST_CASE("renderer scene survives a barrier into a sampling pass", "[gpu]") {
     commands.bindTexture(kSourceTextureSlot, (*renderer)->colorTarget());
     commands.draw(3);
     commands.endRenderPass();
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->device().endFrame(nullptr);
+    gpu->device().waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
     (*destination)->readback(pixels.data(), pixels.size());
@@ -163,15 +159,13 @@ TEST_CASE("renderer scene survives a barrier into a sampling pass", "[gpu]") {
 TEST_CASE("a wireframe SceneView leaves the interior of a face unfilled", "[gpu]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.wireCube");
+    auto cube = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.wireCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -185,11 +179,12 @@ TEST_CASE("a wireframe SceneView leaves the interior of a face unfilled", "[gpu]
     const auto renderWith = [&](bool wireframe) {
         FixtureSceneView view = litSceneView(items);
         view.wireframe = wireframe;
-        CommandList& commands = (*device)->beginFrame();
-        (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, device),
+        CommandList& commands = gpu->device().beginFrame();
+        (*renderer)->render(commands, sceneCamera(),
+                            lmx::test::prepareSceneView(view, gpu->device()),
                             /*barrierForSampling=*/false);
-        (*device)->endFrame(nullptr);
-        (*device)->waitIdle();
+        gpu->device().endFrame(nullptr);
+        gpu->device().waitIdle();
         (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
     };
 
@@ -229,30 +224,30 @@ TEST_CASE("the sky pass fills the background behind the scene", "[gpu]") {
     const TextureMip skyMip{.data = kSkyTexel.data(), .bytesPerRow = 4};
     const std::array<TextureMip, 6> skyFaces = {skyMip, skyMip, skyMip, skyMip, skyMip, skyMip};
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.skySceneCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.skySceneCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
     auto skySphere = lmx::test::fixtureMesh(
-        **device, lmx::engine::fromGeo(lmx::asset::makeSphere(0.5f, 20, 20)), "lmx.test.skySphere");
+        gpu->device(), lmx::engine::fromGeo(lmx::asset::makeSphere(0.5f, 20, 20)),
+        "lmx.test.skySphere");
     INFO(errorOf(skySphere));
     REQUIRE(skySphere.has_value());
 
-    auto skyCubemap = (*device)->createTexture({.width = 1,
-                                                .height = 1,
-                                                .format = Format::RGBA8Unorm,
-                                                .kind = TextureKind::Cube,
-                                                .sampled = true,
-                                                .label = "lmx.test.skyCubemap"},
-                                               skyFaces);
+    auto skyCubemap = gpu->device().createTexture({.width = 1,
+                                                   .height = 1,
+                                                   .format = Format::RGBA8Unorm,
+                                                   .kind = TextureKind::Cube,
+                                                   .sampled = true,
+                                                   .label = "lmx.test.skyCubemap"},
+                                                  skyFaces);
     INFO(errorOf(skyCubemap));
     REQUIRE(skyCubemap.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -261,11 +256,11 @@ TEST_CASE("the sky pass fills the background behind the scene", "[gpu]") {
     view.skySphere = &*skySphere;
     view.skyCubemap = skyCubemap->get();
 
-    CommandList& commands = (*device)->beginFrame();
-    (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, device),
+    CommandList& commands = gpu->device().beginFrame();
+    (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, gpu->device()),
                         /*barrierForSampling=*/false);
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->device().endFrame(nullptr);
+    gpu->device().waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
     (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
@@ -299,37 +294,36 @@ TEST_CASE("the sky pass fills the background behind the scene", "[gpu]") {
 TEST_CASE("pass timings name every pass the graph ran", "[gpu]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.timedCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.timedCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
     const std::array<FixtureDrawItem, 2> items = twoCubeScene(*cube);
 
-    CommandList& commands = (*device)->beginFrame();
+    CommandList& commands = gpu->device().beginFrame();
     (*renderer)->render(commands, sceneCamera(),
-                        lmx::test::prepareSceneView(litSceneView(items), device),
+                        lmx::test::prepareSceneView(litSceneView(items), gpu->device()),
                         /*barrierForSampling=*/false);
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->device().endFrame(nullptr);
+    gpu->device().waitIdle();
 
     // waitIdle retires the measured frame; the next beginFrame is what publishes its counters.
-    (*device)->beginFrame();
-    (*device)->endFrame(nullptr);
+    gpu->device().beginFrame();
+    gpu->device().endFrame(nullptr);
 
     // Bloom is enabled by default (spec 10) and its passes always schedule with it -- kSize == 64
     // gives a 32-wide bloom base, which clamps to Renderer.cpp's full kMaxBloomDownsampleLevels ==
     // 4: threshold, 4 downsample passes, 4 upsample passes. Auto exposure is off by default (spec
     // 9), so the histogram/resolve/seed passes are culled and do not appear here -- see the
     // culling test in RenderGraphTests.cpp for that half of the picture.
-    const std::span<const PassTiming> timings = (*device)->passTimings();
+    const std::span<const PassTiming> timings = gpu->device().passTimings();
     REQUIRE(timings.size() == 12);
     REQUIRE(timings[0].label == "lmx.pass.shadow");
     REQUIRE(timings[1].label == "lmx.pass.scene");
@@ -357,30 +351,30 @@ TEST_CASE("pass timings name every pass the graph ran", "[gpu]") {
 TEST_CASE("a joined pass samples the scene colour the graph rendered", "[gpu]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.joinedCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.joinedCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/false);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/false);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
-    auto destination = makeProbeTarget(**device, "lmx.test.joinedDestination");
+    auto destination = makeProbeTarget(gpu->device(), "lmx.test.joinedDestination");
     INFO(errorOf(destination));
     REQUIRE(destination.has_value());
 
-    auto library = (*device)->loadShaderLibrary("Shaders/FullscreenSample");
+    auto library = gpu->device().loadShaderLibrary("Shaders/FullscreenSample");
     INFO(errorOf(library));
     REQUIRE(library.has_value());
-    auto copyPipeline = (*device)->createGraphicsPipeline({.library = library->get(),
-                                                           .vertexEntry = "vertexMain",
-                                                           .fragmentEntry = "fragmentMain",
-                                                           .colorFormat = Format::BGRA8Unorm,
-                                                           .label = "lmx.test.joinedCopyPipeline"});
+    auto copyPipeline =
+        gpu->device().createGraphicsPipeline({.library = library->get(),
+                                              .vertexEntry = "vertexMain",
+                                              .fragmentEntry = "fragmentMain",
+                                              .colorFormat = Format::BGRA8Unorm,
+                                              .label = "lmx.test.joinedCopyPipeline"});
     INFO(errorOf(copyPipeline));
     REQUIRE(copyPipeline.has_value());
 
@@ -391,12 +385,12 @@ TEST_CASE("a joined pass samples the scene colour the graph rendered", "[gpu]") 
 
     // declarePasses() always declares bloom's transients (spec 10), so a caller building its own
     // graph around it needs a pool exactly as Renderer::render()'s convenience path does.
-    lmx::render::TransientPool transients(**device);
-    CommandList& commands = (*device)->beginFrame();
+    lmx::render::TransientPool transients(gpu->device());
+    CommandList& commands = gpu->device().beginFrame();
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
     const lmx::render::GraphTexture sceneColor = (*renderer)->declarePasses(
-        graph, commands, sceneCamera(), lmx::test::prepareSceneView(view, device));
+        graph, commands, sceneCamera(), lmx::test::prepareSceneView(view, gpu->device()));
     const lmx::render::GraphTexture copyTarget =
         graph.importTexture(**destination, Format::BGRA8Unorm, "destination");
 
@@ -414,10 +408,10 @@ TEST_CASE("a joined pass samples the scene colour the graph rendered", "[gpu]") 
                       commands.draw(3);
                   });
     graph.exportTexture(lmx::render::nextVersion(copyTarget));
-    graph.execute(commands, (*device)->frameNumber());
+    graph.execute(commands, gpu->device().frameNumber());
 
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->device().endFrame(nullptr);
+    gpu->device().waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
     (*destination)->readback(pixels.data(), pixels.size());

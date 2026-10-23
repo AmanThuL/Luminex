@@ -12,17 +12,16 @@ TEST_CASE("occlusion graph roots every HZB mip and reads the immediately precedi
           "[gpu][hzb][occlusion-graph]") {
     using namespace lmx::render;
     using namespace rojoRHI;
-    auto device = createDevice();
-    REQUIRE(device);
-    auto scene = lmx::test::loadCatalogScene(**device, "visibility-lab", 1024);
+    auto gpu = createTestGpu();
+    auto scene = lmx::test::loadCatalogScene(gpu->device(), "visibility-lab", 1024);
     REQUIRE(scene);
-    auto renderer = Renderer::create(**device, 64, 64, true);
+    auto renderer = Renderer::create(*gpu, 64, 64, true);
     REQUIRE(renderer);
-    TransientPool pool(**device);
+    TransientPool pool(gpu->device());
     const auto camera = lmx::engine::cameraFromScene((*scene)->initialCamera);
     for (uint32_t frame = 0; frame < 2; ++frame) {
-        auto& commands = (*device)->beginFrame();
-        REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
+        auto& commands = gpu->device().beginFrame();
+        REQUIRE((*scene)->prepareFrame(gpu->device().frameNumber()));
         std::vector<lmx::engine::DrawItem> items;
         auto view = buildSceneView(**scene, items, false);
         view.classifyMode = ClassifyMode::Gpu;
@@ -32,7 +31,7 @@ TEST_CASE("occlusion graph roots every HZB mip and reads the immediately precedi
         pool.beginFrame();
         RenderGraph graph(pool);
         graph.presentTexture((*renderer)->declarePasses(graph, commands, camera, view));
-        const auto record = graph.compileFrame((*device)->frameNumber());
+        const auto record = graph.compileFrame(gpu->device().frameNumber());
         INFO((record ? "" : record.error().message));
         REQUIRE(record);
         const auto& debug = record->debug;
@@ -50,10 +49,10 @@ TEST_CASE("occlusion graph roots every HZB mip and reads the immediately precedi
             return debug.resources[use.resource].name == sourceName &&
                    use.role == UseRole::ShaderRead;
         }));
-        graph.execute(commands, (*device)->frameNumber());
-        (*device)->endFrame(nullptr);
+        graph.execute(commands, gpu->device().frameNumber());
+        gpu->device().endFrame(nullptr);
         (*scene)->commitFrame();
-        (*device)->waitIdle();
+        gpu->device().waitIdle();
         requireMatchesGolden(dumpCompiledFrame(*record), frame == 0 ? "frame-occlusion-first.txt"
                                                                     : "frame-occlusion-steady.txt");
     }

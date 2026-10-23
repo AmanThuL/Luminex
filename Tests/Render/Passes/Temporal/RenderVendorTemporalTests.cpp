@@ -91,8 +91,10 @@ TEST_CASE("vendor temporal policy preserves native modes and translates units",
 TEST_CASE("vendor fallback declares byte-identical native frames", "[render][temporal][vendor]") {
     FakeDevice nativeDevice;
     FakeDevice unavailableDevice;
-    auto native = Renderer::create(nativeDevice, 64, 64, false);
-    auto fallback = Renderer::create(unavailableDevice, 64, 64, false);
+    lmx::engine::GpuContext nativeGpu{nativeDevice};
+    lmx::engine::GpuContext unavailableGpu{unavailableDevice};
+    auto native = Renderer::create(nativeGpu, 64, 64, false);
+    auto fallback = Renderer::create(unavailableGpu, 64, 64, false);
     REQUIRE(native);
     REQUIRE(fallback);
     for (int i = 0; i < 2; ++i) {
@@ -113,7 +115,8 @@ TEST_CASE("vendor initialization failure is remembered until output resize",
     FakeDevice device;
     device.deviceCaps.temporalScaler = supportedVendor();
     device.failTemporalScalerCreation = true;
-    auto renderer = Renderer::create(device, 64, 64, false);
+    lmx::engine::GpuContext gpu{device};
+    auto renderer = Renderer::create(gpu, 64, 64, false);
     REQUIRE(renderer);
     const auto view = vendorView(ReconstructionMode::VendorTemporal);
     declaredFrame(device, **renderer, view);
@@ -136,7 +139,8 @@ TEST_CASE("vendor declarations keep separate histories and record their inputs",
           "[render][temporal][vendor]") {
     FakeDevice device;
     device.deviceCaps.temporalScaler = supportedVendor();
-    auto renderer = Renderer::create(device, 64, 64, false);
+    lmx::engine::GpuContext gpu{device};
+    auto renderer = Renderer::create(gpu, 64, 64, false);
     REQUIRE(renderer);
     auto view = vendorView(ReconstructionMode::NativeTaa);
     declaredFrame(device, **renderer, view);
@@ -179,7 +183,8 @@ TEST_CASE("unread vendor depth keeps its opaque access until overwritten",
           "[render][temporal][vendor]") {
     FakeDevice device;
     device.deviceCaps.temporalScaler = supportedVendor();
-    auto renderer = Renderer::create(device, 64, 64, false);
+    lmx::engine::GpuContext gpu{device};
+    auto renderer = Renderer::create(gpu, 64, 64, false);
     REQUIRE(renderer);
     auto view = vendorView(ReconstructionMode::VendorTemporal);
     view.temporal.debugView = TemporalDebugView::Off;

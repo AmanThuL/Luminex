@@ -44,13 +44,11 @@ RendererFrameState Renderer::deriveFrameState(const engine::Camera& camera, cons
     const ReconstructionMode reconstruction = selection.mode;
     const bool vendorTemporal =
         temporalEnabled && reconstruction == ReconstructionMode::VendorTemporal;
-    const float renderScale =
-        temporalEnabled
-            ? (vendorTemporal ? vendorRenderScale(view.temporal.renderScale,
-                                                  engine::toUpscalerSupport(
-                                                      m_device.capabilities().temporalScaler))
-                              : view.temporal.renderScale)
-            : 1.0f;
+    const float renderScale = temporalEnabled
+                                  ? (vendorTemporal ? vendorRenderScale(view.temporal.renderScale,
+                                                                        m_gpu.upscalerSupport())
+                                                    : view.temporal.renderScale)
+                                  : 1.0f;
 
     // Both extents of the frame. Every render-extent target keeps its output-extent allocation and
     // is used through an origin-anchored active rectangle, so a scale change allocates nothing.

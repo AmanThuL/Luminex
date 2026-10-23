@@ -15,26 +15,24 @@ using lmx::test::FixtureSceneView;
 TEST_CASE("an upscaled frame fills the display target", "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(10.0f), "lmx.test.temporalPlane");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(10.0f),
+                                        "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
     // What an empty frame's background reaches the display as, derived rather than hard-coded:
     // it is the renderer's own clear colour through the same display transform.
-    auto empty = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto empty = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(empty));
     REQUIRE(empty.has_value());
-    renderFrame(**device, **empty, temporalCamera(), temporalSceneView({}));
+    renderFrame(gpu->device(), **empty, temporalCamera(), temporalSceneView({}));
     std::vector<uint8_t> background(size_t{kSize} * kSize * 4);
     (*empty)->colorTarget().readback(background.data(), background.size());
     const Pixel clearPixel = pixelAt(background, 0, 0);
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -49,7 +47,7 @@ TEST_CASE("an upscaled frame fills the display target", "[gpu][temporal]") {
 
     const Camera camera;
     for (uint32_t frame = 0; frame < 4; ++frame) {
-        renderFrame(**device, **renderer, camera, view);
+        renderFrame(gpu->device(), **renderer, camera, view);
     }
     const lmx::render::TemporalStatus status = (*renderer)->temporalStatus();
     REQUIRE(status.upscaled);
@@ -94,16 +92,14 @@ TEST_CASE("an upscaled frame fills the display target", "[gpu][temporal]") {
 TEST_CASE("the spatial upscale keeps a constant radiance constant", "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(10.0f), "lmx.test.constantPlane");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(10.0f),
+                                        "lmx.test.constantPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -123,8 +119,8 @@ TEST_CASE("the spatial upscale keeps a constant radiance constant", "[gpu][tempo
     view.temporal.renderScale = 0.5f;
 
     const Camera camera;
-    renderFrame(**device, **renderer, camera, view);
-    renderFrame(**device, **renderer, camera, view);
+    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(gpu->device(), **renderer, camera, view);
     REQUIRE((*renderer)->temporalStatus().upscaled);
 
     // The value the plane shaded to, read out of the active rectangle the frame rasterised into.
@@ -162,16 +158,14 @@ TEST_CASE("the spatial upscale keeps a constant radiance constant", "[gpu][tempo
 TEST_CASE("motion at half scale matches the render-extent oracle", "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(10.0f), "lmx.test.temporalPlane");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(10.0f),
+                                        "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -190,9 +184,9 @@ TEST_CASE("motion at half scale matches the render-extent oracle", "[gpu][tempor
     FixtureSceneView view = temporalSceneView(first);
     view.temporal.enabled = true;
     view.temporal.renderScale = 0.5f;
-    renderFrame(**device, **renderer, camera, view);
+    renderFrame(gpu->device(), **renderer, camera, view);
     view.items = second;
-    renderFrame(**device, **renderer, camera, view);
+    renderFrame(gpu->device(), **renderer, camera, view);
     REQUIRE((*renderer)->temporalStatus().extents.renderWidth == kRender);
 
     // The projection's aspect comes from the output extent, so a square frame's matrices are the
@@ -230,14 +224,13 @@ TEST_CASE("motion at half scale matches the render-extent oracle", "[gpu][tempor
 TEST_CASE("upscaled accumulation settles a static jittered frame", "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(64.0f), "lmx.test.scenarioFloor");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(64.0f),
+                                        "lmx.test.scenarioFloor");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
@@ -246,19 +239,19 @@ TEST_CASE("upscaled accumulation settles a static jittered frame", "[gpu][tempor
     base.temporal.renderScale = 0.5f;
 
     auto rawRenderer =
-        Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
+        Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(rawRenderer.has_value());
     const std::vector<ScenarioFrame> spatial =
-        renderSequence(**device, **rawRenderer, 32, ReconstructionMode::Raw, base, camera,
+        renderSequence(gpu->device(), **rawRenderer, 32, ReconstructionMode::Raw, base, camera,
                        TemporalDebugView::Off, nullptr);
     REQUIRE(spatial.back().status.upscaled);
 
     auto taauRenderer =
-        Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
+        Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(taauRenderer.has_value());
     const std::vector<ScenarioFrame> taau =
-        renderSequence(**device, **taauRenderer, 32, ReconstructionMode::NativeTaa, base, camera,
-                       TemporalDebugView::Off, nullptr);
+        renderSequence(gpu->device(), **taauRenderer, 32, ReconstructionMode::NativeTaa, base,
+                       camera, TemporalDebugView::Off, nullptr);
     REQUIRE(taau.back().status.upscaled);
 
     const std::vector<uint32_t> pixels = allPixels();
@@ -282,14 +275,13 @@ TEST_CASE("upscaled accumulation recovers detail the render extent cannot hold",
           "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(64.0f), "lmx.test.scenarioFloor");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(64.0f),
+                                        "lmx.test.scenarioFloor");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
@@ -301,10 +293,10 @@ TEST_CASE("upscaled accumulation recovers detail the render extent cannot hold",
 
     const auto sequence = [&](const FixtureSceneView& base, ReconstructionMode mode) {
         auto renderer =
-            Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
+            Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
         REQUIRE(renderer.has_value());
-        return renderSequence(**device, **renderer, 32, mode, base, camera, TemporalDebugView::Off,
-                              nullptr);
+        return renderSequence(gpu->device(), **renderer, 32, mode, base, camera,
+                              TemporalDebugView::Off, nullptr);
     };
     const std::vector<ScenarioFrame> spatial = sequence(upscaledBase, ReconstructionMode::Raw);
     const std::vector<ScenarioFrame> taau = sequence(upscaledBase, ReconstructionMode::NativeTaa);
@@ -328,14 +320,13 @@ TEST_CASE("upscaled accumulation recovers detail the render extent cannot hold",
 TEST_CASE("upscaled accumulation keeps thin geometry's brightness", "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(64.0f), "lmx.test.scenarioFloor");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(64.0f),
+                                        "lmx.test.scenarioFloor");
     REQUIRE(plane.has_value());
 
     // The M6.2 thin-geometry framing: the poles stand on the floor and entirely below the horizon,
@@ -359,10 +350,10 @@ TEST_CASE("upscaled accumulation keeps thin geometry's brightness", "[gpu][tempo
 
     const auto sequence = [&](const FixtureSceneView& base, ReconstructionMode mode) {
         auto renderer =
-            Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
+            Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
         REQUIRE(renderer.has_value());
-        return renderSequence(**device, **renderer, 32, mode, base, camera, TemporalDebugView::Off,
-                              nullptr);
+        return renderSequence(gpu->device(), **renderer, 32, mode, base, camera,
+                              TemporalDebugView::Off, nullptr);
     };
     const std::vector<ScenarioFrame> spatial = sequence(upscaledBase, ReconstructionMode::Raw);
     const std::vector<ScenarioFrame> taau = sequence(upscaledBase, ReconstructionMode::NativeTaa);
@@ -410,14 +401,13 @@ TEST_CASE("upscaled accumulation keeps thin geometry's brightness", "[gpu][tempo
 TEST_CASE("an upscaled moving quad leaves no trail behind it", "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(32.0f), "lmx.test.scenarioWall");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(32.0f),
+                                        "lmx.test.scenarioWall");
     REQUIRE(plane.has_value());
 
     const Camera camera = movingQuadCamera();
@@ -435,18 +425,18 @@ TEST_CASE("an upscaled moving quad leaves no trail behind it", "[gpu][temporal]"
 
     constexpr uint32_t kFrames = 28;
     auto spatialRenderer =
-        Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
+        Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(spatialRenderer.has_value());
     const std::vector<ScenarioFrame> spatial =
-        renderSequence(**device, **spatialRenderer, kFrames, ReconstructionMode::Raw, base, camera,
-                       TemporalDebugView::Off, animate);
+        renderSequence(gpu->device(), **spatialRenderer, kFrames, ReconstructionMode::Raw, base,
+                       camera, TemporalDebugView::Off, animate);
     // The debug view replaces the display target and nothing else, so one accumulated run answers
     // both halves: its colour slot is the picture, its display target the rejection mask.
     auto taauRenderer =
-        Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
+        Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(taauRenderer.has_value());
     const std::vector<ScenarioFrame> taau =
-        renderSequence(**device, **taauRenderer, kFrames, ReconstructionMode::NativeTaa, base,
+        renderSequence(gpu->device(), **taauRenderer, kFrames, ReconstructionMode::NativeTaa, base,
                        camera, TemporalDebugView::RejectionMask, animate);
     REQUIRE(taau.back().status.upscaled);
 
@@ -503,14 +493,13 @@ TEST_CASE("a gradual render-scale change reuses the history", "[gpu][temporal]")
     using namespace rojoRHI;
     using lmx::render::HistoryResetReason;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(64.0f), "lmx.test.scenarioFloor");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(64.0f),
+                                        "lmx.test.scenarioFloor");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
@@ -533,12 +522,11 @@ TEST_CASE("a gradual render-scale change reuses the history", "[gpu][temporal]")
         view.temporal.renderScale = scaleForFrame(frame);
     };
 
-    auto renderer =
-        Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(renderer.has_value());
     const std::vector<ScenarioFrame> frames =
-        renderSequence(**device, **renderer, kLastStepFrame, ReconstructionMode::NativeTaa, base,
-                       camera, TemporalDebugView::Off, animate);
+        renderSequence(gpu->device(), **renderer, kLastStepFrame, ReconstructionMode::NativeTaa,
+                       base, camera, TemporalDebugView::Off, animate);
 
     const std::vector<uint32_t> pixels = allPixels();
     uint64_t previousChangeFrame = frames[kFirstStepFrame - 1].status.lastRenderExtentChangeFrame;
@@ -576,7 +564,7 @@ TEST_CASE("a gradual render-scale change reuses the history", "[gpu][temporal]")
     FixtureSceneView off = base;
     off.temporal.enabled = false;
     off.temporal.renderScale = 0.5f;
-    renderFrame(**device, **renderer, camera, off);
+    renderFrame(gpu->device(), **renderer, camera, off);
     REQUIRE((*renderer)->temporalStatus().lastRenderExtentChangeFrame == previousChangeFrame);
 }
 
@@ -594,14 +582,13 @@ TEST_CASE("a gradual render-scale change reuses the history", "[gpu][temporal]")
 TEST_CASE("an oscillating render scale allocates nothing and does not ghost", "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(32.0f), "lmx.test.scenarioWall");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(32.0f),
+                                        "lmx.test.scenarioWall");
     REQUIRE(plane.has_value());
 
     const Camera camera = movingQuadCamera();
@@ -621,16 +608,16 @@ TEST_CASE("an oscillating render scale allocates nothing and does not ghost", "[
 
     // The spatial reference the ghosting tolerance is measured against, at the same scales.
     auto spatialRenderer =
-        Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
+        Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(spatialRenderer.has_value());
     const std::vector<ScenarioFrame> spatial =
-        renderSequence(**device, **spatialRenderer, kFrames, ReconstructionMode::Raw, base, camera,
-                       TemporalDebugView::Off, animate);
+        renderSequence(gpu->device(), **spatialRenderer, kFrames, ReconstructionMode::Raw, base,
+                       camera, TemporalDebugView::Off, animate);
 
     auto taauRenderer =
-        Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
+        Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(taauRenderer.has_value());
-    lmx::render::TransientPool transients(**device);
+    lmx::render::TransientPool transients(gpu->device());
     std::vector<ScenarioFrame> taau;
     std::vector<uint64_t> heapBytes;
     taau.reserve(kFrames);
@@ -644,18 +631,18 @@ TEST_CASE("an oscillating render scale allocates nothing and does not ghost", "[
         view.temporal.debugView = TemporalDebugView::Off;
         animate(frame, view, frameCamera);
 
-        CommandList& commands = (*device)->beginFrame();
+        CommandList& commands = gpu->device().beginFrame();
         transients.beginFrame();
         lmx::render::RenderGraph graph(transients);
         const lmx::render::GraphTexture display =
             (*taauRenderer)
                 ->declarePasses(graph, commands, frameCamera,
-                                lmx::test::prepareSceneView(view, device));
+                                lmx::test::prepareSceneView(view, gpu->device()));
         graph.exportTexture(display);
         const lmx::render::CompiledFrameRecord record =
-            graph.execute(commands, (*device)->frameNumber());
-        (*device)->endFrame(nullptr);
-        (*device)->waitIdle();
+            graph.execute(commands, gpu->device().frameNumber());
+        gpu->device().endFrame(nullptr);
+        gpu->device().waitIdle();
 
         ScenarioFrame captured;
         captured.history = readHalf4(*(*taauRenderer)->historyTarget());

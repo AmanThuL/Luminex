@@ -132,7 +132,8 @@ std::vector<DeclaredSnapshot> zeroLightReplay(bool switches, bool highWater,
     device.frame = 1;
     device.deviceCaps.temporalScaler = {
         .available = true, .minInputScale = 0.5f, .maxInputScale = 1.0f, .name = "Fake Temporal"};
-    auto renderer = render::Renderer::create(device, 80, 48, false);
+    engine::GpuContext gpu{device};
+    auto renderer = render::Renderer::create(gpu, 80, 48, false);
     REQUIRE(renderer);
     std::array<engine::InstanceRow, 2> instances{};
     instances[1].materialRow = 1;

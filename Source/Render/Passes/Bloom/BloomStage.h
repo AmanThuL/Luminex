@@ -5,6 +5,7 @@
 
 #pragma once
 #include "Core/Diagnostics/Result.h"
+#include "Engine/Gpu/GpuContext.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Renderer/SceneView.h"
 
@@ -23,7 +24,7 @@ struct BloomInputs {
 // Renderer owns this stage for the full lifetime of its deferred graph callbacks.
 class BloomStage {
 public:
-    static lmx::Result<std::unique_ptr<BloomStage>> create(rojoRHI::Device& device);
+    static lmx::Result<std::unique_ptr<BloomStage>> create(engine::GpuContext& gpu);
     // Declares threshold/downsample/upsample even when display will cull their unused result.
     GraphTexture declare(RenderGraph& graph, rojoRHI::CommandList& commands,
                          const BloomInputs& inputs);
@@ -31,9 +32,9 @@ public:
 private:
     BloomStage() = default;
 
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_bloomThresholdLibrary;
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_bloomDownsampleLibrary;
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_bloomUpsampleLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_bloomThresholdLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_bloomDownsampleLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_bloomUpsampleLibrary;
     std::unique_ptr<rojoRHI::ComputePipeline> m_bloomThresholdPipeline;
     std::unique_ptr<rojoRHI::ComputePipeline> m_bloomDownsamplePipeline;
     std::unique_ptr<rojoRHI::ComputePipeline> m_bloomUpsamplePipeline;

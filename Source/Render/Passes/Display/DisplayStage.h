@@ -5,6 +5,7 @@
 
 #pragma once
 #include "Core/Diagnostics/Result.h"
+#include "Engine/Gpu/GpuContext.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Renderer/SceneView.h"
 
@@ -24,14 +25,14 @@ struct DisplayInputs {
 // Renderer owns this stage for the full lifetime of its deferred graph callbacks.
 class DisplayStage {
 public:
-    static lmx::Result<std::unique_ptr<DisplayStage>> create(rojoRHI::Device& device);
+    static lmx::Result<std::unique_ptr<DisplayStage>> create(engine::GpuContext& gpu);
     // Declares the output transform, with its input versions fixed before callbacks execute.
     void declare(RenderGraph& graph, rojoRHI::CommandList& commands, const DisplayInputs& inputs);
 
 private:
     DisplayStage() = default;
 
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_displayLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_displayLibrary;
     std::unique_ptr<rojoRHI::GraphicsPipeline> m_displayPipeline;
     std::unique_ptr<rojoRHI::Texture> m_blackBloomFallback;
 };
