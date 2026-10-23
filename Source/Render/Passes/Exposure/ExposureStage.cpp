@@ -15,7 +15,6 @@
 #include "Render/Renderer/Renderer.h"
 
 #include <array>
-#include <cmath>
 #include <utility>
 
 namespace lmx::render {

@@ -10,14 +10,15 @@ using namespace lmx::render;
 
 //======================================================================================================================
 TEST_CASE("outline radius scales with the backing scale and clamps to one and six",
-          "[render][outline]") {
+          "[render][selection-outline]") {
     CHECK(buildOutlineParams(0.5f).radius == 1.0f);
     CHECK(buildOutlineParams(2.0f).radius == 3.0f);
     CHECK(buildOutlineParams(10.0f).radius == 6.0f);
 }
 
 //======================================================================================================================
-TEST_CASE("mask params carry the transform and row with full coverage", "[render][outline]") {
+TEST_CASE("mask params carry the transform and row with full coverage",
+          "[render][selection-outline]") {
     glm::mat4 viewProjection(1.0f);
     viewProjection[3][1] = 2.0f;
 

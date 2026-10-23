@@ -55,6 +55,11 @@ TEST_CASE("pass uniforms pre-expose by the manual EV and select the shadow filte
         CHECK(uniforms.shadowCaster == -1);
         CHECK(uniforms.time == 4.5f);
         CHECK(uniforms.eyePos == glm::vec3(1.0f, 2.0f, 3.0f));
+        CHECK(uniforms.eyePadding == 0.0f);
+        CHECK(uniforms.alignmentPadding[0] == 0.0f);
+        CHECK(uniforms.alignmentPadding[1] == 0.0f);
+        CHECK(uniforms.tailPadding[0] == 0);
+        CHECK(uniforms.tailPadding[1] == 0);
         CHECK(uniforms.shadowTransform == glm::mat4(7.0f));
         CHECK(uniforms.lights[1].strength == glm::vec3(0.25f, 0.5f, 0.75f));
         CHECK(uniforms.lights[1].direction == glm::vec3(0.0f, 0.0f, -1.0f));

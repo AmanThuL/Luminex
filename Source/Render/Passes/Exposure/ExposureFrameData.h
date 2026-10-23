@@ -16,8 +16,8 @@ constexpr float kExposureLogLuminanceMin = -12.0f;
 /// Highest log2 luminance the histogram covers, a strongly overexposed highlight.
 constexpr float kExposureLogLuminanceMax = 4.0f;
 /// The seconds one declared frame advances the scene by, which is what exposure adaptation steps
-/// against. The App's clock is a fixed step per frame (asset::kAnimationBakeRate); this restates
-/// the number because Render cannot depend on Asset.
+/// against. Its fixed cadence matches the App's scene clock and stays independent of the asset
+/// baker's sampling rate.
 constexpr float kExposureFrameSeconds = 1.0f / 60.0f;
 
 /// Mirrors Shaders/Passes/Exposure/HistogramAccumulate.slang's HistogramParams. Every field is a
