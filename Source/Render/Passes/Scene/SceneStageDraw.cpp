@@ -127,16 +127,12 @@ void SceneStage::draw(rojoRHI::CommandList& commands, const SceneView& view,
         // Unjittered, unlike the scene draws' mvp: the sky's vertex entry point applies
         // jitterNdc itself so its motion pair stays unjittered. Off the temporal path the
         // jitter is zero and this is the same matrix the scene rasterised with.
-        const SkyUniforms sky{.viewProj = cameraState.viewProjection,
-                              .eyePos = passUniforms.eyePos,
-                              .eyePadding = 0.0f,
-                              .preExposure = passUniforms.preExposure,
-                              .jitterNdcX = jitterNdc.x,
-                              .jitterNdcY = jitterNdc.y,
-                              .jitterPadding = 0.0f,
-                              .previousViewProj = previousCamera.viewProjection,
-                              .previousEyePos = previousCamera.position,
-                              .previousEyePosPadding = 0.0f};
+        const SkyUniforms sky = buildSkyUniforms({.viewProj = cameraState.viewProjection,
+                                                  .eyePos = passUniforms.eyePos,
+                                                  .preExposure = passUniforms.preExposure,
+                                                  .jitterNdc = jitterNdc,
+                                                  .previousViewProj = previousCamera.viewProjection,
+                                                  .previousEyePos = previousCamera.position});
         // Same pipeline switch as the scene draws above, for the same reason (spec 9).
         if (temporalEnabled) {
             commands.bindPipeline(view.autoExposureEnabled ? *m_skyPipelineAutoMotion
