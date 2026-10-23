@@ -1737,10 +1737,11 @@ class RepositoryContractTests(unittest.TestCase):
 
     def test_no_luminex_target_depends_on_the_v2_rhi(self) -> None:
         component = set(self.contract["externals"]["rhi"]["targets"])
+        legacy = {"RojoRHILegacy", "RojoRHILegacyMetal4ImGui", "RojoRHIMetalCpp"}
         for name, target in self.contract["targets"].items():
             if name not in component:
                 with self.subTest(target=name):
-                    self.assertNotIn("RojoRHI", target.get("deps", []))
+                    self.assertEqual(set(target.get("deps", [])) & (component - legacy), set())
 
     def test_core_depends_on_no_unit_and_every_other_unit_depends_on_core(self) -> None:
         units = self.contract["units"]
