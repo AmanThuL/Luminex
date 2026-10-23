@@ -75,7 +75,8 @@ in `Render/Common`; shader mirror structs, binding slots and rendering policy st
    stage loads shader libraries, and `create(rojoRHI::Device&, ...)` otherwise; keep the
    constructor private and complete initialization in that one call. Additional creation arguments
    describe formats, owned extents or readback requirements. Libraries come from
-   `GpuContext::loadShaderLibrary` by bare name and are held in `engine::GpuOwned`.
+   `GpuContext::loadShaderLibrary` by bare name. Libraries, pipelines and samplers are held in
+   `engine::GpuOwned`; textures and buffers in `engine::GpuTexture` and `engine::GpuBuffer`.
 2. Use one `declare(RenderGraph&, rojoRHI::CommandList&, [const SceneView&,] const XInputs&)`,
    returning the graph handle or outputs it produces, or void when it writes an input target.
    More than three arguments after commands require an inputs struct; mutable status remains an

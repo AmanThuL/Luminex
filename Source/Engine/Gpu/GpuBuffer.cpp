@@ -38,6 +38,7 @@ GpuBuffer::GpuBuffer(GpuOwned<rojoRHI::Buffer> buffer, const rojoRHI::BufferDesc
 GpuBuffer::GpuBuffer(GpuBuffer&& other) noexcept
     : m_buffer(std::move(other.m_buffer)), m_desc(other.m_desc), m_label(std::move(other.m_label)) {
     m_desc.label = m_label;
+    other.m_desc = {};
     other.m_desc.label = other.m_label;
 }
 
@@ -48,6 +49,7 @@ GpuBuffer& GpuBuffer::operator=(GpuBuffer&& other) noexcept {
         m_desc = other.m_desc;
         m_label = std::move(other.m_label);
         m_desc.label = m_label;
+        other.m_desc = {};
         other.m_desc.label = other.m_label;
     }
     return *this;

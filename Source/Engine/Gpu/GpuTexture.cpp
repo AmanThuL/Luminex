@@ -39,6 +39,7 @@ GpuTexture::GpuTexture(GpuTexture&& other) noexcept
     : m_texture(std::move(other.m_texture)), m_desc(other.m_desc),
       m_label(std::move(other.m_label)) {
     m_desc.label = m_label;
+    other.m_desc = {};
     other.m_desc.label = other.m_label;
 }
 
@@ -49,6 +50,7 @@ GpuTexture& GpuTexture::operator=(GpuTexture&& other) noexcept {
         m_desc = other.m_desc;
         m_label = std::move(other.m_label);
         m_desc.label = m_label;
+        other.m_desc = {};
         other.m_desc.label = other.m_label;
     }
     return *this;

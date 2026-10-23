@@ -62,7 +62,8 @@ public:
 
 //======================================================================================================================
 // Whether `text` lies inside the bytes of `owner`, which is where a short label's inline storage
-// lives once the owner holds it.
+// lives once the owner holds it. Relies on the small-string optimisation: libc++, libstdc++ and
+// MSVC's STL all store a label this short inline.
 template <typename Owner>
 bool viewsStorageOf(std::string_view text, const Owner& owner) {
     const auto* begin = reinterpret_cast<const std::byte*>(&owner);
@@ -109,6 +110,26 @@ TEST_CASE("GpuTexture moves without dangling its label", "[engine]") {
     CHECK(viewsStorageOf(assigned.desc().label, assigned));
     CHECK(&assigned.rhi() == object);
     CHECK_FALSE(constructed); // NOLINT(bugprone-use-after-move,clang-analyzer-cplusplus.Move)
+
+    const rojoRHI::BufferDesc bufferDesc{.size = 64, .label = "short"};
+    lmx::engine::GpuBuffer bufferSource =
+        lmx::engine::GpuBuffer::adopt(std::make_unique<StubBuffer>(), bufferDesc);
+    rojoRHI::Buffer* const bufferObject = &bufferSource.rhi();
+
+    lmx::engine::GpuBuffer bufferConstructed{std::move(bufferSource)};
+
+    CHECK(bufferConstructed.desc().label == "short");
+    CHECK(viewsStorageOf(bufferConstructed.desc().label, bufferConstructed));
+    CHECK(&bufferConstructed.rhi() == bufferObject);
+    CHECK_FALSE(bufferSource); // NOLINT(bugprone-use-after-move,clang-analyzer-cplusplus.Move)
+
+    lmx::engine::GpuBuffer bufferAssigned;
+    bufferAssigned = std::move(bufferConstructed);
+
+    CHECK(bufferAssigned.desc().label == "short");
+    CHECK(viewsStorageOf(bufferAssigned.desc().label, bufferAssigned));
+    CHECK(&bufferAssigned.rhi() == bufferObject);
+    CHECK_FALSE(bufferConstructed); // NOLINT(bugprone-use-after-move,clang-analyzer-cplusplus.Move)
 }
 
 //======================================================================================================================

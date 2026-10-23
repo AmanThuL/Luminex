@@ -6,11 +6,11 @@ RojoRHI is Luminex's rendering hardware interface: a dependency-free API over Me
 as a design target. It is a repository-root component rather than a `Source/` unit. Engine,
 Scenes, Render and the layers above them link it directly, outside the Core-based stack; which
 Luminex units may include which RojoRHI headers is the `externals` contract in
-[modules](../conventions/modules.md) (Asset and TextureBake see only `Format.h`). RojoRHI's own [architecture
-page](../../RojoRHI/docs/architecture/overview.md) owns its directory layout, its standalone
-`xmake -P RojoRHI` build, and its private base that replaces a Core dependency. This page covers
-the Luminex side of the boundary, and the parts of the public interface and Metal 4 backend that
-RojoRHI's page leaves out.
+[modules](../conventions/modules.md) (Asset and TextureBake see only `Format.h`). RojoRHI's own
+[architecture page](../../RojoRHI/docs/architecture/overview.md) owns its directory layout, its
+standalone `xmake -P RojoRHI` build, and its private base that replaces a Core dependency. This
+page covers the Luminex side of the boundary, and the parts of the public interface and Metal 4
+backend that RojoRHI's page leaves out.
 
 ## Component boundary
 

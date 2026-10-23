@@ -17,7 +17,6 @@ using namespace scene_detail;
 
 //======================================================================================================================
 void SceneStage::registerSceneTableLayoutsForCapture() {
-
     engine::registerUniformStruct(
         {.name = "DrawUniforms",
          .slot = engine::kDrawUniformsSlot,
@@ -89,7 +88,6 @@ void SceneStage::registerSceneTableLayoutsForCapture() {
 
 //======================================================================================================================
 void SceneStage::registerPassLayoutsForCapture() {
-
     // Derive array offsets from the element stride to avoid duplicated layout literals.
     constexpr uint32_t kLightCount = sizeof(PassUniforms::lights) / sizeof(DirLightUniform);
     std::vector<engine::SchemaUniformField> passFields{

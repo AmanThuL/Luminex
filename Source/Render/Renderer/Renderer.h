@@ -160,9 +160,9 @@ public:
     /// The frame's motion target in kMotionFormat, allocated with the scene targets and so never
     /// null after a successful create(). Borrowed: the renderer owns it and replaces it on
     /// resize().
-    rojoRHI::Texture* motionTarget() { return &m_motion.rhi(); }
+    rojoRHI::Texture* motionTarget() { return m_motion ? &m_motion.rhi() : nullptr; }
     /// Returns the borrowed reactive attachment, with motionTarget ownership and readback terms.
-    rojoRHI::Texture* reactiveTarget() { return &m_reactive.rhi(); }
+    rojoRHI::Texture* reactiveTarget() { return m_reactive ? &m_reactive.rhi() : nullptr; }
 
     /// The colour history slot the frame just declared wrote, in kSceneColorFormat: the resolve's
     /// output under NativeTaa and the raw copy under Raw, so it always holds that frame's output.

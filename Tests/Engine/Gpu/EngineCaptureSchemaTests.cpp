@@ -32,7 +32,6 @@ TEST_CASE("registerUniformStruct reaches the capture sidecar", "[engine]") {
     CHECK(json.find("FacadeProbe") != std::string::npos);
     CHECK(json.find("alpha") != std::string::npos);
     CHECK(json.find("beta") != std::string::npos);
-    CHECK(json.find("32") != std::string::npos);
-    CHECK(json.find("48") != std::string::npos);
-    CHECK(json.find('7') != std::string::npos);
+    CHECK(json.find("\"slot\": 7, \"sizeBytes\": 48") != std::string::npos);
+    CHECK(json.find("\"offsetBytes\": 32") != std::string::npos);
 }

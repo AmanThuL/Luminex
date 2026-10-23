@@ -46,7 +46,6 @@ constexpr uint32_t kLinearSamplerSlot = 0;
 
 //======================================================================================================================
 void ShadowStage::registerUniformLayoutsForCapture() {
-
     engine::registerUniformStruct(
         {.name = "ShadowPassUniforms",
          .slot = kPassUniformsSlot,
