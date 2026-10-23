@@ -15,11 +15,11 @@
 namespace lmx::app {
 
 //======================================================================================================================
-rojoRHI::Result<void> SceneSession::setSceneCamera() {
+lmx::Result<void> SceneSession::setSceneCamera() {
     if (!m_loaded || m_measurementActive)
         return std::unexpected(
-            rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
-                           "Saved camera requires a document and no active measurement"});
+            lmx::Error{lmx::ErrorCode::InvalidArgument,
+                       "Saved camera requires a document and no active measurement"});
     // The document decodes yaw in [-pi, pi]; wrap the live camera with the same value so the view
     // is unchanged and the request stays saveable.
     if (std::isfinite(m_camera.yaw))
@@ -28,9 +28,8 @@ rojoRHI::Result<void> SceneSession::setSceneCamera() {
     if (!isFinite(camera.position) || !std::isfinite(camera.yaw) || !std::isfinite(camera.pitch) ||
         !std::isfinite(camera.fovY) || camera.fovY <= 0 || camera.fovY >= glm::pi<float>() ||
         !std::isfinite(camera.nearZ) || camera.nearZ <= 0 || !(camera.farZ > camera.nearZ))
-        return std::unexpected(
-            rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
-                           "Saved camera has an invalid pose or perspective lens"});
+        return std::unexpected(lmx::Error{lmx::ErrorCode::InvalidArgument,
+                                          "Saved camera has an invalid pose or perspective lens"});
     auto& saved = m_documentStates.at(m_scene).sceneCamera;
     const auto& previous = saved ? *saved : scene().initialCamera;
     if (previous.position == camera.position && previous.yaw == camera.yaw &&
@@ -57,18 +56,18 @@ engine::SceneCamera SceneSession::authoredSceneCamera() const {
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> SceneSession::setSceneCamera(const engine::SceneCamera& requested) {
+lmx::Result<void> SceneSession::setSceneCamera(const engine::SceneCamera& requested) {
     if (!m_loaded || m_measurementActive)
         return std::unexpected(
-            rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
-                           "Authored camera requires a document and no measurement"});
+            lmx::Error{lmx::ErrorCode::InvalidArgument,
+                       "Authored camera requires a document and no measurement"});
     auto camera = requested;
     if (!isFinite(camera.position) || !std::isfinite(camera.yaw) || !std::isfinite(camera.pitch) ||
         std::abs(camera.pitch) > glm::half_pi<float>() || !std::isfinite(camera.fovY) ||
         camera.fovY <= 0 || camera.fovY >= glm::pi<float>() || !std::isfinite(camera.nearZ) ||
         camera.nearZ <= 0 || !(camera.farZ > camera.nearZ))
-        return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
-                                              "Authored camera has an invalid pose or lens"});
+        return std::unexpected(lmx::Error{lmx::ErrorCode::InvalidArgument,
+                                          "Authored camera has an invalid pose or lens"});
     camera.yaw = asset::unwrapYaw(0.0f, camera.yaw);
     const auto previous = authoredSceneCamera();
     if (previous.position == camera.position && previous.yaw == camera.yaw &&

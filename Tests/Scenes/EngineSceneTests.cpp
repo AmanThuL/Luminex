@@ -540,7 +540,7 @@ TEST_CASE("loadGltfScene runs authoring before finalize", "[scene][gpu]") {
     REQUIRE(device.has_value());
     std::optional<LightId> authored;
     auto scene = loadGltfScene(**device, path->string(), "DamagedHelmet",
-                               [&authored](Scene& target) -> rojoRHI::Result<void> {
+                               [&authored](Scene& target) -> lmx::Result<void> {
                                    auto id = target.addLight(lmx::engine::LocalLight{});
                                    if (!id) {
                                        return std::unexpected(id.error());

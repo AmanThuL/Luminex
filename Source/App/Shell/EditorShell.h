@@ -159,7 +159,7 @@ public:
 
     /// Seeds rendering and local-light startup options before the first frame; returns a rig
     /// activation error without starting the frame loop if the requested rig cannot be added.
-    rojoRHI::Result<void> primeTemporal(const AppOptions& options);
+    lmx::Result<void> primeTemporal(const AppOptions& options);
 
     /// Appends editor-only selection presentation; returns scene display unchanged without a cue.
     render::GraphTexture declareSelection(render::RenderGraph& graph,
@@ -175,7 +175,7 @@ public:
     render::SceneView sceneView();
 
     /// Uploads active scene tables after frame pacing and animation, before obtaining the view.
-    rojoRHI::Result<void> prepareSceneFrame(uint64_t frameNumber);
+    lmx::Result<void> prepareSceneFrame(uint64_t frameNumber);
 
     /// True exactly once per reset trigger (spec 9): first frame, scene switch, auto-exposure
     /// enable, and resize. Consuming clears the flag, so main.cpp calling this once a frame is

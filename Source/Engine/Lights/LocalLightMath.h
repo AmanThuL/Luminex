@@ -5,9 +5,9 @@
 
 #pragma once
 
+#include "Core/Diagnostics/Result.h"
 #include "Engine/Lights/LocalLight.h"
 #include "Engine/Scene/SceneTables.h"
-#include <rojoRHI/Result.h>
 
 #include <glm/vec3.hpp>
 
@@ -15,11 +15,11 @@ namespace lmx::engine {
 
 /// Builds `light`'s 64-byte GPU row: decodes strength and the cone term, and derives the world
 /// bounding sphere docs/milestones/m7/m7.5.md's light table specifies. This is the only gate before
-/// those values reach the GPU, so it fails with an RHI `InvalidDesc` error for any non-finite
+/// those values reach the GPU, so it fails with an `InvalidArgument` error for any non-finite
 /// `position`, `colour`, `intensity` or `direction` component, a nonpositive, non-finite or NaN
 /// `range`, `innerCone >= outerCone`, `outerCone > 89deg`, or (for a spot) a zero direction; never
 /// asserts. Disabled lights undergo the same validation and return a zero row.
-rojoRHI::Result<LightRow> makeLightRow(const LocalLight& light);
+lmx::Result<LightRow> makeLightRow(const LocalLight& light);
 
 /// The glTF/UE/Frostbite windowed inverse-square term `window(d) / max(d^2, (0.01 m)^2)`, with
 /// `window(d) = saturate(1 - (d / range)^4)^2`; exactly zero for `distance >= range`.

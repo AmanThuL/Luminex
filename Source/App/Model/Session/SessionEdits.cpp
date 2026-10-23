@@ -51,13 +51,13 @@ struct PreparedBatch {
 };
 
 //======================================================================================================================
-rojoRHI::Result<void> poseEditsAllowed(const SceneSession& session, const PreparedBatch& batch) {
+lmx::Result<void> poseEditsAllowed(const SceneSession& session, const PreparedBatch& batch) {
     // Resolve every permission before the first write, including an imported subject's sibling
     // primitives, so a later refusal cannot leave an earlier edit applied.
-    const auto checkObject = [&](size_t index) -> rojoRHI::Result<void> {
+    const auto checkObject = [&](size_t index) -> lmx::Result<void> {
         if (const auto lock = session.objectPoseLock(index); lock != PoseLock::None)
             return std::unexpected(
-                rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, std::string(poseLockReason(lock))});
+                lmx::Error{lmx::ErrorCode::InvalidArgument, std::string(poseLockReason(lock))});
         return {};
     };
     for (const auto& [index, transform] : batch.objects) {
@@ -71,7 +71,7 @@ rojoRHI::Result<void> poseEditsAllowed(const SceneSession& session, const Prepar
             continue;
         if (imported >= binding.importedNodes.size())
             return std::unexpected(
-                rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, "Object binding is invalid"});
+                lmx::Error{lmx::ErrorCode::InvalidArgument, "Object binding is invalid"});
         for (const auto target : binding.importedNodes[imported].objects)
             if (const auto allowed = checkObject(target); !allowed)
                 return allowed;
@@ -83,7 +83,7 @@ rojoRHI::Result<void> poseEditsAllowed(const SceneSession& session, const Prepar
             (current->position != light.value.position ||
              current->direction != light.value.direction))
             return std::unexpected(
-                rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, std::string(poseLockReason(lock))});
+                lmx::Error{lmx::ErrorCode::InvalidArgument, std::string(poseLockReason(lock))});
     }
     return {};
 }
@@ -662,11 +662,11 @@ bool sessionEditNeedsCameraCut(const SceneTreeView& tree, std::span<const Propos
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> applyEdits(SceneSession& session, const SceneTreeView& tree,
-                                 std::span<const ProposalEdit> edits) {
+lmx::Result<void> applyEdits(SceneSession& session, const SceneTreeView& tree,
+                             std::span<const ProposalEdit> edits) {
     auto prepared = prepare(session, tree, edits);
     if (!prepared)
-        return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, prepared.error()});
+        return std::unexpected(lmx::Error{lmx::ErrorCode::InvalidArgument, prepared.error()});
     if (const auto allowed = poseEditsAllowed(session, *prepared); !allowed)
         return allowed;
     for (const auto& [index, transform] : prepared->objects)
@@ -681,7 +681,7 @@ rojoRHI::Result<void> applyEdits(SceneSession& session, const SceneTreeView& tre
         if (auto result = session.setSceneCamera(prepared->camera); !result)
             return result;
     for (const auto& edit : prepared->enabled) {
-        rojoRHI::Result<void> result;
+        lmx::Result<void> result;
         if (edit.subject.starts_with("node:"))
             result = session.setNodeEnabled(edit.selection.node, edit.enabled);
         else if (edit.subject.starts_with("imported:"))

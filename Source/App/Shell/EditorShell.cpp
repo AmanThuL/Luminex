@@ -664,7 +664,7 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> EditorShell::primeTemporal(const AppOptions& options) {
+lmx::Result<void> EditorShell::primeTemporal(const AppOptions& options) {
     m_settings.localLightMode = options.localLightMode;
     m_settings.lightCheck = options.lightCheck;
     m_settings.lightDebugView = options.lightDebugView;
@@ -692,7 +692,7 @@ rojoRHI::Result<void> EditorShell::primeTemporal(const AppOptions& options) {
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> EditorShell::prepareSceneFrame(uint64_t frameNumber) {
+lmx::Result<void> EditorShell::prepareSceneFrame(uint64_t frameNumber) {
     return m_session.prepareFrame(frameNumber);
 }
 

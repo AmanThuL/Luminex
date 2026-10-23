@@ -56,18 +56,18 @@ glm::vec3 fSchlick(const glm::vec3& f0, float voh) {
 } // namespace
 
 //======================================================================================================================
-rojoRHI::Result<LightRow> makeLightRow(const LocalLight& light) {
+lmx::Result<LightRow> makeLightRow(const LocalLight& light) {
     // The only gate before these values reach the GPU row: a NaN or infinite component would
     // otherwise upload silently and corrupt shading or the bounding sphere.
     if (!isFinite(light.position) || !isFinite(light.colour) || !std::isfinite(light.intensity) ||
         !isFinite(light.direction)) {
-        return std::unexpected(rojoRHI::Error{
-            rojoRHI::ErrorCode::InvalidDesc,
-            "makeLightRow: position, colour, intensity and direction must be finite"});
+        return std::unexpected(
+            lmx::Error{lmx::ErrorCode::InvalidArgument,
+                       "makeLightRow: position, colour, intensity and direction must be finite"});
     }
     if (!std::isfinite(light.range) || light.range <= 0.0f) {
-        return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
-                                              "makeLightRow: range must be finite and positive"});
+        return std::unexpected(lmx::Error{lmx::ErrorCode::InvalidArgument,
+                                          "makeLightRow: range must be finite and positive"});
     }
 
     LightRow row{};
@@ -81,19 +81,19 @@ rojoRHI::Result<LightRow> makeLightRow(const LocalLight& light) {
     if (light.type == LocalLightType::Spot) {
         if (!(light.innerCone >= 0.0f) || !(light.innerCone < light.outerCone)) {
             return std::unexpected(
-                rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
-                               "makeLightRow: a spot needs 0 <= innerCone < outerCone"});
+                lmx::Error{lmx::ErrorCode::InvalidArgument,
+                           "makeLightRow: a spot needs 0 <= innerCone < outerCone"});
         }
         constexpr float kMaxOuterCone = 89.0f * std::numbers::pi_v<float> / 180.0f;
         if (!(light.outerCone <= kMaxOuterCone)) {
             return std::unexpected(
-                rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
-                               "makeLightRow: outerCone must be at most 89 degrees"});
+                lmx::Error{lmx::ErrorCode::InvalidArgument,
+                           "makeLightRow: outerCone must be at most 89 degrees"});
         }
         const float directionLength = glm::length(light.direction);
         if (!(directionLength > 1e-8f)) {
-            return std::unexpected(rojoRHI::Error{
-                rojoRHI::ErrorCode::InvalidDesc, "makeLightRow: a spot needs a nonzero direction"});
+            return std::unexpected(lmx::Error{lmx::ErrorCode::InvalidArgument,
+                                              "makeLightRow: a spot needs a nonzero direction"});
         }
         row.direction = light.direction / directionLength;
 

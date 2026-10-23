@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "Core/Diagnostics/Result.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/View/Camera.h"
 #include "Render/Renderer/SceneView.h"
@@ -79,15 +80,15 @@ public:
     /// Persists one document flag and reapplies descendant effective flags. Editing the CLI group
     /// clears its session override, including an explicit edit to its unchanged authored value.
     /// Invalid indices and any call during Measure fail without changing state.
-    rojoRHI::Result<void> setNodeEnabled(uint32_t node, bool enabled);
+    lmx::Result<void> setNodeEnabled(uint32_t node, bool enabled);
     /// Persists an imported own flag and reapplies source descendants, retaining their own flags.
     /// The index names SceneBinding::importedNodes; invalid indices and Measure edits fail.
-    rojoRHI::Result<void> setImportedNodeEnabled(uint32_t imported, bool enabled);
+    lmx::Result<void> setImportedNodeEnabled(uint32_t imported, bool enabled);
     /// Changes all primitives of a bound source node, or only the generated session subject.
     /// Invalid indices and Measure edits fail; a real transition requests a temporal reset.
-    rojoRHI::Result<void> setObjectEnabled(size_t index, bool enabled);
+    lmx::Result<void> setObjectEnabled(size_t index, bool enabled);
     /// Changes a bound node's own flag, or a generated session choice. Stale IDs and Measure fail.
-    rojoRHI::Result<void> setLocalLightEnabled(engine::LightId id, bool enabled);
+    lmx::Result<void> setLocalLightEnabled(engine::LightId id, bool enabled);
     /// Locks authored and generated enablement while a measurement warms up, renders or drains.
     void setMeasurementActive(bool active) { m_measurementActive = active; }
     /// Reports whether persistent edits are blocked by an active measurement.
@@ -130,10 +131,10 @@ public:
     /// changes never call this. Rejects missing documents, Measure and invalid lens/pose values;
     /// a changed request increments persistent generation. The owner requires stopped playback.
     /// The requested yaw is wrapped into [-pi, pi], on the live camera too.
-    rojoRHI::Result<void> setSceneCamera();
+    lmx::Result<void> setSceneCamera();
     /// Edits only the authored document camera; the viewport camera and playback stay unchanged.
     /// Pose uses world metres and radians; invalid or unavailable requests change nothing.
-    rojoRHI::Result<void> setSceneCamera(const engine::SceneCamera& camera);
+    lmx::Result<void> setSceneCamera(const engine::SceneCamera& camera);
     /// Returns the current authored document camera, including an unsaved explicit request.
     engine::SceneCamera authoredSceneCamera() const;
     /// Replaces an explicitly saved camera with its value decoded from the saved document, so an
@@ -169,7 +170,7 @@ public:
     void rewindAnimation();
 
     /// Uploads this frame's changed scene rows after Device::beginFrame has paced the slot.
-    rojoRHI::Result<void> prepareFrame(uint64_t frameNumber);
+    lmx::Result<void> prepareFrame(uint64_t frameNumber);
 
     /// Read-only diagnostics for the active scene's most recently prepared table slot.
     engine::SceneTableStats tableStats() const;
@@ -203,22 +204,22 @@ public:
     PoseLock lightPoseLock(EditorSubject subject, size_t index, engine::LightId id) const;
     /// Applies a movable object's pose to every primitive of its bound source node and resets
     /// motion. Any pose lock or invalid index fails without changing pose or edit generation.
-    rojoRHI::Result<void> editObject(size_t index, const DecomposedTransform& transform);
+    lmx::Result<void> editObject(size_t index, const DecomposedTransform& transform);
     /// Whether an object's transform is saved by the document exporter.
     bool objectTransformPersistable(size_t index) const;
 
     /// Restores one movable object's authored transform through the shared pose permission.
-    rojoRHI::Result<void> resetObject(size_t index);
+    lmx::Result<void> resetObject(size_t index);
 
     /// The original scene-linear light retained on first activation, before any editor changes.
     const engine::DirectionalLight& lightDefault(size_t index) const;
 
     /// Commits directional fields; a pose lock refuses direction changes, preserving its bits
     /// on allowed strength/enabled edits. Measure also refuses enabled changes.
-    rojoRHI::Result<void> editLight(size_t index, const engine::DirectionalLight& light);
+    lmx::Result<void> editLight(size_t index, const engine::DirectionalLight& light);
 
     /// Restores only the selected light; enabled changes during Measure fail without mutation.
-    rojoRHI::Result<void> resetLight(size_t index);
+    lmx::Result<void> resetLight(size_t index);
 
     /// True when direction or scene-linear radiance differs from the authored light.
     bool lightChanged(size_t index) const;
@@ -238,7 +239,7 @@ public:
 
     /// Applies a session-only group mask without changing authored child flags or saved values.
     /// A document with no local-light group is a successful no-op.
-    rojoRHI::Result<void> setLocalLightRig(bool enabled);
+    lmx::Result<void> setLocalLightRig(bool enabled);
 
     /// Authored light fields with orbit-owned position sampled at current time; null for stale IDs.
     std::optional<engine::LocalLight> localLightDefault(engine::LightId id) const;
@@ -248,10 +249,10 @@ public:
     /// The supplied enabled field is its own flag, so callers read it with localLightEnabled.
     /// Pose locks refuse position/direction changes; allowed non-pose edits preserve pose bits.
     /// Measure also rejects enabled changes; generated changes never notify persistent dirty.
-    rojoRHI::Result<void> editLocalLight(engine::LightId id, const engine::LocalLight& light);
+    lmx::Result<void> editLocalLight(engine::LightId id, const engine::LocalLight& light);
     /// Restores all authored fields and current orbit position; stale/foreign IDs return
-    /// InvalidDesc.
-    rojoRHI::Result<void> resetLocalLight(engine::LightId id);
+    /// InvalidArgument.
+    lmx::Result<void> resetLocalLight(engine::LightId id);
     /// Whether the active scene has a LightLab population; the first generator owns this control.
     bool lightLabPileAvailable() const;
     /// Number of this session's currently live pile lights; unrelated additions are excluded.
@@ -261,7 +262,7 @@ public:
     /// Replaces only the first LightLab generator's pile before prepareFrame. Added lights are
     /// static; oversized requests fail transactionally. Authored lights, every grid and other
     /// generator populations retain their identities and bindings.
-    rojoRHI::Result<void> setLightLabPile(uint32_t count);
+    lmx::Result<void> setLightLabPile(uint32_t count);
 
 private:
     struct Defaults {

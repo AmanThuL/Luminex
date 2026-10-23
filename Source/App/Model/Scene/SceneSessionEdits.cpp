@@ -102,15 +102,15 @@ bool SceneSession::persistentObject(size_t index) const {
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> SceneSession::editLight(size_t index, const engine::DirectionalLight& light) {
+lmx::Result<void> SceneSession::editLight(size_t index, const engine::DirectionalLight& light) {
     if (!m_scene || index >= 3)
         return std::unexpected(
-            rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, "Light index out of range"});
+            lmx::Error{lmx::ErrorCode::InvalidArgument, "Light index out of range"});
     auto& current = scene().lights[index];
     const auto lock = lightPoseLock(EditorSubject::DirectionalLight, index, {});
     if (lock != PoseLock::None && current.direction != light.direction)
         return std::unexpected(
-            rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, std::string(poseLockReason(lock))});
+            lmx::Error{lmx::ErrorCode::InvalidArgument, std::string(poseLockReason(lock))});
     std::optional<uint32_t> node;
     if (m_loaded)
         for (uint32_t n = 0; n < m_loaded->binding.nodes.size(); ++n)
@@ -118,8 +118,8 @@ rojoRHI::Result<void> SceneSession::editLight(size_t index, const engine::Direct
                 node = n;
     const bool enabledChanged = light.enabled != (node ? nodeEnabled(*node) : current.enabled);
     if (m_measurementActive && enabledChanged)
-        return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
-                                              "Enabled edits are unavailable during measurement"});
+        return std::unexpected(lmx::Error{lmx::ErrorCode::InvalidArgument,
+                                          "Enabled edits are unavailable during measurement"});
     const bool fieldsChanged =
         current.direction != light.direction || current.strength != light.strength;
     if (lock == PoseLock::None)

@@ -12,10 +12,10 @@
 namespace lmx::app {
 namespace {
 //======================================================================================================================
-rojoRHI::Result<void> unavailableEnabledEdit() {
+lmx::Result<void> unavailableEnabledEdit() {
     return std::unexpected(
-        rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
-                       "Enabled edits require a valid subject and no active measurement"});
+        lmx::Error{lmx::ErrorCode::InvalidArgument,
+                   "Enabled edits require a valid subject and no active measurement"});
 }
 } // namespace
 
@@ -153,7 +153,7 @@ void SceneSession::applyEnabled() {
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> SceneSession::setNodeEnabled(uint32_t node, bool enabled) {
+lmx::Result<void> SceneSession::setNodeEnabled(uint32_t node, bool enabled) {
     if (m_measurementActive || !m_loaded || node >= documentState().nodeEnabled.size())
         return unavailableEnabledEdit();
     auto& own = m_documentStates.at(m_scene).nodeEnabled;
@@ -171,7 +171,7 @@ rojoRHI::Result<void> SceneSession::setNodeEnabled(uint32_t node, bool enabled) 
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> SceneSession::setImportedNodeEnabled(uint32_t imported, bool enabled) {
+lmx::Result<void> SceneSession::setImportedNodeEnabled(uint32_t imported, bool enabled) {
     if (m_measurementActive || !m_loaded || imported >= documentState().importedEnabled.size())
         return unavailableEnabledEdit();
     auto& own = m_documentStates.at(m_scene).importedEnabled;
@@ -185,7 +185,7 @@ rojoRHI::Result<void> SceneSession::setImportedNodeEnabled(uint32_t imported, bo
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> SceneSession::setObjectEnabled(size_t index, bool enabled) {
+lmx::Result<void> SceneSession::setObjectEnabled(size_t index, bool enabled) {
     if (m_measurementActive || index >= scene().objects.size())
         return unavailableEnabledEdit();
     if (m_loaded) {
@@ -208,7 +208,7 @@ rojoRHI::Result<void> SceneSession::setObjectEnabled(size_t index, bool enabled)
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> SceneSession::setLocalLightEnabled(engine::LightId id, bool enabled) {
+lmx::Result<void> SceneSession::setLocalLightEnabled(engine::LightId id, bool enabled) {
     if (m_measurementActive || !scene().light(id))
         return unavailableEnabledEdit();
     const auto key = engine::sceneLightKey(id);
@@ -228,7 +228,7 @@ rojoRHI::Result<void> SceneSession::setLocalLightEnabled(engine::LightId id, boo
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> SceneSession::setLocalLightRig(bool enabled) {
+lmx::Result<void> SceneSession::setLocalLightRig(bool enabled) {
     if (m_measurementActive)
         return unavailableEnabledEdit();
     if (!localLightRigAvailable())

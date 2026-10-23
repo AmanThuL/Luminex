@@ -53,8 +53,8 @@ glm::mat4 gizmoProjection(const engine::Camera& camera, float aspect);
 /// Object scales clamp to [0.01,100]; spot -Z becomes normalized ray direction. Shared pose locks
 /// and effective disabled state refuse edits. The caller requires stopped playback.
 /// The selection must already be resolved against the active scene ID.
-rojoRHI::Result<void> applyGizmo(SceneSession& session, const EditorSelection& selection,
-                                 const glm::mat4& world);
+lmx::Result<void> applyGizmo(SceneSession& session, const EditorSelection& selection,
+                             const glm::mat4& world);
 
 /// A captured pose for Escape cancellation; the borrowed session must outlive this drag.
 /// Activation changes invalidate the capture even when scene IDs or storage are reused.
@@ -70,7 +70,7 @@ public:
     /// Restores captured pose fields through shared edit permission and always releases capture.
     /// A changed activation, missing subject or newly locked subject fails without mutation.
     /// Non-pose light edits survive. With no capture this succeeds without doing anything.
-    rojoRHI::Result<void> cancel(SceneSession& session);
+    lmx::Result<void> cancel(SceneSession& session);
     /// Releases the capture without restoring; use after completion or playback starts.
     void end();
 

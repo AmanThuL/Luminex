@@ -8,6 +8,8 @@
 #include "Core/Containers/DirtySet.h"
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"
+#include "Core/Diagnostics/Result.h"
+#include "Engine/Gpu/GpuError.h"
 #include "Engine/Scene/SceneTableStats.h"
 #include <rojoRHI/RHI.h>
 
@@ -48,9 +50,9 @@ struct PacedTable {
 /// table's previous buffers join `retiring` until `lastFrame + kSlots` and count one growth
 /// event; every shadow row becomes dirty in every slot. Returns buffer-creation failure.
 template <typename Row>
-rojoRHI::Result<void> reserveTable(rojoRHI::Device& device, PacedTable<Row>& table, uint32_t count,
-                                   std::string_view label, uint64_t lastFrame,
-                                   std::vector<RetiringBuffer>& retiring, uint64_t& growthEvents) {
+lmx::Result<void> reserveTable(rojoRHI::Device& device, PacedTable<Row>& table, uint32_t count,
+                               std::string_view label, uint64_t lastFrame,
+                               std::vector<RetiringBuffer>& retiring, uint64_t& growthEvents) {
     if (count <= table.capacity && table.capacity != 0) {
         return {};
     }
@@ -69,7 +71,7 @@ rojoRHI::Result<void> reserveTable(rojoRHI::Device& device, PacedTable<Row>& tab
                                            .label = std::format("{}.{}", label, slot)},
                                           nullptr);
         if (!buffer) {
-            return std::unexpected(buffer.error());
+            return std::unexpected(gpuError(buffer.error()));
         }
         buffers[slot] = std::move(*buffer);
     }

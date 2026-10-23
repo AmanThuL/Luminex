@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/Diagnostics/Result.h"
 #include "Engine/Asset/Asset.h"
 #include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Geometry/Mesh.h"
@@ -73,6 +74,11 @@ template <typename T>
 
 //======================================================================================================================
 std::string errorOf(const rojoRHI::Result<T>& result) {
+    return result ? std::string{} : result.error().message;
+}
+
+template <typename T>
+std::string errorOf(const lmx::Result<T>& result) {
     return result ? std::string{} : result.error().message;
 }
 

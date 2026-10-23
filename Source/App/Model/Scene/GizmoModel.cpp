@@ -18,8 +18,8 @@ namespace lmx::app {
 namespace {
 
 //======================================================================================================================
-rojoRHI::Result<void> refuse(std::string message) {
-    return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, std::move(message)});
+lmx::Result<void> refuse(std::string message) {
+    return std::unexpected(lmx::Error{lmx::ErrorCode::InvalidArgument, std::move(message)});
 }
 
 } // namespace
@@ -72,8 +72,8 @@ glm::mat4 gizmoProjection(const engine::Camera& camera, float aspect) {
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> applyGizmo(SceneSession& session, const EditorSelection& selection,
-                                 const glm::mat4& world) {
+lmx::Result<void> applyGizmo(SceneSession& session, const EditorSelection& selection,
+                             const glm::mat4& world) {
     const auto subject = gizmoSubject(session, selection, true);
     if (!subject)
         return refuse("No gizmo subject");
@@ -139,7 +139,7 @@ bool GizmoDrag::matches(const EditorSelection& selection) const {
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> GizmoDrag::cancel(SceneSession& session) {
+lmx::Result<void> GizmoDrag::cancel(SceneSession& session) {
     if (!active())
         return {};
     const bool current = m_session == &session && matches(m_selection);

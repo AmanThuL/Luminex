@@ -8,6 +8,7 @@
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"
 #include "Core/Math/Aabb.h"
+#include "Engine/Gpu/GpuError.h"
 #include "Engine/Lights/LocalLightMath.h"
 #include "Engine/Scene/PacedTable.h"
 #include "Engine/Scene/SceneStorage.h"
@@ -20,7 +21,7 @@
 namespace lmx::engine {
 
 //======================================================================================================================
-rojoRHI::Result<void> Scene::finalize(rojoRHI::Device& device) {
+lmx::Result<void> Scene::finalize(rojoRHI::Device& device) {
     auto& storage = *m_storage;
     LMX_ASSERT(storage.device == nullptr, "scene is already finalized");
     std::vector<engine::Vertex> vertices;
@@ -46,7 +47,7 @@ rojoRHI::Result<void> Scene::finalize(rojoRHI::Device& device) {
                                              .label = "lmx.scene.vertices"},
                                             vertices.data());
     if (!vertexBuffer) {
-        return std::unexpected(vertexBuffer.error());
+        return std::unexpected(gpuError(vertexBuffer.error()));
     }
     auto indexBuffer = device.createBuffer({.size = indices.size() * sizeof(uint32_t),
                                             .storageRead = true,
@@ -54,7 +55,7 @@ rojoRHI::Result<void> Scene::finalize(rojoRHI::Device& device) {
                                             .label = "lmx.scene.indices"},
                                            indices.data());
     if (!indexBuffer) {
-        return std::unexpected(indexBuffer.error());
+        return std::unexpected(gpuError(indexBuffer.error()));
     }
     for (auto result :
          {reserveTable(device, storage.instanceTable,
@@ -100,7 +101,7 @@ void Scene::validateObjects() const {
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
+lmx::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
     auto& storage = *m_storage;
     validateObjects();
     LMX_ASSERT(storage.device, "scene must be finalized before preparing a frame");
