@@ -90,12 +90,12 @@ lmx::Result<void> OcclusionReference::declare(RenderGraph& graph, rojoRHI::Comma
         retireThrough(frame - 3);
     auto& slot = m_slots[(frame - 1) % 3];
     const uint64_t byteCount = uint64_t{width} * height * 4;
-    if (!slot.buffer || slot.buffer->size() < byteCount) {
-        auto buffer = m_device.createBuffer(
-            {.size = byteCount, .cpuReadback = true, .label = "lmx.occlusion.reference.readback"},
-            nullptr);
+    if (!slot.buffer || slot.buffer.desc().size < byteCount) {
+        auto buffer = engine::GpuBuffer::create(
+            m_device,
+            {.size = byteCount, .cpuReadback = true, .label = "lmx.occlusion.reference.readback"});
         if (!buffer) {
-            return std::unexpected(engine::gpuError(buffer.error()));
+            return std::unexpected(buffer.error());
         }
         slot.buffer = std::move(*buffer);
         slot.used = false;
@@ -105,7 +105,7 @@ lmx::Result<void> OcclusionReference::declare(RenderGraph& graph, rojoRHI::Comma
                     .width = width,
                     .height = height,
                     .strict = strictView,
-                    .buffer = slot.buffer.get()};
+                    .buffer = &slot.buffer};
     for (const auto& item : view.items) {
         LMX_ASSERT(item.instanceRow < view.tables.instanceRows.size(),
                    "reference observations require canonical instance rows");
@@ -157,14 +157,14 @@ lmx::Result<void> OcclusionReference::declare(RenderGraph& graph, rojoRHI::Comma
                 commands.bindPipeline(*m_pipelines[(view.wireframe ? 4 : 0) + (masked ? 2 : 0) +
                                                    (doubleSided ? 1 : 0)]);
                 commands.bindFrameData(1, ReferenceParams{viewProjection, item.instanceRow});
-                commands.bindTexture(0, item.diffuse ? item.diffuse->rhi() : *m_white);
+                commands.bindTexture(0, item.diffuse ? item.diffuse->rhi() : m_white.rhi());
                 commands.drawIndexed(view.tables.indices->rhi(), item.mesh.indexCount,
                                      item.mesh.firstIndex);
             }
         });
     const auto source = nextVersion(ids);
     const auto destination =
-        graph.importBuffer(*slot.buffer, "lmx.occlusion.reference.readback",
+        graph.importBuffer(slot.buffer.rhi(), "lmx.occlusion.reference.readback",
                            slot.used ? BufferUse::CopyDestination : BufferUse::ShaderRead);
     CopyPassDesc copy;
     copy.textureSources = {source};
@@ -189,7 +189,7 @@ void OcclusionReference::retireThrough(uint64_t completedFrame) {
         if (pending.frameNumber > completedFrame)
             continue;
         std::vector<uint8_t> bytes(uint64_t{pending.width} * pending.height * 4);
-        pending.buffer->readback(bytes.data(), bytes.size());
+        pending.buffer->rhi().readback(bytes.data(), bytes.size());
         std::unordered_map<uint32_t, size_t> rows;
         for (size_t i = 0; i < pending.observations.size(); ++i)
             rows.emplace(pending.observations[i].instanceRow, i);

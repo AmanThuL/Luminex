@@ -125,15 +125,15 @@ SelectionOutline::create(engine::GpuContext& gpu, uint32_t width, uint32_t heigh
 
 //======================================================================================================================
 lmx::Result<void> SelectionOutline::resize(uint32_t width, uint32_t height) {
-    auto target = m_device.createTexture({.width = width,
-                                          .height = height,
-                                          .format = kDisplayFormat,
-                                          .renderTarget = true,
-                                          .sampled = true,
-                                          .cpuReadback = m_readback,
-                                          .label = "lmx.selection.display"});
+    auto target = engine::GpuTexture::create(m_device, {.width = width,
+                                                        .height = height,
+                                                        .format = kDisplayFormat,
+                                                        .renderTarget = true,
+                                                        .sampled = true,
+                                                        .cpuReadback = m_readback,
+                                                        .label = "lmx.selection.display"});
     if (!target) {
-        return std::unexpected(engine::gpuError(target.error()));
+        return std::unexpected(target.error());
     }
     m_target = std::move(*target);
     return {};
@@ -153,7 +153,7 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
     LMX_ASSERT(selectedRow < view.tables.instanceRows.size(),
                "selection requires a canonical instance row");
     if (!visible || (view.tables.instanceRows[selectedRow].flags & engine::kInstanceDisabled)) {
-        const auto output = graph.importTexture(*m_target, kDisplayFormat, "selectionDisplay",
+        const auto output = graph.importTexture(m_target.rhi(), kDisplayFormat, "selectionDisplay",
                                                 TextureUse::ShaderRead);
         PassDesc passthrough;
         passthrough.textureReads = {display};
@@ -169,8 +169,8 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
                       });
         return nextVersion(output);
     }
-    const uint32_t width = m_target->width();
-    const uint32_t height = m_target->height();
+    const uint32_t width = m_target.desc().width;
+    const uint32_t height = m_target.desc().height;
     const GraphTexture mask = graph.createTexture({.width = width,
                                                    .height = height,
                                                    .format = rojoRHI::Format::R8Unorm,
@@ -207,7 +207,7 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
             commands.bindPipeline(
                 selectedOnly ? (doubleSided ? *m_doubleSidedPipeline : *m_maskPipeline)
                              : (doubleSided ? *m_doubleSidedDepthPipeline : *m_depthPipeline));
-            commands.bindTexture(0, item.diffuse ? item.diffuse->rhi() : *m_white);
+            commands.bindTexture(0, item.diffuse ? item.diffuse->rhi() : m_white.rhi());
             const MaskParams params{
                 .viewProj = viewProjection, .instanceRow = item.instanceRow, .selected = 1.0f};
             commands.bindFrameData(1, params);
@@ -235,8 +235,8 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
     const GraphTexture coverageRead = nextVersion(mask);
     const GraphTexture selectedDepthRead = nextVersion(depth);
     const GraphTexture sceneDepthRead = nextVersion(sceneDepth);
-    const GraphTexture output =
-        graph.importTexture(*m_target, kDisplayFormat, "selectionDisplay", TextureUse::ShaderRead);
+    const GraphTexture output = graph.importTexture(m_target.rhi(), kDisplayFormat,
+                                                    "selectionDisplay", TextureUse::ShaderRead);
     PassDesc composite;
     composite.textureReads = {display, coverageRead, selectedDepthRead, sceneDepthRead};
     composite.color = ColorAttachment{.handle = output};

@@ -10,7 +10,6 @@
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"
-#include "Engine/Gpu/GpuError.h"
 #include <rojoRHI/CaptureSchema.h>
 
 #include <algorithm>
@@ -114,16 +113,16 @@ lmx::Result<std::unique_ptr<LightClusterStage>> LightClusterStage::create(engine
     }
     for (uint32_t slot = 0; slot < self->m_slots.size(); ++slot) {
         const std::string suffix = "." + std::to_string(slot);
-        auto allocate = [&](std::unique_ptr<rojoRHI::Buffer>& buffer, uint64_t bytes,
-                            const std::string& name, bool readback) -> lmx::Result<void> {
-            auto result = device.createBuffer({.size = bytes,
-                                               .storageRead = true,
-                                               .storageWrite = true,
-                                               .cpuReadback = readback,
-                                               .label = name + suffix},
-                                              nullptr);
+        auto allocate = [&](engine::GpuBuffer& buffer, uint64_t bytes, const std::string& name,
+                            bool readback) -> lmx::Result<void> {
+            const std::string label = name + suffix;
+            auto result = engine::GpuBuffer::create(device, {.size = bytes,
+                                                             .storageRead = true,
+                                                             .storageWrite = true,
+                                                             .cpuReadback = readback,
+                                                             .label = label});
             if (!result) {
-                return std::unexpected(engine::gpuError(result.error()));
+                return std::unexpected(result.error());
             }
             buffer = std::move(*result);
             return {};
@@ -182,19 +181,19 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rojoRHI::Comm
     const auto params = makeKernelParams(inputs, m_perClusterCap, m_globalCapacity);
     m_pending.push_back({.frameNumber = inputs.frameNumber,
                          .captureLists = inputs.captureLists,
-                         .grid = slot.grid.get(),
-                         .indices = slot.indices.get(),
-                         .counters = slot.counters.get()});
+                         .grid = &slot.grid,
+                         .indices = &slot.indices,
+                         .counters = &slot.counters});
 
     const auto grid =
-        importPaced(graph, *slot.grid, "lmx.light.grid",
+        importPaced(graph, slot.grid.rhi(), "lmx.light.grid",
                     slot.shaderRead ? BufferUse::ShaderRead : BufferUse::StorageRead, slot.used);
     const auto indices =
-        importPaced(graph, *slot.indices, "lmx.light.indices",
+        importPaced(graph, slot.indices.rhi(), "lmx.light.indices",
                     slot.shaderRead ? BufferUse::ShaderRead : BufferUse::StorageWrite, slot.used);
-    const auto counts =
-        importPaced(graph, *slot.counts, "lmx.light.counts", BufferUse::StorageRead, slot.used);
-    const auto counters = importPaced(graph, *slot.counters, "lmx.light.counters",
+    const auto counts = importPaced(graph, slot.counts.rhi(), "lmx.light.counts",
+                                    BufferUse::StorageRead, slot.used);
+    const auto counters = importPaced(graph, slot.counters.rhi(), "lmx.light.counters",
                                       BufferUse::StorageWrite, slot.used);
 
     // The counters the scan writes are complete on their own; the fill is what makes them a

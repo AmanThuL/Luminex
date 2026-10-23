@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 #include "Core/Diagnostics/Result.h"
+#include "Engine/Gpu/GpuBuffer.h"
 #include "Render/Graph/ResourceUse.h"
 #include "Render/Passes/Visibility/Visibility.h"
 #include <array>
@@ -24,11 +25,11 @@ struct DrawRun {
 };
 /// Per-view command list borrowing the Renderer-owned current slot.
 struct DrawList {
-    std::vector<DrawRun> runs;            ///< CPU command order, one run per direct/indirect entry.
-    uint32_t firstEntry = 0;              ///< First row in the view's contiguous range.
-    uint32_t entryCount = 0;              ///< Number of submitted instances.
-    rojoRHI::Buffer* rows = nullptr;      ///< Current paced visible-row allocation.
-    rojoRHI::Buffer* arguments = nullptr; ///< Current paced indirect argument allocation.
+    std::vector<DrawRun> runs; ///< CPU command order, one run per direct/indirect entry.
+    uint32_t firstEntry = 0;   ///< First row in the view's contiguous range.
+    uint32_t entryCount = 0;   ///< Number of submitted instances.
+    const engine::GpuBuffer* rows = nullptr;        ///< Current paced visible-row allocation.
+    const engine::GpuBuffer* arguments = nullptr;   ///< Current paced indirect argument allocation.
     SubmissionMode mode = SubmissionMode::Indirect; ///< Command encoder choice.
 };
 /// Pure builder output shared by CPU tests and the production upload path.
@@ -66,7 +67,7 @@ public:
 
 private:
     struct Slot {
-        std::unique_ptr<rojoRHI::Buffer> rows, arguments;
+        engine::GpuBuffer rows, arguments;
         std::optional<BufferUse> rowUse, argumentUse;
     };
     struct Retiring {

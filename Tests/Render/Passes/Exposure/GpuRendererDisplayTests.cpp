@@ -53,7 +53,7 @@ TEST_CASE("the display transform tone maps and encodes the scene's linear output
     gpu->device().waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
-    (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+    (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
 
     const int want = lmx::test::displayByte(0.5f);
     const Pixel probe = pixelAt(pixels, 32, 32);
@@ -115,7 +115,7 @@ TEST_CASE("the scene target holds radiance above 1.0 and exposure scales it exac
         gpu->device().endFrame(nullptr);
         gpu->device().waitIdle();
         (*renderer)->hdrColorTarget().readback(texels.data(), texels.size() * sizeof(uint16_t));
-        (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+        (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
     };
 
     renderAtExposure(0.0f);
@@ -303,7 +303,7 @@ TEST_CASE("odd renderer extents and disabled bloom stay within the bloom texture
         gpu->device().waitIdle();
 
         std::vector<uint8_t> pixels(size_t{kOddWidth} * kOddHeight * 4);
-        (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+        (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
         for (size_t texel = 0; texel < size_t{kOddWidth} * kOddHeight; ++texel) {
             REQUIRE(pixels[texel * 4 + 3] == 255);
         }

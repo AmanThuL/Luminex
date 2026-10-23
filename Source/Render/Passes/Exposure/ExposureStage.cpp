@@ -150,13 +150,12 @@ lmx::Result<std::unique_ptr<ExposureStage>> ExposureStage::create(engine::GpuCon
     }
 
     {
-        auto buffer = device.createBuffer({.size = kHistogramBufferSize,
-                                           .storageRead = true,
-                                           .storageWrite = true,
-                                           .label = "lmx.render.histogramBuffer"},
-                                          nullptr);
+        auto buffer = engine::GpuBuffer::create(device, {.size = kHistogramBufferSize,
+                                                         .storageRead = true,
+                                                         .storageWrite = true,
+                                                         .label = "lmx.render.histogramBuffer"});
         if (!buffer) {
-            return std::unexpected(engine::gpuError(buffer.error()));
+            return std::unexpected(buffer.error());
         }
         self->m_histogramBuffer = std::move(*buffer);
     }
@@ -170,14 +169,15 @@ lmx::Result<std::unique_ptr<ExposureStage>> ExposureStage::create(engine::GpuCon
     {
         constexpr std::array<float, kExposureBufferFloats> kInitialExposure{1.0f, 1.0f};
         {
-            auto buffer = device.createBuffer({.size = sizeof(kInitialExposure),
-                                               .storageRead = true,
-                                               .storageWrite = true,
-                                               .cpuReadback = cpuReadback,
-                                               .label = "lmx.render.exposureBuffer"},
-                                              kInitialExposure.data());
+            auto buffer = engine::GpuBuffer::create(device,
+                                                    {.size = sizeof(kInitialExposure),
+                                                     .storageRead = true,
+                                                     .storageWrite = true,
+                                                     .cpuReadback = cpuReadback,
+                                                     .label = "lmx.render.exposureBuffer"},
+                                                    kInitialExposure.data());
             if (!buffer) {
-                return std::unexpected(engine::gpuError(buffer.error()));
+                return std::unexpected(buffer.error());
             }
             self->m_exposureBuffer = std::move(*buffer);
         }
@@ -242,7 +242,7 @@ void ExposureStage::declareMetering(RenderGraph& graph, rojoRHI::CommandList& co
     // frame clears it. Seeding the import with that terminal read makes the first live clear wait
     // on the real WAR edge; when auto exposure is off the chain is culled, so this costs nothing.
     const GraphBuffer histogramImport = graph.importBuffer(
-        *m_histogramBuffer, "lmx.render.histogramBuffer", BufferUse::StorageRead);
+        m_histogramBuffer.rhi(), "lmx.render.histogramBuffer", BufferUse::StorageRead);
 
     declareZeroFill(graph, commands, "lmx.pass.exposure.clearHistogram", histogramImport,
                     kHistogramBufferSize);

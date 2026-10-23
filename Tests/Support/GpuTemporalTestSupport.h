@@ -285,7 +285,7 @@ renderSequence(rojoRHI::Device& device, Renderer& renderer, uint32_t frames,
         record.history = readHalf4(*renderer.historyTarget());
         record.raw = readHalf4(renderer.hdrColorTarget());
         record.display.resize(kScenarioPixels * 4);
-        renderer.colorTarget().readback(record.display.data(), record.display.size());
+        renderer.colorTarget().rhi().readback(record.display.data(), record.display.size());
         record.status = renderer.temporalStatus();
         result.push_back(std::move(record));
     }

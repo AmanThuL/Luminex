@@ -32,7 +32,7 @@ TEST_CASE("renderer draws per-object uniforms in one pass", "[gpu]") {
     gpu->device().waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
-    (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+    (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
     requireTwoCubeImage(pixels, "clear");
 }
 
@@ -75,7 +75,7 @@ TEST_CASE("renderer depth test beats draw order", "[gpu]") {
                             /*barrierForSampling=*/false);
         gpu->device().endFrame(nullptr);
         gpu->device().waitIdle();
-        (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+        (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
 
         INFO(std::string("ordering: ") + names[i]);
 
@@ -142,7 +142,7 @@ TEST_CASE("renderer scene survives a barrier into a sampling pass", "[gpu]") {
                               .clear = true,
                               .label = "lmx.test.rendererCopy"});
     commands.bindPipeline(**copyPipeline);
-    commands.bindTexture(kSourceTextureSlot, (*renderer)->colorTarget());
+    commands.bindTexture(kSourceTextureSlot, (*renderer)->colorTarget().rhi());
     commands.draw(3);
     commands.endRenderPass();
     gpu->device().endFrame(nullptr);
@@ -185,7 +185,7 @@ TEST_CASE("a wireframe SceneView leaves the interior of a face unfilled", "[gpu]
                             /*barrierForSampling=*/false);
         gpu->device().endFrame(nullptr);
         gpu->device().waitIdle();
-        (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+        (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
     };
 
     renderWith(false);
@@ -237,13 +237,14 @@ TEST_CASE("the sky pass fills the background behind the scene", "[gpu]") {
     INFO(errorOf(skySphere));
     REQUIRE(skySphere.has_value());
 
-    auto skyCubemap = gpu->device().createTexture({.width = 1,
-                                                   .height = 1,
-                                                   .format = Format::RGBA8Unorm,
-                                                   .kind = TextureKind::Cube,
-                                                   .sampled = true,
-                                                   .label = "lmx.test.skyCubemap"},
-                                                  skyFaces);
+    auto skyCubemap = lmx::engine::GpuTexture::create(gpu->device(),
+                                                      {.width = 1,
+                                                       .height = 1,
+                                                       .format = Format::RGBA8Unorm,
+                                                       .kind = TextureKind::Cube,
+                                                       .sampled = true,
+                                                       .label = "lmx.test.skyCubemap"},
+                                                      skyFaces);
     INFO(errorOf(skyCubemap));
     REQUIRE(skyCubemap.has_value());
 
@@ -254,7 +255,7 @@ TEST_CASE("the sky pass fills the background behind the scene", "[gpu]") {
     const std::array<FixtureDrawItem, 2> items = twoCubeScene(*cube);
     FixtureSceneView view = litSceneView(items);
     view.skySphere = &*skySphere;
-    view.skyCubemap = skyCubemap->get();
+    view.skyCubemap = &*skyCubemap;
 
     CommandList& commands = gpu->device().beginFrame();
     (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, gpu->device()),
@@ -263,7 +264,7 @@ TEST_CASE("the sky pass fills the background behind the scene", "[gpu]") {
     gpu->device().waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
-    (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+    (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
 
     // kSkyTexel is uploaded to a plain RGBA8Unorm cubemap, not an sRGB view, so the sampler hands
     // the shader (0, 0.502, 1.0) as linear radiance and the sky shader passes it through untouched

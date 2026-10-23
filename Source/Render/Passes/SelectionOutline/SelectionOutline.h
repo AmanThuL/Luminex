@@ -6,6 +6,7 @@
 
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Gpu/GpuContext.h"
+#include "Engine/Gpu/GpuTexture.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Renderer/SceneView.h"
 
@@ -37,7 +38,7 @@ public:
     /// Caller must idle the device and forget UI bindings.
     lmx::Result<void> resize(uint32_t width, uint32_t height);
     /// Output texture for the UI, written by declare before its sampling pass executes.
-    rojoRHI::Texture& target() { return *m_target; }
+    const engine::GpuTexture& target() const { return m_target; }
     /// Declares selected coverage, scene visibility and a depth-tested border for an in-range draw.
     /// Foreground occlusion cuts never become silhouette edges. Scene inputs are
     /// borrowed through execution. Thickness is 1.5 logical points at the supplied backing scale.
@@ -58,8 +59,8 @@ private:
     std::unique_ptr<rojoRHI::GraphicsPipeline> m_outlinePipeline;
     std::unique_ptr<rojoRHI::GraphicsPipeline> m_passthroughPipeline;
     std::unique_ptr<rojoRHI::Sampler> m_sampler;
-    std::unique_ptr<rojoRHI::Texture> m_white;
-    std::unique_ptr<rojoRHI::Texture> m_target;
+    engine::GpuTexture m_white;
+    engine::GpuTexture m_target;
 };
 
 } // namespace lmx::render

@@ -24,28 +24,29 @@ lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(engine::GpuContext& 
     // Minimal immutable storage keeps every declared slot valid when its selection path is unused.
     {
         const engine::LightRow freeRow;
-        auto rows = device.createBuffer(
-            {.size = sizeof(freeRow), .label = "lmx.render.localLightFallbackRows"}, &freeRow);
+        auto rows = engine::GpuBuffer::create(
+            device, {.size = sizeof(freeRow), .label = "lmx.render.localLightFallbackRows"},
+            &freeRow);
         if (!rows) {
-            return std::unexpected(engine::gpuError(rows.error()));
+            return std::unexpected(rows.error());
         }
         self->m_fallbackLightRows = std::move(*rows);
 
         const ClusterRecord emptyRecord;
-        auto grid = device.createBuffer(
-            {.size = sizeof(emptyRecord), .label = "lmx.render.localLightFallbackGrid"},
+        auto grid = engine::GpuBuffer::create(
+            device, {.size = sizeof(emptyRecord), .label = "lmx.render.localLightFallbackGrid"},
             &emptyRecord);
         if (!grid) {
-            return std::unexpected(engine::gpuError(grid.error()));
+            return std::unexpected(grid.error());
         }
         self->m_fallbackClusterGrid = std::move(*grid);
 
         constexpr uint32_t kEmptyIndex = 0;
-        auto indices = device.createBuffer(
-            {.size = sizeof(kEmptyIndex), .label = "lmx.render.localLightFallbackIndices"},
+        auto indices = engine::GpuBuffer::create(
+            device, {.size = sizeof(kEmptyIndex), .label = "lmx.render.localLightFallbackIndices"},
             &kEmptyIndex);
         if (!indices) {
-            return std::unexpected(engine::gpuError(indices.error()));
+            return std::unexpected(indices.error());
         }
         self->m_fallbackClusterIndices = std::move(*indices);
     }

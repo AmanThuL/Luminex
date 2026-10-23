@@ -56,7 +56,7 @@ TEST_CASE("FrameDeclaration preserves headless rendering and retains its caller-
         gpu->device().endFrame(nullptr);
         gpu->device().waitIdle();
         std::vector<uint8_t> expected(size_t{kSize} * kSize * 4);
-        (*reference)->colorTarget().readback(expected.data(), expected.size());
+        (*reference)->colorTarget().rhi().readback(expected.data(), expected.size());
 
         CommandList& commands = gpu->device().beginFrame();
         const uint64_t frameId = gpu->device().frameNumber();
@@ -73,7 +73,7 @@ TEST_CASE("FrameDeclaration preserves headless rendering and retains its caller-
         gpu->device().waitIdle();
 
         std::vector<uint8_t> actual(expected.size());
-        (*shared)->colorTarget().readback(actual.data(), actual.size());
+        (*shared)->colorTarget().rhi().readback(actual.data(), actual.size());
         REQUIRE(actual == expected);
         const lmx::app::RetainedFrame* retained = records.find(frameId);
         REQUIRE(retained != nullptr);

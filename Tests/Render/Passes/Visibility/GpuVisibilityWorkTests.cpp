@@ -85,8 +85,8 @@ struct WorkFixture {
         view.classifyMode = render::ClassifyMode::Gpu;
         view.classifyCheck = true;
         REQUIRE(submission->prepare(frame, view, {}, {}));
-        lastRows = submission->scene().rows;
-        lastArgs = submission->scene().arguments;
+        lastRows = &submission->scene().rows->rhi();
+        lastArgs = &submission->scene().arguments->rhi();
         std::vector<uint32_t> rowSentinels(lastRows->size() / 4, 0xcdcdcdcdu);
         std::vector<uint32_t> argSentinels(lastArgs->size() / 4, 0xcdcdcdcdu);
         lastRows->write(0, rowSentinels.data(), lastRows->size());

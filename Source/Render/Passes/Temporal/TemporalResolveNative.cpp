@@ -169,7 +169,7 @@ void TemporalResolve::declareReconstruction(
                 commands.bindStorageTexture(kResolveRejectionSlot, texture, {},
                                             rojoRHI::StorageAccess::Write);
             } else {
-                commands.bindStorageTexture(kResolveRejectionSlot, *m_diagnosticFallback, {},
+                commands.bindStorageTexture(kResolveRejectionSlot, m_diagnosticFallback.rhi(), {},
                                             rojoRHI::StorageAccess::Write);
             }
             if (reprojectedWanted) {
@@ -177,7 +177,7 @@ void TemporalResolve::declareReconstruction(
                 commands.bindStorageTexture(kResolveReprojectedSlot, texture, {},
                                             rojoRHI::StorageAccess::Write);
             } else {
-                commands.bindStorageTexture(kResolveReprojectedSlot, *m_diagnosticFallback, {},
+                commands.bindStorageTexture(kResolveReprojectedSlot, m_diagnosticFallback.rhi(), {},
                                             rojoRHI::StorageAccess::Write);
             }
             commands.bindStorageBuffer(kResolveExposureSlot, exposure,

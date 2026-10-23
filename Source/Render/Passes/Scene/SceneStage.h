@@ -6,7 +6,9 @@
 #pragma once
 
 #include "Core/Diagnostics/Result.h"
+#include "Engine/Gpu/GpuBuffer.h"
 #include "Engine/Gpu/GpuContext.h"
+#include "Engine/Gpu/GpuTexture.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/Scene/DrawSubmission.h"
 #include "Render/Passes/Temporal/TemporalHistory.h"
@@ -53,13 +55,13 @@ struct SceneStageInputs {
     std::array<float, 4> clearColor; ///< Authored sRGB color; alpha is passed through.
     float timeSeconds;               ///< Frame clock uploaded to PassUniforms.time.
     bool temporalEnabled;            ///< Selects motion pipelines and extra attachments.
-    rojoRHI::Texture* whiteTexture;  ///< Neutral material-factor fallback.
-    rojoRHI::Texture* flatNormalTexture; ///< Tangent-space positive-Z normal fallback.
-    rojoRHI::Texture* blackCubeTexture;  ///< Zero-radiance environment fallback.
-    rojoRHI::Texture* zeroDfgTexture;    ///< Zero split-sum reconstruction fallback.
-    rojoRHI::Sampler* linearSampler;     ///< Material sampler.
-    rojoRHI::Sampler* shadowSampler;     ///< Reversed-depth comparison sampler.
-    rojoRHI::Sampler* iblSampler;        ///< Clamped environment sampler.
+    const engine::GpuTexture* whiteTexture;      ///< Neutral material-factor fallback.
+    const engine::GpuTexture* flatNormalTexture; ///< Tangent-space positive-Z normal fallback.
+    const engine::GpuTexture* blackCubeTexture;  ///< Zero-radiance environment fallback.
+    const engine::GpuTexture* zeroDfgTexture;    ///< Zero split-sum reconstruction fallback.
+    rojoRHI::Sampler* linearSampler;             ///< Material sampler.
+    rojoRHI::Sampler* shadowSampler;             ///< Reversed-depth comparison sampler.
+    rojoRHI::Sampler* iblSampler;                ///< Clamped environment sampler.
 };
 
 /// Owns scene and sky pipeline variants; Renderer keeps it alive through graph execution.
@@ -92,9 +94,9 @@ private:
 
     // Replay needs valid bindings even for unused slots. Immutable fallbacks stay outside the
     // graph so zero-light declarations retain their resource and pass topology.
-    std::unique_ptr<rojoRHI::Buffer> m_fallbackLightRows;
-    std::unique_ptr<rojoRHI::Buffer> m_fallbackClusterGrid;
-    std::unique_ptr<rojoRHI::Buffer> m_fallbackClusterIndices;
+    engine::GpuBuffer m_fallbackLightRows;
+    engine::GpuBuffer m_fallbackClusterGrid;
+    engine::GpuBuffer m_fallbackClusterIndices;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_sceneLibrary;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_sceneAutoLibrary;
     std::array<engine::GpuOwned<rojoRHI::ShaderLibrary>, 2> m_maskSceneLibraries;

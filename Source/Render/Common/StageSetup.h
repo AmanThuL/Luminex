@@ -8,6 +8,7 @@
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Gpu/GpuContext.h"
 #include "Engine/Gpu/GpuOwned.h"
+#include "Engine/Gpu/GpuTexture.h"
 
 #include <rojoRHI/RHI.h>
 
@@ -26,9 +27,10 @@ rojoRHI::GraphicsPipelineDesc fullscreenPipelineDesc(rojoRHI::ShaderLibrary* lib
                                                      std::string_view label);
 
 // Initializes one two-dimensional texel or all six cube faces from the same source bytes.
-lmx::Result<std::unique_ptr<rojoRHI::Texture>>
-createTexel(rojoRHI::Device& device, rojoRHI::Format format, rojoRHI::TextureKind kind,
-            std::span<const std::byte> bytes, std::string_view label);
+lmx::Result<engine::GpuTexture> createTexel(rojoRHI::Device& device, rojoRHI::Format format,
+                                            rojoRHI::TextureKind kind,
+                                            std::span<const std::byte> bytes,
+                                            std::string_view label);
 
 // Libraries outlive the pipelines that were created from them, as in each stage owner.
 struct ComputePipelines {

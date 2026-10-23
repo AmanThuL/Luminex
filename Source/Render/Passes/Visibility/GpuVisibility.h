@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 #include "Core/Diagnostics/Result.h"
+#include "Engine/Gpu/GpuBuffer.h"
 #include "Engine/Gpu/GpuContext.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/Visibility/VisibilityTables.h"
@@ -52,7 +53,7 @@ public:
 private:
     explicit GpuVisibility(engine::GpuContext& gpu) : m_gpu(gpu), m_device(gpu.device()) {}
     struct Slot {
-        std::unique_ptr<rojoRHI::Buffer> candidates, runs, chunks, views, states, counters;
+        engine::GpuBuffer candidates, runs, chunks, views, states, counters;
         std::vector<std::byte> candidateBytes, runBytes, chunkBytes, viewBytes;
         uint32_t capacity = 0;
         bool used = false;
@@ -63,8 +64,8 @@ private:
         VisibilityParams params;
         std::vector<InstanceVisibility> expected;
         std::vector<rojoRHI::DrawIndexedIndirectArgs> geometry;
-        rojoRHI::Buffer *states = nullptr, *counters = nullptr, *rows = nullptr,
-                        *arguments = nullptr;
+        const engine::GpuBuffer *states = nullptr, *counters = nullptr, *rows = nullptr,
+                                *arguments = nullptr;
     };
     lmx::Result<void> prepareSlot(Slot& slot, const VisibilityTables& tables);
     VisibilityStatus readback(Pending& pending);
@@ -72,7 +73,7 @@ private:
     rojoRHI::Device& m_device;
     std::array<engine::GpuOwned<rojoRHI::ShaderLibrary>, 5> m_libraries;
     std::array<std::unique_ptr<rojoRHI::ComputePipeline>, 5> m_pipelines;
-    std::unique_ptr<rojoRHI::Buffer> m_emptyInstances, m_emptyMeshes;
+    engine::GpuBuffer m_emptyInstances, m_emptyMeshes;
     std::array<Slot, 3> m_slots;
     std::vector<Pending> m_pending;
     std::vector<VisibilityStatus> m_retired;

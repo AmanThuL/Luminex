@@ -36,7 +36,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& c
                                 .sceneBuffers = imports.sceneBuffers,
                                 .shadowMap = imports.shadowMap,
                                 .lightViewProj = state.shadow.viewProj,
-                                .whiteTexture = m_whiteTexture.get(),
+                                .whiteTexture = &m_whiteTexture,
                                 .linearSampler = m_linearSampler.get()});
     const GraphTexture sceneColorRead = m_sceneStage->declare(
         graph, commands, view,
@@ -63,10 +63,10 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& c
          .clearColor = {clearColor[0], clearColor[1], clearColor[2], clearColor[3]},
          .timeSeconds = timeSeconds,
          .temporalEnabled = state.temporalEnabled,
-         .whiteTexture = m_whiteTexture.get(),
-         .flatNormalTexture = m_flatNormalTexture.get(),
-         .blackCubeTexture = m_blackCubeTexture.get(),
-         .zeroDfgTexture = m_zeroDfgTexture.get(),
+         .whiteTexture = &m_whiteTexture,
+         .flatNormalTexture = &m_flatNormalTexture,
+         .blackCubeTexture = &m_blackCubeTexture,
+         .zeroDfgTexture = &m_zeroDfgTexture,
          .linearSampler = m_linearSampler.get(),
          .shadowSampler = m_shadowSampler.get(),
          .iblSampler = m_iblSampler.get()});
@@ -200,7 +200,7 @@ void Renderer::render(rojoRHI::CommandList& commands, const engine::Camera& came
     if (barrierForSampling) {
         // For a sampling pass outside this graph: a hand-encoded pass declares nothing, so there
         // is no read for the graph to have derived the transition from.
-        commands.textureBarrier(*m_color, rojoRHI::TextureUse::RenderTarget,
+        commands.textureBarrier(m_color.rhi(), rojoRHI::TextureUse::RenderTarget,
                                 rojoRHI::TextureUse::ShaderRead);
     }
 }

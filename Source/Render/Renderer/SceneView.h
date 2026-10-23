@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "Engine/Gpu/GpuTexture.h"
 #include "Engine/Lights/LocalLight.h"
 
 #include "Engine/Lights/DirectionalLight.h"
@@ -129,7 +130,7 @@ struct SceneView {
     /// one alone would draw nothing or draw black, so the renderer skips the pass unless it has
     /// the pair.
     std::optional<engine::MeshRow> skySphere;
-    rojoRHI::Texture* skyCubemap = nullptr; ///< Borrowed sky radiance cubemap.
+    const engine::GpuTexture* skyCubemap = nullptr; ///< Borrowed sky radiance cubemap.
     /// The scene's image-based lighting, generated from the same environment `skyCubemap` shows
     /// (Source/Engine/Asset/Texture/Ibl.h): a cosine-convolved irradiance cube, a GGX-prefiltered
     /// radiance chain, and the split-sum DFG table. This is what replaced the flat ambient term --
@@ -140,9 +141,9 @@ struct SceneView {
     /// renderer substitutes its black-cube and zero-DFG fallbacks, which make both image-based
     /// terms evaluate to zero. A caller that builds a SceneView by hand -- every test that probes
     /// direct lighting on its own -- therefore renders without constructing an IBL set.
-    rojoRHI::Texture* irradiance = nullptr;     ///< Borrowed diffuse IBL cubemap.
-    rojoRHI::Texture* prefilteredEnv = nullptr; ///< Borrowed specular IBL cubemap chain.
-    rojoRHI::Texture* dfgLut = nullptr;         ///< Borrowed split-sum lookup table.
+    const engine::GpuTexture* irradiance = nullptr;     ///< Borrowed diffuse IBL cubemap.
+    const engine::GpuTexture* prefilteredEnv = nullptr; ///< Borrowed specular IBL cubemap chain.
+    const engine::GpuTexture* dfgLut = nullptr;         ///< Borrowed split-sum lookup table.
     /// xyz centre, w radius. The shadow ortho frustum is fitted to exactly this, so a sphere that
     /// does not contain the scene loses the geometry outside it from the shadow map.
     glm::vec4 boundingSphere{0.0f, 0.0f, 0.0f, 1.0f};

@@ -7,6 +7,7 @@
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Geometry/Mesh.h"
 #include "Engine/Gpu/GpuContext.h"
+#include "Engine/Gpu/GpuTexture.h"
 #include "Engine/View/Camera.h"
 #include "Render/Common/Formats.h"
 #include "Render/Graph/RenderGraph.h"
@@ -111,7 +112,7 @@ public:
 
     /// The finished, display-encoded image: what the viewport shows and what a screenshot reads.
     /// Barriered to ShaderRead when render() returned with barrierForSampling == true.
-    rojoRHI::Texture& colorTarget();
+    const engine::GpuTexture& colorTarget();
 
     /// Colour domain of colorTarget(), shared by presentation, capture and diagnostics.
     constexpr DisplayDomain displayDomain() const { return kSdrDisplayDomain; }
@@ -159,9 +160,9 @@ public:
     /// The frame's motion target in kMotionFormat, allocated with the scene targets and so never
     /// null after a successful create(). Borrowed: the renderer owns it and replaces it on
     /// resize().
-    rojoRHI::Texture* motionTarget() { return m_motion.get(); }
+    rojoRHI::Texture* motionTarget() { return &m_motion.rhi(); }
     /// Returns the borrowed reactive attachment, with motionTarget ownership and readback terms.
-    rojoRHI::Texture* reactiveTarget() { return m_reactive.get(); }
+    rojoRHI::Texture* reactiveTarget() { return &m_reactive.rhi(); }
 
     /// The colour history slot the frame just declared wrote, in kSceneColorFormat: the resolve's
     /// output under NativeTaa and the raw copy under Raw, so it always holds that frame's output.
@@ -237,15 +238,15 @@ private:
     std::unique_ptr<DisplayStage> m_displayStage;
     // The scene renders into m_hdrColor and the display transform resolves it into m_color, so
     // the two always share an extent and are replaced together by resize().
-    std::unique_ptr<rojoRHI::Texture> m_hdrColor;
-    std::unique_ptr<rojoRHI::Texture> m_color;
-    std::unique_ptr<rojoRHI::Texture> m_shadowMap;
+    engine::GpuTexture m_hdrColor;
+    engine::GpuTexture m_color;
+    engine::GpuTexture m_shadowMap;
     // Allocated with the scene targets and replaced by resize() like them, whether or not any
     // frame declares the temporal path: the allocation is permanent and reported through
     // TemporalStatus::historyBytes. Freeing on disable would drop memory the frames still in
     // flight hold in their residency sets, and the caller's idle guarantee covers resize() alone.
-    std::unique_ptr<rojoRHI::Texture> m_motion;
-    std::unique_ptr<rojoRHI::Texture> m_reactive;
+    engine::GpuTexture m_motion;
+    engine::GpuTexture m_reactive;
     // The reconstruction stage, which owns both history pairs -- the depth the scene pass renders
     // into included -- and every pass that reads or writes them. Created with the renderer and
     // resized alongside the scene targets, so its slots always share their extent.
@@ -256,10 +257,10 @@ private:
     // shades to the right answer rather than nothing at all: white is the identity for the
     // material factors, a flat normal leaves the tangent frame alone, and a black cube plus a zero
     // DFG table make both image-based terms vanish.
-    std::unique_ptr<rojoRHI::Texture> m_whiteTexture;
-    std::unique_ptr<rojoRHI::Texture> m_flatNormalTexture;
-    std::unique_ptr<rojoRHI::Texture> m_blackCubeTexture;
-    std::unique_ptr<rojoRHI::Texture> m_zeroDfgTexture;
+    engine::GpuTexture m_whiteTexture;
+    engine::GpuTexture m_flatNormalTexture;
+    engine::GpuTexture m_blackCubeTexture;
+    engine::GpuTexture m_zeroDfgTexture;
     std::unique_ptr<rojoRHI::Sampler> m_linearSampler;
     std::unique_ptr<rojoRHI::Sampler> m_shadowSampler;
     std::unique_ptr<rojoRHI::Sampler> m_iblSampler;

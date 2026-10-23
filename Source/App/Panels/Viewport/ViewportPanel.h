@@ -40,13 +40,13 @@ struct ViewportPanelResult {
 
 /// State borrowed while drawing the scene image and diagnostic overlays.
 struct ViewportPanelContext {
-    render::Renderer& renderer;         ///< Scene target and retired diagnostics.
-    rojoRHI::Texture& outlineTarget;    ///< Separate editor selection presentation.
-    bool& showOutline;                  ///< Global selection outline preference.
-    const engine::Scene& scene;         ///< Selected geometry and enabled light count.
-    EditorRenderSettings& settings;     ///< Diagnostic request edited by the chip.
-    TemporalEditorState& temporalState; ///< Provenance for retired occlusion overlays.
-    EditorSelection selection;          ///< Resolved selection for editor-only overlays.
+    render::Renderer& renderer;              ///< Scene target and retired diagnostics.
+    const engine::GpuTexture& outlineTarget; ///< Separate editor selection presentation.
+    bool& showOutline;                       ///< Global selection outline preference.
+    const engine::Scene& scene;              ///< Selected geometry and enabled light count.
+    EditorRenderSettings& settings;          ///< Diagnostic request edited by the chip.
+    TemporalEditorState& temporalState;      ///< Provenance for retired occlusion overlays.
+    EditorSelection selection;               ///< Resolved selection for editor-only overlays.
     /// Reconstruction after vendor fallback; gates the chip's native-only temporal entries.
     render::ReconstructionMode effectiveReconstruction;
     const VisibilityDisplay* visibilityDisplay = nullptr; ///< Matched retired bounds.

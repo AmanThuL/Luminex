@@ -220,7 +220,7 @@ TEST_CASE("loadSponzaScene's full SceneView renders through Renderer without exh
     const std::array<int, 3> clearBytes = lmx::test::displayBytes(
         {lmx::test::srgbDecode(0.05f), lmx::test::srgbDecode(0.07f), lmx::test::srgbDecode(0.10f)});
     std::vector<uint8_t> pixels(size_t{kProbeSize} * kProbeSize * 4);
-    (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+    (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
     bool sawNonClearPixel = false;
     for (size_t i = 0; i + 3 < pixels.size(); i += 4) {
         if (pixels[i] != clearBytes[2] || pixels[i + 1] != clearBytes[1] ||
@@ -318,7 +318,7 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
     gpu->device().waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kProbeSize} * kProbeSize * 4);
-    (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+    (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
 
     const auto pixelAt = [&](uint32_t x, uint32_t y) {
         const size_t offset = (size_t{y} * kProbeSize + x) * 4;

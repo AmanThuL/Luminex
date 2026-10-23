@@ -105,14 +105,14 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
 
     // The shadow map transitions from depth attachment to sampled texture each frame.
     {
-        auto shadowMap = device.createTexture({.width = kShadowMapSize,
-                                               .height = kShadowMapSize,
-                                               .format = rojoRHI::Format::D32Float,
-                                               .renderTarget = true,
-                                               .sampled = true,
-                                               .label = "lmx.render.shadowMap"});
+        auto shadowMap = engine::GpuTexture::create(device, {.width = kShadowMapSize,
+                                                             .height = kShadowMapSize,
+                                                             .format = rojoRHI::Format::D32Float,
+                                                             .renderTarget = true,
+                                                             .sampled = true,
+                                                             .label = "lmx.render.shadowMap"});
         if (!shadowMap) {
-            return std::unexpected(engine::gpuError(shadowMap.error()));
+            return std::unexpected(shadowMap.error());
         }
         self->m_shadowMap = std::move(*shadowMap);
     }
@@ -220,26 +220,26 @@ lmx::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
     // Scene-linear radiance: rendered into by the scene and sky passes, sampled by the display
     // pass. Readable on the same terms as the display target, because a caller that wants to
     // inspect radiance rather than the picture has nowhere else to read it from.
-    auto hdrColor = m_device.createTexture({.width = width,
-                                            .height = height,
-                                            .format = kSceneColorFormat,
-                                            .renderTarget = true,
-                                            .sampled = true,
-                                            .cpuReadback = m_cpuReadback,
-                                            .label = "lmx.render.sceneColorHdr"});
+    auto hdrColor = engine::GpuTexture::create(m_device, {.width = width,
+                                                          .height = height,
+                                                          .format = kSceneColorFormat,
+                                                          .renderTarget = true,
+                                                          .sampled = true,
+                                                          .cpuReadback = m_cpuReadback,
+                                                          .label = "lmx.render.sceneColorHdr"});
     if (!hdrColor) {
-        return std::unexpected(engine::gpuError(hdrColor.error()));
+        return std::unexpected(hdrColor.error());
     }
     // The display transform's output: what the viewport samples and a screenshot reads back.
-    auto color = m_device.createTexture({.width = width,
-                                         .height = height,
-                                         .format = kDisplayFormat,
-                                         .renderTarget = true,
-                                         .sampled = true,
-                                         .cpuReadback = m_cpuReadback,
-                                         .label = "lmx.render.displayColor"});
+    auto color = engine::GpuTexture::create(m_device, {.width = width,
+                                                       .height = height,
+                                                       .format = kDisplayFormat,
+                                                       .renderTarget = true,
+                                                       .sampled = true,
+                                                       .cpuReadback = m_cpuReadback,
+                                                       .label = "lmx.render.displayColor"});
     if (!color) {
-        return std::unexpected(engine::gpuError(color.error()));
+        return std::unexpected(color.error());
     }
     // Swap the targets only after every allocation succeeds.
     m_hdrColor = std::move(*hdrColor);
@@ -281,28 +281,28 @@ lmx::Result<void> Renderer::createTemporalTargets() {
 
     // Readable on the same terms as the scene targets: motion is the one output a GPU test has to
     // compare against an arithmetic oracle rather than against a picture.
-    auto motion = m_device.createTexture({.width = m_width,
-                                          .height = m_height,
-                                          .format = kMotionFormat,
-                                          .renderTarget = true,
-                                          .sampled = true,
-                                          .cpuReadback = m_cpuReadback,
-                                          .label = "lmx.render.motion"});
+    auto motion = engine::GpuTexture::create(m_device, {.width = m_width,
+                                                        .height = m_height,
+                                                        .format = kMotionFormat,
+                                                        .renderTarget = true,
+                                                        .sampled = true,
+                                                        .cpuReadback = m_cpuReadback,
+                                                        .label = "lmx.render.motion"});
     if (!motion) {
-        return std::unexpected(engine::gpuError(motion.error()));
+        return std::unexpected(motion.error());
     }
     // The per-pixel reactive weight: the scene pass's second extra attachment, read by the resolve
     // alone. One byte per pixel, and colour-renderable rather than storage, because a fragment
     // writes it as an ordinary attachment.
-    auto reactive = m_device.createTexture({.width = m_width,
-                                            .height = m_height,
-                                            .format = kReactiveFormat,
-                                            .renderTarget = true,
-                                            .sampled = true,
-                                            .cpuReadback = m_cpuReadback,
-                                            .label = "lmx.render.reactive"});
+    auto reactive = engine::GpuTexture::create(m_device, {.width = m_width,
+                                                          .height = m_height,
+                                                          .format = kReactiveFormat,
+                                                          .renderTarget = true,
+                                                          .sampled = true,
+                                                          .cpuReadback = m_cpuReadback,
+                                                          .label = "lmx.render.reactive"});
     if (!reactive) {
-        return std::unexpected(engine::gpuError(reactive.error()));
+        return std::unexpected(reactive.error());
     }
 
     m_motion = std::move(*motion);

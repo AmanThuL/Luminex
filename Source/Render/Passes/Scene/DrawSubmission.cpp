@@ -4,7 +4,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Passes/Scene/DrawSubmission.h"
 #include "Core/Diagnostics/Assert.h"
-#include "Engine/Gpu/GpuError.h"
 #include "Render/Renderer/SceneView.h"
 #include <algorithm>
 #include <limits>
@@ -88,25 +87,26 @@ lmx::Result<void> DrawSubmission::prepare(uint64_t frameNumber, const SceneView&
         std::array<Slot, 3> replacements;
         for (uint32_t i = 0; i < replacements.size(); ++i) {
             const auto suffix = std::to_string(i);
-            auto rows = m_device.createBuffer({.size = uint64_t{capacity} * sizeof(uint32_t),
-                                               .storageRead = true,
-                                               .storageWrite = true,
-                                               .cpuReadback = true,
-                                               .cpuWrite = true,
-                                               .label = "lmx.draw.rows." + suffix},
-                                              nullptr);
+            const std::string rowsLabel = "lmx.draw.rows." + suffix;
+            auto rows =
+                engine::GpuBuffer::create(m_device, {.size = uint64_t{capacity} * sizeof(uint32_t),
+                                                     .storageRead = true,
+                                                     .storageWrite = true,
+                                                     .cpuReadback = true,
+                                                     .cpuWrite = true,
+                                                     .label = rowsLabel});
             if (!rows) {
-                return std::unexpected(engine::gpuError(rows.error()));
+                return std::unexpected(rows.error());
             }
-            auto args = m_device.createBuffer(
-                {.size = uint64_t{capacity} * sizeof(rojoRHI::DrawIndexedIndirectArgs),
-                 .storageWrite = true,
-                 .cpuReadback = true,
-                 .cpuWrite = true,
-                 .label = "lmx.draw.args." + suffix},
-                nullptr);
+            const std::string argsLabel = "lmx.draw.args." + suffix;
+            auto args = engine::GpuBuffer::create(
+                m_device, {.size = uint64_t{capacity} * sizeof(rojoRHI::DrawIndexedIndirectArgs),
+                           .storageWrite = true,
+                           .cpuReadback = true,
+                           .cpuWrite = true,
+                           .label = argsLabel});
             if (!args) {
-                return std::unexpected(engine::gpuError(args.error()));
+                return std::unexpected(args.error());
             }
             replacements[i] = {.rows = std::move(*rows),
                                .arguments = std::move(*args),
@@ -122,12 +122,13 @@ lmx::Result<void> DrawSubmission::prepare(uint64_t frameNumber, const SceneView&
     }
     auto& slot = m_slots[frameNumber % m_slots.size()];
     if (view.classifyMode == ClassifyMode::Cpu && !prepared.rows.empty())
-        slot.rows->write(0, prepared.rows.data(), prepared.rows.size() * sizeof(uint32_t));
+        slot.rows.rhi().write(0, prepared.rows.data(), prepared.rows.size() * sizeof(uint32_t));
     if (view.classifyMode == ClassifyMode::Cpu && !prepared.arguments.empty())
-        slot.arguments->write(0, prepared.arguments.data(),
-                              prepared.arguments.size() * sizeof(rojoRHI::DrawIndexedIndirectArgs));
-    prepared.scene.rows = prepared.shadow.rows = slot.rows.get();
-    prepared.scene.arguments = prepared.shadow.arguments = slot.arguments.get();
+        slot.arguments.rhi().write(0, prepared.arguments.data(),
+                                   prepared.arguments.size() *
+                                       sizeof(rojoRHI::DrawIndexedIndirectArgs));
+    prepared.scene.rows = prepared.shadow.rows = &slot.rows;
+    prepared.scene.arguments = prepared.shadow.arguments = &slot.arguments;
     m_stats.sceneCommands = static_cast<uint32_t>(prepared.scene.runs.size());
     m_stats.shadowCommands = static_cast<uint32_t>(prepared.shadow.runs.size());
     m_stats.instancedRuns = 0;

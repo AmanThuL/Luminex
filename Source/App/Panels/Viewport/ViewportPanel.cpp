@@ -229,14 +229,15 @@ ViewportPanelResult drawViewportPanel(bool& open, const ViewportPanelContext& co
         result.measured = imageSize.x > 0.0f && imageSize.y > 0.0f;
         result.focused = ImGui::IsWindowFocused();
         if (result.measured) {
-            const bool outlineReady = context.outlineTarget.width() == context.renderer.width() &&
-                                      context.outlineTarget.height() == context.renderer.height();
+            const bool outlineReady =
+                context.outlineTarget.desc().width == context.renderer.width() &&
+                context.outlineTarget.desc().height == context.renderer.height();
             ImGui::PushStyleColor(ImGuiCol_Border, editor_style::color(ThemeRole::SurfaceViewport));
-            ImGui::Image(rojoRHI::metal4::imguiTextureID(context.showOutline && outlineReady &&
-                                                                 context.selection.subject ==
-                                                                     EditorSubject::Object
-                                                             ? context.outlineTarget
-                                                             : context.renderer.colorTarget()),
+            ImGui::Image(rojoRHI::metal4::imguiTextureID(
+                             context.showOutline && outlineReady &&
+                                     context.selection.subject == EditorSubject::Object
+                                 ? context.outlineTarget.rhi()
+                                 : context.renderer.colorTarget().rhi()),
                          imageSize);
             ImGui::PopStyleColor();
             const auto outerOrigin = ImGui::GetItemRectMin();

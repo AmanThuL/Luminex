@@ -79,10 +79,10 @@ OutlineFrame outlineFrame(Device& device, TransientPool& pool, Renderer& rendere
     device.endFrame(nullptr);
     device.waitIdle();
     result.display.resize(kSize * kSize * 4);
-    renderer.colorTarget().readback(result.display.data(), result.display.size());
+    renderer.colorTarget().rhi().readback(result.display.data(), result.display.size());
     if (outline) {
         result.outlined.resize(result.display.size());
-        outline->target().readback(result.outlined.data(), result.outlined.size());
+        outline->target().rhi().readback(result.outlined.data(), result.outlined.size());
     }
     result.scene.resize(kSize * kSize * 4);
     renderer.hdrColorTarget().readback(result.scene.data(), result.scene.size() * sizeof(uint16_t));

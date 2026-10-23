@@ -211,7 +211,7 @@ void compareHistories(lmx::engine::GpuContext& gpu, const char* sceneName,
                         if (cell.reconstruction != ReconstructionMode::VendorTemporal)
                             image[4] = readTexture(*renderer.historyTarget(), 8, width, height);
                     }
-                    image[5] = readTexture(renderer.colorTarget(), 4, width, height);
+                    image[5] = readTexture(renderer.colorTarget().rhi(), 4, width, height);
                     image[6].resize(renderer.exposureBuffer().size());
                     renderer.exposureBuffer().readback(image[6].data(), image[6].size());
                     const std::array buffers{view.tables.instances, view.tables.materials,
@@ -303,13 +303,14 @@ TEST_CASE("zero-light requested modes preserve controlled GPU histories",
     const uint32_t skyTexel = 0xffff8000u;
     const rojoRHI::TextureMip skyMip{.data = &skyTexel, .bytesPerRow = 4};
     const std::array skyFaces{skyMip, skyMip, skyMip, skyMip, skyMip, skyMip};
-    auto cubemap = gpu->device().createTexture({.width = 1,
-                                                .height = 1,
-                                                .format = rojoRHI::Format::RGBA8Unorm,
-                                                .kind = rojoRHI::TextureKind::Cube,
-                                                .sampled = true,
-                                                .label = "lmx.test.zeroLight.skyTexture"},
-                                               skyFaces);
+    auto cubemap = lmx::engine::GpuTexture::create(gpu->device(),
+                                                   {.width = 1,
+                                                    .height = 1,
+                                                    .format = rojoRHI::Format::RGBA8Unorm,
+                                                    .kind = rojoRHI::TextureKind::Cube,
+                                                    .sampled = true,
+                                                    .label = "lmx.test.zeroLight.skyTexture"},
+                                                   skyFaces);
     REQUIRE(cubemap);
     std::array<uint32_t, 64> maskTexels{};
     for (size_t i = 0; i < maskTexels.size(); ++i)
@@ -329,7 +330,7 @@ TEST_CASE("zero-light requested modes preserve controlled GPU histories",
     const std::array disabled{lmx::engine::LocalLight{.range = 2.0f, .enabled = false}};
     FixtureSceneView fixture = litSceneView(items);
     fixture.skySphere = &*sky;
-    fixture.skyCubemap = cubemap->get();
+    fixture.skyCubemap = &*cubemap;
     fixture.localLights = disabled;
     compareHistories(*gpu, "opaque-mask-sky-disabled", sceneCamera(), 160, 90, [&](uint64_t) {
         auto view = lmx::test::prepareSceneView(fixture, gpu->device());

@@ -35,14 +35,14 @@ SceneView buildSceneView(const engine::Scene& scene, std::vector<engine::DrawIte
         LMX_ASSERT(scene.skySphere && scene.tryMesh(*scene.skySphere),
                    "sky mesh identity is invalid");
         sceneView.skySphere = *scene.tryMesh(*scene.skySphere);
-        sceneView.skyCubemap = &scene.skyCubemap.rhi();
+        sceneView.skyCubemap = &scene.skyCubemap;
     }
     // The IBL set is generated from that same sky and published with it, so a scene that shows a
     // sky also lights from it. Forwarded unconditionally: an empty owner becomes the null the
     // renderer's fallbacks already handle.
-    sceneView.irradiance = scene.irradianceMap ? &scene.irradianceMap.rhi() : nullptr;
-    sceneView.prefilteredEnv = scene.prefilteredEnvMap ? &scene.prefilteredEnvMap.rhi() : nullptr;
-    sceneView.dfgLut = scene.dfgLut ? &scene.dfgLut.rhi() : nullptr;
+    sceneView.irradiance = scene.irradianceMap ? &scene.irradianceMap : nullptr;
+    sceneView.prefilteredEnv = scene.prefilteredEnvMap ? &scene.prefilteredEnvMap : nullptr;
+    sceneView.dfgLut = scene.dfgLut ? &scene.dfgLut : nullptr;
     const auto& look = scene.look;
     sceneView.shadowFilter =
         look.shadowFilter == asset::ShadowFilter::PCSS ? ShadowFilter::PCSS : ShadowFilter::PCF;

@@ -158,17 +158,18 @@ std::vector<DeclaredSnapshot> zeroLightReplay(bool switches, bool highWater,
         makeBuffer(sizeof(instances), instances.data(), "test.zeroLight.instances");
     const engine::GpuBuffer materialBuffer =
         makeBuffer(sizeof(materials), materials.data(), "test.zeroLight.materials");
-    FakeDevice::TextureObject sky({.width = 1,
-                                   .height = 1,
-                                   .format = rojoRHI::Format::RGBA8Unorm,
-                                   .kind = rojoRHI::TextureKind::Cube,
-                                   .sampled = true,
-                                   .label = "test.zeroLightSky"});
+    auto sky = engine::GpuTexture::create(device, {.width = 1,
+                                                   .height = 1,
+                                                   .format = rojoRHI::Format::RGBA8Unorm,
+                                                   .kind = rojoRHI::TextureKind::Cube,
+                                                   .sampled = true,
+                                                   .label = "test.zeroLightSky"});
+    REQUIRE(sky);
     render::SceneView view;
     view.items = items;
     view.visibilityEnabled = false;
     view.skySphere = mesh;
-    view.skyCubemap = &sky;
+    view.skyCubemap = &*sky;
     view.tables = {.vertices = &vertices,
                    .indices = &indices,
                    .meshes = &meshBuffer,

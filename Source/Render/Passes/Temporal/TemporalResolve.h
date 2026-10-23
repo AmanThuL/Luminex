@@ -7,6 +7,7 @@
 
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Gpu/GpuContext.h"
+#include "Engine/Gpu/GpuTexture.h"
 #include "Engine/Gpu/PassTiming.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/Temporal/Temporal.h"
@@ -278,15 +279,15 @@ private:
     // Ping-pong by declared temporal frame parity. Every temporal frame renders depth into
     // m_depth[slot], reads m_depth[1 - slot] as its previous depth, and writes m_color[slot] while
     // reading m_color[1 - slot] -- so this frame's colour slot always holds this frame's output.
-    std::unique_ptr<rojoRHI::Texture> m_depth[2];
-    std::unique_ptr<rojoRHI::Texture> m_color[2];
+    engine::GpuTexture m_depth[2];
+    engine::GpuTexture m_color[2];
     // The 1x1 storage-write texture the resolve binds where a diagnostic is not declared. The
     // argument table entry must hold a valid writable texture even on the frames the kernel's
     // corresponding writeDiagnostics bit makes it write nothing.
-    std::unique_ptr<rojoRHI::Texture> m_diagnosticFallback;
+    engine::GpuTexture m_diagnosticFallback;
     // The 1x1 sampled texture the debug view binds for whichever inputs its view does not read.
     // Every texel the shader loads lies outside it, and an out-of-bounds Load answers with zeroes.
-    std::unique_ptr<rojoRHI::Texture> m_viewFallback;
+    engine::GpuTexture m_viewFallback;
     // What the last frame to touch each colour slot left it as. CopyDestination is what M6.1's
     // commit left, and what an untouched slot is imported as before any frame has written it.
     TextureUse m_colorUse[2] = {TextureUse::CopyDestination, TextureUse::CopyDestination};

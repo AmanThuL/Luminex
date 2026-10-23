@@ -199,7 +199,7 @@ GraphTexture TemporalResolve::declareDebugView(RenderGraph& graph, rojoRHI::Comm
                       const auto bindOptional = [&](uint32_t slot, bool wanted,
                                                     GraphTexture handle) {
                           if (!wanted) {
-                              commands.bindTexture(slot, *m_viewFallback);
+                              commands.bindTexture(slot, m_viewFallback.rhi());
                               return;
                           }
                           auto& texture = lmx::render::texture(resources, handle);

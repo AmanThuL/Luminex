@@ -201,7 +201,7 @@ std::vector<ScenarioFrame> renderSequence(rojoRHI::Device& device, Renderer& ren
         record.history = readHalf4(*renderer.historyTarget());
         record.raw = readHalf4(renderer.hdrColorTarget());
         record.display.resize(kScenarioPixels * 4);
-        renderer.colorTarget().readback(record.display.data(), record.display.size());
+        renderer.colorTarget().rhi().readback(record.display.data(), record.display.size());
         record.status = renderer.temporalStatus();
         result.push_back(std::move(record));
     }
@@ -452,7 +452,7 @@ TEST_CASE("vendor reconstruction fills the display extent", "[gpu][temporal][ven
     REQUIRE(empty.has_value());
     renderFrame(gpu->device(), **empty, camera, scenarioSceneView({}, {0.0f, 0.0f, -1.0f}));
     std::vector<uint8_t> background(kScenarioPixels * 4);
-    (*empty)->colorTarget().readback(background.data(), background.size());
+    (*empty)->colorTarget().rhi().readback(background.data(), background.size());
     const std::array<FixtureDrawItem, 1> items = {
         staticItem(*plane, facingPlaneModel(-2.0f), {0.6f, 0.6f, 0.6f, 1.0f})};
     for (float scale : {0.5f, 1.0f}) {

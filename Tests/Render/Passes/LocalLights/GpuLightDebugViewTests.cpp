@@ -272,7 +272,7 @@ TEST_CASE("light diagnostics reuse actual temporal depth without contaminating h
                 gpu->device().waitIdle();
                 if (debug && frame < 6) {
                     std::vector<uint8_t> pixels(67 * 43 * 4);
-                    (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+                    (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
                     for (size_t at = 0; at < pixels.size(); at += 4) {
                         REQUIRE(pixels[at] == 0);
                         REQUIRE(pixels[at + 1] == 0);
@@ -283,7 +283,7 @@ TEST_CASE("light diagnostics reuse actual temporal depth without contaminating h
             }
             (*renderer)->drainLightingAfterIdle();
             std::vector<uint8_t> image(67 * 43 * 4);
-            (*renderer)->colorTarget().readback(image.data(), image.size());
+            (*renderer)->colorTarget().rhi().readback(image.data(), image.size());
             if (!debug)
                 reference = std::move(image);
             else

@@ -161,24 +161,26 @@ lmx::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(engine::Gp
     }
 
     {
-        auto texture = device.createTexture({.width = 1,
-                                             .height = 1,
-                                             .format = rojoRHI::Format::RGBA16Float,
-                                             .storageWrite = true,
-                                             .label = "lmx.render.temporalDiagnosticFallback"});
+        auto texture =
+            engine::GpuTexture::create(device, {.width = 1,
+                                                .height = 1,
+                                                .format = rojoRHI::Format::RGBA16Float,
+                                                .storageWrite = true,
+                                                .label = "lmx.render.temporalDiagnosticFallback"});
         if (!texture) {
-            return std::unexpected(engine::gpuError(texture.error()));
+            return std::unexpected(texture.error());
         }
         self->m_diagnosticFallback = std::move(*texture);
     }
     {
-        auto texture = device.createTexture({.width = 1,
-                                             .height = 1,
-                                             .format = rojoRHI::Format::RGBA16Float,
-                                             .sampled = true,
-                                             .label = "lmx.render.temporalViewFallback"});
+        auto texture =
+            engine::GpuTexture::create(device, {.width = 1,
+                                                .height = 1,
+                                                .format = rojoRHI::Format::RGBA16Float,
+                                                .sampled = true,
+                                                .label = "lmx.render.temporalViewFallback"});
         if (!texture) {
-            return std::unexpected(engine::gpuError(texture.error()));
+            return std::unexpected(texture.error());
         }
         self->m_viewFallback = std::move(*texture);
     }
@@ -189,8 +191,8 @@ lmx::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(engine::Gp
 lmx::Result<void> TemporalResolve::resize(uint32_t width, uint32_t height) {
     LMX_ASSERT(width > 0 && height > 0, "TemporalResolve::resize: the extent must be non-empty");
 
-    std::unique_ptr<rojoRHI::Texture> depth[2];
-    std::unique_ptr<rojoRHI::Texture> color[2];
+    engine::GpuTexture depth[2];
+    engine::GpuTexture color[2];
     static constexpr const char* kDepthLabels[2] = {"lmx.render.sceneDepth0",
                                                     "lmx.render.sceneDepth1"};
     static constexpr const char* kColorLabels[2] = {"lmx.render.historyColor0",
@@ -199,28 +201,30 @@ lmx::Result<void> TemporalResolve::resize(uint32_t width, uint32_t height) {
         // Sampled as well as rendered into: the resolve reconstructs a world position from this
         // frame's depth and compares it against the other slot's, and a caller may sample the
         // public depth target after the graph.
-        auto depthTexture = m_device.createTexture({.width = width,
-                                                    .height = height,
-                                                    .format = rojoRHI::Format::D32Float,
-                                                    .renderTarget = true,
-                                                    .sampled = true,
-                                                    .label = kDepthLabels[slot]});
+        auto depthTexture =
+            engine::GpuTexture::create(m_device, {.width = width,
+                                                  .height = height,
+                                                  .format = rojoRHI::Format::D32Float,
+                                                  .renderTarget = true,
+                                                  .sampled = true,
+                                                  .label = kDepthLabels[slot]});
         if (!depthTexture) {
-            return std::unexpected(engine::gpuError(depthTexture.error()));
+            return std::unexpected(depthTexture.error());
         }
         // Storage-write because the resolve writes its slot directly rather than through a copy;
         // sampled because the next frame reprojects it. cpuReadback is what lets a test compare an
         // accumulated frame against the raw one it was built from.
-        auto colorTexture = m_device.createTexture({.width = width,
-                                                    .height = height,
-                                                    .format = rojoRHI::Format::RGBA16Float,
-                                                    .renderTarget = true,
-                                                    .sampled = true,
-                                                    .storageWrite = true,
-                                                    .cpuReadback = m_cpuReadback,
-                                                    .label = kColorLabels[slot]});
+        auto colorTexture =
+            engine::GpuTexture::create(m_device, {.width = width,
+                                                  .height = height,
+                                                  .format = rojoRHI::Format::RGBA16Float,
+                                                  .renderTarget = true,
+                                                  .sampled = true,
+                                                  .storageWrite = true,
+                                                  .cpuReadback = m_cpuReadback,
+                                                  .label = kColorLabels[slot]});
         if (!colorTexture) {
-            return std::unexpected(engine::gpuError(colorTexture.error()));
+            return std::unexpected(colorTexture.error());
         }
         depth[slot] = std::move(*depthTexture);
         color[slot] = std::move(*colorTexture);
@@ -242,16 +246,16 @@ lmx::Result<void> TemporalResolve::resize(uint32_t width, uint32_t height) {
 
 //======================================================================================================================
 rojoRHI::Texture& TemporalResolve::depthSlot(uint32_t slot) {
-    LMX_ASSERT(slot < 2 && m_depth[slot] != nullptr,
+    LMX_ASSERT(slot < 2 && m_depth[slot],
                "TemporalResolve::depthSlot: no such slot -- create() or resize() failed");
-    return *m_depth[slot];
+    return m_depth[slot].rhi();
 }
 
 //======================================================================================================================
 rojoRHI::Texture& TemporalResolve::colorSlot(uint32_t slot) {
-    LMX_ASSERT(slot < 2 && m_color[slot] != nullptr,
+    LMX_ASSERT(slot < 2 && m_color[slot],
                "TemporalResolve::colorSlot: no such slot -- create() or resize() failed");
-    return *m_color[slot];
+    return m_color[slot].rhi();
 }
 
 //======================================================================================================================

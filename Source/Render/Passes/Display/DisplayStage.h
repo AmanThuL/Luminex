@@ -6,6 +6,7 @@
 #pragma once
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Gpu/GpuContext.h"
+#include "Engine/Gpu/GpuTexture.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Renderer/SceneView.h"
 
@@ -34,7 +35,7 @@ private:
 
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_displayLibrary;
     std::unique_ptr<rojoRHI::GraphicsPipeline> m_displayPipeline;
-    std::unique_ptr<rojoRHI::Texture> m_blackBloomFallback;
+    engine::GpuTexture m_blackBloomFallback;
 };
 
 } // namespace lmx::render

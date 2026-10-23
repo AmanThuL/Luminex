@@ -67,15 +67,15 @@ std::unique_ptr<rojoRHI::Buffer> submitTables(rojoRHI::Device& device, engine::S
     view.temporal.reconstruction = render::ReconstructionMode::Raw;
     view.temporal.sceneGeneration = scene.objects.front().id.store;
     renderer.render(commands, engine::Camera{}, view, false);
-    commands.textureBarrier(renderer.colorTarget(), rojoRHI::TextureUse::RenderTarget,
+    commands.textureBarrier(renderer.colorTarget().rhi(), rojoRHI::TextureUse::RenderTarget,
                             rojoRHI::TextureUse::CopySource);
     commands.beginCopyPass("lmx.test.sceneTables.preserveFrame");
-    commands.copyTextureToBuffer(renderer.colorTarget(), {.width = kSize, .height = kSize},
+    commands.copyTextureToBuffer(renderer.colorTarget().rhi(), {.width = kSize, .height = kSize},
                                  **snapshot, {.bytesPerRow = kSize * 4});
     commands.endCopyPass();
-    commands.textureBarrier(renderer.colorTarget(), rojoRHI::TextureUse::CopySource,
+    commands.textureBarrier(renderer.colorTarget().rhi(), rojoRHI::TextureUse::CopySource,
                             rojoRHI::TextureUse::RenderTarget);
-    commands.beginRenderPass({.colorTarget = &renderer.colorTarget(),
+    commands.beginRenderPass({.colorTarget = &renderer.colorTarget().rhi(),
                               .clear = false,
                               .label = "lmx.test.sceneTables.restoreTarget"});
     commands.endRenderPass();

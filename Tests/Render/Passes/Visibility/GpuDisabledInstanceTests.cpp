@@ -51,7 +51,7 @@ ToggleFrame toggleFrame(rojoRHI::Device& device, engine::Scene& scene, render::R
         REQUIRE(check.passed());
         REQUIRE(check.falselyRejectedInstances == 0);
     }
-    auto& target = renderer.colorTarget();
+    auto& target = renderer.colorTarget().rhi();
     std::vector<uint8_t> bytes(size_t{target.width()} * target.height() * 4);
     target.readback(bytes.data(), bytes.size());
     result.digest = sha256Hex(std::as_bytes(std::span(bytes)));

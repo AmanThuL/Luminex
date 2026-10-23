@@ -28,19 +28,17 @@ rojoRHI::GraphicsPipelineDesc fullscreenPipelineDesc(rojoRHI::ShaderLibrary* lib
 }
 
 //======================================================================================================================
-lmx::Result<std::unique_ptr<rojoRHI::Texture>>
-createTexel(rojoRHI::Device& device, rojoRHI::Format format, rojoRHI::TextureKind kind,
-            std::span<const std::byte> bytes, std::string_view label) {
+lmx::Result<engine::GpuTexture> createTexel(rojoRHI::Device& device, rojoRHI::Format format,
+                                            rojoRHI::TextureKind kind,
+                                            std::span<const std::byte> bytes,
+                                            std::string_view label) {
     const rojoRHI::TextureMip mip{.data = bytes.data(), .bytesPerRow = bytes.size()};
     const std::array<rojoRHI::TextureMip, 6> mips{mip, mip, mip, mip, mip, mip};
     const uint32_t faces = kind == rojoRHI::TextureKind::Cube ? 6u : 1u;
-    auto texture = device.createTexture(
+    return engine::GpuTexture::create(
+        device,
         {.width = 1, .height = 1, .format = format, .kind = kind, .sampled = true, .label = label},
         std::span{mips.data(), faces});
-    if (!texture) {
-        return std::unexpected(engine::gpuError(texture.error()));
-    }
-    return std::move(*texture);
 }
 
 //======================================================================================================================

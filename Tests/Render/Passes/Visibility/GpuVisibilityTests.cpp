@@ -65,15 +65,15 @@ std::unique_ptr<rojoRHI::Buffer> submitVisibility(rojoRHI::Device& device, engin
     view.temporal.reconstruction = render::ReconstructionMode::Raw;
     view.temporal.sceneGeneration = scene.objects.front().id.store;
     renderer.render(commands, engine::Camera{}, view, false);
-    commands.textureBarrier(renderer.colorTarget(), rojoRHI::TextureUse::RenderTarget,
+    commands.textureBarrier(renderer.colorTarget().rhi(), rojoRHI::TextureUse::RenderTarget,
                             rojoRHI::TextureUse::CopySource);
     commands.beginCopyPass("lmx.test.sceneTables.preserveFrame");
-    commands.copyTextureToBuffer(renderer.colorTarget(), {.width = kSize, .height = kSize},
+    commands.copyTextureToBuffer(renderer.colorTarget().rhi(), {.width = kSize, .height = kSize},
                                  **snapshot, {.bytesPerRow = kSize * 4});
     commands.endCopyPass();
-    commands.textureBarrier(renderer.colorTarget(), rojoRHI::TextureUse::CopySource,
+    commands.textureBarrier(renderer.colorTarget().rhi(), rojoRHI::TextureUse::CopySource,
                             rojoRHI::TextureUse::RenderTarget);
-    commands.beginRenderPass({.colorTarget = &renderer.colorTarget(),
+    commands.beginRenderPass({.colorTarget = &renderer.colorTarget().rhi(),
                               .clear = false,
                               .label = "lmx.test.sceneTables.restoreTarget"});
     commands.endRenderPass();
@@ -185,7 +185,7 @@ TEST_CASE("draw submission slots grow and retire with paced scene capacity",
     auto scene = visibilityScene();
     REQUIRE(scene.finalize(**device));
     render::DrawSubmission submission(**device);
-    std::array<rojoRHI::Buffer*, 3> rows{};
+    std::array<const lmx::engine::GpuBuffer*, 3> rows{};
     std::array<std::vector<uint32_t>, 3> expected;
     uint64_t grownFrame = 0;
     for (uint32_t frame = 0; frame < 7; ++frame) {
@@ -219,7 +219,7 @@ TEST_CASE("draw submission slots grow and retire with paced scene capacity",
     (*device)->waitIdle();
     for (uint32_t slot = 0; slot < 3; ++slot) {
         std::vector<uint32_t> actual(3);
-        rows[slot]->readback(actual.data(), actual.size() * sizeof(uint32_t));
+        rows[slot]->rhi().readback(actual.data(), actual.size() * sizeof(uint32_t));
         REQUIRE(actual == expected[slot]);
     }
 }

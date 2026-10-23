@@ -49,13 +49,14 @@ void SceneStage::draw(rojoRHI::CommandList& commands, const SceneView& view,
     commands.bindTexture(kShadowTextureSlot, shadowMapTexture);
     // The pass-wide IBL set. Each slot falls back independently, so a SceneView that
     // carries no environment still renders -- with both image-based terms at zero.
-    commands.bindTexture(kIrradianceTextureSlot,
-                         view.irradiance != nullptr ? *view.irradiance : *inputs.blackCubeTexture);
+    commands.bindTexture(kIrradianceTextureSlot, view.irradiance != nullptr
+                                                     ? view.irradiance->rhi()
+                                                     : inputs.blackCubeTexture->rhi());
     commands.bindTexture(kPrefilteredEnvTextureSlot, view.prefilteredEnv != nullptr
-                                                         ? *view.prefilteredEnv
-                                                         : *inputs.blackCubeTexture);
-    commands.bindTexture(kDfgLutTextureSlot,
-                         view.dfgLut != nullptr ? *view.dfgLut : *inputs.zeroDfgTexture);
+                                                         ? view.prefilteredEnv->rhi()
+                                                         : inputs.blackCubeTexture->rhi());
+    commands.bindTexture(kDfgLutTextureSlot, view.dfgLut != nullptr ? view.dfgLut->rhi()
+                                                                    : inputs.zeroDfgTexture->rhi());
     // Only ScenePassAuto.slang/SkyAuto.slang declare this resource at all, so it is bound
     // only when their pipelines are the ones in use.
     if (view.autoExposureEnabled) {
@@ -64,14 +65,14 @@ void SceneStage::draw(rojoRHI::CommandList& commands, const SceneView& view,
     }
     commands.bindFrameData(kPassUniformsSlot, passUniforms);
     // Declared slots stay bound even when the selected loop never reads their data.
-    rojoRHI::Buffer* lightRows = m_fallbackLightRows.get();
+    rojoRHI::Buffer* lightRows = &m_fallbackLightRows.rhi();
     if (inputs.lights.has_value()) {
         auto& imported = lmx::render::buffer(resources, *inputs.lights);
         lightRows = &imported;
     }
     commands.bindBuffer(engine::kSceneLightsSlot, *lightRows);
-    rojoRHI::Buffer* grid = m_fallbackClusterGrid.get();
-    rojoRHI::Buffer* indices = m_fallbackClusterIndices.get();
+    rojoRHI::Buffer* grid = &m_fallbackClusterGrid.rhi();
+    rojoRHI::Buffer* indices = &m_fallbackClusterIndices.rhi();
     if (inputs.lightGrid) {
         auto& gridResult = lmx::render::buffer(resources, *inputs.lightGrid);
         auto& indexResult = lmx::render::buffer(resources, *inputs.lightIndices);
@@ -87,10 +88,8 @@ void SceneStage::draw(rojoRHI::CommandList& commands, const SceneView& view,
             {kVertexBufferSlot, engine::kSceneInstancesSlot, engine::kSceneMaterialsSlot});
     }
 
-    rojoRHI::Buffer* const sceneIndices =
-        view.tables.indices ? &view.tables.indices->rhi() : nullptr;
     encodeDrawRuns(
-        commands, {inputs.draws, sceneIndices, opaquePipeline},
+        commands, {inputs.draws, view.tables.indices, opaquePipeline},
         [&](const DrawRun& run, const auto& bindPipeline) -> const engine::DrawItem& {
             const engine::DrawItem& item = view.items[run.itemIndex];
             const bool masked = item.alphaMode == engine::AlphaMode::Mask;
@@ -103,21 +102,21 @@ void SceneStage::draw(rojoRHI::CommandList& commands, const SceneView& view,
                        "draw instance must name a current table row");
             commands.bindTexture(kDiffuseTextureSlot, item.diffuse != nullptr
                                                           ? item.diffuse->rhi()
-                                                          : *inputs.whiteTexture);
+                                                          : inputs.whiteTexture->rhi());
             commands.bindTexture(kNormalTextureSlot, item.normalMap != nullptr
                                                          ? item.normalMap->rhi()
-                                                         : *inputs.flatNormalTexture);
+                                                         : inputs.flatNormalTexture->rhi());
             // The shared white fallback lets each factor pass through unchanged when a
             // material carries no map -- white is the identity for all three.
             commands.bindTexture(kMetallicRoughnessTextureSlot, item.metallicRoughness != nullptr
                                                                     ? item.metallicRoughness->rhi()
-                                                                    : *inputs.whiteTexture);
+                                                                    : inputs.whiteTexture->rhi());
             commands.bindTexture(kOcclusionTextureSlot, item.occlusion != nullptr
                                                             ? item.occlusion->rhi()
-                                                            : *inputs.whiteTexture);
+                                                            : inputs.whiteTexture->rhi());
             commands.bindTexture(kEmissiveTextureSlot, item.emissiveMap != nullptr
                                                            ? item.emissiveMap->rhi()
-                                                           : *inputs.whiteTexture);
+                                                           : inputs.whiteTexture->rhi());
 
             return item;
         });
@@ -147,7 +146,7 @@ void SceneStage::draw(rojoRHI::CommandList& commands, const SceneView& view,
         }
         // Shaders/Passes/Scene/Sky.slang and SkyAuto.slang are the only readers of this
         // slot, so it is bound here rather than with the pass's shared set.
-        commands.bindTexture(kSkyTextureSlot, *view.skyCubemap);
+        commands.bindTexture(kSkyTextureSlot, view.skyCubemap->rhi());
         commands.bindFrameData(kPassUniformsSlot, sky);
         commands.drawIndexed(view.tables.indices->rhi(), view.skySphere->indexCount,
                              view.skySphere->firstIndex);

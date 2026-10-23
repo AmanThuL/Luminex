@@ -165,7 +165,7 @@ GraphTexture ShadowStage::declare(RenderGraph& graph, rojoRHI::CommandList& comm
             }
             commands.bindFrameData(kPassUniformsSlot, ShadowPassUniforms{lightViewProj});
             rojoRHI::GraphicsPipeline* bound = nullptr;
-            commands.bindBuffer(engine::kVisibleRowsSlot, *inputs.draws.rows);
+            commands.bindBuffer(engine::kVisibleRowsSlot, inputs.draws.rows->rhi());
             if (inputs.draws.mode != SubmissionMode::Direct)
                 commands.bindFrameData(engine::kDrawUniformsSlot, engine::DrawUniforms{0});
             for (const auto& run : inputs.draws.runs) {
@@ -181,8 +181,9 @@ GraphTexture ShadowStage::declare(RenderGraph& graph, rojoRHI::CommandList& comm
                 }
 
                 if (masked) {
-                    commands.bindTexture(kDiffuseTextureSlot,
-                                         item.diffuse ? item.diffuse->rhi() : *inputs.whiteTexture);
+                    commands.bindTexture(kDiffuseTextureSlot, item.diffuse
+                                                                  ? item.diffuse->rhi()
+                                                                  : inputs.whiteTexture->rhi());
                     commands.bindSampler(kLinearSamplerSlot, *inputs.linearSampler);
                 }
                 if (inputs.draws.mode == SubmissionMode::Direct) {
@@ -192,7 +193,7 @@ GraphTexture ShadowStage::declare(RenderGraph& graph, rojoRHI::CommandList& comm
                                          item.mesh.firstIndex);
                 } else {
                     commands.drawIndexedIndirect(
-                        view.tables.indices->rhi(), *inputs.draws.arguments,
+                        view.tables.indices->rhi(), inputs.draws.arguments->rhi(),
                         uint64_t{run.argumentIndex} * sizeof(rojoRHI::DrawIndexedIndirectArgs));
                 }
             }

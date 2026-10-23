@@ -85,8 +85,9 @@ std::array<GraphBuffer, 2> Renderer::prepareVisibility(RenderGraph& graph,
     auto import = [&](rojoRHI::Buffer& buffer, const char* label, std::optional<BufferUse> use) {
         return use ? graph.importBuffer(buffer, label, *use) : graph.importBuffer(buffer, label);
     };
-    auto rows = import(*m_drawSubmission.scene().rows, "lmx.draw.rows", m_drawSubmission.rowUse());
-    auto arguments = import(*m_drawSubmission.scene().arguments, "lmx.draw.args",
+    auto rows =
+        import(m_drawSubmission.scene().rows->rhi(), "lmx.draw.rows", m_drawSubmission.rowUse());
+    auto arguments = import(m_drawSubmission.scene().arguments->rhi(), "lmx.draw.args",
                             m_drawSubmission.argumentUse());
     if (view.classifyMode == ClassifyMode::Gpu) {
         const auto output = m_gpuVisibility->declare(

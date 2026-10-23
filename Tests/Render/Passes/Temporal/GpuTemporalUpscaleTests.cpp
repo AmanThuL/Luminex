@@ -29,7 +29,7 @@ TEST_CASE("an upscaled frame fills the display target", "[gpu][temporal]") {
     REQUIRE(empty.has_value());
     renderFrame(gpu->device(), **empty, temporalCamera(), temporalSceneView({}));
     std::vector<uint8_t> background(size_t{kSize} * kSize * 4);
-    (*empty)->colorTarget().readback(background.data(), background.size());
+    (*empty)->colorTarget().rhi().readback(background.data(), background.size());
     const Pixel clearPixel = pixelAt(background, 0, 0);
 
     auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
@@ -56,7 +56,7 @@ TEST_CASE("an upscaled frame fills the display target", "[gpu][temporal]") {
     REQUIRE(status.historyBytes == 2 * uint64_t{kSize} * kSize * 8);
 
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
-    (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+    (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
     uint32_t clearPixels = 0;
     for (uint32_t y = 0; y < kSize; ++y) {
         for (uint32_t x = 0; x < kSize; ++x) {
