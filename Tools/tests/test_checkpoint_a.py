@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from Tools.check_checkpoint_a import check_split, parse_case_names
+from Tools.check_checkpoint_a import DEFAULT_RHI_TESTS, RHI_INVENTORY, ROOT, check_split, parse_case_names
 
 
 class CheckSplitTests(unittest.TestCase):
@@ -68,6 +68,14 @@ class ParseCaseNamesTests(unittest.TestCase):
 
     def test_an_empty_listing_parses_to_no_names(self) -> None:
         self.assertEqual(parse_case_names("<MatchingTests/>"), [])
+
+
+class InventoryPathTests(unittest.TestCase):
+    """The checker reads the component's frozen v1 suite, which lives under its Legacy tree."""
+
+    def test_the_rhi_inventory_is_the_legacy_suite(self) -> None:
+        self.assertEqual(RHI_INVENTORY, ROOT / "RojoRHI/Legacy/Tests/checkpoint-a.inventory")
+        self.assertEqual(DEFAULT_RHI_TESTS.parts[-2:], ("rojorhi-legacy-test", "RojoRHILegacyTests"))
 
 
 if __name__ == "__main__":

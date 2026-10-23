@@ -234,15 +234,24 @@ def _compile_entries(path: Path) -> list[dict[str, Any]]:
         raise RuntimeError(f"cannot read compilation database {path}: {exc}") from exc
 
 
+def _root_relative(file: str, root: Path) -> str:
+    path = Path(file)
+    if path.is_absolute():
+        try:
+            path = path.relative_to(root)
+        except ValueError:
+            return path.as_posix()
+    return path.as_posix()
+
+
 def _entry_for_header(header: Path, entries: list[dict[str, Any]], root: Path) -> dict[str, Any]:
     relative = header.relative_to(root)
-    if relative.parts[0] == "Source":
-        module = relative.parts[1]
-    elif relative.parts[0] == "Experiments":
+    if relative.parts[0] in {"Source", "Experiments"}:
         module = "/".join(relative.parts[:2])
     else:
         module = relative.parts[0]
-    candidates = [entry for entry in entries if f"/{module}/" in f"/{entry['file']}"]
+    # Anchor at the root: the mounted component has module directories of the same name.
+    candidates = [entry for entry in entries if _root_relative(entry["file"], root).startswith(f"{module}/")]
     if not candidates:
         candidates = entries
     if not candidates:
