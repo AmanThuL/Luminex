@@ -19,11 +19,12 @@ lmx::engine::MeshData referenceQuad() {
             .indices = {0, 1, 2, 0, 2, 3}};
 }
 //======================================================================================================================
-VisibilityStatus referenceFrame(Device& device, TransientPool& pool, OcclusionReference& reference,
-                                const FixtureSceneView& fixture, uint32_t width = 64,
-                                uint32_t height = 64) {
-    auto& commands = device.beginFrame();
-    auto view = fixture.prepare(device);
+VisibilityStatus referenceFrame(lmx::engine::GpuContext& gpu, TransientPool& pool,
+                                OcclusionReference& reference, const FixtureSceneView& fixture,
+                                uint32_t width = 64, uint32_t height = 64) {
+    auto gpuFrame1 = gpu.beginFrame();
+    auto& commands = gpuFrame1.commands;
+    auto view = fixture.prepare(gpu);
     pool.beginFrame();
     RenderGraph graph(pool);
     lmx::engine::Camera camera;
@@ -38,16 +39,16 @@ VisibilityStatus referenceFrame(Device& device, TransientPool& pool, OcclusionRe
          .strictView = true});
     INFO(errorOf(result));
     REQUIRE(result);
-    graph.execute(commands, device.frameNumber());
+    graph.execute(commands, gpu.frameNumber());
     VisibilityStatus status;
-    status.frameNumber = device.frameNumber();
+    status.frameNumber = gpu.frameNumber();
     status.sceneGeneration = view.temporal.sceneGeneration;
     status.isRetired = true;
     for (const auto& item : view.items)
         status.scene.candidates.push_back({.instanceRow = item.instanceRow,
                                            .state = VisibilityState::Rejected,
                                            .reason = VisibilityReason::Occluded});
-    device.endFrame(nullptr);
+    gpu.submitAndEndFrame(gpuFrame1);
     return status;
 }
 } // namespace
@@ -70,8 +71,8 @@ TEST_CASE("independent occlusion reference draws rejected candidates and shares 
     items[0].material.albedo.a = 0;
     FixtureSceneView fixture;
     fixture.items = items;
-    auto status = referenceFrame(gpu->device(), pool, **reference, fixture);
-    gpu->device().waitIdle();
+    auto status = referenceFrame(*gpu, pool, **reference, fixture);
+    gpu->waitIdle();
     (*reference)->retireThrough(status.frameNumber);
     auto check = (*reference)->check(status);
     REQUIRE(check);
@@ -83,8 +84,8 @@ TEST_CASE("independent occlusion reference draws rejected candidates and shares 
     REQUIRE_FALSE(check->passed());
     REQUIRE_FALSE((*reference)->check(status));
     items[0].material.albedo.a = 1;
-    status = referenceFrame(gpu->device(), pool, **reference, fixture);
-    gpu->device().waitIdle();
+    status = referenceFrame(*gpu, pool, **reference, fixture);
+    gpu->waitIdle();
     (*reference)->retireThrough(status.frameNumber);
     check = (*reference)->check(status);
     REQUIRE(check);
@@ -112,9 +113,9 @@ TEST_CASE("reference byte IDs and transient readback survive three paced slot re
     fixture.items = items;
     std::vector<VisibilityStatus> statuses;
     for (uint32_t frame = 0; frame < 8; ++frame)
-        statuses.push_back(referenceFrame(gpu->device(), pool, **reference, fixture,
-                                          frame % 2 == 0 ? 64 : 80, 64));
-    gpu->device().waitIdle();
+        statuses.push_back(
+            referenceFrame(*gpu, pool, **reference, fixture, frame % 2 == 0 ? 64 : 80, 64));
+    gpu->waitIdle();
     (*reference)->retireThrough(statuses.back().frameNumber);
     for (const auto& status : statuses) {
         const auto check = (*reference)->check(status);
@@ -141,8 +142,8 @@ TEST_CASE("independent ID reference preserves wireframe coverage", "[gpu][occlus
     FixtureSceneView fixture;
     fixture.items = std::span{&item, 1};
     fixture.wireframe = true;
-    const auto status = referenceFrame(gpu->device(), pool, **reference, fixture);
-    gpu->device().waitIdle();
+    const auto status = referenceFrame(*gpu, pool, **reference, fixture);
+    gpu->waitIdle();
     (*reference)->retireThrough(status.frameNumber);
     const auto check = (*reference)->check(status);
     REQUIRE(check);
@@ -171,8 +172,8 @@ TEST_CASE("independent reference excludes disabled geometry without losing row i
     fixture.items = items;
     for (bool backgroundEnabled : {true, false}) {
         items[1].enabled = backgroundEnabled;
-        const auto status = referenceFrame(gpu->device(), pool, **reference, fixture);
-        gpu->device().waitIdle();
+        const auto status = referenceFrame(*gpu, pool, **reference, fixture);
+        gpu->waitIdle();
         (*reference)->retireThrough(status.frameNumber);
         const auto check = (*reference)->check(status);
         REQUIRE(check);

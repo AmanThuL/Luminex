@@ -1,6 +1,7 @@
 #include "Support/GpuRendererTestSupport.h"
 #include "Support/SceneTableTestSupport.h"
 
+#include <cstring>
 using lmx::test::FixtureDrawItem;
 using lmx::test::FixtureMaterial;
 using lmx::test::FixtureMesh;
@@ -13,26 +14,26 @@ using lmx::test::FixtureSceneView;
 TEST_CASE("shadow filters resolve a quad's shadow on a plane", "[gpu]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto shadowMap = (*device)->createTexture({.width = kShadowMapSize,
-                                               .height = kShadowMapSize,
-                                               .format = Format::D32Float,
-                                               .renderTarget = true,
-                                               .sampled = true,
-                                               .label = "lmx.test.shadowMap"});
+    REQUIRE(gpu != nullptr);
+
+    auto shadowMap = gpu->device().createTexture({.width = kShadowMapSize,
+                                                  .height = kShadowMapSize,
+                                                  .format = Format::D32Float,
+                                                  .renderTarget = true,
+                                                  .sampled = true,
+                                                  .label = "lmx.test.shadowMap"});
     INFO(errorOf(shadowMap));
     REQUIRE(shadowMap.has_value());
 
     const auto makeShadowDestination = [&](const char* label) {
-        return (*device)->createTexture({.width = kShadowMapSize,
-                                         .height = kShadowMapSize,
-                                         .format = Format::BGRA8Unorm,
-                                         .renderTarget = true,
-                                         .cpuReadback = true,
-                                         .label = label});
+        return lmx::engine::GpuTexture::create(gpu->device(), {.width = kShadowMapSize,
+                                                               .height = kShadowMapSize,
+                                                               .format = Format::BGRA8Unorm,
+                                                               .renderTarget = true,
+                                                               .cpuReadback = true,
+                                                               .label = label});
     };
     auto pcfDestination = makeShadowDestination("lmx.test.shadowPcfDestination");
     INFO(errorOf(pcfDestination));
@@ -41,39 +42,39 @@ TEST_CASE("shadow filters resolve a quad's shadow on a plane", "[gpu]") {
     INFO(errorOf(pcssDestination));
     REQUIRE(pcssDestination.has_value());
 
-    auto library = (*device)->loadShaderLibrary("Shaders/ShadowSmoke");
+    auto library = gpu->loadShaderLibrary("ShadowSmoke");
     INFO(errorOf(library));
     REQUIRE(library.has_value());
 
     auto depthPipeline =
-        (*device)->createGraphicsPipeline({.library = library->get(),
-                                           .vertexEntry = "vertexMain",
-                                           .fragmentEntry = "fragmentDepthOnly",
-                                           .colorFormat = Format::Unknown,
-                                           .depthFormat = Format::D32Float,
-                                           .depthTestEnable = true,
-                                           .depthWriteEnable = true,
-                                           // Reversed-Z: the map clears to 0 and the nearest
-                                           // surface to the light is the largest depth.
-                                           .depthCompare = DepthCompare::Greater,
-                                           .label = "lmx.test.shadowDepthPipeline"});
+        gpu->device().createGraphicsPipeline({.library = library->get(),
+                                              .vertexEntry = "vertexMain",
+                                              .fragmentEntry = "fragmentDepthOnly",
+                                              .colorFormat = Format::Unknown,
+                                              .depthFormat = Format::D32Float,
+                                              .depthTestEnable = true,
+                                              .depthWriteEnable = true,
+                                              // Reversed-Z: the map clears to 0 and the nearest
+                                              // surface to the light is the largest depth.
+                                              .depthCompare = DepthCompare::Greater,
+                                              .label = "lmx.test.shadowDepthPipeline"});
     INFO(errorOf(depthPipeline));
     REQUIRE(depthPipeline.has_value());
 
     auto shadowPipeline =
-        (*device)->createGraphicsPipeline({.library = library->get(),
-                                           .vertexEntry = "vertexMain",
-                                           .fragmentEntry = "fragmentMain",
-                                           .colorFormat = Format::BGRA8Unorm,
-                                           .label = "lmx.test.shadowReadPipeline"});
+        gpu->device().createGraphicsPipeline({.library = library->get(),
+                                              .vertexEntry = "vertexMain",
+                                              .fragmentEntry = "fragmentMain",
+                                              .colorFormat = Format::BGRA8Unorm,
+                                              .label = "lmx.test.shadowReadPipeline"});
     INFO(errorOf(shadowPipeline));
     REQUIRE(shadowPipeline.has_value());
 
-    auto shadowSampler = (*device)->createSampler({.filter = FilterMode::Linear,
-                                                   .addressMode = AddressMode::Clamp,
-                                                   .maxAnisotropy = 16,
-                                                   .compare = CompareFunc::GreaterEqual,
-                                                   .label = "lmx.test.shadowCompareSampler"});
+    auto shadowSampler = gpu->device().createSampler({.filter = FilterMode::Linear,
+                                                      .addressMode = AddressMode::Clamp,
+                                                      .maxAnisotropy = 16,
+                                                      .compare = CompareFunc::GreaterEqual,
+                                                      .label = "lmx.test.shadowCompareSampler"});
     INFO(errorOf(shadowSampler));
     REQUIRE(shadowSampler.has_value());
 
@@ -98,7 +99,8 @@ TEST_CASE("shadow filters resolve a quad's shadow on a plane", "[gpu]") {
     const std::array<ShadowVertex, 6> receiver = shadowQuad(-1.0f, 1.0f, -1.0f, 1.0f, 0.0f);
     const std::array<ShadowVertex, 6> occluder = shadowQuad(-0.5f, 0.5f, -0.25f, 0.75f, 0.2f);
 
-    CommandList& commands = (*device)->beginFrame();
+    auto gpuFrame1 = gpu->beginFrame();
+    auto& commands = gpuFrame1.commands;
 
     commands.beginRenderPass({.depthTarget = shadowMap->get(),
                               .clearDepth = 0.0f,
@@ -126,16 +128,24 @@ TEST_CASE("shadow filters resolve a quad's shadow on a plane", "[gpu]") {
         commands.draw(static_cast<uint32_t>(receiver.size()));
         commands.endRenderPass();
     };
-    receiverPass(**pcfDestination, kFilterPcf);
-    receiverPass(**pcssDestination, kFilterPcss);
+    receiverPass(pcfDestination->rhi(), kFilterPcf);
+    receiverPass(pcssDestination->rhi(), kFilterPcss);
 
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->submitAndEndFrame(gpuFrame1);
+    gpu->waitIdle();
 
     std::vector<uint8_t> pcf(size_t{kShadowMapSize} * kShadowMapSize * 4);
-    (*pcfDestination)->readback(pcf.data(), pcf.size());
+    {
+        const auto readbackBytes =
+            lmx::render::readbackNow(*gpu, *pcfDestination, lmx::render::TextureUse::RenderTarget);
+        std::memcpy(pcf.data(), readbackBytes.data(), pcf.size());
+    }
     std::vector<uint8_t> pcss(size_t{kShadowMapSize} * kShadowMapSize * 4);
-    (*pcssDestination)->readback(pcss.data(), pcss.size());
+    {
+        const auto readbackBytes =
+            lmx::render::readbackNow(*gpu, *pcssDestination, lmx::render::TextureUse::RenderTarget);
+        std::memcpy(pcss.data(), readbackBytes.data(), pcss.size());
+    }
 
     const auto requireProbes = [](const std::vector<uint8_t>& image, const char* filter) {
         INFO(std::string("filter: ") + filter);
@@ -206,13 +216,18 @@ TEST_CASE("renderer shadows a floating cube onto the ground", "[gpu]") {
     camera.position = {0.0f, 12.0f, 16.0f};
     camera.pitch = -0.62f;
 
-    CommandList& commands = gpu->device().beginFrame();
-    (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, gpu->device()));
-    gpu->device().endFrame(nullptr);
-    gpu->device().waitIdle();
+    auto gpuFrame2 = gpu->beginFrame();
+    auto& commands = gpuFrame2.commands;
+    (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, *gpu));
+    gpu->submitAndEndFrame(gpuFrame2);
+    gpu->waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kSceneProbeSize} * kSceneProbeSize * 4);
-    (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
+    {
+        const auto readbackBytes = lmx::render::readbackNow(*gpu, (*renderer)->colorTarget(),
+                                                            lmx::render::TextureUse::RenderTarget);
+        std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
+    }
 
     const PixelCoord shadowAt = projectToPixel(camera, kSceneProbeSize, {3.0f, 0.0f, 3.0f});
     const Pixel shadowed = pixelAtWidth(pixels, kSceneProbeSize, shadowAt.x, shadowAt.y);
@@ -282,26 +297,26 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
     }};
     const glm::mat4 identity{1.0f};
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto shadowLibrary = (*device)->loadShaderLibrary("Shaders/ShadowPass");
+    REQUIRE(gpu != nullptr);
+
+    auto shadowLibrary = gpu->loadShaderLibrary("ShadowPass");
     INFO(errorOf(shadowLibrary));
     REQUIRE(shadowLibrary.has_value());
 
     const auto makeDepthPipeline = [&](DepthBias bias, const char* label) {
-        return (*device)->createGraphicsPipeline({.library = shadowLibrary->get(),
-                                                  .vertexEntry = "vertexMain",
-                                                  .fragmentEntry = "fragmentMain",
-                                                  .colorFormat = Format::Unknown,
-                                                  .depthFormat = Format::D32Float,
-                                                  .depthTestEnable = true,
-                                                  .depthWriteEnable = true,
-                                                  .cullMode = CullMode::None,
-                                                  .depthCompare = DepthCompare::Greater,
-                                                  .depthBias = bias,
-                                                  .label = label});
+        return gpu->device().createGraphicsPipeline({.library = shadowLibrary->get(),
+                                                     .vertexEntry = "vertexMain",
+                                                     .fragmentEntry = "fragmentMain",
+                                                     .colorFormat = Format::Unknown,
+                                                     .depthFormat = Format::D32Float,
+                                                     .depthTestEnable = true,
+                                                     .depthWriteEnable = true,
+                                                     .cullMode = CullMode::None,
+                                                     .depthCompare = DepthCompare::Greater,
+                                                     .depthBias = bias,
+                                                     .label = label});
     };
     auto unbiasedPipeline = makeDepthPipeline({}, "lmx.test.unbiasedDepthPipeline");
     INFO(errorOf(unbiasedPipeline));
@@ -312,12 +327,12 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
     REQUIRE(biasedPipeline.has_value());
 
     const auto makeDepthTarget = [&](const char* label) {
-        return (*device)->createTexture({.width = kSize,
-                                         .height = kSize,
-                                         .format = Format::D32Float,
-                                         .renderTarget = true,
-                                         .sampled = true,
-                                         .label = label});
+        return gpu->device().createTexture({.width = kSize,
+                                            .height = kSize,
+                                            .format = Format::D32Float,
+                                            .renderTarget = true,
+                                            .sampled = true,
+                                            .label = label});
     };
     auto unbiasedDepth = makeDepthTarget("lmx.test.unbiasedDepth");
     INFO(errorOf(unbiasedDepth));
@@ -326,28 +341,28 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
     INFO(errorOf(biasedDepth));
     REQUIRE(biasedDepth.has_value());
 
-    auto unbiasedImage = makeProbeTarget(**device, "lmx.test.unbiasedDepthImage");
+    auto unbiasedImage = makeProbeTarget(*gpu, "lmx.test.unbiasedDepthImage");
     INFO(errorOf(unbiasedImage));
     REQUIRE(unbiasedImage.has_value());
-    auto biasedImage = makeProbeTarget(**device, "lmx.test.biasedDepthImage");
+    auto biasedImage = makeProbeTarget(*gpu, "lmx.test.biasedDepthImage");
     INFO(errorOf(biasedImage));
     REQUIRE(biasedImage.has_value());
 
-    auto sampleLibrary = (*device)->loadShaderLibrary("Shaders/SamplerSmoke");
+    auto sampleLibrary = gpu->loadShaderLibrary("SamplerSmoke");
     INFO(errorOf(sampleLibrary));
     REQUIRE(sampleLibrary.has_value());
     auto samplePipeline =
-        (*device)->createGraphicsPipeline({.library = sampleLibrary->get(),
-                                           .vertexEntry = "vertexMain",
-                                           .fragmentEntry = "fragmentIdentityUv",
-                                           .colorFormat = Format::BGRA8Unorm,
-                                           .label = "lmx.test.depthBiasSamplePipeline"});
+        gpu->device().createGraphicsPipeline({.library = sampleLibrary->get(),
+                                              .vertexEntry = "vertexMain",
+                                              .fragmentEntry = "fragmentIdentityUv",
+                                              .colorFormat = Format::BGRA8Unorm,
+                                              .label = "lmx.test.depthBiasSamplePipeline"});
     INFO(errorOf(samplePipeline));
     REQUIRE(samplePipeline.has_value());
 
-    auto sampler = (*device)->createSampler({.filter = FilterMode::Nearest,
-                                             .addressMode = AddressMode::Clamp,
-                                             .label = "lmx.test.depthBiasSampler"});
+    auto sampler = gpu->device().createSampler({.filter = FilterMode::Nearest,
+                                                .addressMode = AddressMode::Clamp,
+                                                .label = "lmx.test.depthBiasSampler"});
     INFO(errorOf(sampler));
     REQUIRE(sampler.has_value());
 
@@ -360,13 +375,14 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
     const auto mesh = scene.addMesh(std::move(geometry), "lmx.test.depthBias.geometry");
     const auto material = scene.addMaterial({});
     const auto instance = scene.addObject({.mesh = mesh, .material = material});
-    REQUIRE(scene.finalize(**device));
+    REQUIRE(scene.finalize(gpu->device()));
 
-    CommandList& commands = (*device)->beginFrame();
-    REQUIRE(scene.prepareFrame((*device)->frameNumber()));
+    auto gpuFrame3 = gpu->beginFrame();
+    auto& commands = gpuFrame3.commands;
+    REQUIRE(scene.prepareFrame(gpu->frameNumber()));
     const auto tables = scene.tables();
     const auto meshRow = *scene.tryMesh(mesh);
-    auto visibleRows = (*device)->createBuffer(
+    auto visibleRows = gpu->device().createBuffer(
         {.size = sizeof(uint32_t), .storageRead = true, .label = "lmx.test.depthBias.visibleRows"},
         &instance.slot);
     REQUIRE(visibleRows.has_value());
@@ -402,16 +418,24 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
         commands.draw(3);
         commands.endRenderPass();
     };
-    samplePass(**unbiasedDepth, **unbiasedImage);
-    samplePass(**biasedDepth, **biasedImage);
+    samplePass(**unbiasedDepth, unbiasedImage->rhi());
+    samplePass(**biasedDepth, biasedImage->rhi());
 
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->submitAndEndFrame(gpuFrame3);
+    gpu->waitIdle();
 
     std::vector<uint8_t> unbiased(size_t{kSize} * kSize * 4);
-    (*unbiasedImage)->readback(unbiased.data(), unbiased.size());
+    {
+        const auto readbackBytes =
+            lmx::render::readbackNow(*gpu, *unbiasedImage, lmx::render::TextureUse::RenderTarget);
+        std::memcpy(unbiased.data(), readbackBytes.data(), unbiased.size());
+    }
     std::vector<uint8_t> biased(size_t{kSize} * kSize * 4);
-    (*biasedImage)->readback(biased.data(), biased.size());
+    {
+        const auto readbackBytes =
+            lmx::render::readbackNow(*gpu, *biasedImage, lmx::render::TextureUse::RenderTarget);
+        std::memcpy(biased.data(), readbackBytes.data(), biased.size());
+    }
 
     const Pixel rampUnbiased = pixelAt(unbiased, 32, 3);
     const Pixel rampBiased = pixelAt(biased, 32, 3);
@@ -468,8 +492,9 @@ TEST_CASE("renderer applies the chosen directional caster and leaves none or dis
                 if (disabled)
                     scene.lights[caster] = {
                         .strength = glm::vec3(0.8f), .direction = direction, .enabled = false};
-                auto& commands = gpu->device().beginFrame();
-                REQUIRE(scene.prepareFrame(gpu->device().frameNumber()));
+                auto gpuFrame4 = gpu->beginFrame();
+                auto& commands = gpuFrame4.commands;
+                REQUIRE(scene.prepareFrame(gpu->frameNumber()));
                 std::vector<engine::DrawItem> items;
                 auto view = render::buildSceneView(scene, items, false);
                 view.bloomEnabled = false;
@@ -478,10 +503,14 @@ TEST_CASE("renderer applies the chosen directional caster and leaves none or dis
                 view.exposureAdaptUpStopsPerSecond = 0;
                 view.exposureAdaptDownStopsPerSecond = 0;
                 (*renderer)->render(commands, camera, view);
-                gpu->device().endFrame(nullptr);
-                gpu->device().waitIdle();
+                gpu->submitAndEndFrame(gpuFrame4);
+                gpu->waitIdle();
                 std::vector<uint8_t> pixels(size_t{kSceneProbeSize} * kSceneProbeSize * 4);
-                (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
+                {
+                    const auto readbackBytes = lmx::render::readbackNow(
+                        *gpu, (*renderer)->colorTarget(), lmx::render::TextureUse::RenderTarget);
+                    std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
+                }
                 return pixels;
             };
             const auto key = renderCase(0, false);

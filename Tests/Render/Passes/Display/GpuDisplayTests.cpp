@@ -2,6 +2,8 @@
 #include "Render/Renderer/DisplayDomain.h"
 #include "Render/Renderer/Renderer.h"
 #include "Support/DisplayTransformOracle.h"
+#include "Support/GpuTestSupport.h"
+#include <cstring>
 #include <rojoRHI/RHI.h>
 
 #include <catch2/catch_test_macros.hpp>
@@ -154,44 +156,50 @@ std::unique_ptr<rojoRHI::Texture> upload(rojoRHI::Device& device, uint32_t width
 
 //======================================================================================================================
 std::vector<uint8_t> renderFixture(const Fixture& fixture) {
-    auto device = rojoRHI::createDevice();
-    INFO((device ? "" : device.error().message));
-    REQUIRE(device.has_value());
-    auto library = (*device)->loadShaderLibrary("Shaders/DisplayTransform");
+    auto gpu = createTestGpu();
+    REQUIRE(gpu != nullptr);
+    auto library = gpu->loadShaderLibrary("DisplayTransform");
     INFO((library ? "" : library.error().message));
     REQUIRE(library.has_value());
-    auto pipeline = (*device)->createGraphicsPipeline({.library = library->get(),
-                                                       .vertexEntry = "vertexMain",
-                                                       .fragmentEntry = "fragmentMain",
-                                                       .colorFormat = render::kDisplayFormat,
-                                                       .label = "lmx.test.displayGoldenPipeline"});
+    auto pipeline =
+        gpu->device().createGraphicsPipeline({.library = library->get(),
+                                              .vertexEntry = "vertexMain",
+                                              .fragmentEntry = "fragmentMain",
+                                              .colorFormat = render::kDisplayFormat,
+                                              .label = "lmx.test.displayGoldenPipeline"});
     INFO((pipeline ? "" : pipeline.error().message));
     REQUIRE(pipeline.has_value());
-    auto scene = upload(**device, fixture.width, fixture.height, fixture.scene,
+    auto scene = upload(gpu->device(), fixture.width, fixture.height, fixture.scene,
                         "lmx.test.displayGoldenScene");
-    auto bloom = upload(**device, fixture.bloomWidth, fixture.bloomHeight, fixture.bloom,
+    auto bloom = upload(gpu->device(), fixture.bloomWidth, fixture.bloomHeight, fixture.bloom,
                         "lmx.test.displayGoldenBloom");
-    auto target = (*device)->createTexture({.width = fixture.width,
-                                            .height = fixture.height,
-                                            .format = render::kDisplayFormat,
-                                            .renderTarget = true,
-                                            .cpuReadback = true,
-                                            .label = "lmx.test.displayGoldenTarget"});
+    auto target =
+        lmx::engine::GpuTexture::create(gpu->device(), {.width = fixture.width,
+                                                        .height = fixture.height,
+                                                        .format = render::kDisplayFormat,
+                                                        .renderTarget = true,
+                                                        .cpuReadback = true,
+                                                        .label = "lmx.test.displayGoldenTarget"});
     INFO((target ? "" : target.error().message));
     REQUIRE(target.has_value());
-    auto& commands = (*device)->beginFrame();
+    auto gpuFrame1 = gpu->beginFrame();
+    auto& commands = gpuFrame1.commands;
     commands.beginRenderPass(
-        {.colorTarget = target->get(), .clear = true, .label = "lmx.test.displayGolden"});
+        {.colorTarget = &target->rhi(), .clear = true, .label = "lmx.test.displayGolden"});
     commands.bindPipeline(**pipeline);
     commands.bindTexture(0, *scene);
     commands.bindTexture(1, *bloom);
     commands.bindFrameData(0, fixture.bloomIntensity);
     commands.draw(3);
     commands.endRenderPass();
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->submitAndEndFrame(gpuFrame1);
+    gpu->waitIdle();
     std::vector<uint8_t> rgba(size_t{fixture.width} * fixture.height * 4);
-    (*target)->readback(rgba.data(), rgba.size());
+    {
+        const auto readbackBytes =
+            lmx::render::readbackNow(*gpu, *target, lmx::render::TextureUse::RenderTarget);
+        std::memcpy(rgba.data(), readbackBytes.data(), rgba.size());
+    }
     for (size_t offset = 0; offset < rgba.size(); offset += 4) {
         std::swap(rgba[offset], rgba[offset + 2]);
     }

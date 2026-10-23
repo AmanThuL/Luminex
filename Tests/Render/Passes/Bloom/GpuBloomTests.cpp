@@ -1,7 +1,9 @@
 #include "Support/ExposureBloomTestSupport.h"
+#include "Support/GpuTestSupport.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <cstring>
 
 #include <rojoRHI/RHI.h>
 
@@ -19,7 +21,6 @@ namespace {
 
 using namespace rojoRHI;
 
-using lmx::test::errorOf;
 using lmx::test::halfPow2;
 using lmx::test::makeSceneColorTexture;
 
@@ -105,18 +106,18 @@ TEST_CASE("bloom threshold preserves the final texel of an odd-sized image", "[g
     constexpr uint32_t kDstWidth = 3, kDstHeight = 2;
     constexpr float kThreshold = 4.0f;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto library = (*device)->loadShaderLibrary("Shaders/BloomThreshold");
+    REQUIRE(gpu != nullptr);
+
+    auto library = gpu->loadShaderLibrary("BloomThreshold");
     INFO(errorOf(library));
     REQUIRE(library.has_value());
     auto pipeline =
-        (*device)->createComputePipeline({.library = library->get(),
-                                          .computeEntry = "computeBloomThreshold",
-                                          .threadsPerThreadgroup = {8, 8, 1},
-                                          .label = "lmx.test.oddBloomThresholdPipeline"});
+        gpu->device().createComputePipeline({.library = library->get(),
+                                             .computeEntry = "computeBloomThreshold",
+                                             .threadsPerThreadgroup = {8, 8, 1},
+                                             .label = "lmx.test.oddBloomThresholdPipeline"});
     INFO(errorOf(pipeline));
     REQUIRE(pipeline.has_value());
 
@@ -126,16 +127,16 @@ TEST_CASE("bloom threshold preserves the final texel of an odd-sized image", "[g
     source[probe + 1] = halfPow2(4);
     source[probe + 2] = halfPow2(4);
     auto scene =
-        makeSceneColorTexture(**device, kSrcWidth, kSrcHeight, source, "lmx.test.oddBloomScene");
+        makeSceneColorTexture(*gpu, kSrcWidth, kSrcHeight, source, "lmx.test.oddBloomScene");
     INFO(errorOf(scene));
     REQUIRE(scene.has_value());
 
-    auto bloom = (*device)->createTexture({.width = kDstWidth,
-                                           .height = kDstHeight,
-                                           .format = Format::RGBA16Float,
-                                           .storageWrite = true,
-                                           .cpuReadback = true,
-                                           .label = "lmx.test.oddBloomMip0"});
+    auto bloom = lmx::engine::GpuTexture::create(gpu->device(), {.width = kDstWidth,
+                                                                 .height = kDstHeight,
+                                                                 .format = Format::RGBA16Float,
+                                                                 .storageWrite = true,
+                                                                 .cpuReadback = true,
+                                                                 .label = "lmx.test.oddBloomMip0"});
     INFO(errorOf(bloom));
     REQUIRE(bloom.has_value());
 
@@ -149,19 +150,24 @@ TEST_CASE("bloom threshold preserves the final texel of an odd-sized image", "[g
                                  .dstWidth = kDstWidth,
                                  .dstHeight = kDstHeight};
 
-    CommandList& commands = (*device)->beginFrame();
+    auto gpuFrame1 = gpu->beginFrame();
+    auto& commands = gpuFrame1.commands;
     commands.beginComputePass("lmx.test.oddBloomThreshold");
     commands.bindComputePipeline(**pipeline);
-    commands.bindTexture(0, **scene);
-    commands.bindStorageTexture(1, **bloom, {}, StorageAccess::Write);
+    commands.bindTexture(0, scene->rhi());
+    commands.bindStorageTexture(1, bloom->rhi(), {}, StorageAccess::Write);
     commands.bindFrameData(0, params);
     commands.dispatch(1, 1, 1);
     commands.endComputePass();
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->submitAndEndFrame(gpuFrame1);
+    gpu->waitIdle();
 
     std::vector<uint16_t> result(size_t{kDstWidth} * kDstHeight * 4);
-    (*bloom)->readback(result.data(), result.size() * sizeof(uint16_t));
+    {
+        const auto readbackBytes =
+            lmx::render::readbackNow(*gpu, *bloom, lmx::render::TextureUse::StorageWrite);
+        std::memcpy(result.data(), readbackBytes.data(), result.size() * sizeof(uint16_t));
+    }
     const size_t last = (size_t{kDstHeight - 1} * kDstWidth + (kDstWidth - 1)) * 4;
     REQUIRE(result[last] != 0);
     REQUIRE(result[last + 1] != 0);
@@ -175,38 +181,38 @@ TEST_CASE("bloom threshold preserves the final texel of an odd-sized image", "[g
 // 10's bloom energy oracle. Runs Renderer.cpp's own chain depth (kMaxBloomDownsampleLevels == 4,
 // clamped for the extent), not a shortened stand-in, so the oracle covers what actually ships.
 TEST_CASE("bloom threshold and the full four-level chain match a CPU reference", "[gpu]") {
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto thresholdLibrary = (*device)->loadShaderLibrary("Shaders/BloomThreshold");
+    REQUIRE(gpu != nullptr);
+
+    auto thresholdLibrary = gpu->loadShaderLibrary("BloomThreshold");
     INFO(errorOf(thresholdLibrary));
     REQUIRE(thresholdLibrary.has_value());
     auto thresholdPipeline =
-        (*device)->createComputePipeline({.library = thresholdLibrary->get(),
-                                          .computeEntry = "computeBloomThreshold",
-                                          .threadsPerThreadgroup = {8, 8, 1},
-                                          .label = "lmx.test.bloomThresholdPipeline"});
+        gpu->device().createComputePipeline({.library = thresholdLibrary->get(),
+                                             .computeEntry = "computeBloomThreshold",
+                                             .threadsPerThreadgroup = {8, 8, 1},
+                                             .label = "lmx.test.bloomThresholdPipeline"});
     INFO(errorOf(thresholdPipeline));
     REQUIRE(thresholdPipeline.has_value());
-    auto downsampleLibrary = (*device)->loadShaderLibrary("Shaders/BloomDownsample");
+    auto downsampleLibrary = gpu->loadShaderLibrary("BloomDownsample");
     INFO(errorOf(downsampleLibrary));
     REQUIRE(downsampleLibrary.has_value());
     auto downsamplePipeline =
-        (*device)->createComputePipeline({.library = downsampleLibrary->get(),
-                                          .computeEntry = "computeBloomDownsample",
-                                          .threadsPerThreadgroup = {8, 8, 1},
-                                          .label = "lmx.test.bloomDownsamplePipeline"});
+        gpu->device().createComputePipeline({.library = downsampleLibrary->get(),
+                                             .computeEntry = "computeBloomDownsample",
+                                             .threadsPerThreadgroup = {8, 8, 1},
+                                             .label = "lmx.test.bloomDownsamplePipeline"});
     INFO(errorOf(downsamplePipeline));
     REQUIRE(downsamplePipeline.has_value());
-    auto upsampleLibrary = (*device)->loadShaderLibrary("Shaders/BloomUpsample");
+    auto upsampleLibrary = gpu->loadShaderLibrary("BloomUpsample");
     INFO(errorOf(upsampleLibrary));
     REQUIRE(upsampleLibrary.has_value());
     auto upsamplePipeline =
-        (*device)->createComputePipeline({.library = upsampleLibrary->get(),
-                                          .computeEntry = "computeBloomUpsample",
-                                          .threadsPerThreadgroup = {8, 8, 1},
-                                          .label = "lmx.test.bloomUpsamplePipeline"});
+        gpu->device().createComputePipeline({.library = upsampleLibrary->get(),
+                                             .computeEntry = "computeBloomUpsample",
+                                             .threadsPerThreadgroup = {8, 8, 1},
+                                             .label = "lmx.test.bloomUpsamplePipeline"});
     INFO(errorOf(upsamplePipeline));
     REQUIRE(upsamplePipeline.has_value());
 
@@ -238,27 +244,28 @@ TEST_CASE("bloom threshold and the full four-level chain match a CPU reference",
         rgbaHalf[i * 4 + 3] = halfPow2(0);
     }
     auto sceneColor =
-        makeSceneColorTexture(**device, kSceneSize, kSceneSize, rgbaHalf, "lmx.test.bloomScene");
+        makeSceneColorTexture(*gpu, kSceneSize, kSceneSize, rgbaHalf, "lmx.test.bloomScene");
     INFO(errorOf(sceneColor));
     REQUIRE(sceneColor.has_value());
 
-    auto bloomChain = (*device)->createTexture({.width = kMip0Size,
-                                                .height = kMip0Size,
-                                                .format = Format::RGBA16Float,
-                                                .mipLevels = kLevels + 1,
-                                                .storageRead = true,
-                                                .storageWrite = true,
-                                                .label = "lmx.test.bloomChain"});
+    auto bloomChain = gpu->device().createTexture({.width = kMip0Size,
+                                                   .height = kMip0Size,
+                                                   .format = Format::RGBA16Float,
+                                                   .mipLevels = kLevels + 1,
+                                                   .storageRead = true,
+                                                   .storageWrite = true,
+                                                   .label = "lmx.test.bloomChain"});
     INFO(errorOf(bloomChain));
     REQUIRE(bloomChain.has_value());
-    auto bloomBlur = (*device)->createTexture({.width = kMip0Size,
-                                               .height = kMip0Size,
-                                               .format = Format::RGBA16Float,
-                                               .mipLevels = kLevels,
-                                               .storageRead = true,
-                                               .storageWrite = true,
-                                               .cpuReadback = true,
-                                               .label = "lmx.test.bloomBlur"});
+    auto bloomBlur =
+        lmx::engine::GpuTexture::create(gpu->device(), {.width = kMip0Size,
+                                                        .height = kMip0Size,
+                                                        .format = Format::RGBA16Float,
+                                                        .mipLevels = kLevels,
+                                                        .storageRead = true,
+                                                        .storageWrite = true,
+                                                        .cpuReadback = true,
+                                                        .label = "lmx.test.bloomBlur"});
     INFO(errorOf(bloomBlur));
     REQUIRE(bloomBlur.has_value());
 
@@ -276,7 +283,8 @@ TEST_CASE("bloom threshold and the full four-level chain match a CPU reference",
         return TextureViewDesc{.range = {.baseMipLevel = level, .mipLevelCount = 1}};
     };
 
-    CommandList& commands = (*device)->beginFrame();
+    auto gpuFrame2 = gpu->beginFrame();
+    auto& commands = gpuFrame2.commands;
 
     const ThresholdParams thresholdParams{.threshold = kThreshold,
                                           .srcWidth = kSceneSize,
@@ -285,7 +293,7 @@ TEST_CASE("bloom threshold and the full four-level chain match a CPU reference",
                                           .dstHeight = kMip0Size};
     commands.beginComputePass("lmx.test.bloomThreshold");
     commands.bindComputePipeline(**thresholdPipeline);
-    commands.bindTexture(0, **sceneColor);
+    commands.bindTexture(0, sceneColor->rhi());
     commands.bindStorageTexture(1, **bloomChain, mipView(0), StorageAccess::Write);
     commands.bindFrameData(0, thresholdParams);
     commands.dispatch((kMip0Size + 7) / 8, (kMip0Size + 7) / 8, 1);
@@ -324,21 +332,27 @@ TEST_CASE("bloom threshold and the full four-level chain match a CPU reference",
         if (smallFromChain) {
             commands.bindStorageTexture(1, **bloomChain, mipView(level + 1), StorageAccess::Read);
         } else {
-            commands.bindStorageTexture(1, **bloomBlur, mipView(level + 1), StorageAccess::Read);
+            commands.bindStorageTexture(1, bloomBlur->rhi(), mipView(level + 1),
+                                        StorageAccess::Read);
         }
-        commands.bindStorageTexture(2, **bloomBlur, mipView(level), StorageAccess::Write);
+        commands.bindStorageTexture(2, bloomBlur->rhi(), mipView(level), StorageAccess::Write);
         commands.bindFrameData(0, params);
         commands.dispatch((params.dstWidth + 7) / 8, (params.dstHeight + 7) / 8, 1);
         commands.endComputePass();
         if (level > 0) {
-            commands.textureBarrier(**bloomBlur, TextureUse::StorageWrite, TextureUse::StorageRead);
+            commands.textureBarrier(bloomBlur->rhi(), TextureUse::StorageWrite,
+                                    TextureUse::StorageRead);
         }
     }
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->submitAndEndFrame(gpuFrame2);
+    gpu->waitIdle();
 
     std::vector<uint16_t> blurHalf(size_t{kMip0Size} * kMip0Size * 4);
-    (*bloomBlur)->readback(blurHalf.data(), blurHalf.size() * sizeof(uint16_t));
+    {
+        const auto readbackBytes =
+            lmx::render::readbackNow(*gpu, *bloomBlur, lmx::render::TextureUse::StorageWrite);
+        std::memcpy(blurHalf.data(), readbackBytes.data(), blurHalf.size() * sizeof(uint16_t));
+    }
 
     // Decode every FP16 channel, including the small filtered values away from the probe.
     const auto toFloat = [](uint16_t half) {
@@ -430,16 +444,17 @@ TEST_CASE("bloom threshold and the full four-level chain match a CPU reference",
 // while 2 -> 5 maps to {0, 1/10, 1/2, 9/10, 1}. Nearest-neighbour reconstruction cannot pass
 // the interior probes; the constant base also proves accumulation retains the larger mip.
 TEST_CASE("bloom upsample reconstructs ramps across even odd and single-axis extents", "[gpu]") {
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
-    auto library = (*device)->loadShaderLibrary("Shaders/BloomUpsample");
+    auto gpu = createTestGpu();
+
+    REQUIRE(gpu != nullptr);
+    auto library = gpu->loadShaderLibrary("BloomUpsample");
     INFO(errorOf(library));
     REQUIRE(library.has_value());
-    auto pipeline = (*device)->createComputePipeline({.library = library->get(),
-                                                      .computeEntry = "computeBloomUpsample",
-                                                      .threadsPerThreadgroup = {8, 8, 1},
-                                                      .label = "lmx.test.filteredBloomPipeline"});
+    auto pipeline =
+        gpu->device().createComputePipeline({.library = library->get(),
+                                             .computeEntry = "computeBloomUpsample",
+                                             .threadsPerThreadgroup = {8, 8, 1},
+                                             .label = "lmx.test.filteredBloomPipeline"});
     INFO(errorOf(pipeline));
     REQUIRE(pipeline.has_value());
 
@@ -467,49 +482,55 @@ TEST_CASE("bloom upsample reconstructs ramps across even odd and single-axis ext
             }
             const TextureMip smallMip{.data = smallPixels.data(),
                                       .bytesPerRow = uint64_t{probe.smallWidth} * 8};
-            auto small = (*device)->createTexture({.width = probe.smallWidth,
-                                                   .height = probe.smallHeight,
-                                                   .format = Format::RGBA16Float,
-                                                   .storageRead = true,
-                                                   .label = "lmx.test.filteredBloomSmall"},
-                                                  std::span{&smallMip, 1});
+            auto small = gpu->device().createTexture({.width = probe.smallWidth,
+                                                      .height = probe.smallHeight,
+                                                      .format = Format::RGBA16Float,
+                                                      .storageRead = true,
+                                                      .label = "lmx.test.filteredBloomSmall"},
+                                                     std::span{&smallMip, 1});
             INFO(errorOf(small));
             REQUIRE(small.has_value());
             std::vector<uint16_t> basePixels(size_t{probe.dstWidth} * probe.dstHeight * 4,
                                              halfPow2(-3));
             const TextureMip baseMip{.data = basePixels.data(),
                                      .bytesPerRow = uint64_t{probe.dstWidth} * 8};
-            auto base = (*device)->createTexture({.width = probe.dstWidth,
-                                                  .height = probe.dstHeight,
-                                                  .format = Format::RGBA16Float,
-                                                  .storageRead = true,
-                                                  .label = "lmx.test.filteredBloomBase"},
-                                                 std::span{&baseMip, 1});
+            auto base = gpu->device().createTexture({.width = probe.dstWidth,
+                                                     .height = probe.dstHeight,
+                                                     .format = Format::RGBA16Float,
+                                                     .storageRead = true,
+                                                     .label = "lmx.test.filteredBloomBase"},
+                                                    std::span{&baseMip, 1});
             INFO(errorOf(base));
             REQUIRE(base.has_value());
-            auto dst = (*device)->createTexture({.width = probe.dstWidth,
-                                                 .height = probe.dstHeight,
-                                                 .format = Format::RGBA16Float,
-                                                 .storageWrite = true,
-                                                 .cpuReadback = true,
-                                                 .label = "lmx.test.filteredBloomDst"});
+            auto dst = lmx::engine::GpuTexture::create(gpu->device(),
+                                                       {.width = probe.dstWidth,
+                                                        .height = probe.dstHeight,
+                                                        .format = Format::RGBA16Float,
+                                                        .storageWrite = true,
+                                                        .cpuReadback = true,
+                                                        .label = "lmx.test.filteredBloomDst"});
             INFO(errorOf(dst));
             REQUIRE(dst.has_value());
             const std::array<uint32_t, 4> params{probe.smallWidth, probe.smallHeight,
                                                  probe.dstWidth, probe.dstHeight};
-            CommandList& commands = (*device)->beginFrame();
+            auto gpuFrame3 = gpu->beginFrame();
+            auto& commands = gpuFrame3.commands;
             commands.beginComputePass("lmx.test.filteredBloomUpsample");
             commands.bindComputePipeline(**pipeline);
             commands.bindStorageTexture(0, **base, {}, StorageAccess::Read);
             commands.bindStorageTexture(1, **small, {}, StorageAccess::Read);
-            commands.bindStorageTexture(2, **dst, {}, StorageAccess::Write);
+            commands.bindStorageTexture(2, dst->rhi(), {}, StorageAccess::Write);
             commands.bindFrameData(0, params);
             commands.dispatch(1, 1, 1);
             commands.endComputePass();
-            (*device)->endFrame(nullptr);
-            (*device)->waitIdle();
+            gpu->submitAndEndFrame(gpuFrame3);
+            gpu->waitIdle();
             std::vector<uint16_t> result(basePixels.size());
-            (*dst)->readback(result.data(), result.size() * sizeof(uint16_t));
+            {
+                const auto readbackBytes =
+                    lmx::render::readbackNow(*gpu, *dst, lmx::render::TextureUse::StorageWrite);
+                std::memcpy(result.data(), readbackBytes.data(), result.size() * sizeof(uint16_t));
+            }
             for (uint32_t y = 0; y < probe.dstHeight; ++y) {
                 for (uint32_t x = 0; x < probe.dstWidth; ++x) {
                     INFO("texel " << x << "," << y);

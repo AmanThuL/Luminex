@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <cstring>
 #include <format>
 
 namespace {
@@ -62,9 +63,9 @@ TEST_CASE("occlusion GPU results equal the CPU mirror on actual raster-built rea
                                               .sampled = true,
                                               .label = "lmx.test.hzbParity.depth"});
     REQUIRE(depth);
-    auto rasterLibrary = gpu->device().loadShaderLibrary("Shaders/HzbDepthFixture");
-    auto readLibrary = gpu->device().loadShaderLibrary("Shaders/HzbReadbackFixture");
-    auto probeLibrary = gpu->device().loadShaderLibrary("Shaders/OcclusionProbe");
+    auto rasterLibrary = gpu->loadShaderLibrary("HzbDepthFixture");
+    auto readLibrary = gpu->loadShaderLibrary("HzbReadbackFixture");
+    auto probeLibrary = gpu->loadShaderLibrary("OcclusionProbe");
     REQUIRE(rasterLibrary);
     REQUIRE(readLibrary);
     REQUIRE(probeLibrary);
@@ -112,19 +113,23 @@ TEST_CASE("occlusion GPU results equal the CPU mirror on actual raster-built rea
                 readParams.push_back(params);
                 readCount += params.width * params.height;
             }
-            auto readback = gpu->device().createBuffer({.size = readCount * sizeof(float),
-                                                        .storageWrite = true,
-                                                        .cpuReadback = true,
-                                                        .label = "lmx.test.hzbParity.readback"},
-                                                       nullptr);
-            auto output = gpu->device().createBuffer({.size = bounds.size() * 8 * sizeof(uint32_t),
-                                                      .storageWrite = true,
-                                                      .cpuReadback = true,
-                                                      .label = "lmx.test.hzbParity.output"},
-                                                     nullptr);
+            auto readback = lmx::engine::GpuBuffer::create(gpu->device(),
+                                                           {.size = readCount * sizeof(float),
+                                                            .storageWrite = true,
+                                                            .cpuReadback = true,
+                                                            .label = "lmx.test.hzbParity.readback"},
+                                                           nullptr);
+            auto output =
+                lmx::engine::GpuBuffer::create(gpu->device(),
+                                               {.size = bounds.size() * 8 * sizeof(uint32_t),
+                                                .storageWrite = true,
+                                                .cpuReadback = true,
+                                                .label = "lmx.test.hzbParity.output"},
+                                               nullptr);
             REQUIRE(readback);
             REQUIRE(output);
-            auto& commands = gpu->device().beginFrame();
+            auto gpuFrame1 = gpu->beginFrame();
+            auto& commands = gpuFrame1.commands;
             RenderGraph graph;
             graph.bindTextureStates(states);
             if (frame > 0) {
@@ -145,11 +150,10 @@ TEST_CASE("occlusion GPU results equal the CPU mirror on actual raster-built rea
                               commands.bindFrameData(0, masked);
                               commands.draw(3);
                           });
-            const auto pyramid = (*stage)->declare(graph, commands, nextVersion(depthInput),
-                                                   {.frameNumber = gpu->device().frameNumber(),
-                                                    .activeWidth = width,
-                                                    .activeHeight = height});
-            auto buffer = graph.importBuffer(**readback, "lmx.test.hzbParity.readback");
+            const auto pyramid = (*stage)->declare(
+                graph, commands, nextVersion(depthInput),
+                {.frameNumber = gpu->frameNumber(), .activeWidth = width, .activeHeight = height});
+            auto buffer = graph.importBuffer(readback->rhi(), "lmx.test.hzbParity.readback");
             for (const auto params : readParams) {
                 ComputePassDesc desc;
                 desc.shaderTextureReads.emplace_back(
@@ -174,7 +178,8 @@ TEST_CASE("occlusion GPU results equal the CPU mirror on actual raster-built rea
             }
             graph.readbackBuffer(buffer);
             const auto inputHandle = graph.importBuffer(**input, "lmx.test.hzbParity.bounds");
-            const auto outputHandle = graph.importBuffer(**output, "lmx.test.hzbParity.output");
+            const auto outputHandle =
+                graph.importBuffer(output->rhi(), "lmx.test.hzbParity.output");
             const auto params =
                 makeOcclusionParams(glm::mat4(1), width, height, levelCount, true, true);
             ComputePassDesc probeDesc;
@@ -201,13 +206,23 @@ TEST_CASE("occlusion GPU results equal the CPU mirror on actual raster-built rea
             const auto compiled = graph.compile();
             INFO((compiled ? "" : compiled.error().message));
             REQUIRE(compiled);
-            graph.execute(commands, gpu->device().frameNumber());
-            gpu->device().endFrame(nullptr);
-            gpu->device().waitIdle();
+            graph.execute(commands, gpu->frameNumber());
+            gpu->submitAndEndFrame(gpuFrame1);
+            gpu->waitIdle();
             std::vector<float> values(readCount);
-            (*readback)->readback(values.data(), values.size() * sizeof(float));
+            {
+                const auto readbackBytes =
+                    lmx::render::readbackNow(*gpu, *readback, lmx::render::BufferUse::StorageWrite,
+                                             lmx::render::wholeBuffer(*readback));
+                std::memcpy(values.data(), readbackBytes.data(), values.size() * sizeof(float));
+            }
             std::vector<uint32_t> actual(bounds.size() * 8);
-            (*output)->readback(actual.data(), actual.size() * sizeof(uint32_t));
+            {
+                const auto readbackBytes =
+                    lmx::render::readbackNow(*gpu, *output, lmx::render::BufferUse::StorageWrite,
+                                             lmx::render::wholeBuffer(*output));
+                std::memcpy(actual.data(), readbackBytes.data(), actual.size() * sizeof(uint32_t));
+            }
             std::vector<OcclusionLevel> levels;
             for (const auto read : readParams)
                 levels.push_back(

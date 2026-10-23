@@ -2,6 +2,7 @@
 #include "Render/Renderer/SceneViewBuilder.h"
 #include "Support/GpuTestSupport.h"
 #include <algorithm>
+#include <cstring>
 #include <functional>
 
 using namespace lmx::render;
@@ -34,12 +35,13 @@ engine::Scene occludedScene(float targetX = 0) {
     return result;
 }
 //======================================================================================================================
-VisibilityStatus checkedFrame(Device& device, engine::Scene& scene, Renderer& renderer,
-                              const engine::Camera& camera, float scale = 1, bool jitter = false,
-                              std::function<void(SceneView&)> configure = {},
+VisibilityStatus checkedFrame(lmx::engine::GpuContext& gpu, engine::Scene& scene,
+                              Renderer& renderer, const engine::Camera& camera, float scale = 1,
+                              bool jitter = false, std::function<void(SceneView&)> configure = {},
                               std::vector<uint32_t>* depthReadback = nullptr) {
-    auto& commands = device.beginFrame();
-    REQUIRE(scene.prepareFrame(device.frameNumber()));
+    auto gpuFrame1 = gpu.beginFrame();
+    auto& commands = gpuFrame1.commands;
+    REQUIRE(scene.prepareFrame(gpu.frameNumber()));
     std::vector<engine::DrawItem> items;
     auto view = buildSceneView(scene, items, false);
     view.classifyMode = ClassifyMode::Gpu;
@@ -55,41 +57,49 @@ VisibilityStatus checkedFrame(Device& device, engine::Scene& scene, Renderer& re
     if (configure)
         configure(view);
     renderer.render(commands, camera, view);
-    std::unique_ptr<ShaderLibrary> readLibrary;
+    lmx::engine::GpuOwned<ShaderLibrary> readLibrary;
     std::unique_ptr<ComputePipeline> readPipeline;
-    std::unique_ptr<Buffer> depthBuffer;
+    lmx::engine::GpuBuffer depthBuffer;
     if (depthReadback) {
-        auto library = device.loadShaderLibrary("Shaders/HzbReadbackFixture");
+        auto library = gpu.loadShaderLibrary("HzbReadbackFixture");
         REQUIRE(library);
         readLibrary = std::move(*library);
-        auto pipeline = device.createComputePipeline({.library = readLibrary.get(),
-                                                      .computeEntry = "computeMain",
-                                                      .threadsPerThreadgroup = {8, 8, 1},
-                                                      .label = "lmx.test.occlusion.depthReader"});
+        auto pipeline =
+            gpu.device().createComputePipeline({.library = readLibrary.get(),
+                                                .computeEntry = "computeMain",
+                                                .threadsPerThreadgroup = {8, 8, 1},
+                                                .label = "lmx.test.occlusion.depthReader"});
         REQUIRE(pipeline);
         readPipeline = std::move(*pipeline);
-        auto& depth = renderer.depthTarget();
-        depthReadback->resize(uint64_t{depth.width()} * depth.height());
-        auto buffer = device.createBuffer({.size = depthReadback->size() * sizeof(float),
-                                           .storageWrite = true,
-                                           .cpuReadback = true,
-                                           .label = "lmx.test.occlusion.depthReadback"},
-                                          nullptr);
+        const auto& depth = renderer.depthTexture();
+        depthReadback->resize(uint64_t{depth.desc().width} * depth.desc().height);
+        auto buffer = lmx::engine::GpuBuffer::create(gpu.device(),
+                                                     {.size = depthReadback->size() * sizeof(float),
+                                                      .storageWrite = true,
+                                                      .cpuReadback = true,
+                                                      .label = "lmx.test.occlusion.depthReadback"},
+                                                     nullptr);
         REQUIRE(buffer);
         depthBuffer = std::move(*buffer);
         commands.beginComputePass("lmx.test.occlusion.depthReadback");
         commands.bindComputePipeline(*readPipeline);
-        commands.bindTexture(0, depth);
-        commands.bindStorageBuffer(1, *depthBuffer, StorageAccess::Write);
-        commands.bindFrameData(0, std::array<uint32_t, 4>{depth.width(), depth.height(), 0, 0});
-        commands.dispatch((depth.width() + 7) / 8, (depth.height() + 7) / 8, 1);
+        commands.bindTexture(0, depth.rhi());
+        commands.bindStorageBuffer(1, depthBuffer.rhi(), StorageAccess::Write);
+        commands.bindFrameData(
+            0, std::array<uint32_t, 4>{depth.desc().width, depth.desc().height, 0, 0});
+        commands.dispatch((depth.desc().width + 7) / 8, (depth.desc().height + 7) / 8, 1);
         commands.endComputePass();
     }
-    device.endFrame(nullptr);
+    gpu.submitAndEndFrame(gpuFrame1);
     scene.commitFrame();
-    device.waitIdle();
-    if (depthReadback)
-        depthBuffer->readback(depthReadback->data(), depthReadback->size() * sizeof(float));
+    gpu.waitIdle();
+    if (depthReadback) {
+        const auto readbackBytes =
+            lmx::render::readbackNow(gpu, depthBuffer, lmx::render::BufferUse::StorageWrite,
+                                     lmx::render::wholeBuffer(depthBuffer));
+        std::memcpy(depthReadback->data(), readbackBytes.data(),
+                    depthReadback->size() * sizeof(float));
+    }
     renderer.drainVisibilityAfterIdle();
     auto retired = renderer.takeRetiredVisibility();
     REQUIRE(retired.size() == 1);
@@ -108,9 +118,15 @@ VisibilityStatus checkedFrame(Device& device, engine::Scene& scene, Renderer& re
     return status;
 }
 //======================================================================================================================
-std::vector<uint8_t> targetBytes(Texture& texture, uint32_t bytesPerPixel) {
-    std::vector<uint8_t> result(uint64_t{texture.width()} * texture.height() * bytesPerPixel);
-    texture.readback(result.data(), result.size());
+std::vector<uint8_t> targetBytes(lmx::engine::GpuContext& gpu,
+                                 const lmx::engine::GpuTexture& texture, uint32_t bytesPerPixel,
+                                 lmx::render::TextureUse current) {
+    std::vector<uint8_t> result(uint64_t{texture.desc().width} * texture.desc().height *
+                                bytesPerPixel);
+    {
+        const auto readbackBytes = lmx::render::readbackNow(gpu, texture, current);
+        std::memcpy(result.data(), readbackBytes.data(), result.size());
+    }
     return result;
 }
 } // namespace
@@ -127,32 +143,37 @@ TEST_CASE("production occlusion preserves exact static geometry attachments and 
     camera.fovY = glm::half_pi<float>();
     std::vector<uint32_t> depth, occludedDepth;
     auto baseline = checkedFrame(
-        gpu->device(), scene, **renderer, camera, 1, false,
+        *gpu, scene, **renderer, camera, 1, false,
         [](SceneView& view) {
             view.occlusionEnabled = false;
             view.occlusionCheck = false;
         },
         &depth);
-    const auto hdr = targetBytes((*renderer)->hdrColorTarget(), 8);
-    const auto motion = targetBytes(*(*renderer)->motionTarget(), 4);
-    const auto reactive = targetBytes(*(*renderer)->reactiveTarget(), 1);
-    auto first = checkedFrame(gpu->device(), scene, **renderer, camera);
+    const auto hdr =
+        targetBytes(*gpu, (*renderer)->hdrColorTexture(), 8, lmx::render::TextureUse::CopySource);
+    const auto motion =
+        targetBytes(*gpu, *(*renderer)->motionTexture(), 4, lmx::render::TextureUse::RenderTarget);
+    const auto reactive = targetBytes(*gpu, *(*renderer)->reactiveTexture(), 1,
+                                      lmx::render::TextureUse::RenderTarget);
+    auto first = checkedFrame(*gpu, scene, **renderer, camera);
     REQUIRE(first.sceneCounters.occluded == 0);
-    auto second =
-        checkedFrame(gpu->device(), scene, **renderer, camera, 1, false, {}, &occludedDepth);
+    auto second = checkedFrame(*gpu, scene, **renderer, camera, 1, false, {}, &occludedDepth);
     REQUIRE(second.sceneCounters.occluded == 1);
     REQUIRE(second.occlusionInvalidReason == OcclusionInvalidReason::None);
     REQUIRE(second.occlusionSourceFrame + 1 == second.frameNumber);
     REQUIRE(second.occlusionCheck.strict);
     REQUIRE(second.occlusionCheck.falselyRejectedInstances == 0);
-    REQUIRE(targetBytes((*renderer)->hdrColorTarget(), 8) == hdr);
+    REQUIRE(targetBytes(*gpu, (*renderer)->hdrColorTexture(), 8,
+                        lmx::render::TextureUse::CopySource) == hdr);
     REQUIRE(occludedDepth == depth);
-    REQUIRE(targetBytes(*(*renderer)->motionTarget(), 4) == motion);
-    REQUIRE(targetBytes(*(*renderer)->reactiveTarget(), 1) == reactive);
+    REQUIRE(targetBytes(*gpu, *(*renderer)->motionTexture(), 4,
+                        lmx::render::TextureUse::RenderTarget) == motion);
+    REQUIRE(targetBytes(*gpu, *(*renderer)->reactiveTexture(), 1,
+                        lmx::render::TextureUse::RenderTarget) == reactive);
     for (const float scale : {1.0f, 0.5f, 1.0f}) {
         for (uint32_t phase = 0; phase < 16; ++phase) {
             CAPTURE(scale, phase);
-            const auto status = checkedFrame(gpu->device(), scene, **renderer, camera, scale, true);
+            const auto status = checkedFrame(*gpu, scene, **renderer, camera, scale, true);
             REQUIRE(status.occlusionSourceFrame + 1 == status.frameNumber);
             REQUIRE(status.occlusionInvalidReason == OcclusionInvalidReason::None);
             REQUIRE(status.sceneCounters.occluded == 1);
@@ -171,17 +192,17 @@ TEST_CASE("newly visible geometry is recovered on its second visible frame",
     REQUIRE(renderer);
     engine::Camera camera;
     camera.fovY = glm::half_pi<float>();
-    checkedFrame(gpu->device(), scene, **renderer, camera);
-    auto hidden = checkedFrame(gpu->device(), scene, **renderer, camera);
+    checkedFrame(*gpu, scene, **renderer, camera);
+    auto hidden = checkedFrame(*gpu, scene, **renderer, camera);
     REQUIRE(hidden.sceneCounters.occluded == 1);
     camera.position.x = 0.9f;
-    auto revealed = checkedFrame(gpu->device(), scene, **renderer, camera);
+    auto revealed = checkedFrame(*gpu, scene, **renderer, camera);
     REQUIRE(revealed.occlusionInvalidReason == OcclusionInvalidReason::None);
     REQUIRE_FALSE(revealed.occlusionCheck.strict);
     REQUIRE(revealed.occlusionCheck.visibleInstances == 2);
     REQUIRE(revealed.occlusionCheck.falselyRejectedInstances == 1);
     REQUIRE(revealed.occlusionCheck.maximumMissingStreak == 1);
-    auto recovered = checkedFrame(gpu->device(), scene, **renderer, camera);
+    auto recovered = checkedFrame(*gpu, scene, **renderer, camera);
     REQUIRE(recovered.occlusionCheck.visibleInstances == 2);
     REQUIRE(recovered.occlusionCheck.falselyRejectedInstances == 0);
     REQUIRE(recovered.sceneCounters.occluded == 0);
@@ -197,8 +218,8 @@ TEST_CASE("global occlusion invalidation retains all candidates before reusing d
     REQUIRE(renderer);
     engine::Camera camera;
     camera.fovY = glm::half_pi<float>();
-    checkedFrame(gpu->device(), scene, **renderer, camera);
-    REQUIRE(checkedFrame(gpu->device(), scene, **renderer, camera).sceneCounters.occluded == 1);
+    checkedFrame(*gpu, scene, **renderer, camera);
+    REQUIRE(checkedFrame(*gpu, scene, **renderer, camera).sceneCounters.occluded == 1);
     OcclusionInvalidReason expected = OcclusionInvalidReason::CoverageChanged;
     std::function<void(SceneView&)> configure;
     SECTION("move occluder") {
@@ -242,27 +263,27 @@ TEST_CASE("global occlusion invalidation retains all candidates before reusing d
         expected = OcclusionInvalidReason::OutputExtentChanged;
     }
     SECTION("toggle off then on") {
-        checkedFrame(gpu->device(), scene, **renderer, camera, 1, false, [](SceneView& view) {
+        checkedFrame(*gpu, scene, **renderer, camera, 1, false, [](SceneView& view) {
             view.occlusionEnabled = false;
             view.occlusionCheck = false;
         });
         expected = OcclusionInvalidReason::PreviouslyDisabled;
     }
     SECTION("unrendered frame gap") {
-        gpu->device().beginFrame();
-        gpu->device().endFrame(nullptr);
+        auto gpuFrame2 = gpu->beginFrame();
+        gpu->submitAndEndFrame(gpuFrame2);
         expected = OcclusionInvalidReason::SourceGap;
     }
-    const auto status = checkedFrame(gpu->device(), scene, **renderer, camera, 1, false, configure);
+    const auto status = checkedFrame(*gpu, scene, **renderer, camera, 1, false, configure);
     REQUIRE(status.occlusionInvalidReason == expected);
     REQUIRE(status.sceneCounters.occluded == 0);
     REQUIRE(status.occlusionCheck.falselyRejectedInstances == 0);
-    const auto following = checkedFrame(gpu->device(), scene, **renderer, camera, 1, false,
-                                        [configure](SceneView& view) {
-                                            if (configure)
-                                                configure(view);
-                                            view.temporal.cameraCut = false;
-                                        });
+    const auto following =
+        checkedFrame(*gpu, scene, **renderer, camera, 1, false, [configure](SceneView& view) {
+            if (configure)
+                configure(view);
+            view.temporal.cameraCut = false;
+        });
     REQUIRE(following.occlusionInvalidReason == OcclusionInvalidReason::None);
     REQUIRE(following.occlusionSourceFrame + 1 == following.frameNumber);
     REQUIRE(following.occlusionCheck.falselyRejectedInstances == 0);
@@ -280,10 +301,11 @@ TEST_CASE("occlusion joins overlapping retired frames across slot reuse in both 
         auto renderer = Renderer::create(*gpu, 64, 64, true);
         REQUIRE(renderer);
         std::vector<VisibilityStatus> statuses;
-        const uint64_t firstFrame = gpu->device().frameNumber() + 1;
+        const uint64_t firstFrame = gpu->frameNumber() + 1;
         for (uint32_t frame = 0; frame < 8; ++frame) {
-            auto& commands = gpu->device().beginFrame();
-            REQUIRE(scene.prepareFrame(gpu->device().frameNumber()));
+            auto gpuFrame3 = gpu->beginFrame();
+            auto& commands = gpuFrame3.commands;
+            REQUIRE(scene.prepareFrame(gpu->frameNumber()));
             std::vector<engine::DrawItem> items;
             auto view = buildSceneView(scene, items, false);
             view.classifyMode = ClassifyMode::Gpu;
@@ -298,13 +320,13 @@ TEST_CASE("occlusion joins overlapping retired frames across slot reuse in both 
             view.temporal.sceneGeneration = 9;
             view.temporal.renderScale = frame % 2 == 0 ? 1.0f : 0.5f;
             (*renderer)->render(commands, camera, view);
-            gpu->device().endFrame(nullptr);
+            gpu->submitAndEndFrame(gpuFrame3);
             scene.commitFrame();
             auto retired = (*renderer)->takeRetiredVisibility();
             for (auto& status : retired)
                 statuses.push_back(std::move(status));
         }
-        gpu->device().waitIdle();
+        gpu->waitIdle();
         (*renderer)->drainVisibilityAfterIdle();
         auto retired = (*renderer)->takeRetiredVisibility();
         for (auto& status : retired)
@@ -347,17 +369,15 @@ TEST_CASE("enabled toggles invalidate positively rejecting occluder history and 
         auto renderer = Renderer::create(*gpu, 64, 64, true);
         REQUIRE(renderer);
         const auto configure = [mode](SceneView& view) { view.submission = mode; };
-        checkedFrame(gpu->device(), scene, **renderer, camera, 1, false, configure);
-        const auto hidden =
-            checkedFrame(gpu->device(), scene, **renderer, camera, 1, false, configure);
+        checkedFrame(*gpu, scene, **renderer, camera, 1, false, configure);
+        const auto hidden = checkedFrame(*gpu, scene, **renderer, camera, 1, false, configure);
         REQUIRE(hidden.sceneCounters.occluded == 1);
         REQUIRE(hidden.scene.candidates[1].reason == VisibilityReason::Occluded);
         REQUIRE(hidden.occlusionCheck.visibleInstances == 1);
         const auto coverageBefore = scene.coverageEpoch();
         scene.setObjectEnabled(0, false);
         REQUIRE(scene.coverageEpoch() > coverageBefore);
-        const auto revealed =
-            checkedFrame(gpu->device(), scene, **renderer, camera, 1, false, configure);
+        const auto revealed = checkedFrame(*gpu, scene, **renderer, camera, 1, false, configure);
         REQUIRE(revealed.occlusionInvalidReason == OcclusionInvalidReason::CoverageChanged);
         REQUIRE(revealed.sceneCounters.occluded == 0);
         REQUIRE(revealed.sceneCounters.candidates == 1);
@@ -370,20 +390,17 @@ TEST_CASE("enabled toggles invalidate positively rejecting occluder history and 
         REQUIRE(revealed.scene.candidates[1].state == VisibilityState::Visible);
         REQUIRE(revealed.occlusionCheck.falselyRejectedInstances == 0);
         REQUIRE(revealed.occlusionCheck.visibleInstances == 1);
-        const auto off =
-            checkedFrame(gpu->device(), scene, **renderer, camera, 1, false, configure);
+        const auto off = checkedFrame(*gpu, scene, **renderer, camera, 1, false, configure);
         REQUIRE(off.occlusionInvalidReason == OcclusionInvalidReason::None);
         REQUIRE(off.sceneCounters.occluded == 0);
         REQUIRE(off.sceneCounters.disabled == 1);
         scene.setObjectEnabled(0, true);
-        const auto restored =
-            checkedFrame(gpu->device(), scene, **renderer, camera, 1, false, configure);
+        const auto restored = checkedFrame(*gpu, scene, **renderer, camera, 1, false, configure);
         REQUIRE(restored.occlusionInvalidReason == OcclusionInvalidReason::CoverageChanged);
         REQUIRE(restored.sceneCounters.disabled == 0);
         REQUIRE(restored.sceneCounters.occluded == 0);
         REQUIRE(restored.sceneCounters.historyInvalid == 2);
-        const auto hiddenAgain =
-            checkedFrame(gpu->device(), scene, **renderer, camera, 1, false, configure);
+        const auto hiddenAgain = checkedFrame(*gpu, scene, **renderer, camera, 1, false, configure);
         REQUIRE(hiddenAgain.occlusionInvalidReason == OcclusionInvalidReason::None);
         REQUIRE(hiddenAgain.sceneCounters.occluded == 1);
         REQUIRE(hiddenAgain.scene.candidates[1].reason == VisibilityReason::Occluded);
