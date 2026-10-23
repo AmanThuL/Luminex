@@ -82,13 +82,38 @@ and copy passes around their bodies from the `RunOp`'s kind and label, and recor
 scopes, since that command list times passes itself. Raster passes carry no scope of their own; a backend
 that times passes times a raster pass from its `BeginRenderPassOp`/`EndRenderPassOp` pair.
 
+## Persistent texture state
+
+A fresh graph cannot see the passes of an earlier frame, so a texture that outlives a frame carries
+the use it was left in through a `TextureStateTable` (`TextureStateTable.h`): one whole-resource
+`TextureUse` per texture, keyed by the texture's address, with an absent entry meaning no earlier
+access. The table holds no GPU object and is not thread-safe. `Renderer` owns it in this phase and
+binds it to each frame's graph with `bindTextureStates`; binding the same table again is allowed,
+a different one asserts, and stages reach it through `textureStates()`.
+
+`importPersistentTexture` imports a texture with the table's entry as its earlier-frame access, so
+the first conflicting access of the frame is barriered like any other; with no entry it is exactly
+a plain `importTexture`, which stays the import for a texture with no history, such as the
+drawable. Lowering fills `LoweredFrame::finalStates` for every table import, and `execute()`
+writes them back to the table after `emit()`. The use written back is the one the last scheduled
+pass naming the texture left it in, a write winning over a read within that pass, mapped by the
+same role and kind table the transitions use. A texture no scheduled pass names, its passes
+culled, keeps its entry, because the frame did nothing to it on the GPU.
+
+`setFinalUse(handle, use)` states the use when something outside the graph accesses the texture
+afterwards (a caller or the UI sampling it), and overrides the derived use; the last call wins. It
+adds no barrier and no record entry, so dumps are unchanged: the access it states is the caller's
+to order. An owner calls `set` directly only to seed a texture at creation or recreation, which
+also keeps a destroyed texture's reused address from handing its use to the new one, or to state
+a texture the current graph does not import; `forget` drops an entry.
+
 ## Implementation units
 
 Declaration, lowering and execution, schedule compilation and transient-lifetime assignment,
 transition derivation, validation and emission are separate units (`RenderGraph.h`/`.cpp`,
 `RenderGraphCompile.cpp`, `RenderGraphTransitions.cpp`, `RenderGraphValidation.cpp`,
-`FrameEmitter.h`/`.cpp`), over the value types of `LoweredFrame.h`, `AttachmentOps.h` and
-`ResourceUse.h`, sharing private range and declaration
+`FrameEmitter.h`/`.cpp`, `TextureStateTable.h`/`.cpp`), over the value types of
+`LoweredFrame.h`, `AttachmentOps.h` and `ResourceUse.h`, sharing private range and declaration
 helpers through `RenderGraphInternal.h` and `RenderGraphRanges.cpp`. The private transition steps
 share one `graph_detail::TransitionState`, which holds each resource's last write and pending
 reads, and they retain alias handoffs, read-after-write, write-after-write and write-after-read
@@ -108,7 +133,8 @@ accepted `CompiledFrameRecord`, which the caller retains for its own frame-recor
   placement and aliasing, external passes, attachment rules, lowering and the deterministic dump,
   across `GpuAppFrameDeclaration`, `GpuRenderGraph`, `GpuTransient`, `GraphDump`, `RenderGraph`,
   `RenderGraphAttachment`, `RenderGraphExecution`, `RenderGraphExternal`, `RenderGraphLowering`,
-  `RenderGraphRecord`, `RenderGraphTransient`, `RenderGraphTransition` and `RenderTransientPool`.
+  `RenderGraphRecord`, `RenderGraphTransient`, `RenderGraphTransition`, `RenderTransientPool` and
+  `TextureStateTable`.
 - `Tests/App/Model/Graph/` covers the editor's graph models built on this contract (frame-record
   retention, node model and layout, snapshots and the graph inspector), described in
   [App](app.md).

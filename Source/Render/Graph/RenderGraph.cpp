@@ -23,6 +23,7 @@
 namespace lmx::render {
 using graph_detail::fail;
 using graph_detail::isWriteRole;
+using graph_detail::textureUseOf;
 
 namespace {
 
@@ -177,6 +178,60 @@ GraphTexture RenderGraph::importTexture(rojoRHI::Texture& texture, rojoRHI::Form
                            .arrayLayers = texture.arrayLayers(),
                            .priorTextureAccess = previousUse});
     return {.index = static_cast<uint32_t>(m_resources.size() - 1), .version = 0};
+}
+
+//======================================================================================================================
+void RenderGraph::bindTextureStates(TextureStateTable& states) {
+    LMX_ASSERT(m_textureStates == nullptr || m_textureStates == &states,
+               "the graph is already bound to a different texture state table");
+    m_textureStates = &states;
+}
+
+//======================================================================================================================
+TextureStateTable& RenderGraph::textureStates() {
+    LMX_ASSERT(m_textureStates != nullptr, "the graph has no texture state table bound");
+    return *m_textureStates;
+}
+
+//======================================================================================================================
+GraphTexture RenderGraph::importPersistentTexture(rojoRHI::Texture& texture, rojoRHI::Format format,
+                                                  std::string_view name) {
+    LMX_ASSERT(m_textureStates != nullptr,
+               std::format("persistent texture '{}' is imported on a graph with no texture state "
+                           "table bound",
+                           name));
+    LMX_ASSERT(texture.format() == rojoRHI::Format::Unknown || texture.format() == format,
+               std::format("imported texture '{}' reports format {}, not the declared {}", name,
+                           formatName(texture.format()), formatName(format)));
+    // Two table imports of one texture would each write a terminal use back, and the table keeps
+    // one use per texture.
+    LMX_ASSERT(std::ranges::none_of(m_resources,
+                                    [&](const Resource& resource) {
+                                        return resource.tracked && resource.texture == &texture;
+                                    }),
+               std::format("persistent texture '{}' is already imported in this graph", name));
+    m_resources.push_back({.kind = ResourceKind::Texture,
+                           .name = std::string(name),
+                           .texture = &texture,
+                           .format = format,
+                           .width = texture.width(),
+                           .height = texture.height(),
+                           .mipLevels = texture.mipLevels(),
+                           .arrayLayers = texture.arrayLayers(),
+                           .priorTextureAccess = m_textureStates->find(texture),
+                           .tracked = true});
+    return {.index = static_cast<uint32_t>(m_resources.size() - 1), .version = 0};
+}
+
+//======================================================================================================================
+void RenderGraph::setFinalUse(GraphTexture handle, TextureUse use) {
+    checkTexture(handle);
+    Resource& resource = m_resources[handle.index];
+    LMX_ASSERT(resource.tracked,
+               std::format("setFinalUse names texture '{}', which was not imported through "
+                           "importPersistentTexture",
+                           resource.name));
+    resource.finalUse = use;
 }
 
 //======================================================================================================================
@@ -492,7 +547,43 @@ GraphResult<LoweredFrame> RenderGraph::lower(uint64_t frameId) const {
         }
     }
     frame.ops.emplace_back(EndScopeOp{});
+    frame.finalStates = finalStatesOf(debug.schedule);
     return frame;
+}
+
+//======================================================================================================================
+// A culled pass never reaches the GPU, so only scheduled passes count, and the last one naming the
+// texture decides. Within that pass a write wins over a read of another range: it is the use that
+// leaves the texture in a producing state, which the next frame's first access must wait on.
+std::vector<TextureFinalState> RenderGraph::finalStatesOf(const Schedule& schedule) const {
+    std::vector<TextureFinalState> states;
+    for (uint32_t index = 0; index < m_resources.size(); ++index) {
+        const Resource& resource = m_resources[index];
+        if (!resource.tracked) {
+            continue;
+        }
+        if (resource.finalUse) {
+            states.push_back({.resource = index, .use = *resource.finalUse});
+            continue;
+        }
+        for (const uint32_t passIndex : std::views::reverse(schedule.passes)) {
+            const Pass& pass = m_passes[passIndex];
+            const Declaration* last = nullptr;
+            for (const Declaration& declaration : pass.declarations) {
+                if (declaration.resource == index && (last == nullptr || declaration.isWrite)) {
+                    last = &declaration;
+                    if (declaration.isWrite) {
+                        break;
+                    }
+                }
+            }
+            if (last != nullptr) {
+                states.push_back({.resource = index, .use = textureUseOf(pass.kind, last->role)});
+                break;
+            }
+        }
+    }
+    return states;
 }
 
 //======================================================================================================================
@@ -545,6 +636,11 @@ CompiledFrameRecord RenderGraph::execute(rojoRHI::CommandList& commands, uint64_
 
     emit(*frame, commands,
          [this](uint32_t passIndex) { m_passes[passIndex].execute(passResources(passIndex)); });
+    // The terminal uses are written back only once the frame is recorded, so the next frame's
+    // imports see them; a tracked import exists only on a graph with a bound table.
+    for (const TextureFinalState& state : frame->finalStates) {
+        m_textureStates->set(*frame->resources[state.resource].texture, state.use);
+    }
     return std::move(frame->record);
 }
 

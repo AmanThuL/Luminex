@@ -7,6 +7,7 @@
 #include "Render/Graph/AttachmentOps.h"
 #include "Render/Graph/CompiledFrameRecord.h"
 #include "Render/Graph/LoweredFrame.h"
+#include "Render/Graph/TextureStateTable.h"
 #include "Render/Graph/TransientPool.h"
 #include "Render/Graph/TransientResourceDesc.h"
 #include <rojoRHI/RHI.h>
@@ -262,6 +263,30 @@ public:
     GraphTexture importTexture(rojoRHI::Texture& texture, rojoRHI::Format format,
                                std::string_view name, TextureUse previousUse);
 
+    /// Binds the table persistent imports read their earlier-frame use from and execute() writes
+    /// their terminal use back to. `states` must outlive the graph. Binding the table already bound
+    /// is allowed, so an owner can bind on every declaration; binding a different one asserts.
+    void bindTextureStates(TextureStateTable& states);
+
+    /// The bound table, for a stage that seeds or reads a persistent texture's entry. Asserts when
+    /// no table is bound.
+    TextureStateTable& textureStates();
+
+    /// Brings a persistent texture into the graph as version 0, on importTexture's terms, with the
+    /// use the bound table holds for it as its earlier-frame access. No entry means no earlier
+    /// access, exactly a plain import. execute() writes back the use the last scheduled pass naming
+    /// it left it in (a write winning within that pass), or the use setFinalUse() stated; a frame
+    /// whose scheduled passes never name it leaves its entry untouched. Asserts when no table is
+    /// bound or the texture is already a persistent import of this graph.
+    GraphTexture importPersistentTexture(rojoRHI::Texture& texture, rojoRHI::Format format,
+                                         std::string_view name);
+
+    /// States the use a persistent import is in once the frame completes, when something outside
+    /// the graph accesses it afterwards, and overrides the use derived from its passes. The last
+    /// call wins. It adds no barrier to the frame: the access it states is the caller's to order.
+    /// `handle` must name a texture imported through importPersistentTexture.
+    void setFinalUse(GraphTexture handle, TextureUse use);
+
     /// Brings an existing buffer into the graph as version 0, on importTexture's terms. Buffers
     /// carry no format because no rule inspects one.
     GraphBuffer importBuffer(rojoRHI::Buffer& buffer, std::string_view name);
@@ -406,10 +431,12 @@ public:
     /// The synchronisation this emits covers read-after-write, write-after-read, and
     /// write-after-write conflicts, derived from the declarations alone. Texture writers are
     /// tracked per subresource range, so a write to mip N replaces only that range's producer while
-    /// untouched mips keep the use that actually wrote them. Persistent-import overloads seed the
-    /// last texture or buffer access from an earlier frame, so the first conflicting
-    /// access in this frame is barriered like any other. An export emits nothing -- it roots a
-    /// result for the caller to read once the queue drains, which is not another pass reading it.
+    /// untouched mips keep the use that actually wrote them. Persistent imports seed the last
+    /// texture or buffer access from an earlier frame, so the first conflicting access in this
+    /// frame is barriered like any other, and once the frame is emitted each table-imported
+    /// texture's terminal use is written back to the bound table for the next frame. An export
+    /// emits nothing -- it roots a result for the caller to read once the queue drains, which is
+    /// not another pass reading it.
     ///
     /// Reuse of transient memory is the one hazard the version chain cannot state, because the two
     /// sides are different logical resources: where a transient takes bytes an earlier one held, a
@@ -475,6 +502,10 @@ private:
         // see the last access still in flight in an earlier command buffer.
         std::optional<TextureUse> priorTextureAccess;
         std::optional<BufferUse> priorBufferAccess;
+        // Imported through importPersistentTexture: its terminal use is written back to the bound
+        // table, from `finalUse` when the caller stated one and from its passes otherwise.
+        bool tracked = false;
+        std::optional<TextureUse> finalUse;
     };
 
     // Where one transient sits in the frame's heap, alongside the lifetime that justified it.
@@ -570,6 +601,9 @@ private:
     // both halves; see compile()'s contract for the rules it implements.
     AliasPlan planTransients(const Schedule& schedule) const;
 
+    // The use each tracked texture is left in after the scheduled passes, by resource index.
+    std::vector<TextureFinalState> finalStatesOf(const Schedule& schedule) const;
+
     // The render-pass op a raster pass lowers to, carrying its attachments as declared.
     BeginRenderPassOp beginRenderPassOf(const Pass& pass) const;
 
@@ -594,6 +628,8 @@ private:
     // Null for an import-only graph; the pool a transient is placed in, whose backend sizes its
     // descriptors.
     TransientPool* m_transients = nullptr;
+    // Null until bindTextureStates; persistent imports read it and execute() writes it back.
+    TextureStateTable* m_textureStates = nullptr;
     bool m_poolingEnabled = true;
 };
 
