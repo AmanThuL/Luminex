@@ -23,16 +23,13 @@ namespace {
 
 //======================================================================================================================
 bool isDepthFormat(rojoRHI::Format format) {
-    return format == rojoRHI::Format::D32Float;
+    return engine::isDepthFormat(format);
 }
 
 //======================================================================================================================
-// The colour attachment role, on the same terms the RHI's own desc validation uses: 8-bit unorm
-// targets, sRGB included, the single-channel unorm a mask target carries, plus the two float
-// formats -- the half-float scene colour and the two-channel half-float a motion-vector target
-// carries. It has to answer exactly as the RHI's predicate does, or the graph refuses a target
-// the device would have accepted. A block-compressed format cannot be rendered into, and a depth
-// format belongs in the other slot.
+// Graph colour attachments support 8-bit unorm targets, sRGB included, single-channel unorm
+// masks, half-float scene colour and two-channel motion vectors, and packed RGB10A2 targets.
+// Single-channel float, block-compressed and depth formats are outside this attachment policy.
 bool isColorRenderableFormat(rojoRHI::Format format) {
     switch (format) {
     case rojoRHI::Format::BGRA8Unorm:
@@ -41,13 +38,15 @@ bool isColorRenderableFormat(rojoRHI::Format format) {
     case rojoRHI::Format::RGBA16Float:
     case rojoRHI::Format::RG16Float:
     case rojoRHI::Format::R8Unorm:
+    case rojoRHI::Format::RGB10A2Unorm:
         return true;
     case rojoRHI::Format::R16Float:
     case rojoRHI::Format::R32Float:
-    case rojoRHI::Format::Unknown:
+    case rojoRHI::Format::Undefined:
     case rojoRHI::Format::BC1Unorm:
     case rojoRHI::Format::BC1Unorm_sRGB:
     case rojoRHI::Format::D32Float:
+    case rojoRHI::Format::D32FloatS8:
         return false;
     }
     return false;
@@ -64,8 +63,8 @@ bool validAxis(uint32_t base, uint32_t count, uint32_t available, uint32_t allSe
 //======================================================================================================================
 // A range covers real subresources only when both axes do, so an empty count on either one is an
 // empty range whatever the other says.
-bool isEmptyRange(const rojoRHI::TextureSubresourceRange& range) {
-    return range.mipLevelCount == 0 || range.arrayLayerCount == 0;
+bool isEmptyRange(const rojoRHI::SubresourceRange& range) {
+    return range.mipCount == 0 || range.layerCount == 0;
 }
 
 } // namespace
@@ -77,11 +76,10 @@ GraphResult<void> RenderGraph::validateExtraColorAttachments(const Pass& pass) c
     }
     // Extras are attachments 1 and up: the count is what the hardware can bind past attachment
     // zero, and attachment zero has to be there for any of them to mean anything.
-    if (pass.extraColor.size() > rojoRHI::kMaxExtraColorTargets) {
+    if (pass.extraColor.size() > kMaxExtraColorTargets) {
         return fail(std::format("pass '{}' declares {} extra color attachments, past the {} a "
                                 "pass can bind beyond its primary one",
-                                pass.label, pass.extraColor.size(),
-                                rojoRHI::kMaxExtraColorTargets));
+                                pass.label, pass.extraColor.size(), kMaxExtraColorTargets));
     }
     if (!pass.color) {
         const Resource& first = m_resources[pass.extraColor.front().handle.index];
@@ -225,12 +223,11 @@ GraphResult<void> RenderGraph::validateDeclarations() const {
                                         pass.label, roleName(declaration.role), resource.name,
                                         describeRange(declaration.range)));
             }
-            const bool validMips =
-                validAxis(declaration.range.baseMipLevel, declaration.range.mipLevelCount,
-                          resource.mipLevels, rojoRHI::kAllMipLevels);
+            const bool validMips = validAxis(declaration.range.baseMip, declaration.range.mipCount,
+                                             resource.mipLevels, rojoRHI::kAllMips);
             const bool validLayers =
-                validAxis(declaration.range.baseArrayLayer, declaration.range.arrayLayerCount,
-                          resource.arrayLayers, rojoRHI::kAllArrayLayers);
+                validAxis(declaration.range.baseLayer, declaration.range.layerCount,
+                          resource.arrayLayers, rojoRHI::kAllLayers);
             if (!validMips || !validLayers) {
                 return fail(std::format("pass '{}' declares a {} of texture '{}' over {}, which "
                                         "runs past its {} mip levels and {} array layers",

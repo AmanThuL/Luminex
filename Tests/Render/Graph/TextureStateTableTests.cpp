@@ -188,3 +188,30 @@ TEST_CASE("forget returns a texture to no earlier access", "[render][graph]") {
     REQUIRE(samplingFrameOps(shadowTexture, states, ShadowImport::Table) ==
             samplingFrameOps(shadowTexture, states, ShadowImport::Plain));
 }
+
+//======================================================================================================================
+TEST_CASE("logical-only entries seed physical cells without replacing known states",
+          "[render][graph]") {
+    using Stage = rojoRHI::Stage;
+    using Access = rojoRHI::Access;
+    using Layout = rojoRHI::Layout;
+    const rojoRHI::Texture texture{91};
+    TextureStateTable states;
+    states.setLogicalUse(texture, lmx::render::TextureUse::ShaderRead);
+    REQUIRE(states.size() == 1);
+    REQUIRE(states.physicalRanges(texture, {}).empty());
+    states.seedPhysical(texture, 3, 2, Layout::ShaderRead);
+    states.set(texture, {1, 1, 1, 1},
+               {Stage::ComputeShader, Access::ShaderWrite, Layout::ShaderWrite});
+    states.seedPhysical(texture, 3, 2, Layout::Undefined);
+    REQUIRE(states.size() == 1);
+    REQUIRE(states.logicalUse(texture) == lmx::render::TextureUse::ShaderRead);
+    REQUIRE(states.physicalRanges(texture, {}).size() == 6);
+    REQUIRE(states.find(texture, {1, 1, 1, 1})->layout == Layout::ShaderWrite);
+    REQUIRE(states.find(texture, {0, 1, 0, 1})->layout == Layout::ShaderRead);
+    REQUIRE_FALSE(states.find(texture, {}).has_value());
+    states.forget(texture);
+    REQUIRE(states.size() == 0);
+    REQUIRE_FALSE(states.logicalUse(texture).has_value());
+    REQUIRE(states.physicalRanges(texture, {}).empty());
+}

@@ -15,13 +15,14 @@ struct ResolvedRange {
     Interval layers{0, 1};
 };
 
+// Whole-resource diagnostic use derivation. It does not describe physical layouts/frontiers.
 struct TransitionState {
     // What each resource was last written as, and which of its subresources a barrier has since
     // made visible to a reader. Writing a resource again puts it back in a producing state and
     // clears what was covered, so the transition is owed again.
     //
     // Coverage is per emitted range *and* per consuming stage class, because those are the two axes
-    // a barrier is scoped on (rojoRHI::CommandList::textureBarrier states the model). A barrier
+    // the diagnostic dependency retains. A dependency
     // orders the passes it sits between, so a reader of mip 1 is not ordered by a barrier that
     // named mip 0 for an earlier reader; and a barrier consumed by a compute pass is scoped to that
     // pass's stages, so it orders nothing for a later raster reader of the same subresources. A
@@ -62,10 +63,9 @@ struct TransitionState {
     // ordered after. Keeping only the last reader's use would let one reader's stage class stand in
     // for another's -- a scene pass's sampled read and a histogram dispatch's storage read of one
     // buffer, with the resolve dispatch that overwrites it waiting on the dispatch alone. A write
-    // therefore emits one barrier per *distinct* use among the readers it overlaps, in first-read
-    // order: separate barriers between the same two passes are how the RHI expresses a producing
-    // side that spans several uses, and a backend accumulates them into the one dependency the
-    // consuming pass emits.
+    // therefore records one transition per distinct nominal use in first-read order.
+    // Physical lowering instead derives a single complete source frontier from all actual
+    // scheduled accesses; it does not translate these rows into native dependencies.
     struct PendingRead {
         ResolvedRange range;
         TextureUse use = TextureUse::ShaderRead;
@@ -85,7 +85,7 @@ bool isWriteRole(UseRole role);
 // The texture use a declaration stands for, on either side of a derived barrier and in the use a
 // persistent texture is written back with.
 TextureUse textureUseOf(PassKind kind, UseRole role);
-ResolvedRange resolveRange(const rojoRHI::TextureSubresourceRange& range, uint32_t mipLevels,
+ResolvedRange resolveRange(const rojoRHI::SubresourceRange& range, uint32_t mipLevels,
                            uint32_t arrayLayers);
 bool rangesOverlap(const ResolvedRange& a, const ResolvedRange& b);
 std::string_view sinkVerb(SinkKind kind);
