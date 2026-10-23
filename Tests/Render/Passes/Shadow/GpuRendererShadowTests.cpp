@@ -213,7 +213,7 @@ TEST_CASE("renderer shadows a floating cube onto the ground", "[gpu]") {
     gpu->device().waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kSceneProbeSize} * kSceneProbeSize * 4);
-    (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+    (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
 
     const PixelCoord shadowAt = projectToPixel(camera, kSceneProbeSize, {3.0f, 0.0f, 3.0f});
     const Pixel shadowed = pixelAtWidth(pixels, kSceneProbeSize, shadowAt.x, shadowAt.y);
@@ -380,10 +380,10 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
         commands.bindFrameData(kObjectSlot, lmx::engine::DrawUniforms{0});
         commands.bindBuffer(lmx::engine::kVisibleRowsSlot, **visibleRows);
         commands.bindFrameData(2, identity);
-        commands.bindBuffer(kVertexBufferSlot, *tables.vertices);
-        commands.bindBuffer(lmx::engine::kSceneInstancesSlot, *tables.instances);
-        commands.bindBuffer(lmx::engine::kSceneMaterialsSlot, *tables.materials);
-        commands.drawIndexed(*tables.indices, meshRow.indexCount, meshRow.firstIndex);
+        commands.bindBuffer(kVertexBufferSlot, tables.vertices->rhi());
+        commands.bindBuffer(lmx::engine::kSceneInstancesSlot, tables.instances->rhi());
+        commands.bindBuffer(lmx::engine::kSceneMaterialsSlot, tables.materials->rhi());
+        commands.drawIndexed(tables.indices->rhi(), meshRow.indexCount, meshRow.firstIndex);
         commands.endRenderPass();
     };
     depthPass(**unbiasedDepth, **unbiasedPipeline);
@@ -482,7 +482,7 @@ TEST_CASE("renderer applies the chosen directional caster and leaves none or dis
                 gpu->device().endFrame(nullptr);
                 gpu->device().waitIdle();
                 std::vector<uint8_t> pixels(size_t{kSceneProbeSize} * kSceneProbeSize * 4);
-                (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+                (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
                 return pixels;
             };
             const auto key = renderCase(0, false);

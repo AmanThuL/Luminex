@@ -59,7 +59,7 @@ std::span<const std::string_view> sceneStableIds() {
 SceneLibrary::SceneLibrary(engine::GpuContext& gpu, std::optional<uint32_t> instances,
                            std::optional<uint32_t> occluders, std::optional<uint32_t> lights,
                            std::optional<uint32_t> pile)
-    : m_gpu(gpu), m_device(gpu.device()), m_overrides{instances, occluders, lights, pile} {
+    : m_gpu(gpu), m_overrides{instances, occluders, lights, pile} {
     for (size_t i = 0; i < kIds.size(); ++i) {
         auto document = readCatalogDocument(kIds[i]);
         const bool ready = document && available(*document);
@@ -137,7 +137,7 @@ asset::AssetResult<engine::LoadedScene*> SceneLibrary::reload(
     const auto path = documentPath(id);
     if (!path)
         return std::unexpected(path.error());
-    auto replacement = loadSceneDocument(m_device, *path, m_overrides);
+    auto replacement = loadSceneDocument(m_gpu.device(), *path, m_overrides);
     if (!replacement)
         return std::unexpected(replacement.error());
     if (validate) {

@@ -136,7 +136,7 @@ AssetResult<DdsImage> loadDds(std::string_view path) {
     image.width = width;
     image.height = height;
     image.mipLevels = mipMapCount;
-    image.kind = isCube ? rojoRHI::TextureKind::Cube : rojoRHI::TextureKind::Tex2D;
+    image.kind = isCube ? ImageKind::Cube : ImageKind::Tex2D;
 
     const uint32_t pfFlags = readU32LE(bytes, kOffsetPixelFormatFlags);
     char fourCC[5] = {};
@@ -210,12 +210,12 @@ AssetResult<DdsImage> loadDds(std::string_view path) {
         }
     }
 
-    std::vector<rojoRHI::TextureMip> mips;
+    std::vector<ImageMip> mips;
     mips.reserve(static_cast<size_t>(mipMapCount) * faceCount);
     uint64_t offset = 0;
     for (uint32_t face = 0; face < faceCount; ++face) {
         for (uint32_t level = 0; level < mipMapCount; ++level) {
-            mips.push_back({payload.data() + offset, levelStride[level]});
+            mips.push_back({offset, levelBytes[level], levelStride[level]});
             offset += levelBytes[level];
         }
     }

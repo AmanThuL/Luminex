@@ -39,7 +39,7 @@ inline constexpr uint32_t kDfgSampleCount = 1024;      ///< Samples per DFG texe
 
 /// Linear-light cube-map faces the generators read and write.
 ///
-/// Face order is the RHI's cube order -- +X, -X, +Y, -Y, +Z, -Z (RHI.h's TextureKind::Cube) -- so
+/// Face order is the RHI's cube order -- +X, -X, +Y, -Y, +Z, -Z (ImageKind::Cube) -- so
 /// index i here is the slice createTexture uploads face i to.
 ///
 /// Within a face, texel (x, y) of a faceSize x faceSize row-major image maps to the direction every

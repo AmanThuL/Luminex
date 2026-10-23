@@ -7,9 +7,9 @@
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Projection.h"
-#include "Engine/Gpu/GpuError.h"
+#include "Engine/Gpu/CaptureSchema.h"
+#include "Engine/Gpu/GpuOwned.h"
 #include "Render/Common/DrawEncoding.h"
-#include <rojoRHI/CaptureSchema.h>
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -46,10 +46,7 @@ constexpr uint32_t kLinearSamplerSlot = 0;
 
 //======================================================================================================================
 void ShadowStage::registerUniformLayoutsForCapture() {
-    using rojoRHI::debug::CaptureSchema;
-    CaptureSchema& schema = CaptureSchema::instance();
-
-    schema.registerUniformStruct(
+    engine::registerUniformStruct(
         {.name = "ShadowPassUniforms",
          .slot = kPassUniformsSlot,
          .sizeBytes = sizeof(ShadowPassUniforms),
@@ -92,7 +89,7 @@ lmx::Result<std::unique_ptr<ShadowStage>> ShadowStage::create(engine::GpuContext
     }
     // Unknown color format matches the depth-only pass and its void fragment output.
     {
-        auto pipeline =
+        auto pipeline = engine::adoptGpu(
             device.createGraphicsPipeline({.library = self->m_shadowLibrary.get(),
                                            .vertexEntry = "vertexMain",
                                            .fragmentEntry = "fragmentMain",
@@ -107,9 +104,9 @@ lmx::Result<std::unique_ptr<ShadowStage>> ShadowStage::create(engine::GpuContext
                                            // keeps what compares Greater against its 0 clear.
                                            .depthCompare = rojoRHI::DepthCompare::Greater,
                                            .depthBias = kShadowDepthBias,
-                                           .label = "lmx.render.shadowPipeline"});
+                                           .label = "lmx.render.shadowPipeline"}));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_shadowPipeline = std::move(*pipeline);
     }
@@ -120,7 +117,7 @@ lmx::Result<std::unique_ptr<ShadowStage>> ShadowStage::create(engine::GpuContext
     }
     self->m_maskShadowLibrary = std::move(*shadowMaskLibrary);
     for (uint32_t doubleSided = 0; doubleSided < 2; ++doubleSided) {
-        auto pipeline = device.createGraphicsPipeline(
+        auto pipeline = engine::adoptGpu(device.createGraphicsPipeline(
             {.library = self->m_maskShadowLibrary.get(),
              .vertexEntry = "vertexMain",
              .fragmentEntry = "fragmentMain",
@@ -132,9 +129,9 @@ lmx::Result<std::unique_ptr<ShadowStage>> ShadowStage::create(engine::GpuContext
              .depthCompare = rojoRHI::DepthCompare::Greater,
              .depthBias = kShadowDepthBias,
              .label = doubleSided ? "lmx.render.maskShadowPipeline.doubleSided"
-                                  : "lmx.render.maskShadowPipeline"});
+                                  : "lmx.render.maskShadowPipeline"}));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_maskShadowPipelines[doubleSided] = std::move(*pipeline);
     }
@@ -165,7 +162,7 @@ GraphTexture ShadowStage::declare(RenderGraph& graph, rojoRHI::CommandList& comm
             }
             commands.bindFrameData(kPassUniformsSlot, ShadowPassUniforms{lightViewProj});
             rojoRHI::GraphicsPipeline* bound = nullptr;
-            commands.bindBuffer(engine::kVisibleRowsSlot, *inputs.draws.rows);
+            commands.bindBuffer(engine::kVisibleRowsSlot, inputs.draws.rows->rhi());
             if (inputs.draws.mode != SubmissionMode::Direct)
                 commands.bindFrameData(engine::kDrawUniformsSlot, engine::DrawUniforms{0});
             for (const auto& run : inputs.draws.runs) {
@@ -181,19 +178,20 @@ GraphTexture ShadowStage::declare(RenderGraph& graph, rojoRHI::CommandList& comm
                 }
 
                 if (masked) {
-                    commands.bindTexture(kDiffuseTextureSlot,
-                                         item.diffuse ? *item.diffuse : *inputs.whiteTexture);
+                    commands.bindTexture(kDiffuseTextureSlot, item.diffuse
+                                                                  ? item.diffuse->rhi()
+                                                                  : inputs.whiteTexture->rhi());
                     commands.bindSampler(kLinearSamplerSlot, *inputs.linearSampler);
                 }
                 if (inputs.draws.mode == SubmissionMode::Direct) {
                     commands.bindFrameData(engine::kDrawUniformsSlot,
                                            engine::DrawUniforms{run.firstEntry});
-                    commands.drawIndexed(*view.tables.indices, item.mesh.indexCount,
+                    commands.drawIndexed(view.tables.indices->rhi(), item.mesh.indexCount,
                                          item.mesh.firstIndex);
                 } else {
-                    commands.drawIndexedIndirect(*view.tables.indices, *inputs.draws.arguments,
-                                                 uint64_t{run.argumentIndex} *
-                                                     sizeof(rojoRHI::DrawIndexedIndirectArgs));
+                    commands.drawIndexedIndirect(
+                        view.tables.indices->rhi(), inputs.draws.arguments->rhi(),
+                        uint64_t{run.argumentIndex} * sizeof(rojoRHI::DrawIndexedIndirectArgs));
                 }
             }
         });

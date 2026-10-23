@@ -238,7 +238,7 @@ TEST_CASE("the reprojection diagnostic is zero on a static scene", "[gpu][tempor
     REQUIRE(historyTexels == sceneTexels);
 
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
-    (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+    (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
     for (const std::pair<uint32_t, uint32_t> probe :
          {std::pair<uint32_t, uint32_t>{16, 16}, {32, 32}, {48, 40}}) {
         const Pixel pixel = pixelAt(pixels, probe.first, probe.second);
@@ -317,7 +317,7 @@ TEST_CASE("the reprojection diagnostic reads motion at the sampled texel", "[gpu
 
     const std::vector<uint8_t> motion = readMotion(**renderer);
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
-    (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+    (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
 
     // The view paints "nothing to compare" -- the diagnostic's alpha 0 -- flat blue, and every
     // comparable pixel a grey.
@@ -520,7 +520,7 @@ TEST_CASE("a history fetch at the border does not read the opposite edge", "[gpu
     REQUIRE(edgeUv - edgeMotion.x <= 1.0f);
 
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
-    (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+    (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
     for (const uint32_t y : {kSize / 4, kSize / 2, 3 * kSize / 4}) {
         const Pixel pixel = pixelAt(pixels, kSize - 1, y);
         INFO(describe("border reprojection error", kSize - 1, y, pixel));
@@ -565,7 +565,7 @@ TEST_CASE("subpixel diagonal motion preserves constant reprojected radiance",
     renderFrame(gpu->device(), **renderer, camera, view);
     renderFrame(gpu->device(), **renderer, camera, view);
     std::vector<uint8_t> stationary(size_t{kSize} * kSize * 4);
-    (*renderer)->colorTarget().readback(stationary.data(), stationary.size());
+    (*renderer)->colorTarget().rhi().readback(stationary.data(), stationary.size());
     const Pixel expected = pixelAt(stationary, kSize / 2, kSize / 2);
     REQUIRE(expected.r > 0);
     REQUIRE(expected.r == expected.g);
@@ -579,7 +579,7 @@ TEST_CASE("subpixel diagonal motion preserves constant reprojected radiance",
     REQUIRE(std::abs(motion.y) * float(kSize) == Catch::Approx(0.5f).margin(1e-3));
 
     std::vector<uint8_t> moving(stationary.size());
-    (*renderer)->colorTarget().readback(moving.data(), moving.size());
+    (*renderer)->colorTarget().rhi().readback(moving.data(), moving.size());
     const Pixel actual = pixelAt(moving, kSize / 2, kSize / 2);
     INFO(describe("stationary radiance", kSize / 2, kSize / 2, expected));
     INFO(describe("reprojected radiance", kSize / 2, kSize / 2, actual));
@@ -609,13 +609,14 @@ TEST_CASE("sky motion follows the camera's rotation alone", "[gpu][temporal]") {
     INFO(errorOf(skySphere));
     REQUIRE(skySphere.has_value());
 
-    auto skyCubemap = gpu->device().createTexture({.width = 1,
-                                                   .height = 1,
-                                                   .format = Format::RGBA8Unorm,
-                                                   .kind = TextureKind::Cube,
-                                                   .sampled = true,
-                                                   .label = "lmx.test.temporalSkyCubemap"},
-                                                  skyFaces);
+    auto skyCubemap = lmx::engine::GpuTexture::create(gpu->device(),
+                                                      {.width = 1,
+                                                       .height = 1,
+                                                       .format = Format::RGBA8Unorm,
+                                                       .kind = TextureKind::Cube,
+                                                       .sampled = true,
+                                                       .label = "lmx.test.temporalSkyCubemap"},
+                                                      skyFaces);
     INFO(errorOf(skyCubemap));
     REQUIRE(skyCubemap.has_value());
 
@@ -626,7 +627,7 @@ TEST_CASE("sky motion follows the camera's rotation alone", "[gpu][temporal]") {
     // No items at all: the sky sphere is the frame's only geometry.
     FixtureSceneView view = temporalSceneView({});
     view.skySphere = &*skySphere;
-    view.skyCubemap = skyCubemap->get();
+    view.skyCubemap = &*skyCubemap;
     view.temporal.enabled = true;
 
     constexpr std::array<std::pair<uint32_t, uint32_t>, 3> kProbes = {

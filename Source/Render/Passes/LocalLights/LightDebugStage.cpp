@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Passes/LocalLights/LightDebugStage.h"
 #include "Core/Diagnostics/Assert.h"
-#include "Engine/Gpu/GpuError.h"
+#include "Engine/Gpu/GpuOwned.h"
 #include "Render/Common/Formats.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Common/StageSetup.h"
@@ -30,10 +30,10 @@ lmx::Result<std::unique_ptr<LightDebugStage>> LightDebugStage::create(engine::Gp
         return std::unexpected(library.error());
     }
     stage->m_library = std::move(*library);
-    auto pipeline = device.createGraphicsPipeline(fullscreenPipelineDesc(
-        stage->m_library.get(), "fragmentMain", kDisplayFormat, "lmx.render.lightDebugPipeline"));
+    auto pipeline = engine::adoptGpu(device.createGraphicsPipeline(fullscreenPipelineDesc(
+        stage->m_library.get(), "fragmentMain", kDisplayFormat, "lmx.render.lightDebugPipeline")));
     if (!pipeline) {
-        return std::unexpected(engine::gpuError(pipeline.error()));
+        return std::unexpected(pipeline.error());
     }
     stage->m_pipeline = std::move(*pipeline);
     return stage;

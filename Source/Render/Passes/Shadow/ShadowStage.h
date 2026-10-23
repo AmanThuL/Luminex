@@ -7,6 +7,7 @@
 
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Gpu/GpuContext.h"
+#include "Engine/Gpu/GpuTexture.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/Scene/DrawSubmission.h"
 #include "Render/Renderer/SceneView.h"
@@ -52,8 +53,9 @@ struct ShadowStageInputs {
     std::vector<GraphBuffer> sceneBuffers; ///< Five read-only scene pool/table imports.
     GraphTexture shadowMap;                ///< D32Float attachment version to write.
     glm::mat4 lightViewProj;               ///< World-to-light clip transform, reversed depth.
-    rojoRHI::Texture* whiteTexture;        ///< Non-null neutral diffuse fallback owned by Renderer.
-    rojoRHI::Sampler* linearSampler;       ///< Non-null material sampler owned by Renderer.
+    const engine::GpuTexture*
+        whiteTexture;                ///< Non-null neutral diffuse fallback owned by Renderer.
+    rojoRHI::Sampler* linearSampler; ///< Non-null material sampler owned by Renderer.
 };
 
 /// Owns shadow pipelines; Renderer keeps the stage alive through graph execution.
@@ -74,8 +76,8 @@ private:
     ShadowStage() = default;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_shadowLibrary;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_maskShadowLibrary;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_shadowPipeline;
-    std::array<std::unique_ptr<rojoRHI::GraphicsPipeline>, 2> m_maskShadowPipelines;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_shadowPipeline;
+    std::array<engine::GpuOwned<rojoRHI::GraphicsPipeline>, 2> m_maskShadowPipelines;
 };
 
 } // namespace lmx::render

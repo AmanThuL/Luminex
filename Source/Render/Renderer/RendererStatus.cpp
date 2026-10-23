@@ -96,16 +96,15 @@ rojoRHI::Buffer& Renderer::exposureBuffer() {
 }
 
 //======================================================================================================================
-rojoRHI::Texture& Renderer::colorTarget() {
-    LMX_ASSERT(m_color != nullptr, "Renderer::colorTarget: no color target -- create() failed");
-    return *m_color;
+const engine::GpuTexture& Renderer::colorTarget() {
+    LMX_ASSERT(m_color, "Renderer::colorTarget: no color target -- create() failed");
+    return m_color;
 }
 
 //======================================================================================================================
 rojoRHI::Texture& Renderer::hdrColorTarget() {
-    LMX_ASSERT(m_hdrColor != nullptr,
-               "Renderer::hdrColorTarget: no scene color target -- create() failed");
-    return *m_hdrColor;
+    LMX_ASSERT(m_hdrColor, "Renderer::hdrColorTarget: no scene color target -- create() failed");
+    return m_hdrColor.rhi();
 }
 
 //======================================================================================================================

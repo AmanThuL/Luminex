@@ -40,14 +40,16 @@ asset::AssetResult<void> attachDocumentEnvironment(rojoRHI::Device& device, Scen
     const std::array<uint8_t, 4> pixel{rgb[0], rgb[1], rgb[2], 255};
     const rojoRHI::TextureMip face{.data = pixel.data(), .bytesPerRow = 4};
     const std::array<rojoRHI::TextureMip, 6> faces{face, face, face, face, face, face};
-    auto sky = device.createTexture({.width = 1,
-                                     .height = 1,
-                                     .format = rojoRHI::Format::RGBA8Unorm_sRGB,
-                                     .kind = rojoRHI::TextureKind::Cube,
-                                     .mipLevels = 1,
-                                     .sampled = true,
-                                     .label = scene.name + ".sky"},
-                                    faces);
+    const std::string skyLabel = scene.name + ".sky";
+    auto sky = GpuTexture::create(device,
+                                  {.width = 1,
+                                   .height = 1,
+                                   .format = rojoRHI::Format::RGBA8Unorm_sRGB,
+                                   .kind = rojoRHI::TextureKind::Cube,
+                                   .mipLevels = 1,
+                                   .sampled = true,
+                                   .label = skyLabel},
+                                  faces);
     if (!sky)
         return std::unexpected(
             asset::AssetError{asset::AssetErrorCode::UploadFailed, sky.error().message});

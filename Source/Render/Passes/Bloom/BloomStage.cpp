@@ -9,7 +9,7 @@
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"
-#include "Engine/Gpu/GpuError.h"
+#include "Engine/Gpu/GpuOwned.h"
 #include "Render/Renderer/Renderer.h"
 
 #include <algorithm>
@@ -96,35 +96,35 @@ lmx::Result<std::unique_ptr<BloomStage>> BloomStage::create(engine::GpuContext& 
     }
 
     {
-        auto pipeline = device.createComputePipeline(
+        auto pipeline = engine::adoptGpu(device.createComputePipeline(
             {.library = self->m_bloomThresholdLibrary.get(),
              .computeEntry = "computeBloomThreshold",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
-             .label = "lmx.render.bloomThresholdPipeline"});
+             .label = "lmx.render.bloomThresholdPipeline"}));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_bloomThresholdPipeline = std::move(*pipeline);
     }
     {
-        auto pipeline = device.createComputePipeline(
+        auto pipeline = engine::adoptGpu(device.createComputePipeline(
             {.library = self->m_bloomDownsampleLibrary.get(),
              .computeEntry = "computeBloomDownsample",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
-             .label = "lmx.render.bloomDownsamplePipeline"});
+             .label = "lmx.render.bloomDownsamplePipeline"}));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_bloomDownsamplePipeline = std::move(*pipeline);
     }
     {
-        auto pipeline = device.createComputePipeline(
+        auto pipeline = engine::adoptGpu(device.createComputePipeline(
             {.library = self->m_bloomUpsampleLibrary.get(),
              .computeEntry = "computeBloomUpsample",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
-             .label = "lmx.render.bloomUpsamplePipeline"});
+             .label = "lmx.render.bloomUpsamplePipeline"}));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_bloomUpsamplePipeline = std::move(*pipeline);
     }

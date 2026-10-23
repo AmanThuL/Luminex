@@ -100,12 +100,13 @@ asset::AssetResult<void> appendVisibilityLab(rojoRHI::Device& device, engine::Sc
     const std::array<uint8_t, 16> maskPixels{255, 255, 255, 255, 255, 255, 255, 0,
                                              255, 255, 255, 0,   255, 255, 255, 255};
     const rojoRHI::TextureMip maskMip{.data = maskPixels.data(), .bytesPerRow = 8};
-    auto mask = device.createTexture({.width = 2,
-                                      .height = 2,
-                                      .format = rojoRHI::Format::RGBA8Unorm_sRGB,
-                                      .sampled = true,
-                                      .label = "VisibilityLab.mask"},
-                                     std::span(&maskMip, 1));
+    auto mask = engine::GpuTexture::create(device,
+                                           {.width = 2,
+                                            .height = 2,
+                                            .format = rojoRHI::Format::RGBA8Unorm_sRGB,
+                                            .sampled = true,
+                                            .label = "VisibilityLab.mask"},
+                                           std::span(&maskMip, 1));
     if (!mask) {
         return std::unexpected(
             asset::AssetError{asset::AssetErrorCode::UploadFailed, mask.error().message});

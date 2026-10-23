@@ -9,7 +9,7 @@
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Align.h"
 #include "Core/Math/Scalar.h"
-#include "Engine/Gpu/GpuError.h"
+#include "Engine/Gpu/GpuOwned.h"
 
 #include <algorithm>
 #include <format>
@@ -64,13 +64,13 @@ lmx::Result<std::unique_ptr<HzbStage>> HzbStage::create(engine::GpuContext& gpu,
         return std::unexpected(reduceLibrary.error());
     }
     stage->m_reduceLibrary = std::move(*reduceLibrary);
-    auto reduce = device.createComputePipeline(
+    auto reduce = engine::adoptGpu(device.createComputePipeline(
         {.library = stage->m_reduceLibrary.get(),
          .computeEntry = "computeMain",
          .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
-         .label = "lmx.render.hzbReducePipeline"});
+         .label = "lmx.render.hzbReducePipeline"}));
     if (!reduce) {
-        return std::unexpected(engine::gpuError(reduce.error()));
+        return std::unexpected(reduce.error());
     }
     stage->m_reducePipeline = std::move(*reduce);
     auto publishLibrary = gpu.loadShaderLibrary("HzbPublish");
@@ -78,18 +78,19 @@ lmx::Result<std::unique_ptr<HzbStage>> HzbStage::create(engine::GpuContext& gpu,
         return std::unexpected(publishLibrary.error());
     }
     stage->m_publishLibrary = std::move(*publishLibrary);
-    auto publish = device.createComputePipeline({.library = stage->m_publishLibrary.get(),
-                                                 .computeEntry = "computeMain",
-                                                 .threadsPerThreadgroup = {1, 1, 1},
-                                                 .label = "lmx.render.hzbPublishPipeline"});
+    auto publish =
+        engine::adoptGpu(device.createComputePipeline({.library = stage->m_publishLibrary.get(),
+                                                       .computeEntry = "computeMain",
+                                                       .threadsPerThreadgroup = {1, 1, 1},
+                                                       .label = "lmx.render.hzbPublishPipeline"}));
     if (!publish) {
-        return std::unexpected(engine::gpuError(publish.error()));
+        return std::unexpected(publish.error());
     }
     stage->m_publishPipeline = std::move(*publish);
-    auto buffer = device.createBuffer(
-        {.size = sizeof(float), .storageWrite = true, .label = "lmx.render.hzbPublish"}, nullptr);
+    auto buffer = engine::GpuBuffer::create(
+        device, {.size = sizeof(float), .storageWrite = true, .label = "lmx.render.hzbPublish"});
     if (!buffer) {
-        return std::unexpected(engine::gpuError(buffer.error()));
+        return std::unexpected(buffer.error());
     }
     stage->m_publishBuffer = std::move(*buffer);
     return stage;
@@ -101,19 +102,19 @@ lmx::Result<void> HzbStage::resize(uint32_t outputWidth, uint32_t outputHeight) 
         return {};
     }
     const HzbLayout layout = hzbLayout(outputWidth, outputHeight);
-    std::array<std::unique_ptr<rojoRHI::Texture>, 2> textures;
+    std::array<engine::GpuTexture, 2> textures;
     for (uint32_t index = 0; index < textures.size(); ++index) {
         const std::string label = std::format("lmx.render.hzb{}", index);
-        auto texture = m_device->createTexture({.width = layout.width,
-                                                .height = layout.height,
-                                                .format = rojoRHI::Format::R32Float,
-                                                .mipLevels = layout.levelCount,
-                                                .sampled = true,
-                                                .storageWrite = true,
-                                                .cpuReadback = m_cpuReadback,
-                                                .label = label});
+        auto texture = engine::GpuTexture::create(*m_device, {.width = layout.width,
+                                                              .height = layout.height,
+                                                              .format = rojoRHI::Format::R32Float,
+                                                              .mipLevels = layout.levelCount,
+                                                              .sampled = true,
+                                                              .storageWrite = true,
+                                                              .cpuReadback = m_cpuReadback,
+                                                              .label = label});
         if (!texture) {
-            return std::unexpected(engine::gpuError(texture.error()));
+            return std::unexpected(texture.error());
         }
         textures[index] = std::move(*texture);
     }
@@ -132,10 +133,10 @@ GraphTexture HzbStage::importPrevious(RenderGraph& graph) const {
     LMX_ASSERT(m_textures[m_lastBuilt], "HZB must be resized before import");
     const std::string name = std::format("lmx.render.hzb{}", m_lastBuilt);
     if (m_sources[m_lastBuilt].built) {
-        return graph.importTexture(*m_textures[m_lastBuilt], rojoRHI::Format::R32Float, name,
+        return graph.importTexture(m_textures[m_lastBuilt].rhi(), rojoRHI::Format::R32Float, name,
                                    TextureUse::ShaderRead);
     }
-    return graph.importTexture(*m_textures[m_lastBuilt], rojoRHI::Format::R32Float, name);
+    return graph.importTexture(m_textures[m_lastBuilt].rhi(), rojoRHI::Format::R32Float, name);
 }
 
 //======================================================================================================================
@@ -149,9 +150,9 @@ GraphTexture HzbStage::declare(RenderGraph& graph, rojoRHI::CommandList& command
     const std::string name = std::format("lmx.render.hzb{}", slot);
     GraphTexture pyramid =
         m_sources[slot].built
-            ? graph.importTexture(*m_textures[slot], rojoRHI::Format::R32Float, name,
+            ? graph.importTexture(m_textures[slot].rhi(), rojoRHI::Format::R32Float, name,
                                   TextureUse::ShaderRead)
-            : graph.importTexture(*m_textures[slot], rojoRHI::Format::R32Float, name);
+            : graph.importTexture(m_textures[slot].rhi(), rojoRHI::Format::R32Float, name);
     for (uint32_t level = 0; level < m_layout.levelCount; ++level) {
         const bool fromDepth = level == 0;
         const GraphTexture input = fromDepth ? depth : pyramid;
@@ -190,9 +191,9 @@ GraphTexture HzbStage::declare(RenderGraph& graph, rojoRHI::CommandList& command
     // A real read of every mip leaves one honest terminal use for the next frame's import.
     // Merely exporting the texture roots the writers but emits no terminal transition.
     const GraphBuffer publication =
-        m_published
-            ? graph.importBuffer(*m_publishBuffer, "lmx.render.hzbPublish", BufferUse::StorageWrite)
-            : graph.importBuffer(*m_publishBuffer, "lmx.render.hzbPublish");
+        m_published ? graph.importBuffer(m_publishBuffer.rhi(), "lmx.render.hzbPublish",
+                                         BufferUse::StorageWrite)
+                    : graph.importBuffer(m_publishBuffer.rhi(), "lmx.render.hzbPublish");
     ComputePassDesc publish;
     publish.shaderTextureReads.push_back(pyramid);
     publish.bufferWrites.push_back(publication);

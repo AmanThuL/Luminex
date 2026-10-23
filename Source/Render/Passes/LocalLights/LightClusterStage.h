@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Core/Diagnostics/Result.h"
+#include "Engine/Gpu/GpuBuffer.h"
 #include "Engine/Gpu/GpuContext.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/LocalLights/LightClusters.h"
@@ -89,21 +90,21 @@ private:
     // One paced set of owned buffers. `used` is what says a later frame's import must seed the
     // previous access, exactly as GpuVisibility's slots do.
     struct Slot {
-        std::unique_ptr<rojoRHI::Buffer> grid, indices, counts, counters;
+        engine::GpuBuffer grid, indices, counts, counters;
         bool used = false;
         bool shaderRead = false;
     };
     struct Pending {
         uint64_t frameNumber = 0;
         bool captureLists = false;
-        rojoRHI::Buffer *grid = nullptr, *indices = nullptr, *counters = nullptr;
+        const engine::GpuBuffer *grid = nullptr, *indices = nullptr, *counters = nullptr;
     };
 
     RetiredLightClusters readback(const Pending& pending) const;
 
     rojoRHI::Device& m_device;
     std::array<engine::GpuOwned<rojoRHI::ShaderLibrary>, 3> m_libraries;
-    std::array<std::unique_ptr<rojoRHI::ComputePipeline>, 3> m_pipelines;
+    std::array<engine::GpuOwned<rojoRHI::ComputePipeline>, 3> m_pipelines;
     std::array<Slot, 3> m_slots;
     std::vector<Pending> m_pending;
     std::vector<RetiredLightClusters> m_retired;

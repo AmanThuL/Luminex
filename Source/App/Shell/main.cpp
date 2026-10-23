@@ -15,13 +15,13 @@
 #include "Core/Diagnostics/Log.h"
 #include "Core/Util/Parse.h"
 #include "Core/Util/Stopwatch.h"
+#include "Engine/Gpu/CaptureSchema.h"
 #include "Engine/Gpu/GpuContext.h"
 #include "Render/Common/RhiLog.h"
 #include "Render/Graph/FrameDeclaration.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Renderer/Renderer.h"
 #include "Scenes/SceneLibrary.h"
-#include <rojoRHI/CaptureSchema.h>
 #include <rojoRHI/Metal4/Metal4Capture.h>
 #include <rojoRHI/Metal4/Metal4ImGui.h>
 #include <rojoRHI/RHI.h>
@@ -428,7 +428,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
 
         if (capturingThisFrame) {
             {
-                rojoRHI::debug::SchemaContext ctx;
+                lmx::engine::SchemaContext ctx;
                 ctx.sceneName = std::string(shell->activeSceneName());
                 ctx.frameIndex = frameIndex;
                 const glm::vec3 cameraPos = shell->camera().position;
@@ -440,7 +440,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
                 ctx.light0Strength = {light0.strength.x, light0.strength.y, light0.strength.z};
                 ctx.shadowFilter =
                     view.shadowFilter == lmx::render::ShadowFilter::PCSS ? "PCSS" : "PCF";
-                rojoRHI::debug::CaptureSchema::instance().setContext(std::move(ctx));
+                lmx::engine::setCaptureContext(std::move(ctx));
             }
             // Captured work must complete before the trace document is finalized.
             gpu.waitIdle();

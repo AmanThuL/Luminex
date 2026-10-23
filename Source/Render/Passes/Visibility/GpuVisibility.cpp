@@ -4,7 +4,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Passes/Visibility/GpuVisibility.h"
 #include "Core/Diagnostics/Assert.h"
-#include "Engine/Gpu/GpuError.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Common/PacedSlots.h"
 #include "Render/Common/StageSetup.h"
@@ -30,16 +29,17 @@ lmx::Result<std::unique_ptr<GpuVisibility>> GpuVisibility::create(engine::GpuCon
     }
     const engine::InstanceRow emptyInstance;
     const engine::MeshRow emptyMesh;
-    auto instance = device.createBuffer(
-        {.size = sizeof(emptyInstance), .label = "lmx.visibility.emptyInstances"}, &emptyInstance);
+    auto instance = engine::GpuBuffer::create(
+        device, {.size = sizeof(emptyInstance), .label = "lmx.visibility.emptyInstances"},
+        &emptyInstance);
     if (!instance) {
-        return std::unexpected(engine::gpuError(instance.error()));
+        return std::unexpected(instance.error());
     }
     self->m_emptyInstances = std::move(*instance);
-    auto mesh = device.createBuffer(
-        {.size = sizeof(emptyMesh), .label = "lmx.visibility.emptyMeshes"}, &emptyMesh);
+    auto mesh = engine::GpuBuffer::create(
+        device, {.size = sizeof(emptyMesh), .label = "lmx.visibility.emptyMeshes"}, &emptyMesh);
     if (!mesh) {
-        return std::unexpected(engine::gpuError(mesh.error()));
+        return std::unexpected(mesh.error());
     }
     self->m_emptyMeshes = std::move(*mesh);
     return self;
@@ -53,18 +53,18 @@ lmx::Result<void> GpuVisibility::prepareSlot(Slot& slot, const VisibilityTables&
         while (capacity < needed)
             capacity *= 2;
         Slot replacement;
-        auto allocate = [&](std::unique_ptr<rojoRHI::Buffer>& buffer, uint64_t bytes,
-                            const char* name, bool writable) -> lmx::Result<void> {
-            auto result = m_device.createBuffer(
-                {.size = bytes,
-                 .storageRead = true,
-                 .storageWrite = writable,
-                 .cpuReadback = writable,
-                 .cpuWrite = !writable,
-                 .label = std::string(name) + "." + std::to_string(m_gpu.frameNumber() % 3)},
-                nullptr);
+        auto allocate = [&](engine::GpuBuffer& buffer, uint64_t bytes, const char* name,
+                            bool writable) -> lmx::Result<void> {
+            const std::string label =
+                std::string(name) + "." + std::to_string(m_gpu.frameNumber() % 3);
+            auto result = engine::GpuBuffer::create(m_gpu.device(), {.size = bytes,
+                                                                     .storageRead = true,
+                                                                     .storageWrite = writable,
+                                                                     .cpuReadback = writable,
+                                                                     .cpuWrite = !writable,
+                                                                     .label = label});
             if (!result) {
-                return std::unexpected(engine::gpuError(result.error()));
+                return std::unexpected(result.error());
             }
             buffer = std::move(*result);
             return {};
@@ -102,10 +102,10 @@ lmx::Result<void> GpuVisibility::prepareSlot(Slot& slot, const VisibilityTables&
             buffer.write(0, bytes.data(), bytes.size());
         previous.assign(bytes.begin(), bytes.end());
     };
-    upload(*slot.candidates, slot.candidateBytes, tables.candidates);
-    upload(*slot.runs, slot.runBytes, tables.runs);
-    upload(*slot.chunks, slot.chunkBytes, tables.chunks);
-    upload(*slot.views, slot.viewBytes, tables.views);
+    upload(slot.candidates.rhi(), slot.candidateBytes, tables.candidates);
+    upload(slot.runs.rhi(), slot.runBytes, tables.runs);
+    upload(slot.chunks.rhi(), slot.chunkBytes, tables.chunks);
+    upload(slot.views.rhi(), slot.viewBytes, tables.views);
     return {};
 }
 
@@ -126,12 +126,12 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rojoRHI::Command
     auto& slot = m_slots[m_gpu.frameNumber() % 3];
     const auto prepared = prepareSlot(slot, tables);
     LMX_ASSERT(prepared.has_value(), prepared.error().message);
-    VisibilityParams params{.layout = view.submission == SubmissionMode::Batched ? 1u : 0u,
-                            .rowCapacity = static_cast<uint32_t>(submission.scene.rows->size() / 4),
-                            .argumentCapacity =
-                                static_cast<uint32_t>(submission.scene.arguments->size() / 20),
-                            .stateCapacity = slot.capacity,
-                            .candidateCount = static_cast<uint32_t>(tables.candidates.size())};
+    VisibilityParams params{
+        .layout = view.submission == SubmissionMode::Batched ? 1u : 0u,
+        .rowCapacity = static_cast<uint32_t>(submission.scene.rows->desc().size / 4),
+        .argumentCapacity = static_cast<uint32_t>(submission.scene.arguments->desc().size / 20),
+        .stateCapacity = slot.capacity,
+        .candidateCount = static_cast<uint32_t>(tables.candidates.size())};
     if (m_capacityOverride) {
         params.rowCapacity = std::min(params.rowCapacity, (*m_capacityOverride)[0]);
         params.argumentCapacity = std::min(params.argumentCapacity, (*m_capacityOverride)[1]);
@@ -146,10 +146,10 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rojoRHI::Command
                     .tables = tables,
                     .params = params,
                     .geometry = submission.arguments,
-                    .states = slot.states.get(),
-                    .counters = slot.counters.get(),
-                    .rows = submission.scene.rows,
-                    .arguments = submission.scene.arguments};
+                    .states = &slot.states.rhi(),
+                    .counters = &slot.counters.rhi(),
+                    .rows = &submission.scene.rows->rhi(),
+                    .arguments = &submission.scene.arguments->rhi()};
     if (view.classifyCheck)
         for (uint32_t v = 0; v < 2; ++v)
             for (uint32_t i = 0; i < tables.views[v].candidateCount; ++i) {
@@ -158,14 +158,14 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rojoRHI::Command
                                                             row, view.visibilityEnabled, v == 1));
             }
     m_pending.push_back(std::move(pending));
-    const auto candidates = graph.importBuffer(*slot.candidates, "lmx.draw.candidates");
-    const auto runs = graph.importBuffer(*slot.runs, "lmx.draw.runs");
-    const auto chunks = graph.importBuffer(*slot.chunks, "lmx.draw.chunks");
-    const auto views = graph.importBuffer(*slot.views, "lmx.draw.views");
+    const auto candidates = graph.importBuffer(slot.candidates.rhi(), "lmx.draw.candidates");
+    const auto runs = graph.importBuffer(slot.runs.rhi(), "lmx.draw.runs");
+    const auto chunks = graph.importBuffer(slot.chunks.rhi(), "lmx.draw.chunks");
+    const auto views = graph.importBuffer(slot.views.rhi(), "lmx.draw.views");
     const auto states =
-        importPaced(graph, *slot.states, "lmx.draw.states", BufferUse::StorageRead, slot.used);
-    const auto counters =
-        importPaced(graph, *slot.counters, "lmx.draw.counters", BufferUse::StorageWrite, slot.used);
+        importPaced(graph, slot.states.rhi(), "lmx.draw.states", BufferUse::StorageRead, slot.used);
+    const auto counters = importPaced(graph, slot.counters.rhi(), "lmx.draw.counters",
+                                      BufferUse::StorageWrite, slot.used);
     const auto chunkBytes = std::max<uint64_t>(4, tables.chunks.size() * 4);
     const auto counts = graph.createBuffer(
         {.size = chunkBytes, .storageRead = true, .storageWrite = true}, "lmx.draw.chunkCounts");
@@ -185,8 +185,8 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rojoRHI::Command
         commands.bindStorageBuffer(index, lmx::render::buffer(resources, handle), access);
     };
     if (!view.tables.instances) {
-        instances = graph.importBuffer(*m_emptyInstances, "lmx.visibility.emptyInstances");
-        meshes = graph.importBuffer(*m_emptyMeshes, "lmx.visibility.emptyMeshes");
+        instances = graph.importBuffer(m_emptyInstances.rhi(), "lmx.visibility.emptyInstances");
+        meshes = graph.importBuffer(m_emptyMeshes.rhi(), "lmx.visibility.emptyMeshes");
     }
     ComputePassDesc classify;
     classify.shaderBufferReads = {candidates, chunks, instances, views};

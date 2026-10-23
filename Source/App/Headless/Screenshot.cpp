@@ -332,7 +332,7 @@ int runOffscreen(AppOptions options) {
                 const std::string filename = std::format(
                     "frame-{:06}.{}", ordinal, captureFormatName(sequence->captureFormat));
                 std::vector<uint8_t> pixels(size_t{kScreenshotWidth} * kScreenshotHeight * 4);
-                (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+                (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
                 if (!writeCaptureImage(sequence->captureSequencePath / filename, pixels,
                                        (*renderer)->displayDomain(),
                                        captureFrameMetadataJson(
@@ -374,7 +374,7 @@ int runOffscreen(AppOptions options) {
     }
 
     std::vector<uint8_t> pixels(size_t{kScreenshotWidth} * kScreenshotHeight * 4);
-    (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+    (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
 
     // Preserve flat output as debugging evidence before reporting liveness failure.
     if (!writeCaptureImage(outPath, pixels, (*renderer)->displayDomain(),

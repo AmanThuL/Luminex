@@ -9,7 +9,7 @@
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"
 #include "Core/Diagnostics/Result.h"
-#include "Engine/Gpu/GpuError.h"
+#include "Engine/Gpu/GpuBuffer.h"
 #include "Engine/Scene/SceneTableStats.h"
 #include <rojoRHI/RHI.h>
 
@@ -20,6 +20,7 @@
 #include <format>
 #include <limits>
 #include <memory>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -33,14 +34,14 @@ inline constexpr uint32_t kMinimumCapacity = 4;
 
 /// A replaced GPU buffer kept alive until the frame that last read it has retired.
 struct RetiringBuffer {
-    std::unique_ptr<rojoRHI::Buffer> buffer;
+    GpuBuffer buffer;
     uint64_t releaseAtFrame = 0;
 };
 
 /// One row kind's paced GPU buffers, its CPU shadow rows and their per-slot dirty marks.
 template <typename Row>
 struct PacedTable {
-    std::array<std::unique_ptr<rojoRHI::Buffer>, kSlots> buffers;
+    std::array<GpuBuffer, kSlots> buffers;
     std::vector<Row> shadow;
     DirtySet dirty{kSlots};
     uint32_t capacity = 0;
@@ -62,16 +63,18 @@ lmx::Result<void> reserveTable(rojoRHI::Device& device, PacedTable<Row>& table, 
                    "scene capacity exhausted");
         capacity *= 2;
     }
-    std::array<std::unique_ptr<rojoRHI::Buffer>, kSlots> buffers;
+    std::array<GpuBuffer, kSlots> buffers;
     for (uint32_t slot = 0; slot < kSlots; ++slot) {
-        auto buffer = device.createBuffer({.size = uint64_t{capacity} * sizeof(Row),
-                                           .storageRead = true,
-                                           .cpuReadback = true,
-                                           .cpuWrite = true,
-                                           .label = std::format("{}.{}", label, slot)},
-                                          nullptr);
+        const std::string bufferLabel = std::format("{}.{}", label, slot);
+        auto buffer = GpuBuffer::create(device,
+                                        {.size = uint64_t{capacity} * sizeof(Row),
+                                         .storageRead = true,
+                                         .cpuReadback = true,
+                                         .cpuWrite = true,
+                                         .label = bufferLabel},
+                                        nullptr);
         if (!buffer) {
-            return std::unexpected(gpuError(buffer.error()));
+            return std::unexpected(std::move(buffer.error()));
         }
         buffers[slot] = std::move(*buffer);
     }
@@ -110,7 +113,8 @@ template <typename Row>
 void writeRows(PacedTable<Row>& table, uint32_t slot, SceneTableStats& stats) {
     for (uint32_t i = 0; i < table.shadow.size(); ++i) {
         if (table.dirty.test(i, slot)) {
-            table.buffers[slot]->write(uint64_t{i} * sizeof(Row), &table.shadow[i], sizeof(Row));
+            table.buffers[slot].rhi().write(uint64_t{i} * sizeof(Row), &table.shadow[i],
+                                            sizeof(Row));
             table.dirty.clear(i, slot);
             ++stats.rowsWritten;
             stats.bytesWritten += sizeof(Row);

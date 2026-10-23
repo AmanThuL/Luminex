@@ -37,7 +37,7 @@ public:
     GpuOwned& operator=(const GpuOwned&) = delete;
     /// Moves ownership, leaving `other` empty.
     GpuOwned(GpuOwned&& other) noexcept = default;
-    /// Releases the held object, then takes ownership from `other`, leaving it empty.
+    /// Takes ownership from `other`, leaving it empty, then releases the previously held object.
     GpuOwned& operator=(GpuOwned&& other) noexcept = default;
 
     /// Returns the owned object, or null when the owner is empty.

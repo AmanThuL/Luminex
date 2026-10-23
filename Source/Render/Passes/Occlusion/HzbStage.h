@@ -5,7 +5,9 @@
 #pragma once
 
 #include "Core/Diagnostics/Result.h"
+#include "Engine/Gpu/GpuBuffer.h"
 #include "Engine/Gpu/GpuContext.h"
+#include "Engine/Gpu/GpuTexture.h"
 #include "Render/Graph/RenderGraph.h"
 
 #include <glm/mat4x4.hpp>
@@ -57,7 +59,7 @@ public:
     /// Returns the last declared source, or an unbuilt record before the first build.
     const HzbSource& previousSource() const { return m_sources[m_lastBuilt]; }
     /// Returns the last declared pyramid, or an allocated unbuilt texture initially.
-    rojoRHI::Texture& previousTexture() const { return *m_textures[m_lastBuilt]; }
+    rojoRHI::Texture& previousTexture() const { return m_textures[m_lastBuilt].rhi(); }
     /// Imports the last declared pyramid with its recorded shader-read terminal state.
     GraphTexture importPrevious(RenderGraph& graph) const;
     /// Declares each reduction and a rooted publish read; alternates by build count.
@@ -77,13 +79,13 @@ private:
     uint32_t m_next = 0;
     uint32_t m_lastBuilt = 1;
     HzbLayout m_layout;
-    std::array<std::unique_ptr<rojoRHI::Texture>, 2> m_textures;
+    std::array<engine::GpuTexture, 2> m_textures;
     std::array<HzbSource, 2> m_sources;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_reduceLibrary;
-    std::unique_ptr<rojoRHI::ComputePipeline> m_reducePipeline;
+    engine::GpuOwned<rojoRHI::ComputePipeline> m_reducePipeline;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_publishLibrary;
-    std::unique_ptr<rojoRHI::ComputePipeline> m_publishPipeline;
-    std::unique_ptr<rojoRHI::Buffer> m_publishBuffer;
+    engine::GpuOwned<rojoRHI::ComputePipeline> m_publishPipeline;
+    engine::GpuBuffer m_publishBuffer;
     bool m_published = false;
 };
 

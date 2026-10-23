@@ -216,7 +216,7 @@ bool EditorShell::applyPendingViewportResize(engine::GpuContext& gpu, render::Re
     // In-flight encoders and residency sets retain the old targets; drain before replacement.
     gpu.waitIdle();
     // Remove the old target from ImGui's persistent residency set before freeing it.
-    rojoRHI::metal4::imguiForgetTexture(renderer.colorTarget());
+    rojoRHI::metal4::imguiForgetTexture(renderer.colorTarget().rhi());
     if (auto resized = renderer.resize(m_viewportWidth, m_viewportHeight); !resized) {
         // Renderer::resize can replace some targets before a later allocation fails. Do not
         // declare another frame against mixed extents, even if the requested size now matches.
@@ -224,7 +224,7 @@ bool EditorShell::applyPendingViewportResize(engine::GpuContext& gpu, render::Re
                       m_viewportHeight, resized.error().message);
         return false;
     }
-    rojoRHI::metal4::imguiForgetTexture(m_selectionOutline->target());
+    rojoRHI::metal4::imguiForgetTexture(m_selectionOutline->target().rhi());
     if (auto result = m_selectionOutline->resize(renderer.width(), renderer.height()); !result) {
         LMX_LOG_ERROR("Selection presentation resize failed: {}", result.error().message);
         m_showSelectionOutline = false;
@@ -729,10 +729,10 @@ render::GraphTexture EditorShell::declareSelection(render::RenderGraph& graph,
                                                    render::GraphTexture display,
                                                    const render::SceneView& view,
                                                    const render::Renderer& renderer) {
-    if (m_selectionOutline->target().width() != renderer.width() ||
-        m_selectionOutline->target().height() != renderer.height() || !m_showSelectionOutline ||
-        !m_viewportUsable || m_selection.subject != EditorSubject::Object ||
-        m_selection.index >= view.items.size()) {
+    if (m_selectionOutline->target().desc().width != renderer.width() ||
+        m_selectionOutline->target().desc().height != renderer.height() ||
+        !m_showSelectionOutline || !m_viewportUsable ||
+        m_selection.subject != EditorSubject::Object || m_selection.index >= view.items.size()) {
         return display;
     }
     const auto& result = renderer.visibilityStatus().scene;

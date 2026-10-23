@@ -5,6 +5,7 @@
 #include "Engine/Asset/Texture/TextureBake.h"
 #include "Engine/Scene/SceneDocumentContent.h"
 #include "Engine/Scene/SceneInstantiate.h"
+#include "Engine/Upload/DdsUpload.h"
 #include "Scenes/SceneDocuments.h"
 #include "Support/EngineTestSupport.h"
 #include "Support/GpuTestSupport.h"
@@ -644,12 +645,12 @@ TEST_CASE("document meshes instantiate with shared resources and authored bounds
     REQUIRE(data.doubleSided);
     REQUIRE(sameContentBits(scene.objects[0].emissiveStrength, doc.materials[0].emissiveStrength));
     REQUIRE(color.diffuse == color.emissiveMap);
-    REQUIRE(scene.tryTexture(*color.diffuse)->mipLevels() == 3);
-    REQUIRE(scene.tryTexture(*color.diffuse)->format() == rojoRHI::Format::RGBA8Unorm_sRGB);
+    REQUIRE(scene.tryTexture(*color.diffuse)->desc().mipLevels == 3);
+    REQUIRE(scene.tryTexture(*color.diffuse)->desc().format == rojoRHI::Format::RGBA8Unorm_sRGB);
     REQUIRE(data.normalMap == data.metallicRoughness);
     REQUIRE(data.normalMap == data.occlusion);
-    REQUIRE(scene.tryTexture(*data.normalMap)->mipLevels() == 1);
-    REQUIRE(scene.tryTexture(*data.normalMap)->format() == rojoRHI::Format::RGBA8Unorm);
+    REQUIRE(scene.tryTexture(*data.normalMap)->desc().mipLevels == 1);
+    REQUIRE(scene.tryTexture(*data.normalMap)->desc().format == rojoRHI::Format::RGBA8Unorm);
     (*device)->waitIdle();
 }
 
@@ -843,8 +844,8 @@ TEST_CASE("document content mip filtering follows each image color space",
         const std::array<uint32_t, 2> nodes{1, 2};
         REQUIRE(engine::appendDocumentContent(**device, scene, doc, nodes, binding));
         const auto& material = scene.material(scene.objects[srgb ? 0 : 1].material);
-        auto* texture = scene.tryTexture(*(srgb ? material.diffuse : material.normalMap));
-        REQUIRE(texture->mipLevels() == 3);
+        const auto* texture = scene.tryTexture(*(srgb ? material.diffuse : material.normalMap));
+        REQUIRE(texture->desc().mipLevels == 3);
         const auto& pixels = content->images[0];
         const auto bytes =
             std::span(reinterpret_cast<const uint8_t*>(pixels.rgba8.data()), pixels.rgba8.size());
@@ -857,7 +858,7 @@ TEST_CASE("document content mip filtering follows each image color space",
              .mipLevels = 3,
              .sampled = true,
              .label = "expected document mips"},
-            baked.mips);
+            engine::toTextureMips(baked));
         REQUIRE(expected);
         auto destination = makeProbeTarget(**device, "document mip probe");
         auto library = (*device)->loadShaderLibrary("Shaders/SamplerSmoke");
@@ -873,7 +874,7 @@ TEST_CASE("document content mip filtering follows each image color space",
         REQUIRE(pipeline);
         REQUIRE(sampler);
         const auto actual =
-            renderSampledImage(**device, **pipeline, 0, *texture, **sampler, **destination);
+            renderSampledImage(**device, **pipeline, 0, texture->rhi(), **sampler, **destination);
         const auto reference =
             renderSampledImage(**device, **pipeline, 0, **expected, **sampler, **destination);
         REQUIRE(actual == reference);

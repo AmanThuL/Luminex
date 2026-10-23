@@ -53,7 +53,7 @@ TEST_CASE(
     REQUIRE(findObject(**scene, "material-lab axis +Z blue tip") == nullptr);
 
     REQUIRE((*scene)->boundingSphere.w > 0.0f);
-    REQUIRE((*scene)->skyCubemap != nullptr);
+    REQUIRE((*scene)->skyCubemap);
 
     REQUIRE(near3((*scene)->initialCamera.position, glm::vec3(0.0f, 0.0f, 12.0f)));
     REQUIRE((*scene)->initialCamera.yaw == 0.0f);
@@ -260,7 +260,7 @@ TEST_CASE("MaterialLab document's normal-map probe encodes an exact flat {128,12
 
     const SceneObject* normalProbe = findObject(**scene, "material-lab normal probe");
     REQUIRE(normalProbe != nullptr);
-    rojoRHI::Texture* normalMap =
+    const lmx::engine::GpuTexture* normalMap =
         (*scene)->tryTexture(*(*scene)->material(normalProbe->material).normalMap);
     REQUIRE(normalMap != nullptr);
 
@@ -292,7 +292,7 @@ TEST_CASE("MaterialLab document's normal-map probe encodes an exact flat {128,12
                               .clear = true,
                               .label = "lmx.test.materialLabNormalCopy"});
     commands.bindPipeline(**pipeline);
-    commands.bindTexture(0, *normalMap);
+    commands.bindTexture(0, normalMap->rhi());
     commands.draw(3);
     commands.endRenderPass();
     (*device)->endFrame(nullptr);
@@ -391,9 +391,9 @@ TEST_CASE("MaterialLab document's known-colour patches round-trip the display tr
     // and nothing about the geometry of a light rig enters the expectation.
     const lmx::engine::ibl::IblTextures environment =
         lmx::test::makeUniformIbl(gpu->device(), glm::vec3(1.0f), "lmx.test.patchFurnace");
-    view.irradiance = environment.irradiance.get();
-    view.prefilteredEnv = environment.prefilteredEnv.get();
-    view.dfgLut = environment.dfgLut.get();
+    view.irradiance = &environment.irradiance;
+    view.prefilteredEnv = &environment.prefilteredEnv;
+    view.dfgLut = &environment.dfgLut;
     for (lmx::engine::DirectionalLight& light : view.lights) {
         light.strength = {0.0f, 0.0f, 0.0f};
     }
@@ -404,7 +404,7 @@ TEST_CASE("MaterialLab document's known-colour patches round-trip the display tr
     gpu->device().waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kProbeSize} * kProbeSize * 4);
-    (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+    (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
 
     // Readback hands back BGRA, so the channel at offset 0 is blue.
     const auto channelAt = [&](uint32_t x, uint32_t y, size_t channel) -> uint8_t {
@@ -532,9 +532,9 @@ TEST_CASE("MaterialLab document's mip probe converges to mid-gray under strong m
     view.tables = (*scene)->tables();
     const lmx::engine::ibl::IblTextures environment =
         lmx::test::makeUniformIbl(gpu->device(), glm::vec3(1.0f), "lmx.test.mipProbeFurnace");
-    view.irradiance = environment.irradiance.get();
-    view.prefilteredEnv = environment.prefilteredEnv.get();
-    view.dfgLut = environment.dfgLut.get();
+    view.irradiance = &environment.irradiance;
+    view.prefilteredEnv = &environment.prefilteredEnv;
+    view.dfgLut = &environment.dfgLut;
     for (lmx::engine::DirectionalLight& light : view.lights) {
         light.strength = {0.0f, 0.0f, 0.0f};
     }
@@ -545,7 +545,7 @@ TEST_CASE("MaterialLab document's mip probe converges to mid-gray under strong m
     gpu->device().waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kProbeSize} * kProbeSize * 4);
-    (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+    (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
 
     const ProjectedPixel coord = projectScenePixel(camera, kProbeSize, probe->position);
     REQUIRE(coord.x < kProbeSize);

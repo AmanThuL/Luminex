@@ -4,7 +4,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 #include "Core/Diagnostics/Result.h"
+#include "Engine/Gpu/GpuBuffer.h"
 #include "Engine/Gpu/GpuContext.h"
+#include "Engine/Gpu/GpuTexture.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/Occlusion/OcclusionCheck.h"
 #include "Render/Renderer/SceneView.h"
@@ -40,25 +42,24 @@ public:
     std::optional<OcclusionCheckResult> check(const VisibilityStatus& status);
 
 private:
-    explicit OcclusionReference(engine::GpuContext& gpu) : m_gpu(gpu), m_device(gpu.device()) {}
+    explicit OcclusionReference(engine::GpuContext& gpu) : m_gpu(gpu) {}
     struct Slot {
-        std::unique_ptr<rojoRHI::Buffer> buffer;
+        engine::GpuBuffer buffer;
         bool used = false;
     };
     struct Pending {
         uint64_t frameNumber = 0, sceneGeneration = 0;
         uint32_t width = 0, height = 0;
         bool strict = false;
-        rojoRHI::Buffer* buffer = nullptr;
+        const engine::GpuBuffer* buffer = nullptr;
         std::vector<OcclusionCheckObservation> observations;
         uint64_t invalidPixels = 0;
     };
     engine::GpuContext& m_gpu;
-    rojoRHI::Device& m_device;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_library;
-    std::array<std::unique_ptr<rojoRHI::GraphicsPipeline>, 8> m_pipelines;
-    std::unique_ptr<rojoRHI::Sampler> m_sampler;
-    std::unique_ptr<rojoRHI::Texture> m_white;
+    std::array<engine::GpuOwned<rojoRHI::GraphicsPipeline>, 8> m_pipelines;
+    engine::GpuOwned<rojoRHI::Sampler> m_sampler;
+    engine::GpuTexture m_white;
     std::array<Slot, 3> m_slots;
     std::vector<Pending> m_pending, m_retired;
     OcclusionCheckHistory m_history;

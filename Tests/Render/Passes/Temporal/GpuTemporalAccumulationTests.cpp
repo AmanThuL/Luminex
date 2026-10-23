@@ -555,7 +555,7 @@ TEST_CASE("the raw bypass matches the temporal-off picture", "[gpu][temporal]") 
         view.temporal.reconstruction = ReconstructionMode::Raw;
         renderFrame(gpu->device(), **renderer, camera, view);
         std::vector<uint8_t> display(kScenarioPixels * 4);
-        (*renderer)->colorTarget().readback(display.data(), display.size());
+        (*renderer)->colorTarget().rhi().readback(display.data(), display.size());
         return display;
     };
 

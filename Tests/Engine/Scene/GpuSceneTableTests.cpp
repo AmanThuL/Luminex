@@ -67,15 +67,15 @@ std::unique_ptr<rojoRHI::Buffer> submitTables(rojoRHI::Device& device, engine::S
     view.temporal.reconstruction = render::ReconstructionMode::Raw;
     view.temporal.sceneGeneration = scene.objects.front().id.store;
     renderer.render(commands, engine::Camera{}, view, false);
-    commands.textureBarrier(renderer.colorTarget(), rojoRHI::TextureUse::RenderTarget,
+    commands.textureBarrier(renderer.colorTarget().rhi(), rojoRHI::TextureUse::RenderTarget,
                             rojoRHI::TextureUse::CopySource);
     commands.beginCopyPass("lmx.test.sceneTables.preserveFrame");
-    commands.copyTextureToBuffer(renderer.colorTarget(), {.width = kSize, .height = kSize},
+    commands.copyTextureToBuffer(renderer.colorTarget().rhi(), {.width = kSize, .height = kSize},
                                  **snapshot, {.bytesPerRow = kSize * 4});
     commands.endCopyPass();
-    commands.textureBarrier(renderer.colorTarget(), rojoRHI::TextureUse::CopySource,
+    commands.textureBarrier(renderer.colorTarget().rhi(), rojoRHI::TextureUse::CopySource,
                             rojoRHI::TextureUse::RenderTarget);
-    commands.beginRenderPass({.colorTarget = &renderer.colorTarget(),
+    commands.beginRenderPass({.colorTarget = &renderer.colorTarget().rhi(),
                               .clear = false,
                               .label = "lmx.test.sceneTables.restoreTarget"});
     commands.endRenderPass();
@@ -122,7 +122,7 @@ void requireBlack(const std::vector<uint8_t>& pixels, float x) {
 std::vector<engine::InstanceRow> instanceRows(engine::Scene& scene) {
     const auto tables = scene.tables();
     std::vector<engine::InstanceRow> rows(tables.instanceCount);
-    tables.instances->readback(rows.data(), rows.size() * sizeof(engine::InstanceRow));
+    tables.instances->rhi().readback(rows.data(), rows.size() * sizeof(engine::InstanceRow));
     return rows;
 }
 
@@ -254,23 +254,25 @@ TEST_CASE("Scene texture fallbacks preserve factors and stale texture handles fa
     auto scene = tableScene();
     const std::array<uint8_t, 4> white = {255, 255, 255, 255};
     const rojoRHI::TextureMip mip{.data = white.data(), .bytesPerRow = 4};
-    auto texture = gpu->device().createTexture({.width = 1,
-                                                .height = 1,
-                                                .format = rojoRHI::Format::RGBA8Unorm,
-                                                .sampled = true,
-                                                .label = "lmx.test.sceneTables.white"},
-                                               std::span(&mip, 1));
+    auto texture = lmx::engine::GpuTexture::create(gpu->device(),
+                                                   {.width = 1,
+                                                    .height = 1,
+                                                    .format = rojoRHI::Format::RGBA8Unorm,
+                                                    .sampled = true,
+                                                    .label = "lmx.test.sceneTables.white"},
+                                                   std::span(&mip, 1));
     REQUIRE(texture.has_value());
     const auto stale = scene.addTexture(std::move(*texture));
     REQUIRE(scene.tryTexture(stale));
     scene.removeTexture(stale);
     REQUIRE_FALSE(scene.tryTexture(stale));
-    auto replacement = gpu->device().createTexture({.width = 1,
-                                                    .height = 1,
-                                                    .format = rojoRHI::Format::RGBA8Unorm,
-                                                    .sampled = true,
-                                                    .label = "lmx.test.sceneTables.white2"},
-                                                   std::span(&mip, 1));
+    auto replacement = lmx::engine::GpuTexture::create(gpu->device(),
+                                                       {.width = 1,
+                                                        .height = 1,
+                                                        .format = rojoRHI::Format::RGBA8Unorm,
+                                                        .sampled = true,
+                                                        .label = "lmx.test.sceneTables.white2"},
+                                                       std::span(&mip, 1));
     REQUIRE(replacement.has_value());
     const auto whiteId = scene.addTexture(std::move(*replacement));
     REQUIRE(whiteId.slot == stale.slot);
@@ -289,7 +291,7 @@ TEST_CASE("Scene texture fallbacks preserve factors and stale texture handles fa
     REQUIRE(tablePixels(*fallback) == tablePixels(*explicitWhite));
     requireRed(tablePixels(*fallback), -0.6f);
     engine::MaterialRow row{};
-    scene.tables().materials->readback(&row, sizeof(row));
+    scene.tables().materials->rhi().readback(&row, sizeof(row));
     REQUIRE((row.flags & engine::kMaterialHasNormalMap) == 0);
 }
 
@@ -345,7 +347,7 @@ TEST_CASE("Scene table slots preserve each submitted transform across three-fram
     REQUIRE(scene.finalize(gpu->device()).has_value());
     auto renderer = tableRenderer(*gpu);
     const std::array<float, 6> positions = {-0.7f, 0.0f, 0.7f, -0.7f, 0.0f, 0.7f};
-    std::array<rojoRHI::Buffer*, 3> slotBuffers{};
+    std::array<const lmx::engine::GpuBuffer*, 3> slotBuffers{};
     std::array<float, 3> slotPositions{};
     std::array<float, 3> slotPrevious{};
     std::vector<std::unique_ptr<rojoRHI::Buffer>> frames;
@@ -374,7 +376,7 @@ TEST_CASE("Scene table slots preserve each submitted transform across three-fram
     for (uint32_t slot = 0; slot < 3; ++slot) {
         engine::InstanceRow row{};
         REQUIRE(slotBuffers[slot]);
-        slotBuffers[slot]->readback(&row, sizeof(row));
+        slotBuffers[slot]->rhi().readback(&row, sizeof(row));
         REQUIRE(row.model[3].x == slotPositions[slot]);
         REQUIRE(row.previousModel[3].x == slotPrevious[slot]);
     }
@@ -396,7 +398,7 @@ TEST_CASE("Local light table slots preserve each submitted row across three-fram
     // Six distinct nonzero values: a repeated or zero-valued position would be indistinguishable
     // from an unwritten row's default-constructed LightRow{} (position (0,0,0), range 0).
     const std::array<float, 6> positions = {-2.1f, -1.4f, -0.7f, 0.7f, 1.4f, 2.1f};
-    std::array<rojoRHI::Buffer*, 3> slotBuffers{};
+    std::array<const lmx::engine::GpuBuffer*, 3> slotBuffers{};
     std::array<float, 3> slotPositions{};
     std::vector<std::unique_ptr<rojoRHI::Buffer>> frames;
     for (size_t i = 0; i < positions.size(); ++i) {
@@ -416,7 +418,7 @@ TEST_CASE("Local light table slots preserve each submitted row across three-fram
     for (uint32_t slot = 0; slot < 3; ++slot) {
         engine::LightRow row{};
         REQUIRE(slotBuffers[slot]);
-        slotBuffers[slot]->readback(&row, sizeof(row));
+        slotBuffers[slot]->rhi().readback(&row, sizeof(row));
         REQUIRE(row.position.x == slotPositions[slot]);
         REQUIRE(row.range == 5.0f);
     }
@@ -430,12 +432,14 @@ TEST_CASE(
     auto scene = tableScene();
     const std::array<uint8_t, 4> black = {0, 0, 0, 255};
     const rojoRHI::TextureMip mip{.data = black.data(), .bytesPerRow = 4};
-    auto texture = gpu->device().createTexture({.width = 1,
-                                                .height = 1,
-                                                .format = rojoRHI::Format::RGBA8Unorm,
-                                                .sampled = true,
-                                                .label = "lmx.test.sceneTables.retiringTexture"},
-                                               std::span(&mip, 1));
+    auto texture =
+        lmx::engine::GpuTexture::create(gpu->device(),
+                                        {.width = 1,
+                                         .height = 1,
+                                         .format = rojoRHI::Format::RGBA8Unorm,
+                                         .sampled = true,
+                                         .label = "lmx.test.sceneTables.retiringTexture"},
+                                        std::span(&mip, 1));
     REQUIRE(texture.has_value());
     const auto id = scene.addTexture(std::move(*texture));
     const auto material = scene.objects[0].material;

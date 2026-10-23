@@ -10,7 +10,7 @@
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"
-#include "Engine/Gpu/GpuError.h"
+#include "Engine/Gpu/GpuOwned.h"
 #include "Render/Renderer/Renderer.h"
 
 #include <array>
@@ -117,46 +117,46 @@ lmx::Result<std::unique_ptr<ExposureStage>> ExposureStage::create(engine::GpuCon
     }
 
     {
-        auto pipeline = device.createComputePipeline(
+        auto pipeline = engine::adoptGpu(device.createComputePipeline(
             {.library = self->m_histogramLibrary.get(),
              .computeEntry = "computeHistogramAccumulate",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
-             .label = "lmx.render.histogramPipeline"});
+             .label = "lmx.render.histogramPipeline"}));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_histogramPipeline = std::move(*pipeline);
     }
     {
-        auto pipeline =
+        auto pipeline = engine::adoptGpu(
             device.createComputePipeline({.library = self->m_exposureResolveLibrary.get(),
                                           .computeEntry = "computeExposureResolve",
                                           .threadsPerThreadgroup = {1, 1, 1},
-                                          .label = "lmx.render.exposureResolvePipeline"});
+                                          .label = "lmx.render.exposureResolvePipeline"}));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_exposureResolvePipeline = std::move(*pipeline);
     }
     {
-        auto pipeline = device.createComputePipeline({.library = self->m_exposureSeedLibrary.get(),
-                                                      .computeEntry = "computeExposureSeed",
-                                                      .threadsPerThreadgroup = {1, 1, 1},
-                                                      .label = "lmx.render.exposureSeedPipeline"});
+        auto pipeline = engine::adoptGpu(
+            device.createComputePipeline({.library = self->m_exposureSeedLibrary.get(),
+                                          .computeEntry = "computeExposureSeed",
+                                          .threadsPerThreadgroup = {1, 1, 1},
+                                          .label = "lmx.render.exposureSeedPipeline"}));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_exposureSeedPipeline = std::move(*pipeline);
     }
 
     {
-        auto buffer = device.createBuffer({.size = kHistogramBufferSize,
-                                           .storageRead = true,
-                                           .storageWrite = true,
-                                           .label = "lmx.render.histogramBuffer"},
-                                          nullptr);
+        auto buffer = engine::GpuBuffer::create(device, {.size = kHistogramBufferSize,
+                                                         .storageRead = true,
+                                                         .storageWrite = true,
+                                                         .label = "lmx.render.histogramBuffer"});
         if (!buffer) {
-            return std::unexpected(engine::gpuError(buffer.error()));
+            return std::unexpected(buffer.error());
         }
         self->m_histogramBuffer = std::move(*buffer);
     }
@@ -170,14 +170,15 @@ lmx::Result<std::unique_ptr<ExposureStage>> ExposureStage::create(engine::GpuCon
     {
         constexpr std::array<float, kExposureBufferFloats> kInitialExposure{1.0f, 1.0f};
         {
-            auto buffer = device.createBuffer({.size = sizeof(kInitialExposure),
-                                               .storageRead = true,
-                                               .storageWrite = true,
-                                               .cpuReadback = cpuReadback,
-                                               .label = "lmx.render.exposureBuffer"},
-                                              kInitialExposure.data());
+            auto buffer = engine::GpuBuffer::create(device,
+                                                    {.size = sizeof(kInitialExposure),
+                                                     .storageRead = true,
+                                                     .storageWrite = true,
+                                                     .cpuReadback = cpuReadback,
+                                                     .label = "lmx.render.exposureBuffer"},
+                                                    kInitialExposure.data());
             if (!buffer) {
-                return std::unexpected(engine::gpuError(buffer.error()));
+                return std::unexpected(buffer.error());
             }
             self->m_exposureBuffer = std::move(*buffer);
         }
@@ -242,7 +243,7 @@ void ExposureStage::declareMetering(RenderGraph& graph, rojoRHI::CommandList& co
     // frame clears it. Seeding the import with that terminal read makes the first live clear wait
     // on the real WAR edge; when auto exposure is off the chain is culled, so this costs nothing.
     const GraphBuffer histogramImport = graph.importBuffer(
-        *m_histogramBuffer, "lmx.render.histogramBuffer", BufferUse::StorageRead);
+        m_histogramBuffer.rhi(), "lmx.render.histogramBuffer", BufferUse::StorageRead);
 
     declareZeroFill(graph, commands, "lmx.pass.exposure.clearHistogram", histogramImport,
                     kHistogramBufferSize);

@@ -40,12 +40,13 @@ TEST_CASE("Scene coverage invalidates every geometry and mask edit", "[gpu][scen
     const auto id = scene.addObject({.mesh = firstMesh, .material = firstMaterial});
     const std::array<uint8_t, 4> pixels{255, 255, 255, 0};
     const rojoRHI::TextureMip mip{.data = pixels.data(), .bytesPerRow = 4};
-    auto texture = (*device)->createTexture({.width = 1,
-                                             .height = 1,
-                                             .format = rojoRHI::Format::RGBA8Unorm,
-                                             .sampled = true,
-                                             .label = "lmx.test.coverage.alpha"},
-                                            std::span(&mip, 1));
+    auto texture = lmx::engine::GpuTexture::create(**device,
+                                                   {.width = 1,
+                                                    .height = 1,
+                                                    .format = rojoRHI::Format::RGBA8Unorm,
+                                                    .sampled = true,
+                                                    .label = "lmx.test.coverage.alpha"},
+                                                   std::span(&mip, 1));
     REQUIRE(texture);
     const auto textureId = scene.addTexture(std::move(*texture));
     REQUIRE(scene.finalize(**device));
@@ -202,7 +203,7 @@ TEST_CASE("object enabled rows reach every paced slot and raw field edits invali
             prepareCoverage(**device, scene);
             const auto tables = scene.tables();
             std::vector<engine::InstanceRow> rows(tables.instanceCapacity);
-            tables.instances->readback(rows.data(), rows.size() * sizeof(rows[0]));
+            tables.instances->rhi().readback(rows.data(), rows.size() * sizeof(rows[0]));
             REQUIRE(((rows[id.slot].flags & engine::kInstanceDisabled) == 0) == enabled);
             REQUIRE(scene.objects[0].id == id);
         }

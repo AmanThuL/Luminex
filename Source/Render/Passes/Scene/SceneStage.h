@@ -6,7 +6,9 @@
 #pragma once
 
 #include "Core/Diagnostics/Result.h"
+#include "Engine/Gpu/GpuBuffer.h"
 #include "Engine/Gpu/GpuContext.h"
+#include "Engine/Gpu/GpuTexture.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/Scene/DrawSubmission.h"
 #include "Render/Passes/Temporal/TemporalHistory.h"
@@ -53,13 +55,13 @@ struct SceneStageInputs {
     std::array<float, 4> clearColor; ///< Authored sRGB color; alpha is passed through.
     float timeSeconds;               ///< Frame clock uploaded to PassUniforms.time.
     bool temporalEnabled;            ///< Selects motion pipelines and extra attachments.
-    rojoRHI::Texture* whiteTexture;  ///< Neutral material-factor fallback.
-    rojoRHI::Texture* flatNormalTexture; ///< Tangent-space positive-Z normal fallback.
-    rojoRHI::Texture* blackCubeTexture;  ///< Zero-radiance environment fallback.
-    rojoRHI::Texture* zeroDfgTexture;    ///< Zero split-sum reconstruction fallback.
-    rojoRHI::Sampler* linearSampler;     ///< Material sampler.
-    rojoRHI::Sampler* shadowSampler;     ///< Reversed-depth comparison sampler.
-    rojoRHI::Sampler* iblSampler;        ///< Clamped environment sampler.
+    const engine::GpuTexture* whiteTexture;      ///< Neutral material-factor fallback.
+    const engine::GpuTexture* flatNormalTexture; ///< Tangent-space positive-Z normal fallback.
+    const engine::GpuTexture* blackCubeTexture;  ///< Zero-radiance environment fallback.
+    const engine::GpuTexture* zeroDfgTexture;    ///< Zero split-sum reconstruction fallback.
+    rojoRHI::Sampler* linearSampler;             ///< Material sampler.
+    rojoRHI::Sampler* shadowSampler;             ///< Reversed-depth comparison sampler.
+    rojoRHI::Sampler* iblSampler;                ///< Clamped environment sampler.
 };
 
 /// Owns scene and sky pipeline variants; Renderer keeps it alive through graph execution.
@@ -92,27 +94,27 @@ private:
 
     // Replay needs valid bindings even for unused slots. Immutable fallbacks stay outside the
     // graph so zero-light declarations retain their resource and pass topology.
-    std::unique_ptr<rojoRHI::Buffer> m_fallbackLightRows;
-    std::unique_ptr<rojoRHI::Buffer> m_fallbackClusterGrid;
-    std::unique_ptr<rojoRHI::Buffer> m_fallbackClusterIndices;
+    engine::GpuBuffer m_fallbackLightRows;
+    engine::GpuBuffer m_fallbackClusterGrid;
+    engine::GpuBuffer m_fallbackClusterIndices;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_sceneLibrary;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_sceneAutoLibrary;
     std::array<engine::GpuOwned<rojoRHI::ShaderLibrary>, 2> m_maskSceneLibraries;
-    std::array<std::unique_ptr<rojoRHI::GraphicsPipeline>, 16> m_maskScenePipelines;
+    std::array<engine::GpuOwned<rojoRHI::GraphicsPipeline>, 16> m_maskScenePipelines;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_skyLibrary;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_skyAutoLibrary;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_scenePipeline;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_sceneWireframePipeline;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_scenePipelineAuto;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_sceneWireframePipelineAuto;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_skyPipeline;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_skyPipelineAuto;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_scenePipelineMotion;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_sceneWireframePipelineMotion;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_scenePipelineAutoMotion;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_sceneWireframePipelineAutoMotion;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_skyPipelineMotion;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_skyPipelineAutoMotion;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_scenePipeline;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_sceneWireframePipeline;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_scenePipelineAuto;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_sceneWireframePipelineAuto;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_skyPipeline;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_skyPipelineAuto;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_scenePipelineMotion;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_sceneWireframePipelineMotion;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_scenePipelineAutoMotion;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_sceneWireframePipelineAutoMotion;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_skyPipelineMotion;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_skyPipelineAutoMotion;
 };
 
 } // namespace lmx::render

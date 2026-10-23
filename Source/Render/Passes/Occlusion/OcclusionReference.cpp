@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Passes/Occlusion/OcclusionReference.h"
 #include "Core/Diagnostics/Assert.h"
-#include "Engine/Gpu/GpuError.h"
+#include "Engine/Gpu/GpuOwned.h"
 #include "Render/Common/DrawEncoding.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Common/StageSetup.h"
@@ -39,7 +39,7 @@ OcclusionReference::create(engine::GpuContext& gpu) {
         for (uint32_t masked = 0; masked < 2; ++masked) {
             for (uint32_t doubleSided = 0; doubleSided < 2; ++doubleSided) {
                 const uint32_t index = wireframe * 4 + masked * 2 + doubleSided;
-                auto pipeline = device.createGraphicsPipeline(
+                auto pipeline = engine::adoptGpu(device.createGraphicsPipeline(
                     {.library = self->m_library.get(),
                      .vertexEntry = "vertexMain",
                      .fragmentEntry = masked ? "fragmentMask" : "fragmentMain",
@@ -51,18 +51,18 @@ OcclusionReference::create(engine::GpuContext& gpu) {
                          wireframe ? rojoRHI::FillMode::Wireframe : rojoRHI::FillMode::Solid,
                      .cullMode = doubleSided ? rojoRHI::CullMode::None : rojoRHI::CullMode::Back,
                      .depthCompare = rojoRHI::DepthCompare::Greater,
-                     .label = std::format("lmx.occlusion.reference.pipeline.{}", index)});
+                     .label = std::format("lmx.occlusion.reference.pipeline.{}", index)}));
                 if (!pipeline) {
-                    return std::unexpected(engine::gpuError(pipeline.error()));
+                    return std::unexpected(pipeline.error());
                 }
                 self->m_pipelines[index] = std::move(*pipeline);
             }
         }
     }
-    auto sampler =
-        device.createSampler({.maxAnisotropy = 16, .label = "lmx.occlusion.reference.sampler"});
+    auto sampler = engine::adoptGpu(
+        device.createSampler({.maxAnisotropy = 16, .label = "lmx.occlusion.reference.sampler"}));
     if (!sampler) {
-        return std::unexpected(engine::gpuError(sampler.error()));
+        return std::unexpected(sampler.error());
     }
     self->m_sampler = std::move(*sampler);
     const std::array<uint8_t, 4> white{255, 255, 255, 255};
@@ -90,12 +90,12 @@ lmx::Result<void> OcclusionReference::declare(RenderGraph& graph, rojoRHI::Comma
         retireThrough(frame - 3);
     auto& slot = m_slots[(frame - 1) % 3];
     const uint64_t byteCount = uint64_t{width} * height * 4;
-    if (!slot.buffer || slot.buffer->size() < byteCount) {
-        auto buffer = m_device.createBuffer(
-            {.size = byteCount, .cpuReadback = true, .label = "lmx.occlusion.reference.readback"},
-            nullptr);
+    if (!slot.buffer || slot.buffer.desc().size < byteCount) {
+        auto buffer = engine::GpuBuffer::create(
+            m_gpu.device(),
+            {.size = byteCount, .cpuReadback = true, .label = "lmx.occlusion.reference.readback"});
         if (!buffer) {
-            return std::unexpected(engine::gpuError(buffer.error()));
+            return std::unexpected(buffer.error());
         }
         slot.buffer = std::move(*buffer);
         slot.used = false;
@@ -105,7 +105,7 @@ lmx::Result<void> OcclusionReference::declare(RenderGraph& graph, rojoRHI::Comma
                     .width = width,
                     .height = height,
                     .strict = strictView,
-                    .buffer = slot.buffer.get()};
+                    .buffer = &slot.buffer};
     for (const auto& item : view.items) {
         LMX_ASSERT(item.instanceRow < view.tables.instanceRows.size(),
                    "reference observations require canonical instance rows");
@@ -131,10 +131,10 @@ lmx::Result<void> OcclusionReference::declare(RenderGraph& graph, rojoRHI::Comma
                        view.tables.materials,
                    "reference draws require scene table bindings");
         pass.bufferReads = {
-            graph.importBuffer(*view.tables.vertices, "lmx.occlusion.reference.vertices"),
-            graph.importBuffer(*view.tables.indices, "lmx.occlusion.reference.indices"),
-            graph.importBuffer(*view.tables.instances, "lmx.occlusion.reference.instances"),
-            graph.importBuffer(*view.tables.materials, "lmx.occlusion.reference.materials")};
+            graph.importBuffer(view.tables.vertices->rhi(), "lmx.occlusion.reference.vertices"),
+            graph.importBuffer(view.tables.indices->rhi(), "lmx.occlusion.reference.indices"),
+            graph.importBuffer(view.tables.instances->rhi(), "lmx.occlusion.reference.instances"),
+            graph.importBuffer(view.tables.materials->rhi(), "lmx.occlusion.reference.materials")};
     }
     pass.color = ColorAttachment{.handle = ids, .clearColor = {0, 0, 0, 0}};
     pass.depth = DepthAttachment{
@@ -157,14 +157,14 @@ lmx::Result<void> OcclusionReference::declare(RenderGraph& graph, rojoRHI::Comma
                 commands.bindPipeline(*m_pipelines[(view.wireframe ? 4 : 0) + (masked ? 2 : 0) +
                                                    (doubleSided ? 1 : 0)]);
                 commands.bindFrameData(1, ReferenceParams{viewProjection, item.instanceRow});
-                commands.bindTexture(0, item.diffuse ? *item.diffuse : *m_white);
-                commands.drawIndexed(*view.tables.indices, item.mesh.indexCount,
+                commands.bindTexture(0, item.diffuse ? item.diffuse->rhi() : m_white.rhi());
+                commands.drawIndexed(view.tables.indices->rhi(), item.mesh.indexCount,
                                      item.mesh.firstIndex);
             }
         });
     const auto source = nextVersion(ids);
     const auto destination =
-        graph.importBuffer(*slot.buffer, "lmx.occlusion.reference.readback",
+        graph.importBuffer(slot.buffer.rhi(), "lmx.occlusion.reference.readback",
                            slot.used ? BufferUse::CopyDestination : BufferUse::ShaderRead);
     CopyPassDesc copy;
     copy.textureSources = {source};
@@ -189,7 +189,7 @@ void OcclusionReference::retireThrough(uint64_t completedFrame) {
         if (pending.frameNumber > completedFrame)
             continue;
         std::vector<uint8_t> bytes(uint64_t{pending.width} * pending.height * 4);
-        pending.buffer->readback(bytes.data(), bytes.size());
+        pending.buffer->rhi().readback(bytes.data(), bytes.size());
         std::unordered_map<uint32_t, size_t> rows;
         for (size_t i = 0; i < pending.observations.size(); ++i)
             rows.emplace(pending.observations[i].instanceRow, i);

@@ -5,7 +5,7 @@
 
 #include "Render/Common/StageSetup.h"
 
-#include "Engine/Gpu/GpuError.h"
+#include "Engine/Gpu/GpuOwned.h"
 
 #include <array>
 #include <string>
@@ -28,19 +28,17 @@ rojoRHI::GraphicsPipelineDesc fullscreenPipelineDesc(rojoRHI::ShaderLibrary* lib
 }
 
 //======================================================================================================================
-lmx::Result<std::unique_ptr<rojoRHI::Texture>>
-createTexel(rojoRHI::Device& device, rojoRHI::Format format, rojoRHI::TextureKind kind,
-            std::span<const std::byte> bytes, std::string_view label) {
+lmx::Result<engine::GpuTexture> createTexel(rojoRHI::Device& device, rojoRHI::Format format,
+                                            rojoRHI::TextureKind kind,
+                                            std::span<const std::byte> bytes,
+                                            std::string_view label) {
     const rojoRHI::TextureMip mip{.data = bytes.data(), .bytesPerRow = bytes.size()};
     const std::array<rojoRHI::TextureMip, 6> mips{mip, mip, mip, mip, mip, mip};
     const uint32_t faces = kind == rojoRHI::TextureKind::Cube ? 6u : 1u;
-    auto texture = device.createTexture(
+    return engine::GpuTexture::create(
+        device,
         {.width = 1, .height = 1, .format = format, .kind = kind, .sampled = true, .label = label},
         std::span{mips.data(), faces});
-    if (!texture) {
-        return std::unexpected(engine::gpuError(texture.error()));
-    }
-    return std::move(*texture);
 }
 
 //======================================================================================================================
@@ -57,13 +55,13 @@ lmx::Result<ComputePipelines> createComputePipelines(engine::GpuContext& gpu,
             return std::unexpected(library.error());
         }
         result.libraries.push_back(std::move(*library));
-        auto pipeline =
+        auto pipeline = engine::adoptGpu(
             gpu.device().createComputePipeline({.library = result.libraries.back().get(),
                                                 .computeEntry = "computeMain",
                                                 .threadsPerThreadgroup = {threadsFor(index), 1, 1},
-                                                .label = std::string(labelPrefix) + names[index]});
+                                                .label = std::string(labelPrefix) + names[index]}));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         result.pipelines.push_back(std::move(*pipeline));
     }

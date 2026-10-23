@@ -234,7 +234,7 @@ BakedMipChain bakeMips(std::span<const uint8_t> rgba8, uint32_t width, uint32_t 
     for (uint32_t level = 0; level < mipLevels; ++level) {
         std::memcpy(result.payload.data() + offset, levels[level].data(), levels[level].size());
         result.mips.push_back(
-            {result.payload.data() + offset, static_cast<uint64_t>(levelW[level]) * 4});
+            {offset, levels[level].size(), static_cast<uint64_t>(levelW[level]) * 4});
         offset += levels[level].size();
     }
     return result;

@@ -10,7 +10,7 @@
 #include "Render/Passes/Temporal/TemporalResolveInternal.h"
 
 #include "Core/Diagnostics/Assert.h"
-#include "Engine/Gpu/GpuError.h"
+#include "Engine/Gpu/GpuOwned.h"
 #include "Render/Passes/Temporal/VendorTemporalScaler.h"
 
 #include <glm/mat4x4.hpp>
@@ -97,88 +97,91 @@ lmx::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(engine::Gp
     }
 
     {
-        auto pipeline = device.createComputePipeline(
+        auto pipeline = engine::adoptGpu(device.createComputePipeline(
             {.library = self->m_reprojectLibrary.get(),
              .computeEntry = "computeTemporalReproject",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
-             .label = "lmx.render.temporalReprojectPipeline"});
+             .label = "lmx.render.temporalReprojectPipeline"}));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_reprojectPipeline = std::move(*pipeline);
     }
     {
-        auto pipeline = device.createComputePipeline(
+        auto pipeline = engine::adoptGpu(device.createComputePipeline(
             {.library = self->m_resolveLibrary.get(),
              .computeEntry = "computeTemporalResolve",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
-             .label = "lmx.render.temporalResolvePipeline"});
+             .label = "lmx.render.temporalResolvePipeline"}));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_resolvePipeline = std::move(*pipeline);
     }
     {
-        auto pipeline = device.createComputePipeline(
+        auto pipeline = engine::adoptGpu(device.createComputePipeline(
             {.library = self->m_spatialUpscaleLibrary.get(),
              .computeEntry = "computeSpatialUpscale",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
-             .label = "lmx.render.spatialUpscalePipeline"});
+             .label = "lmx.render.spatialUpscalePipeline"}));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_spatialUpscalePipeline = std::move(*pipeline);
     }
     {
-        auto pipeline = device.createComputePipeline(
+        auto pipeline = engine::adoptGpu(device.createComputePipeline(
             {.library = self->m_temporalUpscaleLibrary.get(),
              .computeEntry = "computeTemporalUpscale",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
-             .label = "lmx.render.temporalUpscalePipeline"});
+             .label = "lmx.render.temporalUpscalePipeline"}));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_temporalUpscalePipeline = std::move(*pipeline);
     }
     {
-        auto pipeline = device.createGraphicsPipeline(
+        auto pipeline = engine::adoptGpu(device.createGraphicsPipeline(
             fullscreenPipelineDesc(self->m_debugViewLibrary.get(), "fragmentMain", kDisplayFormat,
-                                   "lmx.render.temporalDebugViewPipeline"));
+                                   "lmx.render.temporalDebugViewPipeline")));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_debugViewPipeline = std::move(*pipeline);
     }
 
     {
-        auto sampler = device.createSampler({.filter = rojoRHI::FilterMode::Linear,
-                                             .addressMode = rojoRHI::AddressMode::Clamp,
-                                             .label = "lmx.render.temporalSampler"});
+        auto sampler =
+            engine::adoptGpu(device.createSampler({.filter = rojoRHI::FilterMode::Linear,
+                                                   .addressMode = rojoRHI::AddressMode::Clamp,
+                                                   .label = "lmx.render.temporalSampler"}));
         if (!sampler) {
-            return std::unexpected(engine::gpuError(sampler.error()));
+            return std::unexpected(sampler.error());
         }
         self->m_sampler = std::move(*sampler);
     }
 
     {
-        auto texture = device.createTexture({.width = 1,
-                                             .height = 1,
-                                             .format = rojoRHI::Format::RGBA16Float,
-                                             .storageWrite = true,
-                                             .label = "lmx.render.temporalDiagnosticFallback"});
+        auto texture =
+            engine::GpuTexture::create(device, {.width = 1,
+                                                .height = 1,
+                                                .format = rojoRHI::Format::RGBA16Float,
+                                                .storageWrite = true,
+                                                .label = "lmx.render.temporalDiagnosticFallback"});
         if (!texture) {
-            return std::unexpected(engine::gpuError(texture.error()));
+            return std::unexpected(texture.error());
         }
         self->m_diagnosticFallback = std::move(*texture);
     }
     {
-        auto texture = device.createTexture({.width = 1,
-                                             .height = 1,
-                                             .format = rojoRHI::Format::RGBA16Float,
-                                             .sampled = true,
-                                             .label = "lmx.render.temporalViewFallback"});
+        auto texture =
+            engine::GpuTexture::create(device, {.width = 1,
+                                                .height = 1,
+                                                .format = rojoRHI::Format::RGBA16Float,
+                                                .sampled = true,
+                                                .label = "lmx.render.temporalViewFallback"});
         if (!texture) {
-            return std::unexpected(engine::gpuError(texture.error()));
+            return std::unexpected(texture.error());
         }
         self->m_viewFallback = std::move(*texture);
     }
@@ -189,8 +192,8 @@ lmx::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(engine::Gp
 lmx::Result<void> TemporalResolve::resize(uint32_t width, uint32_t height) {
     LMX_ASSERT(width > 0 && height > 0, "TemporalResolve::resize: the extent must be non-empty");
 
-    std::unique_ptr<rojoRHI::Texture> depth[2];
-    std::unique_ptr<rojoRHI::Texture> color[2];
+    engine::GpuTexture depth[2];
+    engine::GpuTexture color[2];
     static constexpr const char* kDepthLabels[2] = {"lmx.render.sceneDepth0",
                                                     "lmx.render.sceneDepth1"};
     static constexpr const char* kColorLabels[2] = {"lmx.render.historyColor0",
@@ -199,28 +202,30 @@ lmx::Result<void> TemporalResolve::resize(uint32_t width, uint32_t height) {
         // Sampled as well as rendered into: the resolve reconstructs a world position from this
         // frame's depth and compares it against the other slot's, and a caller may sample the
         // public depth target after the graph.
-        auto depthTexture = m_device.createTexture({.width = width,
-                                                    .height = height,
-                                                    .format = rojoRHI::Format::D32Float,
-                                                    .renderTarget = true,
-                                                    .sampled = true,
-                                                    .label = kDepthLabels[slot]});
+        auto depthTexture =
+            engine::GpuTexture::create(m_device, {.width = width,
+                                                  .height = height,
+                                                  .format = rojoRHI::Format::D32Float,
+                                                  .renderTarget = true,
+                                                  .sampled = true,
+                                                  .label = kDepthLabels[slot]});
         if (!depthTexture) {
-            return std::unexpected(engine::gpuError(depthTexture.error()));
+            return std::unexpected(depthTexture.error());
         }
         // Storage-write because the resolve writes its slot directly rather than through a copy;
         // sampled because the next frame reprojects it. cpuReadback is what lets a test compare an
         // accumulated frame against the raw one it was built from.
-        auto colorTexture = m_device.createTexture({.width = width,
-                                                    .height = height,
-                                                    .format = rojoRHI::Format::RGBA16Float,
-                                                    .renderTarget = true,
-                                                    .sampled = true,
-                                                    .storageWrite = true,
-                                                    .cpuReadback = m_cpuReadback,
-                                                    .label = kColorLabels[slot]});
+        auto colorTexture =
+            engine::GpuTexture::create(m_device, {.width = width,
+                                                  .height = height,
+                                                  .format = rojoRHI::Format::RGBA16Float,
+                                                  .renderTarget = true,
+                                                  .sampled = true,
+                                                  .storageWrite = true,
+                                                  .cpuReadback = m_cpuReadback,
+                                                  .label = kColorLabels[slot]});
         if (!colorTexture) {
-            return std::unexpected(engine::gpuError(colorTexture.error()));
+            return std::unexpected(colorTexture.error());
         }
         depth[slot] = std::move(*depthTexture);
         color[slot] = std::move(*colorTexture);
@@ -242,16 +247,16 @@ lmx::Result<void> TemporalResolve::resize(uint32_t width, uint32_t height) {
 
 //======================================================================================================================
 rojoRHI::Texture& TemporalResolve::depthSlot(uint32_t slot) {
-    LMX_ASSERT(slot < 2 && m_depth[slot] != nullptr,
+    LMX_ASSERT(slot < 2 && m_depth[slot],
                "TemporalResolve::depthSlot: no such slot -- create() or resize() failed");
-    return *m_depth[slot];
+    return m_depth[slot].rhi();
 }
 
 //======================================================================================================================
 rojoRHI::Texture& TemporalResolve::colorSlot(uint32_t slot) {
-    LMX_ASSERT(slot < 2 && m_color[slot] != nullptr,
+    LMX_ASSERT(slot < 2 && m_color[slot],
                "TemporalResolve::colorSlot: no such slot -- create() or resize() failed");
-    return *m_color[slot];
+    return m_color[slot].rhi();
 }
 
 //======================================================================================================================

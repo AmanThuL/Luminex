@@ -449,24 +449,24 @@ TEST_CASE("a built scene carries its uploaded IBL textures", "[gpu]") {
     auto scene = lmx::test::loadCatalogScene(**device, "material-lab");
     REQUIRE(scene.has_value());
 
-    REQUIRE((*scene)->irradianceMap != nullptr);
-    REQUIRE((*scene)->irradianceMap->width() == kIrradianceFaceSize);
-    REQUIRE((*scene)->irradianceMap->height() == kIrradianceFaceSize);
+    REQUIRE((*scene)->irradianceMap);
+    REQUIRE((*scene)->irradianceMap.desc().width == kIrradianceFaceSize);
+    REQUIRE((*scene)->irradianceMap.desc().height == kIrradianceFaceSize);
 
-    REQUIRE((*scene)->prefilteredEnvMap != nullptr);
-    REQUIRE((*scene)->skyCubemap != nullptr);
+    REQUIRE((*scene)->prefilteredEnvMap);
+    REQUIRE((*scene)->skyCubemap);
     const uint32_t reflectionSize =
-        (*scene)->skyCubemap->width() == 1 ? kSpecularBaseFaceSize : 128;
-    REQUIRE((*scene)->prefilteredEnvMap->width() == reflectionSize);
-    REQUIRE((*scene)->prefilteredEnvMap->height() == reflectionSize);
+        (*scene)->skyCubemap.desc().width == 1 ? kSpecularBaseFaceSize : 128;
+    REQUIRE((*scene)->prefilteredEnvMap.desc().width == reflectionSize);
+    REQUIRE((*scene)->prefilteredEnvMap.desc().height == reflectionSize);
 
-    REQUIRE((*scene)->dfgLut != nullptr);
-    REQUIRE((*scene)->dfgLut->width() == kDfgLutSize);
-    REQUIRE((*scene)->dfgLut->height() == kDfgLutSize);
+    REQUIRE((*scene)->dfgLut);
+    REQUIRE((*scene)->dfgLut.desc().width == kDfgLutSize);
+    REQUIRE((*scene)->dfgLut.desc().height == kDfgLutSize);
     // rojoRHI::Texture exposes no mip count, so the prefiltered chain's kSpecularMipCount levels
     // stay pinned CPU-side by the prefilterSpecular case above rather than read back off the
     // device.
 
     // The sky the set was generated from is still uploaded alongside it, unchanged.
-    REQUIRE((*scene)->skyCubemap != nullptr);
+    REQUIRE((*scene)->skyCubemap);
 }

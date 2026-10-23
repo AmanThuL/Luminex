@@ -9,7 +9,7 @@
 #include "Render/Common/StageSetup.h"
 
 #include "Core/Diagnostics/Assert.h"
-#include "Engine/Gpu/GpuError.h"
+#include "Engine/Gpu/GpuOwned.h"
 #include "Engine/View/Camera.h"
 
 #include <algorithm>
@@ -57,7 +57,7 @@ SelectionOutline::create(engine::GpuContext& gpu, uint32_t width, uint32_t heigh
     }
     self->m_outlineLibrary = std::move(*outlineLibrary);
     for (bool doubleSided : {false, true}) {
-        auto pipeline = device.createGraphicsPipeline(
+        auto pipeline = engine::adoptGpu(device.createGraphicsPipeline(
             {.library = self->m_maskLibrary.get(),
              .vertexEntry = "vertexMain",
              .fragmentEntry = "fragmentMain",
@@ -67,12 +67,12 @@ SelectionOutline::create(engine::GpuContext& gpu, uint32_t width, uint32_t heigh
              .depthWriteEnable = true,
              .cullMode = doubleSided ? rojoRHI::CullMode::None : rojoRHI::CullMode::Back,
              .depthCompare = rojoRHI::DepthCompare::Greater,
-             .label = doubleSided ? "lmx.selection.maskDoubleSided" : "lmx.selection.mask"});
+             .label = doubleSided ? "lmx.selection.maskDoubleSided" : "lmx.selection.mask"}));
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         (doubleSided ? self->m_doubleSidedPipeline : self->m_maskPipeline) = std::move(*pipeline);
-        auto depthPipeline = device.createGraphicsPipeline(
+        auto depthPipeline = engine::adoptGpu(device.createGraphicsPipeline(
             {.library = self->m_maskLibrary.get(),
              .vertexEntry = "vertexMain",
              .fragmentEntry = "depthMain",
@@ -82,29 +82,30 @@ SelectionOutline::create(engine::GpuContext& gpu, uint32_t width, uint32_t heigh
              .depthWriteEnable = true,
              .cullMode = doubleSided ? rojoRHI::CullMode::None : rojoRHI::CullMode::Back,
              .depthCompare = rojoRHI::DepthCompare::Greater,
-             .label = doubleSided ? "lmx.selection.depthDoubleSided" : "lmx.selection.depth"});
+             .label = doubleSided ? "lmx.selection.depthDoubleSided" : "lmx.selection.depth"}));
         if (!depthPipeline) {
-            return std::unexpected(engine::gpuError(depthPipeline.error()));
+            return std::unexpected(depthPipeline.error());
         }
         (doubleSided ? self->m_doubleSidedDepthPipeline : self->m_depthPipeline) =
             std::move(*depthPipeline);
     }
-    auto outline = device.createGraphicsPipeline(fullscreenPipelineDesc(
-        self->m_outlineLibrary.get(), "fragmentMain", kDisplayFormat, "lmx.selection.outline"));
+    auto outline = engine::adoptGpu(device.createGraphicsPipeline(fullscreenPipelineDesc(
+        self->m_outlineLibrary.get(), "fragmentMain", kDisplayFormat, "lmx.selection.outline")));
     if (!outline) {
-        return std::unexpected(engine::gpuError(outline.error()));
+        return std::unexpected(outline.error());
     }
     self->m_outlinePipeline = std::move(*outline);
-    auto passthrough = device.createGraphicsPipeline(fullscreenPipelineDesc(
-        self->m_outlineLibrary.get(), "fragmentCopy", kDisplayFormat, "lmx.selection.passthrough"));
+    auto passthrough = engine::adoptGpu(device.createGraphicsPipeline(
+        fullscreenPipelineDesc(self->m_outlineLibrary.get(), "fragmentCopy", kDisplayFormat,
+                               "lmx.selection.passthrough")));
     if (!passthrough) {
-        return std::unexpected(engine::gpuError(passthrough.error()));
+        return std::unexpected(passthrough.error());
     }
     self->m_passthroughPipeline = std::move(*passthrough);
-    auto sampler =
-        device.createSampler({.maxAnisotropy = 16, .label = "lmx.selection.materialSampler"});
+    auto sampler = engine::adoptGpu(
+        device.createSampler({.maxAnisotropy = 16, .label = "lmx.selection.materialSampler"}));
     if (!sampler) {
-        return std::unexpected(engine::gpuError(sampler.error()));
+        return std::unexpected(sampler.error());
     }
     self->m_sampler = std::move(*sampler);
     const std::array<uint8_t, 4> white{255, 255, 255, 255};
@@ -125,15 +126,15 @@ SelectionOutline::create(engine::GpuContext& gpu, uint32_t width, uint32_t heigh
 
 //======================================================================================================================
 lmx::Result<void> SelectionOutline::resize(uint32_t width, uint32_t height) {
-    auto target = m_device.createTexture({.width = width,
-                                          .height = height,
-                                          .format = kDisplayFormat,
-                                          .renderTarget = true,
-                                          .sampled = true,
-                                          .cpuReadback = m_readback,
-                                          .label = "lmx.selection.display"});
+    auto target = engine::GpuTexture::create(m_device, {.width = width,
+                                                        .height = height,
+                                                        .format = kDisplayFormat,
+                                                        .renderTarget = true,
+                                                        .sampled = true,
+                                                        .cpuReadback = m_readback,
+                                                        .label = "lmx.selection.display"});
     if (!target) {
-        return std::unexpected(engine::gpuError(target.error()));
+        return std::unexpected(target.error());
     }
     m_target = std::move(*target);
     return {};
@@ -153,7 +154,7 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
     LMX_ASSERT(selectedRow < view.tables.instanceRows.size(),
                "selection requires a canonical instance row");
     if (!visible || (view.tables.instanceRows[selectedRow].flags & engine::kInstanceDisabled)) {
-        const auto output = graph.importTexture(*m_target, kDisplayFormat, "selectionDisplay",
+        const auto output = graph.importTexture(m_target.rhi(), kDisplayFormat, "selectionDisplay",
                                                 TextureUse::ShaderRead);
         PassDesc passthrough;
         passthrough.textureReads = {display};
@@ -169,8 +170,8 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
                       });
         return nextVersion(output);
     }
-    const uint32_t width = m_target->width();
-    const uint32_t height = m_target->height();
+    const uint32_t width = m_target.desc().width;
+    const uint32_t height = m_target.desc().height;
     const GraphTexture mask = graph.createTexture({.width = width,
                                                    .height = height,
                                                    .format = rojoRHI::Format::R8Unorm,
@@ -207,19 +208,20 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
             commands.bindPipeline(
                 selectedOnly ? (doubleSided ? *m_doubleSidedPipeline : *m_maskPipeline)
                              : (doubleSided ? *m_doubleSidedDepthPipeline : *m_depthPipeline));
-            commands.bindTexture(0, item.diffuse ? *item.diffuse : *m_white);
+            commands.bindTexture(0, item.diffuse ? item.diffuse->rhi() : m_white.rhi());
             const MaskParams params{
                 .viewProj = viewProjection, .instanceRow = item.instanceRow, .selected = 1.0f};
             commands.bindFrameData(1, params);
-            commands.drawIndexed(*view.tables.indices, item.mesh.indexCount, item.mesh.firstIndex);
+            commands.drawIndexed(view.tables.indices->rhi(), item.mesh.indexCount,
+                                 item.mesh.firstIndex);
         }
     };
     // Read-only aliases keep editor passes independent of Renderer's graph-local handles.
     const std::vector<GraphBuffer> sceneBuffers{
-        graph.importBuffer(*view.tables.vertices, "lmx.selection.vertices"),
-        graph.importBuffer(*view.tables.indices, "lmx.selection.indices"),
-        graph.importBuffer(*view.tables.instances, "lmx.selection.instances"),
-        graph.importBuffer(*view.tables.materials, "lmx.selection.materials")};
+        graph.importBuffer(view.tables.vertices->rhi(), "lmx.selection.vertices"),
+        graph.importBuffer(view.tables.indices->rhi(), "lmx.selection.indices"),
+        graph.importBuffer(view.tables.instances->rhi(), "lmx.selection.instances"),
+        graph.importBuffer(view.tables.materials->rhi(), "lmx.selection.materials")};
     PassDesc coverage;
     coverage.bufferReads = sceneBuffers;
     coverage.color = ColorAttachment{.handle = mask, .clearColor = {0, 0, 0, 0}};
@@ -234,8 +236,8 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
     const GraphTexture coverageRead = nextVersion(mask);
     const GraphTexture selectedDepthRead = nextVersion(depth);
     const GraphTexture sceneDepthRead = nextVersion(sceneDepth);
-    const GraphTexture output =
-        graph.importTexture(*m_target, kDisplayFormat, "selectionDisplay", TextureUse::ShaderRead);
+    const GraphTexture output = graph.importTexture(m_target.rhi(), kDisplayFormat,
+                                                    "selectionDisplay", TextureUse::ShaderRead);
     PassDesc composite;
     composite.textureReads = {display, coverageRead, selectedDepthRead, sceneDepthRead};
     composite.color = ColorAttachment{.handle = output};

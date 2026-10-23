@@ -6,7 +6,7 @@
 #pragma once
 
 #include "Engine/Asset/Asset.h"
-#include <rojoRHI/TextureDesc.h>
+#include "Engine/Asset/Image/ImageData.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -33,27 +33,9 @@ enum class BakeMode {
 std::string_view bakeFilterName(BakeMode mode);
 
 /// A full mip chain baked in memory: one 2D image, RGBA8, tightly packed and mip-major (matches
-/// Engine/Asset/Image/DdsLoader.h's DdsImage payload layout for a single face). `mips` is
-/// createTexture-ready
-/// -- MaterialLab hands it to rojoRHI::Device::createTexture directly, without ever touching a
-/// file. Move-only because each TextureMip points into `payload`; a default copy would leave the
-/// copied descriptors pointing into the source object's storage.
-struct BakedMipChain {
-    uint32_t width = 0, height = 0, mipLevels = 1; ///< Base extent and full level count.
-    std::vector<std::byte> payload;                ///< Owned, tightly packed RGBA8 mip bytes.
-    std::vector<rojoRHI::TextureMip> mips;         ///< Upload views pointing into `payload`.
-
-    /// Creates an empty chain ready to receive owned payload and views.
-    BakedMipChain() = default;
-    /// Copying is disabled because mip views point into the chain's payload.
-    BakedMipChain(const BakedMipChain&) = delete;
-    /// Copying is disabled because mip views point into the chain's payload.
-    BakedMipChain& operator=(const BakedMipChain&) = delete;
-    /// Transfers payload ownership together with its mip views.
-    BakedMipChain(BakedMipChain&&) noexcept = default;
-    /// Transfers payload ownership together with its mip views.
-    BakedMipChain& operator=(BakedMipChain&&) noexcept = default;
-};
+/// Engine/Asset/Image/DdsLoader.h's DdsImage payload layout for a single face). Mip ranges are
+/// offsets into `payload`, so the chain copies and moves freely.
+using BakedMipChain = ImageData;
 
 /// Deterministic offline mip generation. rgba8 is level 0, tightly packed (width*height*4 bytes,
 /// R,G,B,A per texel -- stb_image's req_comp=4 layout, the same one GltfLoader.h's GltfImage

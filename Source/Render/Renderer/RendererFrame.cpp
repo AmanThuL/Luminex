@@ -124,15 +124,16 @@ RendererFrameImports Renderer::importFrameResources(RenderGraph& graph,
     // overlap those earlier reads/writes on Metal 4's queue. Depth and display use ShaderRead
     // conservatively because their public targets may be sampled by a caller after this graph;
     // that stage set also covers their ordinary fragment attachment work.
-    const GraphTexture shadowMap = graph.importTexture(
-        *m_shadowMap, rojoRHI::Format::D32Float, "lmx.render.shadowMap", TextureUse::ShaderRead);
+    const GraphTexture shadowMap =
+        graph.importTexture(m_shadowMap.rhi(), rojoRHI::Format::D32Float, "lmx.render.shadowMap",
+                            TextureUse::ShaderRead);
     // The scene colour's terminal use is the display pass's read on an ordinary frame and the
     // history commit's copy on a temporal one, so it is what the previous frame left rather than a
     // constant.
     const GraphTexture sceneColor = graph.importTexture(
-        *m_hdrColor, kSceneColorFormat, "lmx.render.sceneColorHdr", m_previousSceneColorUse);
+        m_hdrColor.rhi(), kSceneColorFormat, "lmx.render.sceneColorHdr", m_previousSceneColorUse);
     const GraphTexture displayColor = graph.importTexture(
-        *m_color, kDisplayFormat, "lmx.render.displayColor", TextureUse::ShaderRead);
+        m_color.rhi(), kDisplayFormat, "lmx.render.displayColor", TextureUse::ShaderRead);
     // A frame with temporal off imports slot 0 under the pre-temporal name and use, which is what
     // keeps its declaration exactly the one M6.1 made; a temporal frame names the slot it uses.
     const GraphTexture sceneDepth =
@@ -153,9 +154,9 @@ RendererFrameImports Renderer::importFrameResources(RenderGraph& graph,
     GraphTexture colorSlotImport;
     GraphTexture historyImport;
     if (state.temporalEnabled) {
-        motionTargetHandle =
-            graph.importTexture(*m_motion, kMotionFormat, "lmx.render.motion", m_previousMotionUse);
-        reactiveTargetHandle = graph.importTexture(*m_reactive, kReactiveFormat,
+        motionTargetHandle = graph.importTexture(m_motion.rhi(), kMotionFormat, "lmx.render.motion",
+                                                 m_previousMotionUse);
+        reactiveTargetHandle = graph.importTexture(m_reactive.rhi(), kReactiveFormat,
                                                    "lmx.render.reactive", m_previousReactiveUse);
         previousDepth = m_temporalResolve->importDepth(graph, state.previousSlot);
         colorSlotImport = m_temporalResolve->importColor(graph, state.slot);
@@ -192,11 +193,11 @@ RendererFrameImports Renderer::importFrameResources(RenderGraph& graph,
         LMX_ASSERT(view.tables.indices && view.tables.meshes && view.tables.instances &&
                        view.tables.materials,
                    "scene table bindings must be complete");
-        sceneBuffers = {graph.importBuffer(*view.tables.vertices, "lmx.scene.vertices"),
-                        graph.importBuffer(*view.tables.indices, "lmx.scene.indices"),
-                        graph.importBuffer(*view.tables.meshes, "lmx.scene.meshes"),
-                        graph.importBuffer(*view.tables.instances, "lmx.scene.instances"),
-                        graph.importBuffer(*view.tables.materials, "lmx.scene.materials")};
+        sceneBuffers = {graph.importBuffer(view.tables.vertices->rhi(), "lmx.scene.vertices"),
+                        graph.importBuffer(view.tables.indices->rhi(), "lmx.scene.indices"),
+                        graph.importBuffer(view.tables.meshes->rhi(), "lmx.scene.meshes"),
+                        graph.importBuffer(view.tables.instances->rhi(), "lmx.scene.instances"),
+                        graph.importBuffer(view.tables.materials->rhi(), "lmx.scene.materials")};
     } else {
         LMX_ASSERT(view.items.empty() && !view.skySphere, "geometry needs scene table bindings");
     }
@@ -207,7 +208,7 @@ RendererFrameImports Renderer::importFrameResources(RenderGraph& graph,
         LMX_ASSERT(view.tables.lights != nullptr, "a live local light needs its paced light table");
         LMX_ASSERT(view.tables.lightRows.size() >= view.tables.lightRowCount,
                    "the borrowed light rows must cover every addressable row slot");
-        lightsImport = graph.importBuffer(*view.tables.lights, "lmx.scene.lights");
+        lightsImport = graph.importBuffer(view.tables.lights->rhi(), "lmx.scene.lights");
     }
 
     return {.shadowMap = shadowMap,

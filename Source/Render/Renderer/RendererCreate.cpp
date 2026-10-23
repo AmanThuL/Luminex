@@ -14,7 +14,7 @@
 #include <chrono>
 
 #include "Core/Diagnostics/Assert.h"
-#include "Engine/Gpu/GpuError.h"
+#include "Engine/Gpu/GpuOwned.h"
 
 #include <array>
 #include <cmath>
@@ -53,8 +53,8 @@ void registerUniformLayoutsForCapture() {
 
 //======================================================================================================================
 Renderer::Renderer(engine::GpuContext& gpu, bool cpuReadback)
-    : m_gpu(gpu), m_device(gpu.device()), m_transientPool(gpu.device()),
-      m_drawSubmission(gpu.device()), m_cpuReadback(cpuReadback) {}
+    : m_gpu(gpu), m_transientPool(gpu.device()), m_drawSubmission(gpu.device()),
+      m_cpuReadback(cpuReadback) {}
 
 //======================================================================================================================
 Renderer::~Renderer() = default;
@@ -105,14 +105,14 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
 
     // The shadow map transitions from depth attachment to sampled texture each frame.
     {
-        auto shadowMap = device.createTexture({.width = kShadowMapSize,
-                                               .height = kShadowMapSize,
-                                               .format = rojoRHI::Format::D32Float,
-                                               .renderTarget = true,
-                                               .sampled = true,
-                                               .label = "lmx.render.shadowMap"});
+        auto shadowMap = engine::GpuTexture::create(device, {.width = kShadowMapSize,
+                                                             .height = kShadowMapSize,
+                                                             .format = rojoRHI::Format::D32Float,
+                                                             .renderTarget = true,
+                                                             .sampled = true,
+                                                             .label = "lmx.render.shadowMap"});
         if (!shadowMap) {
-            return std::unexpected(engine::gpuError(shadowMap.error()));
+            return std::unexpected(shadowMap.error());
         }
         self->m_shadowMap = std::move(*shadowMap);
     }
@@ -154,12 +154,13 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
         self->m_zeroDfgTexture = std::move(*texture);
     }
     {
-        auto sampler = device.createSampler({.filter = rojoRHI::FilterMode::Linear,
-                                             .addressMode = rojoRHI::AddressMode::Wrap,
-                                             .maxAnisotropy = 16,
-                                             .label = "lmx.render.linearSampler"});
+        auto sampler =
+            engine::adoptGpu(device.createSampler({.filter = rojoRHI::FilterMode::Linear,
+                                                   .addressMode = rojoRHI::AddressMode::Wrap,
+                                                   .maxAnisotropy = 16,
+                                                   .label = "lmx.render.linearSampler"}));
         if (!sampler) {
-            return std::unexpected(engine::gpuError(sampler.error()));
+            return std::unexpected(sampler.error());
         }
         self->m_linearSampler = std::move(*sampler);
     }
@@ -168,13 +169,14 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
     // Clamp extends the 0.0 clear outside the fitted shadow footprint, and every receiver depth
     // clears that bar, so that region stays lit exactly as it did under the 1.0 clear before.
     {
-        auto sampler = device.createSampler({.filter = rojoRHI::FilterMode::Linear,
-                                             .addressMode = rojoRHI::AddressMode::Clamp,
-                                             .maxAnisotropy = 16,
-                                             .compare = rojoRHI::CompareFunc::GreaterEqual,
-                                             .label = "lmx.render.shadowSampler"});
+        auto sampler =
+            engine::adoptGpu(device.createSampler({.filter = rojoRHI::FilterMode::Linear,
+                                                   .addressMode = rojoRHI::AddressMode::Clamp,
+                                                   .maxAnisotropy = 16,
+                                                   .compare = rojoRHI::CompareFunc::GreaterEqual,
+                                                   .label = "lmx.render.shadowSampler"}));
         if (!sampler) {
-            return std::unexpected(engine::gpuError(sampler.error()));
+            return std::unexpected(sampler.error());
         }
         self->m_shadowSampler = std::move(*sampler);
     }
@@ -185,11 +187,12 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
     // across; no anisotropy, because neither lookup has a screen-space footprint to be anisotropic
     // about.
     {
-        auto sampler = self->m_device.createSampler({.filter = rojoRHI::FilterMode::Linear,
-                                                     .addressMode = rojoRHI::AddressMode::Clamp,
-                                                     .label = "lmx.render.iblSampler"});
+        auto sampler = engine::adoptGpu(
+            self->m_gpu.device().createSampler({.filter = rojoRHI::FilterMode::Linear,
+                                                .addressMode = rojoRHI::AddressMode::Clamp,
+                                                .label = "lmx.render.iblSampler"}));
         if (!sampler) {
-            return std::unexpected(engine::gpuError(sampler.error()));
+            return std::unexpected(sampler.error());
         }
         self->m_iblSampler = std::move(*sampler);
     }
@@ -220,26 +223,27 @@ lmx::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
     // Scene-linear radiance: rendered into by the scene and sky passes, sampled by the display
     // pass. Readable on the same terms as the display target, because a caller that wants to
     // inspect radiance rather than the picture has nowhere else to read it from.
-    auto hdrColor = m_device.createTexture({.width = width,
-                                            .height = height,
-                                            .format = kSceneColorFormat,
-                                            .renderTarget = true,
-                                            .sampled = true,
-                                            .cpuReadback = m_cpuReadback,
-                                            .label = "lmx.render.sceneColorHdr"});
+    auto hdrColor =
+        engine::GpuTexture::create(m_gpu.device(), {.width = width,
+                                                    .height = height,
+                                                    .format = kSceneColorFormat,
+                                                    .renderTarget = true,
+                                                    .sampled = true,
+                                                    .cpuReadback = m_cpuReadback,
+                                                    .label = "lmx.render.sceneColorHdr"});
     if (!hdrColor) {
-        return std::unexpected(engine::gpuError(hdrColor.error()));
+        return std::unexpected(hdrColor.error());
     }
     // The display transform's output: what the viewport samples and a screenshot reads back.
-    auto color = m_device.createTexture({.width = width,
-                                         .height = height,
-                                         .format = kDisplayFormat,
-                                         .renderTarget = true,
-                                         .sampled = true,
-                                         .cpuReadback = m_cpuReadback,
-                                         .label = "lmx.render.displayColor"});
+    auto color = engine::GpuTexture::create(m_gpu.device(), {.width = width,
+                                                             .height = height,
+                                                             .format = kDisplayFormat,
+                                                             .renderTarget = true,
+                                                             .sampled = true,
+                                                             .cpuReadback = m_cpuReadback,
+                                                             .label = "lmx.render.displayColor"});
     if (!color) {
-        return std::unexpected(engine::gpuError(color.error()));
+        return std::unexpected(color.error());
     }
     // Swap the targets only after every allocation succeeds.
     m_hdrColor = std::move(*hdrColor);
@@ -281,28 +285,28 @@ lmx::Result<void> Renderer::createTemporalTargets() {
 
     // Readable on the same terms as the scene targets: motion is the one output a GPU test has to
     // compare against an arithmetic oracle rather than against a picture.
-    auto motion = m_device.createTexture({.width = m_width,
-                                          .height = m_height,
-                                          .format = kMotionFormat,
-                                          .renderTarget = true,
-                                          .sampled = true,
-                                          .cpuReadback = m_cpuReadback,
-                                          .label = "lmx.render.motion"});
+    auto motion = engine::GpuTexture::create(m_gpu.device(), {.width = m_width,
+                                                              .height = m_height,
+                                                              .format = kMotionFormat,
+                                                              .renderTarget = true,
+                                                              .sampled = true,
+                                                              .cpuReadback = m_cpuReadback,
+                                                              .label = "lmx.render.motion"});
     if (!motion) {
-        return std::unexpected(engine::gpuError(motion.error()));
+        return std::unexpected(motion.error());
     }
     // The per-pixel reactive weight: the scene pass's second extra attachment, read by the resolve
     // alone. One byte per pixel, and colour-renderable rather than storage, because a fragment
     // writes it as an ordinary attachment.
-    auto reactive = m_device.createTexture({.width = m_width,
-                                            .height = m_height,
-                                            .format = kReactiveFormat,
-                                            .renderTarget = true,
-                                            .sampled = true,
-                                            .cpuReadback = m_cpuReadback,
-                                            .label = "lmx.render.reactive"});
+    auto reactive = engine::GpuTexture::create(m_gpu.device(), {.width = m_width,
+                                                                .height = m_height,
+                                                                .format = kReactiveFormat,
+                                                                .renderTarget = true,
+                                                                .sampled = true,
+                                                                .cpuReadback = m_cpuReadback,
+                                                                .label = "lmx.render.reactive"});
     if (!reactive) {
-        return std::unexpected(engine::gpuError(reactive.error()));
+        return std::unexpected(reactive.error());
     }
 
     m_motion = std::move(*motion);

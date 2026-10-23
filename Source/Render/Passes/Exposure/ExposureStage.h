@@ -5,6 +5,7 @@
 
 #pragma once
 #include "Core/Diagnostics/Result.h"
+#include "Engine/Gpu/GpuBuffer.h"
 #include "Engine/Gpu/GpuContext.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Renderer/SceneView.h"
@@ -26,7 +27,7 @@ public:
     static lmx::Result<std::unique_ptr<ExposureStage>> create(engine::GpuContext& gpu,
                                                               bool cpuReadback);
     // The frame composition root imports the persistent pair before scene declaration.
-    rojoRHI::Buffer& buffer() { return *m_exposureBuffer; }
+    rojoRHI::Buffer& buffer() { return m_exposureBuffer.rhi(); }
     // Seeds manual/reset exposure before the scene reads it; callbacks live through execution.
     GraphBuffer declareSeed(RenderGraph& graph, rojoRHI::CommandList& commands,
                             const SceneView& view, GraphBuffer exposureImport);
@@ -40,11 +41,11 @@ private:
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_histogramLibrary;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_exposureResolveLibrary;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_exposureSeedLibrary;
-    std::unique_ptr<rojoRHI::ComputePipeline> m_histogramPipeline;
-    std::unique_ptr<rojoRHI::ComputePipeline> m_exposureResolvePipeline;
-    std::unique_ptr<rojoRHI::ComputePipeline> m_exposureSeedPipeline;
-    std::unique_ptr<rojoRHI::Buffer> m_histogramBuffer;
-    std::unique_ptr<rojoRHI::Buffer> m_exposureBuffer;
+    engine::GpuOwned<rojoRHI::ComputePipeline> m_histogramPipeline;
+    engine::GpuOwned<rojoRHI::ComputePipeline> m_exposureResolvePipeline;
+    engine::GpuOwned<rojoRHI::ComputePipeline> m_exposureSeedPipeline;
+    engine::GpuBuffer m_histogramBuffer;
+    engine::GpuBuffer m_exposureBuffer;
 };
 
 } // namespace lmx::render

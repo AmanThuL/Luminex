@@ -51,7 +51,7 @@ ToggleFrame toggleFrame(rojoRHI::Device& device, engine::Scene& scene, render::R
         REQUIRE(check.passed());
         REQUIRE(check.falselyRejectedInstances == 0);
     }
-    auto& target = renderer.colorTarget();
+    auto& target = renderer.colorTarget().rhi();
     std::vector<uint8_t> bytes(size_t{target.width()} * target.height() * 4);
     target.readback(bytes.data(), bytes.size());
     result.digest = sha256Hex(std::as_bytes(std::span(bytes)));
@@ -64,7 +64,8 @@ ToggleFrame toggleFrame(rojoRHI::Device& device, engine::Scene& scene, render::R
         const auto submissionRows = render::buildDrawSubmission(
             view, result.visibility.scene, result.visibility.shadow, submission);
         std::vector<engine::InstanceRow> uploaded(view.tables.instanceCapacity);
-        view.tables.instances->readback(uploaded.data(), uploaded.size() * sizeof(uploaded[0]));
+        view.tables.instances->rhi().readback(uploaded.data(),
+                                              uploaded.size() * sizeof(uploaded[0]));
         const auto vp = camera.projectionMatrix(16.0f / 9.0f) * camera.viewMatrix();
         for (size_t i = 0; i < scene.objects.size(); ++i) {
             if (scene.objects[i].materialQualifier != "column_a")

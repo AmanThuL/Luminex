@@ -23,18 +23,18 @@ inline lmx::Result<FixtureMesh> fixtureMesh(rojoRHI::Device&, engine::MeshData d
 struct FixtureMaterial {
     /// Null means the renderer's white 1x1 fallback -- so `albedo` alone applies, rather than the
     /// draw silently reading an unbound texture slot.
-    rojoRHI::Texture* diffuse = nullptr;
+    const engine::GpuTexture* diffuse = nullptr;
     /// Null means no normal mapping: the shader's flags bit 0 stays clear and its TBN path never
     /// runs. The slot is still bound (to a flat-normal 1x1) so nothing dereferences an empty one.
-    rojoRHI::Texture* normalMap = nullptr;
+    const engine::GpuTexture* normalMap = nullptr;
     /// glTF 2.0 channel convention: roughness = G, metallic = B (R and A unused). Null means the
     /// shared white fallback, so `metallic`/`roughness` alone apply.
-    rojoRHI::Texture* metallicRoughness = nullptr;
+    const engine::GpuTexture* metallicRoughness = nullptr;
     /// glTF 2.0 channel convention: occlusion = R. Null means the shared white fallback (no
     /// occlusion). Attenuates the image-based terms only, never the analytic lights.
-    rojoRHI::Texture* occlusion = nullptr;
+    const engine::GpuTexture* occlusion = nullptr;
     /// Null means the shared white fallback, so `emissive` alone applies.
-    rojoRHI::Texture* emissiveMap = nullptr;
+    const engine::GpuTexture* emissiveMap = nullptr;
     /// The glTF base colour: linear, and the input the shader derives both the diffuse albedo and a
     /// metal's F0 from -- which is why there is no separate reflectance field to keep in step with
     /// it.
@@ -129,12 +129,13 @@ struct FixtureSceneView : render::SceneView {
             };
             const uint32_t normal = 0xffff8080u;
             rojoRHI::TextureMip mip{.data = &normal, .bytesPerRow = 4};
-            auto marker = device.createTexture({.width = 1,
-                                                .height = 1,
-                                                .format = rojoRHI::Format::RGBA8Unorm,
-                                                .sampled = true,
-                                                .label = "lmx.test.scene.normalPresence"},
-                                               std::span{&mip, 1});
+            auto marker = engine::GpuTexture::create(device,
+                                                     {.width = 1,
+                                                      .height = 1,
+                                                      .format = rojoRHI::Format::RGBA8Unorm,
+                                                      .sampled = true,
+                                                      .label = "lmx.test.scene.normalPresence"},
+                                                     std::span{&mip, 1});
             REQUIRE(marker);
             state->normalPresence = state->scene.addTexture(std::move(*marker));
             for (const auto& item : items) {

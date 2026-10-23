@@ -5,7 +5,7 @@
 
 #include "Render/Passes/Scene/SceneStage.h"
 
-#include "Engine/Gpu/GpuError.h"
+#include "Engine/Gpu/GpuOwned.h"
 
 #include "Render/Passes/LocalLights/LightClusters.h"
 #include "Render/Passes/Temporal/TemporalResolve.h"
@@ -24,28 +24,29 @@ lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(engine::GpuContext& 
     // Minimal immutable storage keeps every declared slot valid when its selection path is unused.
     {
         const engine::LightRow freeRow;
-        auto rows = device.createBuffer(
-            {.size = sizeof(freeRow), .label = "lmx.render.localLightFallbackRows"}, &freeRow);
+        auto rows = engine::GpuBuffer::create(
+            device, {.size = sizeof(freeRow), .label = "lmx.render.localLightFallbackRows"},
+            &freeRow);
         if (!rows) {
-            return std::unexpected(engine::gpuError(rows.error()));
+            return std::unexpected(rows.error());
         }
         self->m_fallbackLightRows = std::move(*rows);
 
         const ClusterRecord emptyRecord;
-        auto grid = device.createBuffer(
-            {.size = sizeof(emptyRecord), .label = "lmx.render.localLightFallbackGrid"},
+        auto grid = engine::GpuBuffer::create(
+            device, {.size = sizeof(emptyRecord), .label = "lmx.render.localLightFallbackGrid"},
             &emptyRecord);
         if (!grid) {
-            return std::unexpected(engine::gpuError(grid.error()));
+            return std::unexpected(grid.error());
         }
         self->m_fallbackClusterGrid = std::move(*grid);
 
         constexpr uint32_t kEmptyIndex = 0;
-        auto indices = device.createBuffer(
-            {.size = sizeof(kEmptyIndex), .label = "lmx.render.localLightFallbackIndices"},
+        auto indices = engine::GpuBuffer::create(
+            device, {.size = sizeof(kEmptyIndex), .label = "lmx.render.localLightFallbackIndices"},
             &kEmptyIndex);
         if (!indices) {
-            return std::unexpected(engine::gpuError(indices.error()));
+            return std::unexpected(indices.error());
         }
         self->m_fallbackClusterIndices = std::move(*indices);
     }
@@ -80,19 +81,20 @@ lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(engine::GpuContext& 
     }
     const auto makeScenePipeline = [&](rojoRHI::ShaderLibrary* library, rojoRHI::FillMode fill,
                                        const char* label) {
-        return device.createGraphicsPipeline({.library = library,
-                                              .vertexEntry = "vertexMain",
-                                              .fragmentEntry = "fragmentMain",
-                                              .colorFormat = sceneColorFormat,
-                                              .depthFormat = rojoRHI::Format::D32Float,
-                                              .depthTestEnable = true,
-                                              .depthWriteEnable = true,
-                                              .fillMode = fill,
-                                              .cullMode = rojoRHI::CullMode::Back,
-                                              // Reversed depth: the pass clears to 0 and the
-                                              // nearer fragment is the larger one.
-                                              .depthCompare = rojoRHI::DepthCompare::Greater,
-                                              .label = label});
+        return engine::adoptGpu(
+            device.createGraphicsPipeline({.library = library,
+                                           .vertexEntry = "vertexMain",
+                                           .fragmentEntry = "fragmentMain",
+                                           .colorFormat = sceneColorFormat,
+                                           .depthFormat = rojoRHI::Format::D32Float,
+                                           .depthTestEnable = true,
+                                           .depthWriteEnable = true,
+                                           .fillMode = fill,
+                                           .cullMode = rojoRHI::CullMode::Back,
+                                           // Reversed depth: the pass clears to 0 and the
+                                           // nearer fragment is the larger one.
+                                           .depthCompare = rojoRHI::DepthCompare::Greater,
+                                           .label = label}));
     };
     // The motion twin of makeScenePipeline: the motion entry points, and the motion target as a
     // second colour attachment. Compiled up front rather than on the frame temporal is first
@@ -100,7 +102,7 @@ lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(engine::GpuContext& 
     // cost.
     const auto makeSceneMotionPipeline = [&](rojoRHI::ShaderLibrary* library,
                                              rojoRHI::FillMode fill, const char* label) {
-        return device.createGraphicsPipeline(
+        return engine::adoptGpu(device.createGraphicsPipeline(
             {.library = library,
              .vertexEntry = "vertexMainMotion",
              .fragmentEntry = "fragmentMainMotion",
@@ -113,13 +115,13 @@ lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(engine::GpuContext& 
              .fillMode = fill,
              .cullMode = rojoRHI::CullMode::Back,
              .depthCompare = rojoRHI::DepthCompare::Greater,
-             .label = label});
+             .label = label}));
     };
     {
         auto pipeline = makeScenePipeline(self->m_sceneLibrary.get(), rojoRHI::FillMode::Solid,
                                           "lmx.render.scenePipeline");
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_scenePipeline = std::move(*pipeline);
     }
@@ -128,7 +130,7 @@ lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(engine::GpuContext& 
         auto pipeline = makeScenePipeline(self->m_sceneLibrary.get(), rojoRHI::FillMode::Wireframe,
                                           "lmx.render.sceneWireframePipeline");
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_sceneWireframePipeline = std::move(*pipeline);
     }
@@ -139,7 +141,7 @@ lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(engine::GpuContext& 
         auto pipeline = makeScenePipeline(self->m_sceneAutoLibrary.get(), rojoRHI::FillMode::Solid,
                                           "lmx.render.scenePipelineAuto");
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_scenePipelineAuto = std::move(*pipeline);
     }
@@ -148,7 +150,7 @@ lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(engine::GpuContext& 
             makeScenePipeline(self->m_sceneAutoLibrary.get(), rojoRHI::FillMode::Wireframe,
                               "lmx.render.sceneWireframePipelineAuto");
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_sceneWireframePipelineAuto = std::move(*pipeline);
     }
@@ -157,7 +159,7 @@ lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(engine::GpuContext& 
         auto pipeline = makeSceneMotionPipeline(
             self->m_sceneLibrary.get(), rojoRHI::FillMode::Solid, "lmx.render.scenePipelineMotion");
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_scenePipelineMotion = std::move(*pipeline);
     }
@@ -166,7 +168,7 @@ lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(engine::GpuContext& 
             makeSceneMotionPipeline(self->m_sceneLibrary.get(), rojoRHI::FillMode::Wireframe,
                                     "lmx.render.sceneWireframePipelineMotion");
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_sceneWireframePipelineMotion = std::move(*pipeline);
     }
@@ -175,7 +177,7 @@ lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(engine::GpuContext& 
             makeSceneMotionPipeline(self->m_sceneAutoLibrary.get(), rojoRHI::FillMode::Solid,
                                     "lmx.render.scenePipelineAutoMotion");
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_scenePipelineAutoMotion = std::move(*pipeline);
     }
@@ -184,7 +186,7 @@ lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(engine::GpuContext& 
             makeSceneMotionPipeline(self->m_sceneAutoLibrary.get(), rojoRHI::FillMode::Wireframe,
                                     "lmx.render.sceneWireframePipelineAutoMotion");
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_sceneWireframePipelineAutoMotion = std::move(*pipeline);
     }
@@ -192,21 +194,22 @@ lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(engine::GpuContext& 
     // Sky vertices force z == 0, the reversed far plane: use GreaterEqual so they survive the
     // pass's own 0 clear, render inside faces, and avoid rewriting the unchanged depth value.
     const auto makeSkyPipeline = [&](rojoRHI::ShaderLibrary* library, const char* label) {
-        return device.createGraphicsPipeline({.library = library,
-                                              .vertexEntry = "vertexMain",
-                                              .fragmentEntry = "fragmentMain",
-                                              .colorFormat = sceneColorFormat,
-                                              .depthFormat = rojoRHI::Format::D32Float,
-                                              .depthTestEnable = true,
-                                              .depthWriteEnable = false,
-                                              .cullMode = rojoRHI::CullMode::None,
-                                              .depthCompare = rojoRHI::DepthCompare::GreaterEqual,
-                                              .label = label});
+        return engine::adoptGpu(
+            device.createGraphicsPipeline({.library = library,
+                                           .vertexEntry = "vertexMain",
+                                           .fragmentEntry = "fragmentMain",
+                                           .colorFormat = sceneColorFormat,
+                                           .depthFormat = rojoRHI::Format::D32Float,
+                                           .depthTestEnable = true,
+                                           .depthWriteEnable = false,
+                                           .cullMode = rojoRHI::CullMode::None,
+                                           .depthCompare = rojoRHI::DepthCompare::GreaterEqual,
+                                           .label = label}));
     };
     {
         auto pipeline = makeSkyPipeline(self->m_skyLibrary.get(), "lmx.render.skyPipeline");
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_skyPipeline = std::move(*pipeline);
     }
@@ -215,13 +218,13 @@ lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(engine::GpuContext& 
     {
         auto pipeline = makeSkyPipeline(self->m_skyAutoLibrary.get(), "lmx.render.skyPipelineAuto");
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_skyPipelineAuto = std::move(*pipeline);
     }
 
     const auto makeSkyMotionPipeline = [&](rojoRHI::ShaderLibrary* library, const char* label) {
-        return device.createGraphicsPipeline(
+        return engine::adoptGpu(device.createGraphicsPipeline(
             {.library = library,
              .vertexEntry = "vertexMainMotion",
              .fragmentEntry = "fragmentMainMotion",
@@ -233,13 +236,13 @@ lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(engine::GpuContext& 
              .depthWriteEnable = false,
              .cullMode = rojoRHI::CullMode::None,
              .depthCompare = rojoRHI::DepthCompare::GreaterEqual,
-             .label = label});
+             .label = label}));
     };
     {
         auto pipeline =
             makeSkyMotionPipeline(self->m_skyLibrary.get(), "lmx.render.skyPipelineMotion");
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_skyPipelineMotion = std::move(*pipeline);
     }
@@ -247,7 +250,7 @@ lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(engine::GpuContext& 
         auto pipeline =
             makeSkyMotionPipeline(self->m_skyAutoLibrary.get(), "lmx.render.skyPipelineAutoMotion");
         if (!pipeline) {
-            return std::unexpected(engine::gpuError(pipeline.error()));
+            return std::unexpected(pipeline.error());
         }
         self->m_skyPipelineAutoMotion = std::move(*pipeline);
     }
@@ -263,7 +266,7 @@ lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(engine::GpuContext& 
                 for (uint32_t wireframe = 0; wireframe < 2; ++wireframe) {
                     const uint32_t index = doubleSided * 8 + automatic * 4 + motion * 2 + wireframe;
                     const auto label = std::format("lmx.render.maskScenePipeline.{}", index);
-                    auto pipeline = device.createGraphicsPipeline(
+                    auto pipeline = engine::adoptGpu(device.createGraphicsPipeline(
                         {.library = self->m_maskSceneLibraries[automatic].get(),
                          .vertexEntry = motion ? "vertexMainMotion" : "vertexMain",
                          .fragmentEntry = motion ? "fragmentMainMotion" : "fragmentMain",
@@ -280,9 +283,9 @@ lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(engine::GpuContext& 
                          .cullMode =
                              doubleSided ? rojoRHI::CullMode::None : rojoRHI::CullMode::Back,
                          .depthCompare = rojoRHI::DepthCompare::Greater,
-                         .label = label});
+                         .label = label}));
                     if (!pipeline) {
-                        return std::unexpected(engine::gpuError(pipeline.error()));
+                        return std::unexpected(pipeline.error());
                     }
                     self->m_maskScenePipelines[index] = std::move(*pipeline);
                 }

@@ -20,9 +20,10 @@ clip data and sampling, and the asset error domain. The glTF loader carries its 
 cutoff/double-sided vocabulary and rejects referenced BLEND materials.
 
 Asset depends on `core` alone and links no GPU target: its RojoRHI header allowance admits only
-`rojoRHI/Format.h` and `rojoRHI/TextureDesc.h`, so a tool such as `TextureBake` links Asset without
-Metal. The [module contract](../conventions/modules.md#asset-independence) states the include,
-framework and archive checks that hold this boundary.
+`rojoRHI/Format.h` (images are `asset::ImageData`; Engine converts at upload), so a tool such as
+`TextureBake` links Asset without Metal. The
+[module contract](../conventions/modules.md#asset-independence) states the include, framework and
+archive checks that hold this boundary.
 
 ## Engine's vocabulary
 
@@ -88,6 +89,11 @@ number, pass timings (`PassTiming`, `PassTimingFrame`), upscaler support (`Upsca
 and shader loading by bare name; `GpuOwned<T>` owns one GPU object. On RojoRHI v1 every
 `GpuContext` body forwards to the device call it replaces, in the same order, and the frame number
 is the device's. Code that only creates resources keeps a `rojoRHI::Device&` from `device()`.
+
+Textures and buffers are held in `GpuTexture` and `GpuBuffer`, which keep a descriptor copy with
+an owned label; callers read `desc()` and `rhi()` and there are no extent or format getters.
+Libraries, pipelines, samplers and the scaler are held in `GpuOwned` through `adoptGpu`.
+`CaptureSchema.h` is the capture vocabulary and forwards to the v1 schema until the switch.
 
 ## GPU uploads
 

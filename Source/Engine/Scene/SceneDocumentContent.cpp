@@ -9,6 +9,7 @@
 #include "Core/Math/Sphere.h"
 #include "Engine/Asset/Document/Orientation.h"
 #include "Engine/Asset/Texture/TextureBake.h"
+#include "Engine/Upload/DdsUpload.h"
 
 #include <algorithm>
 #include <array>
@@ -37,23 +38,25 @@ asset::AssetResult<std::vector<TextureId>> uploadImages(rojoRHI::Device& device,
                 const auto baked =
                     asset::bakeMips(bytes, image.width, image.height,
                                     srgb[i] ? asset::BakeMode::Srgb : asset::BakeMode::Linear);
-                return device.createTexture({.width = image.width,
-                                             .height = image.height,
-                                             .format = format,
-                                             .mipLevels = baked.mipLevels,
-                                             .sampled = true,
-                                             .label = label},
-                                            baked.mips);
+                return GpuTexture::create(device,
+                                          {.width = image.width,
+                                           .height = image.height,
+                                           .format = format,
+                                           .mipLevels = baked.mipLevels,
+                                           .sampled = true,
+                                           .label = label},
+                                          toTextureMips(baked));
             }
             const rojoRHI::TextureMip level{.data = image.rgba8.data(),
                                             .bytesPerRow = image.width * 4};
-            return device.createTexture({.width = image.width,
-                                         .height = image.height,
-                                         .format = format,
-                                         .mipLevels = 1,
-                                         .sampled = true,
-                                         .label = label},
-                                        std::span(&level, 1));
+            return GpuTexture::create(device,
+                                      {.width = image.width,
+                                       .height = image.height,
+                                       .format = format,
+                                       .mipLevels = 1,
+                                       .sampled = true,
+                                       .label = label},
+                                      std::span(&level, 1));
         }();
         if (!uploaded)
             return std::unexpected(asset::AssetError{asset::AssetErrorCode::UploadFailed,

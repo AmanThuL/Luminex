@@ -21,14 +21,14 @@ struct SceneTableSlots {
 
 inline void bindSceneTables(rojoRHI::CommandList& commands, const engine::SceneTables& tables,
                             const SceneTableSlots& slots) {
-    commands.bindBuffer(slots.vertices, *tables.vertices);
-    commands.bindBuffer(slots.instances, *tables.instances);
-    commands.bindBuffer(slots.materials, *tables.materials);
+    commands.bindBuffer(slots.vertices, tables.vertices->rhi());
+    commands.bindBuffer(slots.instances, tables.instances->rhi());
+    commands.bindBuffer(slots.materials, tables.materials->rhi());
 }
 
 struct DrawEncodingInputs {
     const DrawList& list;
-    rojoRHI::Buffer* indices;
+    const engine::GpuBuffer* indices;
     rojoRHI::GraphicsPipeline* initialPipeline = nullptr;
 };
 
@@ -44,7 +44,7 @@ void encodeDrawRuns(rojoRHI::CommandList& commands, const DrawEncodingInputs& dr
             bound = &pipeline;
         }
     };
-    commands.bindBuffer(engine::kVisibleRowsSlot, *draws.list.rows);
+    commands.bindBuffer(engine::kVisibleRowsSlot, draws.list.rows->rhi());
     if (draws.list.mode != SubmissionMode::Direct) {
         commands.bindFrameData(engine::kDrawUniformsSlot, engine::DrawUniforms{0});
     }
@@ -52,9 +52,9 @@ void encodeDrawRuns(rojoRHI::CommandList& commands, const DrawEncodingInputs& dr
         const engine::DrawItem& item = perRun(run, bindPipeline);
         if (draws.list.mode == SubmissionMode::Direct) {
             commands.bindFrameData(engine::kDrawUniformsSlot, engine::DrawUniforms{run.firstEntry});
-            commands.drawIndexed(*draws.indices, item.mesh.indexCount, item.mesh.firstIndex);
+            commands.drawIndexed(draws.indices->rhi(), item.mesh.indexCount, item.mesh.firstIndex);
         } else {
-            commands.drawIndexedIndirect(*draws.indices, *draws.list.arguments,
+            commands.drawIndexedIndirect(draws.indices->rhi(), draws.list.arguments->rhi(),
                                          uint64_t{run.argumentIndex} *
                                              sizeof(rojoRHI::DrawIndexedIndirectArgs));
         }

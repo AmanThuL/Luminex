@@ -59,7 +59,7 @@ and the v2 `RojoRHI`, `RojoRHITests`, `RojoRHILtoProbe`, `RojoRHIBench`), includ
 | `render`, `engine`, `app-model`, `scenes`, `benchmarks` | `"*"` |
 | `app-shell` | `"*"`, and `rojoRHI/Metal4/Metal4ImGui.h` |
 | `tests` | `"*"` |
-| `asset`, `texture-bake` | `rojoRHI/Format.h` and `rojoRHI/TextureDesc.h`, and nothing else |
+| `asset`, `texture-bake` | `rojoRHI/Format.h`, and nothing else |
 
 [ADR 0024](../decisions/0024-rhi-relocation-to-rojorhi.md) supersedes in part the four `rhi-*`
 units of [ADR 0020](../decisions/0020-module-layering-and-units.md), every other unit's dependency
@@ -202,9 +202,9 @@ The rules above are checked as include edges:
   that file's includers, so `core` including spdlog does not spend spdlog everywhere.
 - External reach is neither transitive nor an exception to the unit table: it is the separate
   `externals` contract above, matched per header. `asset` and its `texture-bake` consumer may
-  include `rojoRHI/Format.h` and `rojoRHI/TextureDesc.h` and nothing else — not the target, not the
-  umbrella `rojoRHI/RHI.h`, and not any other header those two happen to include. TextureBake reaches
-  them through Asset's public mip-chain structure; it still links Core and Asset only.
+  include `rojoRHI/Format.h` and nothing else — not the target, not the umbrella `rojoRHI/RHI.h`.
+  Asset describes images as `asset::ImageData`; Engine converts them to RHI views at upload.
+  TextureBake still links Core and Asset only.
 - `headers` remains a per-unit, per-header allowance against another unit, and is the only
   exception to the unit table. No unit needs one today, so no unit carries the field.
 

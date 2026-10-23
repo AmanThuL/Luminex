@@ -22,7 +22,7 @@ std::vector<lmx::engine::InstanceRow> readSceneInstances(Scene& scene, rojoRHI::
     device.endFrame(nullptr);
     device.waitIdle();
     std::vector<lmx::engine::InstanceRow> rows(tables.instanceCount);
-    tables.instances->readback(rows.data(), rows.size() * sizeof(lmx::engine::InstanceRow));
+    tables.instances->rhi().readback(rows.data(), rows.size() * sizeof(lmx::engine::InstanceRow));
     return rows;
 }
 
@@ -47,7 +47,7 @@ TEST_CASE("loadSponzaScene loads the fetched Sponza asset", "[gpu]") {
     REQUIRE((*scene)->objects.size() == 25);
     REQUIRE((*scene)->tableStats().materialCount == 25);
 
-    std::set<rojoRHI::Texture*> textures;
+    std::set<const lmx::engine::GpuTexture*> textures;
     for (const auto& object : (*scene)->objects) {
         const auto& material = (*scene)->material(object.material);
         for (const auto id : {material.diffuse, material.normalMap, material.metallicRoughness,
@@ -72,7 +72,7 @@ TEST_CASE("loadSponzaScene loads the fetched Sponza asset", "[gpu]") {
     REQUIRE(normalMapped == 0);
 
     REQUIRE((*scene)->boundingSphere.w > 0.0f);
-    REQUIRE((*scene)->skyCubemap != nullptr);
+    REQUIRE((*scene)->skyCubemap);
 }
 
 //======================================================================================================================
@@ -92,7 +92,7 @@ TEST_CASE("loadHelmetScene loads the fetched DamagedHelmet asset", "[gpu]") {
 
     REQUIRE((*scene)->objects.size() == 1);
     REQUIRE((*scene)->boundingSphere.w > 0.0f);
-    REQUIRE((*scene)->skyCubemap != nullptr);
+    REQUIRE((*scene)->skyCubemap);
 
     // Damaged Helmet ships metallic-roughness, occlusion, and emissive maps; Scene.cpp's material
     // translation must upload and attach all three for the GGX shader to consume.
@@ -146,11 +146,11 @@ TEST_CASE("loadHelmetScene's unbaked fallback computes the same mip 1 the offlin
     auto bakedScene = loadGltfScene(**device, path->string(), "Damaged Helmet");
     INFO(describeSceneError(bakedScene));
     REQUIRE(bakedScene.has_value());
-    rojoRHI::Texture* bakedDiffuse =
+    const lmx::engine::GpuTexture* bakedDiffuse =
         (*bakedScene)
             ->tryTexture(*(*bakedScene)->material((*bakedScene)->objects[0].material).diffuse);
     REQUIRE(bakedDiffuse != nullptr);
-    const std::vector<uint8_t> bakedMip1 = readMipLevel1(**device, *bakedDiffuse);
+    const std::vector<uint8_t> bakedMip1 = readMipLevel1(**device, bakedDiffuse->rhi());
 
     std::vector<uint8_t> fallbackMip1;
     {
@@ -158,12 +158,12 @@ TEST_CASE("loadHelmetScene's unbaked fallback computes the same mip 1 the offlin
         auto fallbackScene = loadGltfScene(**device, path->string(), "Damaged Helmet");
         INFO(describeSceneError(fallbackScene));
         REQUIRE(fallbackScene.has_value());
-        rojoRHI::Texture* fallbackDiffuse =
+        const lmx::engine::GpuTexture* fallbackDiffuse =
             (*fallbackScene)
                 ->tryTexture(
                     *(*fallbackScene)->material((*fallbackScene)->objects[0].material).diffuse);
         REQUIRE(fallbackDiffuse != nullptr);
-        fallbackMip1 = readMipLevel1(**device, *fallbackDiffuse);
+        fallbackMip1 = readMipLevel1(**device, fallbackDiffuse->rhi());
     }
 
     REQUIRE(bakedMip1.size() == fallbackMip1.size());
@@ -220,7 +220,7 @@ TEST_CASE("loadSponzaScene's full SceneView renders through Renderer without exh
     const std::array<int, 3> clearBytes = lmx::test::displayBytes(
         {lmx::test::srgbDecode(0.05f), lmx::test::srgbDecode(0.07f), lmx::test::srgbDecode(0.10f)});
     std::vector<uint8_t> pixels(size_t{kProbeSize} * kProbeSize * 4);
-    (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+    (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
     bool sawNonClearPixel = false;
     for (size_t i = 0; i + 3 < pixels.size(); i += 4) {
         if (pixels[i] != clearBytes[2] || pixels[i + 1] != clearBytes[1] ||
@@ -248,13 +248,13 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
     REQUIRE(scene.has_value());
 
     // Sample up to eight textures so at least one pair exposes a per-draw binding collision.
-    std::vector<rojoRHI::Texture*> distinctDiffuse;
+    std::vector<const lmx::engine::GpuTexture*> distinctDiffuse;
     for (const auto& object : (*scene)->objects) {
         const auto& material = (*scene)->material(object.material);
         if (!material.diffuse) {
             continue;
         }
-        rojoRHI::Texture* diffuse = (*scene)->tryTexture(*material.diffuse);
+        const lmx::engine::GpuTexture* diffuse = (*scene)->tryTexture(*material.diffuse);
         REQUIRE(diffuse != nullptr);
         const bool alreadySeen = std::find(distinctDiffuse.begin(), distinctDiffuse.end(),
                                            diffuse) != distinctDiffuse.end();
@@ -318,7 +318,7 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
     gpu->device().waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kProbeSize} * kProbeSize * 4);
-    (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+    (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
 
     const auto pixelAt = [&](uint32_t x, uint32_t y) {
         const size_t offset = (size_t{y} * kProbeSize + x) * 4;

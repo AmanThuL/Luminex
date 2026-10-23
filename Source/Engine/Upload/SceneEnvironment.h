@@ -6,11 +6,11 @@
 #pragma once
 
 #include "Engine/Asset/Asset.h"
+#include "Engine/Gpu/GpuTexture.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/Upload/IblUpload.h"
 #include <rojoRHI/RHI.h>
 
-#include <memory>
 #include <string_view>
 
 namespace lmx::engine {
@@ -29,7 +29,7 @@ namespace lmx::engine {
 /// environment for diffuse convolution; its borrowed source only needs to survive this call.
 /// Ownership of skyCubemap moves into scene. Returns UploadFailed on GPU creation failure.
 asset::AssetResult<void> attachEnvironment(rojoRHI::Device& device, Scene& scene,
-                                           std::unique_ptr<rojoRHI::Texture> skyCubemap,
+                                           GpuTexture skyCubemap,
                                            const asset::ibl::CpuCubemap& environment,
                                            std::string_view label,
                                            ibl::GenerationOptions options = {});

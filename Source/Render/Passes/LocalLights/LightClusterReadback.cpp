@@ -14,7 +14,7 @@ namespace lmx::render {
 RetiredLightClusters LightClusterStage::readback(const Pending& pending) const {
     RetiredLightClusters result{.frameNumber = pending.frameNumber};
     std::array<uint32_t, kLightClusterCounterWords> words{};
-    pending.counters->readback(words.data(), sizeof(words));
+    pending.counters->rhi().readback(words.data(), sizeof(words));
     result.counters = {.candidates = words[0],
                        .assigned = words[1],
                        .droppedPerCluster = words[2],
@@ -25,13 +25,14 @@ RetiredLightClusters LightClusterStage::readback(const Pending& pending) const {
         return result;
     }
     result.grid.resize(kClusterCount);
-    pending.grid->readback(result.grid.data(), result.grid.size() * sizeof(ClusterRecord));
+    pending.grid->rhi().readback(result.grid.data(), result.grid.size() * sizeof(ClusterRecord));
     // Only the leading `assigned` entries are defined; the rest of the list is whatever the
     // previous occupant of this paced slot left behind, so it is never handed out.
     const uint32_t assigned = std::min(result.counters.assigned, kLightClusterIndexCapacity);
     if (assigned > 0) {
         result.indices.resize(assigned);
-        pending.indices->readback(result.indices.data(), result.indices.size() * sizeof(uint32_t));
+        pending.indices->rhi().readback(result.indices.data(),
+                                        result.indices.size() * sizeof(uint32_t));
     }
     return result;
 }

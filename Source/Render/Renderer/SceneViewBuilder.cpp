@@ -31,18 +31,18 @@ SceneView buildSceneView(const engine::Scene& scene, std::vector<engine::DrawIte
                                  : -1;
     sceneView.boundingSphere = scene.boundingSphere;
     // A cubemap marks a fully constructed sky; the sphere and cubemap are published together.
-    if (scene.skyCubemap != nullptr) {
+    if (scene.skyCubemap) {
         LMX_ASSERT(scene.skySphere && scene.tryMesh(*scene.skySphere),
                    "sky mesh identity is invalid");
         sceneView.skySphere = *scene.tryMesh(*scene.skySphere);
-        sceneView.skyCubemap = scene.skyCubemap.get();
+        sceneView.skyCubemap = &scene.skyCubemap;
     }
     // The IBL set is generated from that same sky and published with it, so a scene that shows a
-    // sky also lights from it. Forwarded unconditionally: unique_ptr::get() on an empty pointer is
-    // the null the renderer's fallbacks already handle.
-    sceneView.irradiance = scene.irradianceMap.get();
-    sceneView.prefilteredEnv = scene.prefilteredEnvMap.get();
-    sceneView.dfgLut = scene.dfgLut.get();
+    // sky also lights from it. Forwarded unconditionally: an empty owner becomes the null the
+    // renderer's fallbacks already handle.
+    sceneView.irradiance = scene.irradianceMap ? &scene.irradianceMap : nullptr;
+    sceneView.prefilteredEnv = scene.prefilteredEnvMap ? &scene.prefilteredEnvMap : nullptr;
+    sceneView.dfgLut = scene.dfgLut ? &scene.dfgLut : nullptr;
     const auto& look = scene.look;
     sceneView.shadowFilter =
         look.shadowFilter == asset::ShadowFilter::PCSS ? ShadowFilter::PCSS : ShadowFilter::PCF;

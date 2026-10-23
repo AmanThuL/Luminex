@@ -7,6 +7,7 @@
 
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Gpu/GpuContext.h"
+#include "Engine/Gpu/GpuTexture.h"
 #include "Engine/Gpu/PassTiming.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/Temporal/Temporal.h"
@@ -265,28 +266,28 @@ private:
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_debugViewLibrary;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_spatialUpscaleLibrary;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_temporalUpscaleLibrary;
-    std::unique_ptr<rojoRHI::ComputePipeline> m_reprojectPipeline;
-    std::unique_ptr<rojoRHI::ComputePipeline> m_resolvePipeline;
-    std::unique_ptr<rojoRHI::ComputePipeline> m_spatialUpscalePipeline;
-    std::unique_ptr<rojoRHI::ComputePipeline> m_temporalUpscalePipeline;
-    std::unique_ptr<rojoRHI::GraphicsPipeline> m_debugViewPipeline;
+    engine::GpuOwned<rojoRHI::ComputePipeline> m_reprojectPipeline;
+    engine::GpuOwned<rojoRHI::ComputePipeline> m_resolvePipeline;
+    engine::GpuOwned<rojoRHI::ComputePipeline> m_spatialUpscalePipeline;
+    engine::GpuOwned<rojoRHI::ComputePipeline> m_temporalUpscalePipeline;
+    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_debugViewPipeline;
     // Clamped, not wrapped: a history fetch lands where this frame's motion points, which for a
     // border texel is a bilinear footprint reaching past the edge. A wrapping sampler would fold
     // the opposite edge's texels into that fetch and report a difference that is an artefact of
     // the addressing rather than of the motion.
-    std::unique_ptr<rojoRHI::Sampler> m_sampler;
+    engine::GpuOwned<rojoRHI::Sampler> m_sampler;
     // Ping-pong by declared temporal frame parity. Every temporal frame renders depth into
     // m_depth[slot], reads m_depth[1 - slot] as its previous depth, and writes m_color[slot] while
     // reading m_color[1 - slot] -- so this frame's colour slot always holds this frame's output.
-    std::unique_ptr<rojoRHI::Texture> m_depth[2];
-    std::unique_ptr<rojoRHI::Texture> m_color[2];
+    engine::GpuTexture m_depth[2];
+    engine::GpuTexture m_color[2];
     // The 1x1 storage-write texture the resolve binds where a diagnostic is not declared. The
     // argument table entry must hold a valid writable texture even on the frames the kernel's
     // corresponding writeDiagnostics bit makes it write nothing.
-    std::unique_ptr<rojoRHI::Texture> m_diagnosticFallback;
+    engine::GpuTexture m_diagnosticFallback;
     // The 1x1 sampled texture the debug view binds for whichever inputs its view does not read.
     // Every texel the shader loads lies outside it, and an out-of-bounds Load answers with zeroes.
-    std::unique_ptr<rojoRHI::Texture> m_viewFallback;
+    engine::GpuTexture m_viewFallback;
     // What the last frame to touch each colour slot left it as. CopyDestination is what M6.1's
     // commit left, and what an untouched slot is imported as before any frame has written it.
     TextureUse m_colorUse[2] = {TextureUse::CopyDestination, TextureUse::CopyDestination};
