@@ -15,6 +15,9 @@ namespace lmx::render {
 //======================================================================================================================
 GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& commands,
                                      const engine::Camera& camera, const SceneView& view) {
+    // Bound first, so every persistent import of the frame -- the renderer's, its stages' and any a
+    // caller declares into the same graph afterwards -- reads the uses earlier frames left.
+    graph.bindTextureStates(m_textureStates);
     const RendererFrameState state = deriveFrameState(camera, view);
     const RendererFrameImports imports = importFrameResources(graph, commands, view, state);
 
@@ -179,7 +182,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& c
     // HZB follows every temporal depth consumer in the stable graph schedule.
     declareOcclusion(graph, commands, view, nextVersion(imports.sceneDepth), displayResult);
 
-    recordFrameStatus(state, lightDebugEnabled);
+    recordFrameStatus(state);
     return displayResult;
 }
 

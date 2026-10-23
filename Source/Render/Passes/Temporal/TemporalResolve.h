@@ -151,20 +151,15 @@ public:
     /// The colour history of `slot`, which holds that frame's output whichever mode produced it.
     rojoRHI::Texture& colorSlot(uint32_t slot);
 
-    /// Imports the depth of `slot`. Stated as ShaderRead for the reason M6.1's single depth target
-    /// was: the depth is public through Renderer::depthTarget() and a caller may sample it after
-    /// this graph, and that stage set also covers the attachment work the scene pass does with it.
+    /// Imports the depth of `slot` with the use the last frame to touch it left it in, read from
+    /// the graph's texture state table. The renderer leaves the frame's own slot as a shader read,
+    /// because the depth is public through Renderer::depthTarget() and a caller may sample it after
+    /// this graph.
     GraphTexture importDepth(RenderGraph& graph, uint32_t slot);
 
-    /// Last access recorded for a depth slot, including opaque vendor reads across temporal off.
-    TextureUse depthUse(uint32_t slot) const;
-
-    /// Records a post-reconstruction diagnostic read of the actual depth slot.
-    void recordDepthRead(uint32_t slot);
-
-    /// Imports the colour history of `slot` with the terminal use recordFrame() last recorded for
-    /// it, so a mode switch between two frames imports the slot with the use the other mode
-    /// actually left it in.
+    /// Imports the colour history of `slot` with the use the last frame to touch it left it in,
+    /// read from the graph's texture state table, so a mode switch between two frames imports the
+    /// slot with the use the other mode actually left it in.
     GraphTexture importColor(RenderGraph& graph, uint32_t slot);
 
     /// Declares the reprojection diagnostic (when history is valid; culled unless the
@@ -190,13 +185,9 @@ public:
                                    const TemporalInputs& inputs, TemporalDebugView debugView,
                                    GraphTexture displayResult);
 
-    /// Records what the frame just declared left in each colour slot, so the next frame's imports
-    /// state the use its barriers must be derived against. `historyValid` is what decides whether
-    /// the reprojection diagnostic survived culling, and so whether the other slot was read at all;
-    /// `upscaled` is what turns a Raw frame's copy into the spatial pass whose output bloom and the
-    /// display transform then sample, so the slot ends the frame read rather than written.
-    void recordFrame(uint32_t slot, ReconstructionMode mode, TemporalDebugView debugView,
-                     bool historyValid, bool upscaled);
+    /// Records the mode of the temporal frame just declared, which decides whether the vendor's
+    /// next frame resets its private history.
+    void recordFrame(ReconstructionMode mode);
 
     /// Bytes both colour history slots hold; the allocation is permanent for the stage's life.
     uint64_t colorBytes() const;
@@ -288,10 +279,6 @@ private:
     // The 1x1 sampled texture the debug view binds for whichever inputs its view does not read.
     // Every texel the shader loads lies outside it, and an out-of-bounds Load answers with zeroes.
     engine::GpuTexture m_viewFallback;
-    // What the last frame to touch each colour slot left it as. CopyDestination is what M6.1's
-    // commit left, and what an untouched slot is imported as before any frame has written it.
-    TextureUse m_colorUse[2] = {TextureUse::CopyDestination, TextureUse::CopyDestination};
-    TextureUse m_depthUse[2] = {TextureUse::ShaderRead, TextureUse::ShaderRead};
     uint32_t m_width = 0;
     uint32_t m_height = 0;
     bool m_cpuReadback = false;

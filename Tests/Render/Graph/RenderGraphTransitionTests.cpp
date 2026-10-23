@@ -818,10 +818,12 @@ TEST_CASE("a texture import carries its previous-frame access", "[render][graph]
     FakeTexture output{64, 64, "output"};
 
     SECTION("prior read before current write") {
+        TextureStateTable states;
+        states.set(persistent, lmx::render::TextureUse::ShaderRead);
         RenderGraph graph;
+        graph.bindTextureStates(states);
         const GraphTexture texture =
-            graph.importTexture(persistent, rojoRHI::Format::BGRA8Unorm, "persistent",
-                                lmx::render::TextureUse::ShaderRead);
+            graph.importPersistentTexture(persistent, rojoRHI::Format::BGRA8Unorm, "persistent");
         PassDesc overwrite;
         overwrite.color = ColorAttachment{.handle = texture};
         graph.addPass("lmx.pass.overwrite", overwrite, kNoWork);
@@ -835,10 +837,12 @@ TEST_CASE("a texture import carries its previous-frame access", "[render][graph]
     }
 
     SECTION("prior read before current loaded attachment") {
+        TextureStateTable states;
+        states.set(persistent, lmx::render::TextureUse::ShaderRead);
         RenderGraph graph;
+        graph.bindTextureStates(states);
         const GraphTexture texture =
-            graph.importTexture(persistent, rojoRHI::Format::BGRA8Unorm, "persistent",
-                                lmx::render::TextureUse::ShaderRead);
+            graph.importPersistentTexture(persistent, rojoRHI::Format::BGRA8Unorm, "persistent");
         PassDesc loadAndOverwrite;
         loadAndOverwrite.color =
             ColorAttachment{.handle = texture, .load = LoadOp::Load, .store = StoreOp::Store};
@@ -853,10 +857,12 @@ TEST_CASE("a texture import carries its previous-frame access", "[render][graph]
     }
 
     SECTION("prior write before current read") {
+        TextureStateTable states;
+        states.set(persistent, lmx::render::TextureUse::RenderTarget);
         RenderGraph graph;
+        graph.bindTextureStates(states);
         const GraphTexture texture =
-            graph.importTexture(persistent, rojoRHI::Format::BGRA8Unorm, "persistent",
-                                lmx::render::TextureUse::RenderTarget);
+            graph.importPersistentTexture(persistent, rojoRHI::Format::BGRA8Unorm, "persistent");
         const GraphTexture color =
             graph.importTexture(output, rojoRHI::Format::BGRA8Unorm, "output");
         PassDesc sample;
@@ -873,10 +879,12 @@ TEST_CASE("a texture import carries its previous-frame access", "[render][graph]
     }
 
     SECTION("prior read before current read") {
+        TextureStateTable states;
+        states.set(persistent, lmx::render::TextureUse::ShaderRead);
         RenderGraph graph;
+        graph.bindTextureStates(states);
         const GraphTexture texture =
-            graph.importTexture(persistent, rojoRHI::Format::BGRA8Unorm, "persistent",
-                                lmx::render::TextureUse::ShaderRead);
+            graph.importPersistentTexture(persistent, rojoRHI::Format::BGRA8Unorm, "persistent");
         const GraphTexture color =
             graph.importTexture(output, rojoRHI::Format::BGRA8Unorm, "output");
         PassDesc sample;

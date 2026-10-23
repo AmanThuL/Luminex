@@ -408,9 +408,11 @@ TEST_CASE("external graph dumps name the operation and both external uses",
           "[render][graph][external]") {
     FakeTexture input{64};
     FakeTexture output{64};
+    TextureStateTable states;
+    states.set(input, lmx::render::TextureUse::StorageWrite);
     RenderGraph graph;
-    const auto source = graph.importTexture(input, rojoRHI::Format::R16Float, "exposure",
-                                            lmx::render::TextureUse::StorageWrite);
+    graph.bindTextureStates(states);
+    const auto source = graph.importPersistentTexture(input, rojoRHI::Format::R16Float, "exposure");
     const auto target = graph.importTexture(output, rojoRHI::Format::RGBA16Float, "history");
     graph.addExternalPass("vendor", {.textureReads = {source}, .textureWrites = {target}}, kNoWork);
     graph.addComputePass("consume",

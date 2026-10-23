@@ -255,14 +255,6 @@ public:
     GraphTexture importTexture(rojoRHI::Texture& texture, rojoRHI::Format format,
                                std::string_view name);
 
-    /// The same import when a pass in an earlier frame last accessed this persistent texture.
-    /// `previousUse` seeds hazard derivation across the command-buffer boundary: a prior write is
-    /// ordered before this frame's first read or write, while a prior read is ordered only before
-    /// this frame's first write. The whole texture is assumed because no previous-frame range is
-    /// available to this fresh graph.
-    GraphTexture importTexture(rojoRHI::Texture& texture, rojoRHI::Format format,
-                               std::string_view name, TextureUse previousUse);
-
     /// Binds the table persistent imports read their earlier-frame use from and execute() writes
     /// their terminal use back to. `states` must outlive the graph. Binding the table already bound
     /// is allowed, so an owner can bind on every declaration; binding a different one asserts.
@@ -274,10 +266,13 @@ public:
 
     /// Brings a persistent texture into the graph as version 0, on importTexture's terms, with the
     /// use the bound table holds for it as its earlier-frame access. No entry means no earlier
-    /// access, exactly a plain import. execute() writes back the use the last scheduled pass naming
-    /// it left it in (a write winning within that pass), or the use setFinalUse() stated; a frame
-    /// whose scheduled passes never name it leaves its entry untouched. Asserts when no table is
-    /// bound or the texture is already a persistent import of this graph.
+    /// access, exactly a plain import. An earlier write is ordered before this frame's first read
+    /// or write, and an earlier read only before its first write; the whole texture is assumed
+    /// because no earlier-frame range reaches this fresh graph. execute() writes back the use the
+    /// last scheduled pass naming it left it in (a write winning within that pass), or the use
+    /// setFinalUse() stated; a frame whose scheduled passes never name it leaves its entry
+    /// untouched. Asserts when no table is bound or the texture is already a persistent import of
+    /// this graph.
     GraphTexture importPersistentTexture(rojoRHI::Texture& texture, rojoRHI::Format format,
                                          std::string_view name);
 

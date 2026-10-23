@@ -53,7 +53,8 @@ TEST_CASE("occlusion GPU results equal the CPU mirror on actual raster-built rea
     auto gpu = createTestGpu();
     auto stage = HzbStage::create(*gpu);
     REQUIRE(stage);
-    REQUIRE((*stage)->resize(outputWidth, outputHeight));
+    TextureStateTable states;
+    REQUIRE((*stage)->resize(outputWidth, outputHeight, states));
     auto depth = gpu->device().createTexture({.width = outputWidth,
                                               .height = outputHeight,
                                               .format = Format::D32Float,
@@ -125,11 +126,15 @@ TEST_CASE("occlusion GPU results equal the CPU mirror on actual raster-built rea
             REQUIRE(output);
             auto& commands = gpu->device().beginFrame();
             RenderGraph graph;
+            graph.bindTextureStates(states);
+            if (frame > 0) {
+                states.set(**depth, lmx::render::TextureUse::ShaderRead);
+            }
             const auto depthInput =
                 frame == 0
                     ? graph.importTexture(**depth, Format::D32Float, "lmx.test.hzbParity.depth")
-                    : graph.importTexture(**depth, Format::D32Float, "lmx.test.hzbParity.depth",
-                                          lmx::render::TextureUse::ShaderRead);
+                    : graph.importPersistentTexture(**depth, Format::D32Float,
+                                                    "lmx.test.hzbParity.depth");
             PassDesc rasterDesc;
             rasterDesc.depth = DepthAttachment{.handle = depthInput, .store = StoreOp::Store};
             rasterDesc.renderAreaWidth = width;

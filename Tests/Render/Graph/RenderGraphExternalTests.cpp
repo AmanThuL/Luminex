@@ -63,9 +63,12 @@ TEST_CASE("external terminal uses preserve cross-frame hazards", "[render][graph
     FakeTexture output{64, 64};
 
     SECTION("a prior external write is visible to a sampled read") {
+        TextureStateTable states;
+        states.set(texture, lmx::render::TextureUse::ExternalWrite);
         RenderGraph graph;
-        const auto input = graph.importTexture(texture, rojoRHI::Format::RGBA16Float, "history",
-                                               lmx::render::TextureUse::ExternalWrite);
+        graph.bindTextureStates(states);
+        const auto input =
+            graph.importPersistentTexture(texture, rojoRHI::Format::RGBA16Float, "history");
         const auto result = graph.importTexture(output, rojoRHI::Format::RGBA16Float, "output");
         graph.addComputePass("sample", {.shaderTextureReads = {input}, .textureWrites = {result}},
                              kNoWork);
@@ -77,9 +80,12 @@ TEST_CASE("external terminal uses preserve cross-frame hazards", "[render][graph
         REQUIRE(record->debug.transitions[0].textureTo == lmx::render::TextureUse::ShaderRead);
     }
     SECTION("a prior external read is ordered before a new write") {
+        TextureStateTable states;
+        states.set(texture, lmx::render::TextureUse::ExternalRead);
         RenderGraph graph;
-        const auto input = graph.importTexture(texture, rojoRHI::Format::RGBA16Float, "history",
-                                               lmx::render::TextureUse::ExternalRead);
+        graph.bindTextureStates(states);
+        const auto input =
+            graph.importPersistentTexture(texture, rojoRHI::Format::RGBA16Float, "history");
         graph.addComputePass("overwrite", {.textureWrites = {input}}, kNoWork);
         graph.exportTexture(nextVersion(input));
         const auto record = graph.compileFrame(1);
@@ -89,9 +95,12 @@ TEST_CASE("external terminal uses preserve cross-frame hazards", "[render][graph
         REQUIRE(record->debug.transitions[0].textureTo == lmx::render::TextureUse::StorageWrite);
     }
     SECTION("a prior external read needs no barrier for another read") {
+        TextureStateTable states;
+        states.set(texture, lmx::render::TextureUse::ExternalRead);
         RenderGraph graph;
-        const auto input = graph.importTexture(texture, rojoRHI::Format::RGBA16Float, "history",
-                                               lmx::render::TextureUse::ExternalRead);
+        graph.bindTextureStates(states);
+        const auto input =
+            graph.importPersistentTexture(texture, rojoRHI::Format::RGBA16Float, "history");
         const auto result = graph.importTexture(output, rojoRHI::Format::RGBA16Float, "output");
         graph.addExternalPass("vendor", {.textureReads = {input}, .textureWrites = {result}},
                               kNoWork);

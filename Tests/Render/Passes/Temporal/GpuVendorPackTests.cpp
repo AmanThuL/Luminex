@@ -42,12 +42,14 @@ TEST_CASE("vendor packing translates invalid motion and working exposure without
     auto& commands = gpu->device().beginFrame();
     TransientPool pool(gpu->device());
     pool.beginFrame();
+    TextureStateTable states;
+    states.set(**motion, lmx::render::TextureUse::ShaderRead);
+    states.set(**reactive, lmx::render::TextureUse::ShaderRead);
     RenderGraph graph(pool);
+    graph.bindTextureStates(states);
     TemporalInputs inputs;
-    inputs.motion = graph.importTexture(**motion, Format::RG16Float, "motion",
-                                        lmx::render::TextureUse::ShaderRead);
-    inputs.reactive = graph.importTexture(**reactive, Format::R8Unorm, "reactive",
-                                          lmx::render::TextureUse::ShaderRead);
+    inputs.motion = graph.importPersistentTexture(**motion, Format::RG16Float, "motion");
+    inputs.reactive = graph.importPersistentTexture(**reactive, Format::R8Unorm, "reactive");
     inputs.exposure =
         graph.importBuffer(**exposure, "exposure", lmx::render::BufferUse::StorageRead);
     inputs.extents = {2, 1, 2, 1};

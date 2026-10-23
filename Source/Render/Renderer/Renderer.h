@@ -170,6 +170,12 @@ public:
     /// this reports it anyway.
     rojoRHI::Texture* historyTarget();
 
+    /// The use each persistent target was left in by the last frame that touched it. Bound to every
+    /// graph declarePasses() is given, so a pass declared into that graph after the renderer's own
+    /// reaches it through RenderGraph::textureStates(). create() and resize() seed every target
+    /// they allocate.
+    TextureStateTable& textureStates() { return m_textureStates; }
+
     /// The persistent kExposureBufferFloats pair the frame's exposure passes keep. Created with
     /// the renderer and never replaced, so it is never null. Readable from the CPU only when
     /// create() was given cpuReadback -- the tests and the offscreen path; the windowed App never
@@ -198,7 +204,7 @@ private:
     RendererFrameImports importFrameResources(RenderGraph& graph, rojoRHI::CommandList& commands,
                                               const SceneView& view,
                                               const RendererFrameState& state);
-    void recordFrameStatus(const RendererFrameState& state, bool lightDebugEnabled);
+    void recordFrameStatus(const RendererFrameState& state);
     std::array<GraphBuffer, 2> prepareVisibility(RenderGraph& graph, rojoRHI::CommandList& commands,
                                                  const SceneView& view, const FrustumPlanes& planes,
                                                  std::span<const GraphBuffer> sceneBuffers);
@@ -229,6 +235,9 @@ private:
     // Non-copyable and non-movable (TransientPool's own contract), so it is constructed in place
     // above rather than assigned.
     TransientPool m_transientPool;
+    // What the last frame to touch each persistent target left it as, written back by every graph
+    // declarePasses() binds it to.
+    TextureStateTable m_textureStates;
     std::unique_ptr<ShadowStage> m_shadowStage;
     std::unique_ptr<SceneStage> m_sceneStage;
     // Stage owners retain callback inputs and persistent feedback through graph execution.
@@ -267,16 +276,6 @@ private:
     // that is what makes re-enabling distinguishable from the first frame ever declared.
     std::optional<FrameSignature> m_previousSignature;
     std::optional<CameraFrameState> m_previousCamera;
-    // What the previous declared frame last did with the two targets whose terminal use depends on
-    // the path it took. Barriers are derived from the passes in one graph, so a cross-frame edge
-    // exists only where the import states it: a temporal frame ends by reading motion (when it
-    // draws a debug view) and by copying out of the scene colour, and the next frame's first
-    // access has to be ordered behind whichever of those actually happened.
-    TextureUse m_previousMotionUse = TextureUse::RenderTarget;
-    // The reactive attachment is written by every temporal frame and read only by the resolve, so
-    // its terminal use is what the frame's mode decided rather than a constant.
-    TextureUse m_previousReactiveUse = TextureUse::RenderTarget;
-    TextureUse m_previousSceneColorUse = TextureUse::ShaderRead;
     uint32_t m_temporalFrame = 0; // free-running; the jitter sequence wraps it itself
     // The history slot the frame just declared used, which is what depthTarget() and
     // historyTarget() report: m_temporalFrame % 2 on a temporal frame and 0 otherwise. Recorded

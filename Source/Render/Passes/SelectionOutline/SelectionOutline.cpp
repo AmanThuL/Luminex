@@ -116,7 +116,7 @@ SelectionOutline::create(engine::GpuContext& gpu, uint32_t width, uint32_t heigh
     }
     self->m_white = std::move(*texture);
     {
-        auto result = self->resize(width, height);
+        auto result = self->replaceTarget(width, height, nullptr);
         if (!result) {
             return std::unexpected(result.error());
         }
@@ -125,7 +125,14 @@ SelectionOutline::create(engine::GpuContext& gpu, uint32_t width, uint32_t heigh
 }
 
 //======================================================================================================================
-lmx::Result<void> SelectionOutline::resize(uint32_t width, uint32_t height) {
+lmx::Result<void> SelectionOutline::resize(uint32_t width, uint32_t height,
+                                           TextureStateTable& states) {
+    return replaceTarget(width, height, &states);
+}
+
+//======================================================================================================================
+lmx::Result<void> SelectionOutline::replaceTarget(uint32_t width, uint32_t height,
+                                                  TextureStateTable* states) {
     auto target = engine::GpuTexture::create(m_device, {.width = width,
                                                         .height = height,
                                                         .format = kDisplayFormat,
@@ -136,8 +143,28 @@ lmx::Result<void> SelectionOutline::resize(uint32_t width, uint32_t height) {
     if (!target) {
         return std::unexpected(target.error());
     }
+    if (states != nullptr && m_target) {
+        states->forget(m_target.rhi());
+    }
     m_target = std::move(*target);
+    m_targetUnseeded = true;
     return {};
+}
+
+//======================================================================================================================
+GraphTexture SelectionOutline::importTarget(RenderGraph& graph) {
+    TextureStateTable& states = graph.textureStates();
+    if (m_targetUnseeded) {
+        // A new target starts as the sampled image every frame leaves it as.
+        states.set(m_target.rhi(), TextureUse::ShaderRead);
+        m_targetUnseeded = false;
+    }
+    const GraphTexture output =
+        graph.importPersistentTexture(m_target.rhi(), kDisplayFormat, "selectionDisplay");
+    // The UI samples the target after the graph, a pass it encodes outside it, so the target is
+    // left as a shader read rather than as the attachment write that refreshed it.
+    graph.setFinalUse(output, TextureUse::ShaderRead);
+    return output;
 }
 
 //======================================================================================================================
@@ -154,8 +181,7 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
     LMX_ASSERT(selectedRow < view.tables.instanceRows.size(),
                "selection requires a canonical instance row");
     if (!visible || (view.tables.instanceRows[selectedRow].flags & engine::kInstanceDisabled)) {
-        const auto output = graph.importTexture(m_target.rhi(), kDisplayFormat, "selectionDisplay",
-                                                TextureUse::ShaderRead);
+        const auto output = importTarget(graph);
         PassDesc passthrough;
         passthrough.textureReads = {display};
         passthrough.color = ColorAttachment{.handle = output};
@@ -236,8 +262,7 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
     const GraphTexture coverageRead = nextVersion(mask);
     const GraphTexture selectedDepthRead = nextVersion(depth);
     const GraphTexture sceneDepthRead = nextVersion(sceneDepth);
-    const GraphTexture output = graph.importTexture(m_target.rhi(), kDisplayFormat,
-                                                    "selectionDisplay", TextureUse::ShaderRead);
+    const GraphTexture output = importTarget(graph);
     PassDesc composite;
     composite.textureReads = {display, coverageRead, selectedDepthRead, sceneDepthRead};
     composite.color = ColorAttachment{.handle = output};

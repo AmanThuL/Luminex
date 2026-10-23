@@ -23,7 +23,8 @@ void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
     auto stage = HzbStage::create(*gpu, true);
     INFO(errorOf(stage));
     REQUIRE(stage);
-    REQUIRE((*stage)->resize(outputWidth, outputHeight));
+    TextureStateTable states;
+    REQUIRE((*stage)->resize(outputWidth, outputHeight, states));
     auto depth = gpu->device().createTexture({.width = outputWidth,
                                               .height = outputHeight,
                                               .format = rojoRHI::Format::D32Float,
@@ -70,13 +71,17 @@ void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
         const uint32_t height = half ? divRoundUp(outputHeight, 2u) : outputHeight;
         INFO(std::format("output {}x{}, frame {}, active {}x{}, mask {}, sky {}", outputWidth,
                          outputHeight, frame, width, height, masked, sky));
-        REQUIRE((*stage)->resize(outputWidth, outputHeight));
+        REQUIRE((*stage)->resize(outputWidth, outputHeight, states));
         auto& commands = gpu->device().beginFrame();
         RenderGraph graph;
+        graph.bindTextureStates(states);
+        if (frame > 0) {
+            states.set(**depth, lmx::render::TextureUse::ShaderRead);
+        }
         const auto depthInput =
             frame == 0 ? graph.importTexture(**depth, rojoRHI::Format::D32Float, "lmx.test.depth")
-                       : graph.importTexture(**depth, rojoRHI::Format::D32Float, "lmx.test.depth",
-                                             lmx::render::TextureUse::ShaderRead);
+                       : graph.importPersistentTexture(**depth, rojoRHI::Format::D32Float,
+                                                       "lmx.test.depth");
         PassDesc rasterDesc;
         rasterDesc.depth = DepthAttachment{.handle = depthInput, .store = StoreOp::Store};
         rasterDesc.renderAreaWidth = width;

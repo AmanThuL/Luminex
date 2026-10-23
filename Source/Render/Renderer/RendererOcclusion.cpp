@@ -68,7 +68,7 @@ GraphTexture Renderer::prepareOcclusion(RenderGraph& graph, const engine::Camera
         auto stage = HzbStage::create(m_gpu, m_cpuReadback);
         LMX_ASSERT(stage.has_value(), stage.error().message);
         m_hzbStage = std::move(*stage);
-        const auto resized = m_hzbStage->resize(m_width, m_height);
+        const auto resized = m_hzbStage->resize(m_width, m_height, m_textureStates);
         LMX_ASSERT(resized.has_value(), resized.error().message);
     }
     return m_hzbStage->importPrevious(graph);

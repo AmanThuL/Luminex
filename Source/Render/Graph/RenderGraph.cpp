@@ -163,24 +163,6 @@ GraphTexture RenderGraph::importTexture(rojoRHI::Texture& texture, rojoRHI::Form
 }
 
 //======================================================================================================================
-GraphTexture RenderGraph::importTexture(rojoRHI::Texture& texture, rojoRHI::Format format,
-                                        std::string_view name, TextureUse previousUse) {
-    LMX_ASSERT(texture.format() == rojoRHI::Format::Unknown || texture.format() == format,
-               std::format("imported texture '{}' reports format {}, not the declared {}", name,
-                           formatName(texture.format()), formatName(format)));
-    m_resources.push_back({.kind = ResourceKind::Texture,
-                           .name = std::string(name),
-                           .texture = &texture,
-                           .format = format,
-                           .width = texture.width(),
-                           .height = texture.height(),
-                           .mipLevels = texture.mipLevels(),
-                           .arrayLayers = texture.arrayLayers(),
-                           .priorTextureAccess = previousUse});
-    return {.index = static_cast<uint32_t>(m_resources.size() - 1), .version = 0};
-}
-
-//======================================================================================================================
 void RenderGraph::bindTextureStates(TextureStateTable& states) {
     LMX_ASSERT(m_textureStates == nullptr || m_textureStates == &states,
                "the graph is already bound to a different texture state table");

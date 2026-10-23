@@ -97,7 +97,8 @@ lmx::Result<std::unique_ptr<HzbStage>> HzbStage::create(engine::GpuContext& gpu,
 }
 
 //======================================================================================================================
-lmx::Result<void> HzbStage::resize(uint32_t outputWidth, uint32_t outputHeight) {
+lmx::Result<void> HzbStage::resize(uint32_t outputWidth, uint32_t outputHeight,
+                                   TextureStateTable& states) {
     if (outputWidth == m_outputWidth && outputHeight == m_outputHeight) {
         return {};
     }
@@ -118,6 +119,11 @@ lmx::Result<void> HzbStage::resize(uint32_t outputWidth, uint32_t outputHeight) 
         }
         textures[index] = std::move(*texture);
     }
+    for (const engine::GpuTexture& replaced : m_textures) {
+        if (replaced) {
+            states.forget(replaced.rhi());
+        }
+    }
     m_textures = std::move(textures);
     m_sources = {};
     m_layout = layout;
@@ -132,11 +138,21 @@ lmx::Result<void> HzbStage::resize(uint32_t outputWidth, uint32_t outputHeight) 
 GraphTexture HzbStage::importPrevious(RenderGraph& graph) const {
     LMX_ASSERT(m_textures[m_lastBuilt], "HZB must be resized before import");
     const std::string name = std::format("lmx.render.hzb{}", m_lastBuilt);
-    if (m_sources[m_lastBuilt].built) {
-        return graph.importTexture(m_textures[m_lastBuilt].rhi(), rojoRHI::Format::R32Float, name,
-                                   TextureUse::ShaderRead);
+    rojoRHI::Texture& texture = m_textures[m_lastBuilt].rhi();
+    const bool built = m_sources[m_lastBuilt].built;
+    if (!built) {
+        // Unbuilt -- before the first build or since a resize replaced the pyramids -- means no
+        // earlier frame wrote it, whatever an earlier read of the same texture left behind.
+        graph.textureStates().forget(texture);
     }
-    return graph.importTexture(m_textures[m_lastBuilt].rhi(), rojoRHI::Format::R32Float, name);
+    const GraphTexture pyramid =
+        graph.importPersistentTexture(texture, rojoRHI::Format::R32Float, name);
+    if (built) {
+        // The build left every mip as the publish pass's shader read; a consumer of the previous
+        // pyramid reads it again in that state, which is what the next build of this slot waits on.
+        graph.setFinalUse(pyramid, TextureUse::ShaderRead);
+    }
+    return pyramid;
 }
 
 //======================================================================================================================
@@ -148,11 +164,15 @@ GraphTexture HzbStage::declare(RenderGraph& graph, rojoRHI::CommandList& command
                "HZB source active rectangle exceeds output allocation");
     const uint32_t slot = m_next;
     const std::string name = std::format("lmx.render.hzb{}", slot);
+    if (!m_sources[slot].built) {
+        // An unbuilt slot was never written, so its build waits on nothing an earlier frame did.
+        graph.textureStates().forget(m_textures[slot].rhi());
+    }
     GraphTexture pyramid =
-        m_sources[slot].built
-            ? graph.importTexture(m_textures[slot].rhi(), rojoRHI::Format::R32Float, name,
-                                  TextureUse::ShaderRead)
-            : graph.importTexture(m_textures[slot].rhi(), rojoRHI::Format::R32Float, name);
+        graph.importPersistentTexture(m_textures[slot].rhi(), rojoRHI::Format::R32Float, name);
+    // Every mip ends as the publish pass's shader read whatever reads the pyramid later in the
+    // frame, which keeps one state per pyramid for the next frame's import to order behind.
+    graph.setFinalUse(pyramid, TextureUse::ShaderRead);
     for (uint32_t level = 0; level < m_layout.levelCount; ++level) {
         const bool fromDepth = level == 0;
         const GraphTexture input = fromDepth ? depth : pyramid;
