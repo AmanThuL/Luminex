@@ -35,10 +35,10 @@ TEST_CASE("external passes order inputs and outputs without opening an RHI scope
     const auto record = graph.execute(commands, 3);
     REQUIRE(record.debug.passes[1].kind == PassKind::External);
     REQUIRE(record.debug.transitions.size() == 2);
-    REQUIRE(record.debug.transitions[0].textureFrom == rojoRHI::TextureUse::StorageWrite);
-    REQUIRE(record.debug.transitions[0].textureTo == rojoRHI::TextureUse::ExternalRead);
-    REQUIRE(record.debug.transitions[1].textureFrom == rojoRHI::TextureUse::ExternalWrite);
-    REQUIRE(record.debug.transitions[1].textureTo == rojoRHI::TextureUse::ShaderRead);
+    REQUIRE(record.debug.transitions[0].textureFrom == lmx::render::TextureUse::StorageWrite);
+    REQUIRE(record.debug.transitions[0].textureTo == lmx::render::TextureUse::ExternalRead);
+    REQUIRE(record.debug.transitions[1].textureFrom == lmx::render::TextureUse::ExternalWrite);
+    REQUIRE(record.debug.transitions[1].textureTo == lmx::render::TextureUse::ShaderRead);
     REQUIRE(commands.events == std::vector<std::string>{"begin compute pack", "end compute",
                                                         "barrier input StorageWrite->ExternalRead",
                                                         "external vendor",
@@ -59,7 +59,7 @@ TEST_CASE("external terminal uses preserve cross-frame hazards", "[render][graph
     SECTION("a prior external write is visible to a sampled read") {
         RenderGraph graph;
         const auto input = graph.importTexture(texture, rojoRHI::Format::RGBA16Float, "history",
-                                               rojoRHI::TextureUse::ExternalWrite);
+                                               lmx::render::TextureUse::ExternalWrite);
         const auto result = graph.importTexture(output, rojoRHI::Format::RGBA16Float, "output");
         graph.addComputePass("sample", {.shaderTextureReads = {input}, .textureWrites = {result}},
                              kNoWork);
@@ -67,25 +67,25 @@ TEST_CASE("external terminal uses preserve cross-frame hazards", "[render][graph
         const auto record = graph.compileFrame(1);
         REQUIRE(record.has_value());
         REQUIRE(record->debug.transitions.size() == 1);
-        REQUIRE(record->debug.transitions[0].textureFrom == rojoRHI::TextureUse::ExternalWrite);
-        REQUIRE(record->debug.transitions[0].textureTo == rojoRHI::TextureUse::ShaderRead);
+        REQUIRE(record->debug.transitions[0].textureFrom == lmx::render::TextureUse::ExternalWrite);
+        REQUIRE(record->debug.transitions[0].textureTo == lmx::render::TextureUse::ShaderRead);
     }
     SECTION("a prior external read is ordered before a new write") {
         RenderGraph graph;
         const auto input = graph.importTexture(texture, rojoRHI::Format::RGBA16Float, "history",
-                                               rojoRHI::TextureUse::ExternalRead);
+                                               lmx::render::TextureUse::ExternalRead);
         graph.addComputePass("overwrite", {.textureWrites = {input}}, kNoWork);
         graph.exportTexture(nextVersion(input));
         const auto record = graph.compileFrame(1);
         REQUIRE(record.has_value());
         REQUIRE(record->debug.transitions.size() == 1);
-        REQUIRE(record->debug.transitions[0].textureFrom == rojoRHI::TextureUse::ExternalRead);
-        REQUIRE(record->debug.transitions[0].textureTo == rojoRHI::TextureUse::StorageWrite);
+        REQUIRE(record->debug.transitions[0].textureFrom == lmx::render::TextureUse::ExternalRead);
+        REQUIRE(record->debug.transitions[0].textureTo == lmx::render::TextureUse::StorageWrite);
     }
     SECTION("a prior external read needs no barrier for another read") {
         RenderGraph graph;
         const auto input = graph.importTexture(texture, rojoRHI::Format::RGBA16Float, "history",
-                                               rojoRHI::TextureUse::ExternalRead);
+                                               lmx::render::TextureUse::ExternalRead);
         const auto result = graph.importTexture(output, rojoRHI::Format::RGBA16Float, "output");
         graph.addExternalPass("vendor", {.textureReads = {input}, .textureWrites = {result}},
                               kNoWork);

@@ -149,7 +149,7 @@ rojoRHI::Result<void> DrawSubmission::prepare(uint64_t frameNumber, const SceneV
 void DrawSubmission::recordUses() {
     auto& slot = m_slots[m_lastFrame % 3];
     // Both stages declare these reads even when their command list is empty.
-    slot.rowUse = rojoRHI::BufferUse::ShaderRead;
-    slot.argumentUse = rojoRHI::BufferUse::IndirectArgument;
+    slot.rowUse = BufferUse::ShaderRead;
+    slot.argumentUse = BufferUse::IndirectArgument;
 }
 } // namespace lmx::render

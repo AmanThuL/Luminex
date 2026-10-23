@@ -132,7 +132,7 @@ GraphTexture HzbStage::importPrevious(RenderGraph& graph) const {
     const std::string name = std::format("lmx.render.hzb{}", m_lastBuilt);
     if (m_sources[m_lastBuilt].built) {
         return graph.importTexture(*m_textures[m_lastBuilt], rojoRHI::Format::R32Float, name,
-                                   rojoRHI::TextureUse::ShaderRead);
+                                   TextureUse::ShaderRead);
     }
     return graph.importTexture(*m_textures[m_lastBuilt], rojoRHI::Format::R32Float, name);
 }
@@ -149,7 +149,7 @@ GraphTexture HzbStage::declare(RenderGraph& graph, rojoRHI::CommandList& command
     GraphTexture pyramid =
         m_sources[slot].built
             ? graph.importTexture(*m_textures[slot], rojoRHI::Format::R32Float, name,
-                                  rojoRHI::TextureUse::ShaderRead)
+                                  TextureUse::ShaderRead)
             : graph.importTexture(*m_textures[slot], rojoRHI::Format::R32Float, name);
     for (uint32_t level = 0; level < m_layout.levelCount; ++level) {
         const bool fromDepth = level == 0;
@@ -189,9 +189,9 @@ GraphTexture HzbStage::declare(RenderGraph& graph, rojoRHI::CommandList& command
     // A real read of every mip leaves one honest terminal use for the next frame's import.
     // Merely exporting the texture roots the writers but emits no terminal transition.
     const GraphBuffer publication =
-        m_published ? graph.importBuffer(*m_publishBuffer, "lmx.render.hzbPublish",
-                                         rojoRHI::BufferUse::StorageWrite)
-                    : graph.importBuffer(*m_publishBuffer, "lmx.render.hzbPublish");
+        m_published
+            ? graph.importBuffer(*m_publishBuffer, "lmx.render.hzbPublish", BufferUse::StorageWrite)
+            : graph.importBuffer(*m_publishBuffer, "lmx.render.hzbPublish");
     ComputePassDesc publish;
     publish.shaderTextureReads.push_back(pyramid);
     publish.bufferWrites.push_back(publication);

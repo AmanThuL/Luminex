@@ -162,9 +162,9 @@ rojoRHI::Result<void> OcclusionReference::declare(RenderGraph& graph,
             }
         });
     const auto source = nextVersion(ids);
-    const auto destination = graph.importBuffer(*slot.buffer, "lmx.occlusion.reference.readback",
-                                                slot.used ? rojoRHI::BufferUse::CopyDestination
-                                                          : rojoRHI::BufferUse::ShaderRead);
+    const auto destination =
+        graph.importBuffer(*slot.buffer, "lmx.occlusion.reference.readback",
+                           slot.used ? BufferUse::CopyDestination : BufferUse::ShaderRead);
     CopyPassDesc copy;
     copy.textureSources = {source};
     copy.bufferDestinations = {destination};

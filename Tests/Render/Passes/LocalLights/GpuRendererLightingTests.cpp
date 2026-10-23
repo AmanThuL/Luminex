@@ -370,7 +370,7 @@ TEST_CASE("LightLab graph declares the selected light consumers",
             const bool barrier = std::ranges::any_of(debug.transitions, [&](const auto& item) {
                 return debug.resources[item.resource].name == name &&
                        item.kind == GraphResourceKind::Buffer &&
-                       item.bufferTo == rojoRHI::BufferUse::ShaderRead;
+                       item.bufferTo == lmx::render::BufferUse::ShaderRead;
             });
             REQUIRE(barrier == clustered);
         }

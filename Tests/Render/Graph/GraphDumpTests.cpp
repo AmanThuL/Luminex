@@ -2,6 +2,7 @@
 
 #include "Render/Graph/GraphDump.h"
 #include "Render/Graph/RenderGraph.h"
+#include "Render/Graph/ResourceUse.h"
 #include "Render/Graph/TransientPool.h"
 #include "Support/GoldenFile.h"
 #include "Support/GraphTestSupport.h"
@@ -409,7 +410,7 @@ TEST_CASE("external graph dumps name the operation and both external uses",
     FakeTexture output{64};
     RenderGraph graph;
     const auto source = graph.importTexture(input, rojoRHI::Format::R16Float, "exposure",
-                                            rojoRHI::TextureUse::StorageWrite);
+                                            lmx::render::TextureUse::StorageWrite);
     const auto target = graph.importTexture(output, rojoRHI::Format::RGBA16Float, "history");
     graph.addExternalPass("vendor", {.textureReads = {source}, .textureWrites = {target}}, kNoWork);
     graph.addComputePass("consume",
@@ -423,4 +424,22 @@ TEST_CASE("external graph dumps name the operation and both external uses",
     REQUIRE(dump.contains("R16Float"));
     REQUIRE(dump.contains("StorageWrite -> ExternalRead"));
     REQUIRE(dump.contains("ExternalWrite -> ShaderRead"));
+}
+
+//======================================================================================================================
+TEST_CASE("resource use names match the dump vocabulary", "[render][graph]") {
+    REQUIRE(textureUseName(lmx::render::TextureUse::RenderTarget) == "RenderTarget");
+    REQUIRE(textureUseName(lmx::render::TextureUse::ShaderRead) == "ShaderRead");
+    REQUIRE(textureUseName(lmx::render::TextureUse::StorageRead) == "StorageRead");
+    REQUIRE(textureUseName(lmx::render::TextureUse::StorageWrite) == "StorageWrite");
+    REQUIRE(textureUseName(lmx::render::TextureUse::CopySource) == "CopySource");
+    REQUIRE(textureUseName(lmx::render::TextureUse::CopyDestination) == "CopyDestination");
+    REQUIRE(textureUseName(lmx::render::TextureUse::ExternalRead) == "ExternalRead");
+    REQUIRE(textureUseName(lmx::render::TextureUse::ExternalWrite) == "ExternalWrite");
+    REQUIRE(bufferUseName(lmx::render::BufferUse::ShaderRead) == "ShaderRead");
+    REQUIRE(bufferUseName(lmx::render::BufferUse::StorageRead) == "StorageRead");
+    REQUIRE(bufferUseName(lmx::render::BufferUse::StorageWrite) == "StorageWrite");
+    REQUIRE(bufferUseName(lmx::render::BufferUse::CopySource) == "CopySource");
+    REQUIRE(bufferUseName(lmx::render::BufferUse::CopyDestination) == "CopyDestination");
+    REQUIRE(bufferUseName(lmx::render::BufferUse::IndirectArgument) == "IndirectArgument");
 }

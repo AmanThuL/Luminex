@@ -533,8 +533,8 @@ TEST_CASE("paced cluster slots retain exact shrinking lists and raster barriers"
             for (const auto name : {"lmx.light.grid", "lmx.light.indices"}) {
                 REQUIRE(std::ranges::any_of(record->debug.transitions, [&](const auto& barrier) {
                     return record->debug.resources[barrier.resource].name == name &&
-                           barrier.bufferFrom == rojoRHI::BufferUse::ShaderRead &&
-                           barrier.bufferTo == rojoRHI::BufferUse::StorageWrite;
+                           barrier.bufferFrom == lmx::render::BufferUse::ShaderRead &&
+                           barrier.bufferTo == lmx::render::BufferUse::StorageWrite;
                 }));
             }
         }

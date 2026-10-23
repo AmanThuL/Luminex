@@ -97,45 +97,16 @@ inline std::string errorOf(const GraphResult<T>& result) {
 }
 
 //======================================================================================================================
+// The command list is a v1 object, so the log converts its barrier enums to the graph's own
+// vocabulary, whose names the dumps and the inspector print. v1 and the graph share enumerator
+// order, which the graph's own conversion asserts.
 inline std::string useName(rojoRHI::TextureUse use) {
-    switch (use) {
-    case rojoRHI::TextureUse::RenderTarget:
-        return "RenderTarget";
-    case rojoRHI::TextureUse::ShaderRead:
-        return "ShaderRead";
-    case rojoRHI::TextureUse::StorageRead:
-        return "StorageRead";
-    case rojoRHI::TextureUse::StorageWrite:
-        return "StorageWrite";
-    case rojoRHI::TextureUse::CopySource:
-        return "CopySource";
-    case rojoRHI::TextureUse::CopyDestination:
-        return "CopyDestination";
-    case rojoRHI::TextureUse::ExternalRead:
-        return "ExternalRead";
-    case rojoRHI::TextureUse::ExternalWrite:
-        return "ExternalWrite";
-    }
-    return "unknown";
+    return std::string{textureUseName(static_cast<lmx::render::TextureUse>(use))};
 }
 
 //======================================================================================================================
 inline std::string useName(rojoRHI::BufferUse use) {
-    switch (use) {
-    case rojoRHI::BufferUse::ShaderRead:
-        return "ShaderRead";
-    case rojoRHI::BufferUse::StorageRead:
-        return "StorageRead";
-    case rojoRHI::BufferUse::StorageWrite:
-        return "StorageWrite";
-    case rojoRHI::BufferUse::CopySource:
-        return "CopySource";
-    case rojoRHI::BufferUse::CopyDestination:
-        return "CopyDestination";
-    case rojoRHI::BufferUse::IndirectArgument:
-        return "IndirectArgument";
-    }
-    return "unknown";
+    return std::string{bufferUseName(static_cast<lmx::render::BufferUse>(use))};
 }
 
 // What execute() produces is a sequence of RHI calls, so recording that sequence is what makes it

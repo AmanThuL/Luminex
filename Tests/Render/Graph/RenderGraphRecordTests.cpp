@@ -96,12 +96,12 @@ TEST_CASE("execute emits exactly the transitions the record lists", "[render][gr
     REQUIRE(record.debug.transitions[0].beforePass == 2);
     REQUIRE(record.debug.transitions[0].kind == GraphResourceKind::Texture);
     REQUIRE(record.debug.transitions[0].resource == shadow.index);
-    REQUIRE(record.debug.transitions[0].textureFrom == rojoRHI::TextureUse::RenderTarget);
-    REQUIRE(record.debug.transitions[0].textureTo == rojoRHI::TextureUse::ShaderRead);
+    REQUIRE(record.debug.transitions[0].textureFrom == lmx::render::TextureUse::RenderTarget);
+    REQUIRE(record.debug.transitions[0].textureTo == lmx::render::TextureUse::ShaderRead);
     REQUIRE(record.debug.transitions[1].kind == GraphResourceKind::Buffer);
     REQUIRE(record.debug.transitions[1].resource == bins.index);
-    REQUIRE(record.debug.transitions[1].bufferFrom == rojoRHI::BufferUse::CopyDestination);
-    REQUIRE(record.debug.transitions[1].bufferTo == rojoRHI::BufferUse::ShaderRead);
+    REQUIRE(record.debug.transitions[1].bufferFrom == lmx::render::BufferUse::CopyDestination);
+    REQUIRE(record.debug.transitions[1].bufferTo == lmx::render::BufferUse::ShaderRead);
 
     REQUIRE(commands.events ==
             std::vector<std::string>{"begin lmx.pass.shadow", "end", "begin copy lmx.pass.clear",

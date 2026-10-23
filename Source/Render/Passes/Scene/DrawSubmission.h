@@ -3,6 +3,7 @@
 /// @brief Declares CPU draw preparation and three paced GPU submission slots.
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
+#include "Render/Graph/ResourceUse.h"
 #include "Render/Passes/Visibility/Visibility.h"
 #include <array>
 #include <memory>
@@ -56,18 +57,16 @@ public:
     /// Current canonical CPU command preparation, before GPU writes.
     const PreparedSubmission& prepared() const { return m_prepared; }
     /// Last GPU terminal use of the current physical row allocation.
-    std::optional<rojoRHI::BufferUse> rowUse() const { return m_slots[m_lastFrame % 3].rowUse; }
+    std::optional<BufferUse> rowUse() const { return m_slots[m_lastFrame % 3].rowUse; }
     /// Last GPU terminal use of the current physical argument allocation.
-    std::optional<rojoRHI::BufferUse> argumentUse() const {
-        return m_slots[m_lastFrame % 3].argumentUse;
-    }
+    std::optional<BufferUse> argumentUse() const { return m_slots[m_lastFrame % 3].argumentUse; }
     /// Records terminal graph reads for the current physical allocation.
     void recordUses();
 
 private:
     struct Slot {
         std::unique_ptr<rojoRHI::Buffer> rows, arguments;
-        std::optional<rojoRHI::BufferUse> rowUse, argumentUse;
+        std::optional<BufferUse> rowUse, argumentUse;
     };
     struct Retiring {
         uint64_t releaseFrame;

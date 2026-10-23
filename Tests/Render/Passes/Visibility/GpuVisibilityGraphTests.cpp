@@ -45,15 +45,16 @@ TEST_CASE("GPU visibility declares writers and precise draw consumers in both la
         REQUIRE((scan != debug.passes.end()) == (mode == SubmissionMode::Batched));
         if (scan != debug.passes.end())
             REQUIRE_FALSE(scan->cullReason);
-        const auto transition = [&](std::string_view name, BufferUse to) {
+        const auto transition = [&](std::string_view name, lmx::render::BufferUse to) {
             return std::ranges::any_of(debug.transitions, [&](const auto& barrier) {
                 return debug.resources[barrier.resource].name == name &&
                        barrier.kind == GraphResourceKind::Buffer &&
-                       barrier.bufferFrom == BufferUse::StorageWrite && barrier.bufferTo == to;
+                       barrier.bufferFrom == lmx::render::BufferUse::StorageWrite &&
+                       barrier.bufferTo == to;
             });
         };
-        REQUIRE(transition("lmx.draw.rows", BufferUse::ShaderRead));
-        REQUIRE(transition("lmx.draw.args", BufferUse::IndirectArgument));
+        REQUIRE(transition("lmx.draw.rows", lmx::render::BufferUse::ShaderRead));
+        REQUIRE(transition("lmx.draw.args", lmx::render::BufferUse::IndirectArgument));
         graph.execute(commands, (*device)->frameNumber());
         (*device)->endFrame(nullptr);
         (*device)->waitIdle();

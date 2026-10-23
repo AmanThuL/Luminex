@@ -269,11 +269,11 @@ private:
     // exists only where the import states it: a temporal frame ends by reading motion (when it
     // draws a debug view) and by copying out of the scene colour, and the next frame's first
     // access has to be ordered behind whichever of those actually happened.
-    rojoRHI::TextureUse m_previousMotionUse = rojoRHI::TextureUse::RenderTarget;
+    TextureUse m_previousMotionUse = TextureUse::RenderTarget;
     // The reactive attachment is written by every temporal frame and read only by the resolve, so
     // its terminal use is what the frame's mode decided rather than a constant.
-    rojoRHI::TextureUse m_previousReactiveUse = rojoRHI::TextureUse::RenderTarget;
-    rojoRHI::TextureUse m_previousSceneColorUse = rojoRHI::TextureUse::ShaderRead;
+    TextureUse m_previousReactiveUse = TextureUse::RenderTarget;
+    TextureUse m_previousSceneColorUse = TextureUse::ShaderRead;
     uint32_t m_temporalFrame = 0; // free-running; the jitter sequence wraps it itself
     // The history slot the frame just declared used, which is what depthTarget() and
     // historyTarget() report: m_temporalFrame % 2 on a temporal frame and 0 otherwise. Recorded

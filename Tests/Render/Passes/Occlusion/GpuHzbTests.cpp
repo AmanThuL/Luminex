@@ -77,7 +77,7 @@ void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
         const auto depthInput =
             frame == 0 ? graph.importTexture(**depth, rojoRHI::Format::D32Float, "lmx.test.depth")
                        : graph.importTexture(**depth, rojoRHI::Format::D32Float, "lmx.test.depth",
-                                             rojoRHI::TextureUse::ShaderRead);
+                                             lmx::render::TextureUse::ShaderRead);
         PassDesc rasterDesc;
         rasterDesc.depth = DepthAttachment{.handle = depthInput, .store = StoreOp::Store};
         rasterDesc.renderAreaWidth = width;
@@ -103,7 +103,7 @@ void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
         REQUIRE((*stage)->previousSource().built);
         GraphBuffer buffer = frame == 0 ? graph.importBuffer(**readback, "lmx.test.hzbReadback")
                                         : graph.importBuffer(**readback, "lmx.test.hzbReadback",
-                                                             rojoRHI::BufferUse::StorageWrite);
+                                                             lmx::render::BufferUse::StorageWrite);
         std::vector<uint32_t> offsets;
         uint32_t offset = 0;
         for (uint32_t input = 0; input <= layout.levelCount; ++input) {

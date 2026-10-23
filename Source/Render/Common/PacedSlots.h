@@ -14,7 +14,7 @@
 namespace lmx::render {
 
 inline GraphBuffer importPaced(RenderGraph& graph, rojoRHI::Buffer& buffer, std::string_view name,
-                               rojoRHI::BufferUse use, bool used) {
+                               BufferUse use, bool used) {
     return used ? graph.importBuffer(buffer, name, use) : graph.importBuffer(buffer, name);
 }
 inline void declareZeroFill(RenderGraph& graph, rojoRHI::CommandList& commands,

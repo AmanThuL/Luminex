@@ -185,18 +185,16 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rojoRHI::Comm
                          .indices = slot.indices.get(),
                          .counters = slot.counters.get()});
 
-    const auto grid = importPaced(graph, *slot.grid, "lmx.light.grid",
-                                  slot.shaderRead ? rojoRHI::BufferUse::ShaderRead
-                                                  : rojoRHI::BufferUse::StorageRead,
-                                  slot.used);
-    const auto indices = importPaced(graph, *slot.indices, "lmx.light.indices",
-                                     slot.shaderRead ? rojoRHI::BufferUse::ShaderRead
-                                                     : rojoRHI::BufferUse::StorageWrite,
-                                     slot.used);
-    const auto counts = importPaced(graph, *slot.counts, "lmx.light.counts",
-                                    rojoRHI::BufferUse::StorageRead, slot.used);
+    const auto grid =
+        importPaced(graph, *slot.grid, "lmx.light.grid",
+                    slot.shaderRead ? BufferUse::ShaderRead : BufferUse::StorageRead, slot.used);
+    const auto indices =
+        importPaced(graph, *slot.indices, "lmx.light.indices",
+                    slot.shaderRead ? BufferUse::ShaderRead : BufferUse::StorageWrite, slot.used);
+    const auto counts =
+        importPaced(graph, *slot.counts, "lmx.light.counts", BufferUse::StorageRead, slot.used);
     const auto counters = importPaced(graph, *slot.counters, "lmx.light.counters",
-                                      rojoRHI::BufferUse::StorageWrite, slot.used);
+                                      BufferUse::StorageWrite, slot.used);
 
     // The counters the scan writes are complete on their own; the fill is what makes them a
     // reconciling total of bytes the GPU actually holds, so the zero fill is the stated start.

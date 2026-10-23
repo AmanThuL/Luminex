@@ -160,10 +160,10 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rojoRHI::Command
     const auto runs = graph.importBuffer(*slot.runs, "lmx.draw.runs");
     const auto chunks = graph.importBuffer(*slot.chunks, "lmx.draw.chunks");
     const auto views = graph.importBuffer(*slot.views, "lmx.draw.views");
-    const auto states = importPaced(graph, *slot.states, "lmx.draw.states",
-                                    rojoRHI::BufferUse::StorageRead, slot.used);
-    const auto counters = importPaced(graph, *slot.counters, "lmx.draw.counters",
-                                      rojoRHI::BufferUse::StorageWrite, slot.used);
+    const auto states =
+        importPaced(graph, *slot.states, "lmx.draw.states", BufferUse::StorageRead, slot.used);
+    const auto counters =
+        importPaced(graph, *slot.counters, "lmx.draw.counters", BufferUse::StorageWrite, slot.used);
     const auto chunkBytes = std::max<uint64_t>(4, tables.chunks.size() * 4);
     const auto counts = graph.createBuffer(
         {.size = chunkBytes, .storageRead = true, .storageWrite = true}, "lmx.draw.chunkCounts");

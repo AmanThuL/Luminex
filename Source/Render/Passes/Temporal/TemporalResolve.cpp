@@ -229,8 +229,8 @@ rojoRHI::Result<void> TemporalResolve::resize(uint32_t width, uint32_t height) {
         m_depth[slot] = std::move(depth[slot]);
         m_color[slot] = std::move(color[slot]);
         // The contents went with the old textures, and the extent change is a history reset anyway.
-        m_colorUse[slot] = rojoRHI::TextureUse::CopyDestination;
-        m_depthUse[slot] = rojoRHI::TextureUse::ShaderRead;
+        m_colorUse[slot] = TextureUse::CopyDestination;
+        m_depthUse[slot] = TextureUse::ShaderRead;
     }
     m_vendor->invalidateOutput();
     m_width = width;
@@ -262,11 +262,11 @@ GraphTexture TemporalResolve::importDepth(RenderGraph& graph, uint32_t slot) {
 //======================================================================================================================
 void TemporalResolve::recordDepthRead(uint32_t slot) {
     LMX_ASSERT(slot < 2, "recordDepthRead requires a valid history slot");
-    m_depthUse[slot] = rojoRHI::TextureUse::ShaderRead;
+    m_depthUse[slot] = TextureUse::ShaderRead;
 }
 
 //======================================================================================================================
-rojoRHI::TextureUse TemporalResolve::depthUse(uint32_t slot) const {
+TextureUse TemporalResolve::depthUse(uint32_t slot) const {
     LMX_ASSERT(slot < 2, "depthUse requires a valid history slot");
     return m_depthUse[slot];
 }
@@ -337,13 +337,12 @@ void TemporalResolve::recordFrame(uint32_t slot, ReconstructionMode mode,
     LMX_ASSERT(slot < 2, "TemporalResolve::recordFrame: slot must be 0 or 1");
     const uint32_t other = 1 - slot;
     m_vendor->recordMode(mode);
-    m_depthUse[slot] = mode == ReconstructionMode::VendorTemporal
-                           ? rojoRHI::TextureUse::ExternalRead
-                           : rojoRHI::TextureUse::ShaderRead;
+    m_depthUse[slot] = mode == ReconstructionMode::VendorTemporal ? TextureUse::ExternalRead
+                                                                  : TextureUse::ShaderRead;
     if (mode == ReconstructionMode::NativeTaa ||
         (mode == ReconstructionMode::VendorTemporal &&
          debugView == TemporalDebugView::ReprojectedHistory)) {
-        m_depthUse[other] = rojoRHI::TextureUse::ShaderRead;
+        m_depthUse[other] = TextureUse::ShaderRead;
     }
     // Under NativeTaa the resolve writes the slot and bloom and display then sample it, so the
     // frame's last access to it is a shader read. An upscaled Raw frame ends the same way: the
@@ -353,11 +352,10 @@ void TemporalResolve::recordFrame(uint32_t slot, ReconstructionMode mode,
     // colour.
     const bool readCurrent = mode == ReconstructionMode::NativeTaa || upscaled ||
                              debugView == TemporalDebugView::HistoryAge;
-    m_colorUse[slot] =
-        readCurrent ? rojoRHI::TextureUse::ShaderRead : rojoRHI::TextureUse::CopyDestination;
+    m_colorUse[slot] = readCurrent ? TextureUse::ShaderRead : TextureUse::CopyDestination;
     if (mode == ReconstructionMode::VendorTemporal) {
         // Retain the opaque producer stage set across frames even though display samples it.
-        m_colorUse[slot] = rojoRHI::TextureUse::ExternalWrite;
+        m_colorUse[slot] = TextureUse::ExternalWrite;
     }
     // The other slot is read by the resolve on every NativeTaa frame, and by the reprojection
     // diagnostic on a Raw frame only where that pass survived culling. A frame that read it
@@ -367,7 +365,7 @@ void TemporalResolve::recordFrame(uint32_t slot, ReconstructionMode mode,
                            (mode == ReconstructionMode::VendorTemporal &&
                             debugView == TemporalDebugView::ReprojectedHistory);
     if (readOther) {
-        m_colorUse[other] = rojoRHI::TextureUse::ShaderRead;
+        m_colorUse[other] = TextureUse::ShaderRead;
     }
 }
 
