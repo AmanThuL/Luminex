@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "Core/Diagnostics/Result.h"
 #include "Engine/Geometry/Mesh.h"
 #include "Engine/View/Camera.h"
 #include "Render/Common/Formats.h"
@@ -75,15 +76,15 @@ public:
 
     /// cpuReadback puts the color target in shared storage so Texture::readback() works. It exists
     /// for the GPU tests and the --screenshot path; the windowed App leaves it false.
-    static rojoRHI::Result<std::unique_ptr<Renderer>>
-    create(rojoRHI::Device& device, uint32_t width, uint32_t height, bool cpuReadback = false);
+    static lmx::Result<std::unique_ptr<Renderer>> create(rojoRHI::Device& device, uint32_t width,
+                                                         uint32_t height, bool cpuReadback = false);
 
     /// Recreates the scene targets -- and the motion and history targets alongside them -- at the
     /// new size. The shadow map is fixed-size and untouched.
     /// The caller guarantees the GPU is idle (Device::waitIdle) first: frames still in flight hold
     /// the old textures in their residency set and their encoders, and dropping them here would
     /// free memory the GPU is reading.
-    rojoRHI::Result<void> resize(uint32_t width, uint32_t height);
+    lmx::Result<void> resize(uint32_t width, uint32_t height);
 
     /// Declares this frame's shadow, scene(+sky), and display passes into `graph`, importing the
     /// renderer's own targets, and answers with the display-target version the display pass
@@ -217,7 +218,7 @@ private:
     //
     // Its own function rather than resize()'s body because the two allocations answer to
     // kMotionFormat and kReactiveFormat rather than to the scene targets'.
-    rojoRHI::Result<void> createTemporalTargets();
+    lmx::Result<void> createTemporalTargets();
 
     rojoRHI::Device& m_device;
     // render()'s own pool for bloom's transients, since a caller without a graph of its own (the

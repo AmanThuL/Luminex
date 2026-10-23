@@ -16,7 +16,7 @@ Formatting is owned by `.clang-format` (`xmake format`). This file covers what a
   own conventions; a Luminex commit never edits a file under it.
 - **Includes**: own header first, then project (`"Core/..."`), then third-party, then std. Blank line between groups.
 - **Errors**: use the owning domain's `std::expected` alias at creation and loading boundaries
-  (`rojoRHI::Result<T>` for GPU work, `lmx::asset::AssetResult<T>` for assets); use `LMX_ASSERT` for contract
+  (`lmx::Result<T>` for GPU work, `lmx::asset::AssetResult<T>` for assets); use `LMX_ASSERT` for contract
   violations and never silently swallow failures (spec §6).
 - **C++23**: prefer `std::expected`, `std::span`, `std::string_view`, ranges, `std::print` in tools.
   No RTTI-dependent design; exceptions only from third-party boundaries.

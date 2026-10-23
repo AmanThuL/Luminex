@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Passes/Occlusion/OcclusionReference.h"
 #include "Core/Diagnostics/Assert.h"
+#include "Engine/Gpu/GpuError.h"
 #include "Render/Common/DrawEncoding.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Common/StageSetup.h"
@@ -25,12 +26,12 @@ static_assert(offsetof(ReferenceParams, instanceRow) == 64);
 } // namespace
 
 //======================================================================================================================
-rojoRHI::Result<std::unique_ptr<OcclusionReference>>
+lmx::Result<std::unique_ptr<OcclusionReference>>
 OcclusionReference::create(rojoRHI::Device& device) {
     auto self = std::unique_ptr<OcclusionReference>(new OcclusionReference(device));
     auto library = device.loadShaderLibrary("Shaders/OcclusionReference");
     if (!library) {
-        return std::unexpected(library.error());
+        return std::unexpected(engine::gpuError(library.error()));
     }
     self->m_library = std::move(*library);
     for (uint32_t wireframe = 0; wireframe < 2; ++wireframe) {
@@ -51,7 +52,7 @@ OcclusionReference::create(rojoRHI::Device& device) {
                      .depthCompare = rojoRHI::DepthCompare::Greater,
                      .label = std::format("lmx.occlusion.reference.pipeline.{}", index)});
                 if (!pipeline) {
-                    return std::unexpected(pipeline.error());
+                    return std::unexpected(engine::gpuError(pipeline.error()));
                 }
                 self->m_pipelines[index] = std::move(*pipeline);
             }
@@ -60,7 +61,7 @@ OcclusionReference::create(rojoRHI::Device& device) {
     auto sampler =
         device.createSampler({.maxAnisotropy = 16, .label = "lmx.occlusion.reference.sampler"});
     if (!sampler) {
-        return std::unexpected(sampler.error());
+        return std::unexpected(engine::gpuError(sampler.error()));
     }
     self->m_sampler = std::move(*sampler);
     const std::array<uint8_t, 4> white{255, 255, 255, 255};
@@ -74,10 +75,9 @@ OcclusionReference::create(rojoRHI::Device& device) {
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> OcclusionReference::declare(RenderGraph& graph,
-                                                  rojoRHI::CommandList& commands,
-                                                  const SceneView& view,
-                                                  const OcclusionReferenceInputs& inputs) {
+lmx::Result<void> OcclusionReference::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
+                                              const SceneView& view,
+                                              const OcclusionReferenceInputs& inputs) {
     const auto& viewProjection = inputs.viewProjection;
     const auto width = inputs.width;
     const auto height = inputs.height;
@@ -94,7 +94,7 @@ rojoRHI::Result<void> OcclusionReference::declare(RenderGraph& graph,
             {.size = byteCount, .cpuReadback = true, .label = "lmx.occlusion.reference.readback"},
             nullptr);
         if (!buffer) {
-            return std::unexpected(buffer.error());
+            return std::unexpected(engine::gpuError(buffer.error()));
         }
         slot.buffer = std::move(*buffer);
         slot.used = false;

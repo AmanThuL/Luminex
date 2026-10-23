@@ -9,6 +9,7 @@
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"
+#include "Engine/Gpu/GpuError.h"
 #include "Render/Renderer/Renderer.h"
 
 #include <algorithm>
@@ -68,27 +69,27 @@ constexpr uint32_t kBloomUpsampleParamsSlot = 0; // buffer
 } // namespace
 
 //======================================================================================================================
-rojoRHI::Result<std::unique_ptr<BloomStage>> BloomStage::create(rojoRHI::Device& device) {
+lmx::Result<std::unique_ptr<BloomStage>> BloomStage::create(rojoRHI::Device& device) {
     std::unique_ptr<BloomStage> self(new BloomStage);
 
     {
         auto library = device.loadShaderLibrary("Shaders/BloomThreshold");
         if (!library) {
-            return std::unexpected(library.error());
+            return std::unexpected(engine::gpuError(library.error()));
         }
         self->m_bloomThresholdLibrary = std::move(*library);
     }
     {
         auto library = device.loadShaderLibrary("Shaders/BloomDownsample");
         if (!library) {
-            return std::unexpected(library.error());
+            return std::unexpected(engine::gpuError(library.error()));
         }
         self->m_bloomDownsampleLibrary = std::move(*library);
     }
     {
         auto library = device.loadShaderLibrary("Shaders/BloomUpsample");
         if (!library) {
-            return std::unexpected(library.error());
+            return std::unexpected(engine::gpuError(library.error()));
         }
         self->m_bloomUpsampleLibrary = std::move(*library);
     }
@@ -100,7 +101,7 @@ rojoRHI::Result<std::unique_ptr<BloomStage>> BloomStage::create(rojoRHI::Device&
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
              .label = "lmx.render.bloomThresholdPipeline"});
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         self->m_bloomThresholdPipeline = std::move(*pipeline);
     }
@@ -111,7 +112,7 @@ rojoRHI::Result<std::unique_ptr<BloomStage>> BloomStage::create(rojoRHI::Device&
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
              .label = "lmx.render.bloomDownsamplePipeline"});
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         self->m_bloomDownsamplePipeline = std::move(*pipeline);
     }
@@ -122,7 +123,7 @@ rojoRHI::Result<std::unique_ptr<BloomStage>> BloomStage::create(rojoRHI::Device&
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
              .label = "lmx.render.bloomUpsamplePipeline"});
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         self->m_bloomUpsamplePipeline = std::move(*pipeline);
     }

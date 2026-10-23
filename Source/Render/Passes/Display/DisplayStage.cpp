@@ -8,6 +8,7 @@
 #include "Render/Common/StageSetup.h"
 
 #include "Core/Diagnostics/Assert.h"
+#include "Engine/Gpu/GpuError.h"
 #include "Render/Renderer/Renderer.h"
 
 #include <array>
@@ -31,13 +32,13 @@ constexpr uint32_t kDisplayParamsSlot = 0;
 } // namespace
 
 //======================================================================================================================
-rojoRHI::Result<std::unique_ptr<DisplayStage>> DisplayStage::create(rojoRHI::Device& device) {
+lmx::Result<std::unique_ptr<DisplayStage>> DisplayStage::create(rojoRHI::Device& device) {
     std::unique_ptr<DisplayStage> self(new DisplayStage);
 
     {
         auto library = device.loadShaderLibrary("Shaders/DisplayTransform");
         if (!library) {
-            return std::unexpected(library.error());
+            return std::unexpected(engine::gpuError(library.error()));
         }
         self->m_displayLibrary = std::move(*library);
     }
@@ -49,7 +50,7 @@ rojoRHI::Result<std::unique_ptr<DisplayStage>> DisplayStage::create(rojoRHI::Dev
             fullscreenPipelineDesc(self->m_displayLibrary.get(), "fragmentMain", kDisplayFormat,
                                    "lmx.render.displayPipeline"));
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         self->m_displayPipeline = std::move(*pipeline);
     }

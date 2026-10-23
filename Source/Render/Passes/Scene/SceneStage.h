@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "Core/Diagnostics/Result.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/Scene/DrawSubmission.h"
 #include "Render/Passes/Temporal/TemporalHistory.h"
@@ -64,8 +65,8 @@ struct SceneStageInputs {
 class SceneStage {
 public:
     /// Creates all variants for the scene color format; propagates GPU creation errors.
-    static rojoRHI::Result<std::unique_ptr<SceneStage>> create(rojoRHI::Device& device,
-                                                               rojoRHI::Format sceneColorFormat);
+    static lmx::Result<std::unique_ptr<SceneStage>> create(rojoRHI::Device& device,
+                                                           rojoRHI::Format sceneColorFormat);
 
     /// Registers draw and shared table layouts independently to retain the capture schema's
     /// serialized ordering.

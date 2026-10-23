@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
+#include "Core/Diagnostics/Result.h"
 #include "Render/Graph/RenderGraph.h"
 
 #include <glm/mat4x4.hpp>
@@ -48,10 +49,10 @@ struct HzbSource {
 class HzbStage {
 public:
     /// Loads reduction/publish pipelines. Readback enables only diagnostic texture readback.
-    static rojoRHI::Result<std::unique_ptr<HzbStage>> create(rojoRHI::Device& device,
-                                                             bool cpuReadback = false);
+    static lmx::Result<std::unique_ptr<HzbStage>> create(rojoRHI::Device& device,
+                                                         bool cpuReadback = false);
     /// Allocates from output extent only; unchanged dimensions preserve identity and history.
-    rojoRHI::Result<void> resize(uint32_t outputWidth, uint32_t outputHeight);
+    lmx::Result<void> resize(uint32_t outputWidth, uint32_t outputHeight);
     /// Returns the last declared source, or an unbuilt record before the first build.
     const HzbSource& previousSource() const { return m_sources[m_lastBuilt]; }
     /// Returns the last declared pyramid, or an allocated unbuilt texture initially.

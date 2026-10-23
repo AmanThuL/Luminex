@@ -3,6 +3,7 @@
 /// @brief Owns fixed-slot GPU visibility passes and frame-keyed retired diagnostics.
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
+#include "Core/Diagnostics/Result.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/Visibility/VisibilityTables.h"
 
@@ -29,7 +30,7 @@ struct GpuVisibilityOutputs {
 class GpuVisibility {
 public:
     /// Loads safe-math visibility kernels and their fixed threadgroup pipelines.
-    static rojoRHI::Result<std::unique_ptr<GpuVisibility>> create(rojoRHI::Device& device);
+    static lmx::Result<std::unique_ptr<GpuVisibility>> create(rojoRHI::Device& device);
     /// Declares the four visibility passes and retains the declaration's readback context.
     GpuVisibilityOutputs declare(RenderGraph& graph, rojoRHI::CommandList& commands,
                                  const SceneView& view, const GpuVisibilityInputs& inputs,
@@ -64,7 +65,7 @@ private:
         rojoRHI::Buffer *states = nullptr, *counters = nullptr, *rows = nullptr,
                         *arguments = nullptr;
     };
-    rojoRHI::Result<void> prepareSlot(Slot& slot, const VisibilityTables& tables);
+    lmx::Result<void> prepareSlot(Slot& slot, const VisibilityTables& tables);
     VisibilityStatus readback(Pending& pending);
     rojoRHI::Device& m_device;
     std::array<std::unique_ptr<rojoRHI::ShaderLibrary>, 5> m_libraries;

@@ -10,6 +10,7 @@
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"
+#include "Engine/Gpu/GpuError.h"
 #include <rojoRHI/CaptureSchema.h>
 
 #include <algorithm>
@@ -95,8 +96,7 @@ void LightClusterStage::registerLayoutsForCapture() {
 }
 
 //======================================================================================================================
-rojoRHI::Result<std::unique_ptr<LightClusterStage>>
-LightClusterStage::create(rojoRHI::Device& device) {
+lmx::Result<std::unique_ptr<LightClusterStage>> LightClusterStage::create(rojoRHI::Device& device) {
     std::unique_ptr<LightClusterStage> self(new LightClusterStage(device));
     constexpr std::array names{"LightClusterCount", "LightClusterScan", "LightClusterFill"};
     // The scan is a single thread on purpose: 3,456 counts summed in froxel order is what
@@ -114,7 +114,7 @@ LightClusterStage::create(rojoRHI::Device& device) {
     for (uint32_t slot = 0; slot < self->m_slots.size(); ++slot) {
         const std::string suffix = "." + std::to_string(slot);
         auto allocate = [&](std::unique_ptr<rojoRHI::Buffer>& buffer, uint64_t bytes,
-                            const std::string& name, bool readback) -> rojoRHI::Result<void> {
+                            const std::string& name, bool readback) -> lmx::Result<void> {
             auto result = device.createBuffer({.size = bytes,
                                                .storageRead = true,
                                                .storageWrite = true,
@@ -122,7 +122,7 @@ LightClusterStage::create(rojoRHI::Device& device) {
                                                .label = name + suffix},
                                               nullptr);
             if (!result) {
-                return std::unexpected(result.error());
+                return std::unexpected(engine::gpuError(result.error()));
             }
             buffer = std::move(*result);
             return {};

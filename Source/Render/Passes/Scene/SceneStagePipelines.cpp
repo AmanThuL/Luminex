@@ -5,6 +5,8 @@
 
 #include "Render/Passes/Scene/SceneStage.h"
 
+#include "Engine/Gpu/GpuError.h"
+
 #include "Render/Passes/LocalLights/LightClusters.h"
 #include "Render/Passes/Temporal/TemporalResolve.h"
 
@@ -14,8 +16,8 @@
 namespace lmx::render {
 
 //======================================================================================================================
-rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device& device,
-                                                                rojoRHI::Format sceneColorFormat) {
+lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device& device,
+                                                            rojoRHI::Format sceneColorFormat) {
     std::unique_ptr<SceneStage> self(new SceneStage);
 
     // Minimal immutable storage keeps every declared slot valid when its selection path is unused.
@@ -24,7 +26,7 @@ rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device&
         auto rows = device.createBuffer(
             {.size = sizeof(freeRow), .label = "lmx.render.localLightFallbackRows"}, &freeRow);
         if (!rows) {
-            return std::unexpected(rows.error());
+            return std::unexpected(engine::gpuError(rows.error()));
         }
         self->m_fallbackLightRows = std::move(*rows);
 
@@ -33,7 +35,7 @@ rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device&
             {.size = sizeof(emptyRecord), .label = "lmx.render.localLightFallbackGrid"},
             &emptyRecord);
         if (!grid) {
-            return std::unexpected(grid.error());
+            return std::unexpected(engine::gpuError(grid.error()));
         }
         self->m_fallbackClusterGrid = std::move(*grid);
 
@@ -42,7 +44,7 @@ rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device&
             {.size = sizeof(kEmptyIndex), .label = "lmx.render.localLightFallbackIndices"},
             &kEmptyIndex);
         if (!indices) {
-            return std::unexpected(indices.error());
+            return std::unexpected(engine::gpuError(indices.error()));
         }
         self->m_fallbackClusterIndices = std::move(*indices);
     }
@@ -50,28 +52,28 @@ rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device&
     {
         auto library = device.loadShaderLibrary("Shaders/ScenePass");
         if (!library) {
-            return std::unexpected(library.error());
+            return std::unexpected(engine::gpuError(library.error()));
         }
         self->m_sceneLibrary = std::move(*library);
     }
     {
         auto library = device.loadShaderLibrary("Shaders/ScenePassAuto");
         if (!library) {
-            return std::unexpected(library.error());
+            return std::unexpected(engine::gpuError(library.error()));
         }
         self->m_sceneAutoLibrary = std::move(*library);
     }
     {
         auto library = device.loadShaderLibrary("Shaders/Sky");
         if (!library) {
-            return std::unexpected(library.error());
+            return std::unexpected(engine::gpuError(library.error()));
         }
         self->m_skyLibrary = std::move(*library);
     }
     {
         auto library = device.loadShaderLibrary("Shaders/SkyAuto");
         if (!library) {
-            return std::unexpected(library.error());
+            return std::unexpected(engine::gpuError(library.error()));
         }
         self->m_skyAutoLibrary = std::move(*library);
     }
@@ -116,7 +118,7 @@ rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device&
         auto pipeline = makeScenePipeline(self->m_sceneLibrary.get(), rojoRHI::FillMode::Solid,
                                           "lmx.render.scenePipeline");
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         self->m_scenePipeline = std::move(*pipeline);
     }
@@ -125,7 +127,7 @@ rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device&
         auto pipeline = makeScenePipeline(self->m_sceneLibrary.get(), rojoRHI::FillMode::Wireframe,
                                           "lmx.render.sceneWireframePipeline");
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         self->m_sceneWireframePipeline = std::move(*pipeline);
     }
@@ -136,7 +138,7 @@ rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device&
         auto pipeline = makeScenePipeline(self->m_sceneAutoLibrary.get(), rojoRHI::FillMode::Solid,
                                           "lmx.render.scenePipelineAuto");
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         self->m_scenePipelineAuto = std::move(*pipeline);
     }
@@ -145,7 +147,7 @@ rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device&
             makeScenePipeline(self->m_sceneAutoLibrary.get(), rojoRHI::FillMode::Wireframe,
                               "lmx.render.sceneWireframePipelineAuto");
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         self->m_sceneWireframePipelineAuto = std::move(*pipeline);
     }
@@ -154,7 +156,7 @@ rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device&
         auto pipeline = makeSceneMotionPipeline(
             self->m_sceneLibrary.get(), rojoRHI::FillMode::Solid, "lmx.render.scenePipelineMotion");
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         self->m_scenePipelineMotion = std::move(*pipeline);
     }
@@ -163,7 +165,7 @@ rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device&
             makeSceneMotionPipeline(self->m_sceneLibrary.get(), rojoRHI::FillMode::Wireframe,
                                     "lmx.render.sceneWireframePipelineMotion");
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         self->m_sceneWireframePipelineMotion = std::move(*pipeline);
     }
@@ -172,7 +174,7 @@ rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device&
             makeSceneMotionPipeline(self->m_sceneAutoLibrary.get(), rojoRHI::FillMode::Solid,
                                     "lmx.render.scenePipelineAutoMotion");
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         self->m_scenePipelineAutoMotion = std::move(*pipeline);
     }
@@ -181,7 +183,7 @@ rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device&
             makeSceneMotionPipeline(self->m_sceneAutoLibrary.get(), rojoRHI::FillMode::Wireframe,
                                     "lmx.render.sceneWireframePipelineAutoMotion");
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         self->m_sceneWireframePipelineAutoMotion = std::move(*pipeline);
     }
@@ -203,7 +205,7 @@ rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device&
     {
         auto pipeline = makeSkyPipeline(self->m_skyLibrary.get(), "lmx.render.skyPipeline");
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         self->m_skyPipeline = std::move(*pipeline);
     }
@@ -212,7 +214,7 @@ rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device&
     {
         auto pipeline = makeSkyPipeline(self->m_skyAutoLibrary.get(), "lmx.render.skyPipelineAuto");
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         self->m_skyPipelineAuto = std::move(*pipeline);
     }
@@ -236,7 +238,7 @@ rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device&
         auto pipeline =
             makeSkyMotionPipeline(self->m_skyLibrary.get(), "lmx.render.skyPipelineMotion");
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         self->m_skyPipelineMotion = std::move(*pipeline);
     }
@@ -244,7 +246,7 @@ rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device&
         auto pipeline =
             makeSkyMotionPipeline(self->m_skyAutoLibrary.get(), "lmx.render.skyPipelineAutoMotion");
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         self->m_skyPipelineAutoMotion = std::move(*pipeline);
     }
@@ -253,7 +255,7 @@ rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device&
         auto library = device.loadShaderLibrary(automatic ? "Shaders/ScenePassAutoMask"
                                                           : "Shaders/ScenePassMask");
         if (!library) {
-            return std::unexpected(library.error());
+            return std::unexpected(engine::gpuError(library.error()));
         }
         self->m_maskSceneLibraries[automatic] = std::move(*library);
         for (uint32_t doubleSided = 0; doubleSided < 2; ++doubleSided) {
@@ -280,7 +282,7 @@ rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device&
                          .depthCompare = rojoRHI::DepthCompare::Greater,
                          .label = label});
                     if (!pipeline) {
-                        return std::unexpected(pipeline.error());
+                        return std::unexpected(engine::gpuError(pipeline.error()));
                     }
                     self->m_maskScenePipelines[index] = std::move(*pipeline);
                 }

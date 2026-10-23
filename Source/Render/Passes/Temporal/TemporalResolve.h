@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "Core/Diagnostics/Result.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/Temporal/Temporal.h"
 #include "Render/Passes/Temporal/TemporalHistory.h"
@@ -128,8 +129,8 @@ public:
     /// `cpuReadback` puts both history pairs in shared storage so Texture::readback() works, on
     /// Renderer::create()'s terms: it is what the GPU tests and the offscreen path need, and the
     /// windowed App leaves it false.
-    static rojoRHI::Result<std::unique_ptr<TemporalResolve>> create(rojoRHI::Device& device,
-                                                                    bool cpuReadback);
+    static lmx::Result<std::unique_ptr<TemporalResolve>> create(rojoRHI::Device& device,
+                                                                bool cpuReadback);
 
     /// Non-copyable: it owns GPU targets whose identity is what the frame's imports name.
     TemporalResolve(const TemporalResolve&) = delete;
@@ -138,7 +139,7 @@ public:
 
     /// Recreates both slot pairs at the new extent, replacing any already held. The caller
     /// guarantees the GPU is idle first, on Renderer::resize()'s terms.
-    rojoRHI::Result<void> resize(uint32_t width, uint32_t height);
+    lmx::Result<void> resize(uint32_t width, uint32_t height);
 
     /// The depth target of `slot`, which a temporal frame renders into and the next one samples as
     /// its previous depth. Never null after a successful create().

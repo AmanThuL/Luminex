@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
+#include "Core/Diagnostics/Result.h"
 #include "Render/Passes/Temporal/TemporalResolve.h"
 
 namespace lmx::render {
@@ -36,7 +37,7 @@ public:
     ReconstructionSelection prepare(ReconstructionMode requested, uint32_t width, uint32_t height);
 
     /// Creates only the engine packing pipeline; works without a vendor capability or scaler.
-    rojoRHI::Result<void> preparePacking();
+    lmx::Result<void> preparePacking();
 
     /// Prepared pipeline for the engine-owned, exposure-corrected history diagnostic.
     rojoRHI::ComputePipeline& historyPipeline() const;

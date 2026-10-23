@@ -71,7 +71,7 @@ record durable conclusions in an ADR, guide, milestone record, or postmortem.
 A stage creates GPU objects at construction and declares passes each frame. Shared mechanics live
 in `Render/Common`; shader mirror structs, binding slots and rendering policy stay with the stage.
 
-1. Provide `static rojoRHI::Result<std::unique_ptr<X>> create(rojoRHI::Device&, ...)`, keep the
+1. Provide `static lmx::Result<std::unique_ptr<X>> create(rojoRHI::Device&, ...)`, keep the
    constructor private and complete initialization in that one call. Additional creation arguments
    describe formats, owned extents or readback requirements.
 2. Use one `declare(RenderGraph&, rojoRHI::CommandList&, [const SceneView&,] const XInputs&)`,
@@ -81,7 +81,8 @@ in `Render/Common`; shader mirror structs, binding slots and rendering policy st
 3. Only extent-owning stages expose resize. Document whether equal extents preserve resource
    identity and history or recreate them; callers' reset semantics decide this policy. Use three
    paced slots for frame data and two entries for ping-pong history.
-4. Propagate expected failures as `auto x = ...; if (!x) { return std::unexpected(x.error()); }`.
+4. Propagate expected failures as `auto x = ...; if (!x) { return std::unexpected(x.error()); }`;
+   translate a RojoRHI device result at the call with `engine::gpuError(x.error())`.
    Keep a local scope when it preserves the old result object's destruction boundary.
 5. Label every library, pipeline and resource. New pipelines use `lmx.render.<name>Pipeline` and
    new passes `lmx.pass.<family>.<step>`. Existing capture labels remain frozen.

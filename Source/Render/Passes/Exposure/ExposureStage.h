@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "Core/Diagnostics/Result.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Renderer/SceneView.h"
 
@@ -21,8 +22,8 @@ struct ExposureMeteringInputs {
 // Renderer owns this stage for the full lifetime of its deferred graph callbacks.
 class ExposureStage {
 public:
-    static rojoRHI::Result<std::unique_ptr<ExposureStage>> create(rojoRHI::Device& device,
-                                                                  bool cpuReadback);
+    static lmx::Result<std::unique_ptr<ExposureStage>> create(rojoRHI::Device& device,
+                                                              bool cpuReadback);
     // The frame composition root imports the persistent pair before scene declaration.
     rojoRHI::Buffer& buffer() { return *m_exposureBuffer; }
     // Seeds manual/reset exposure before the scene reads it; callbacks live through execution.

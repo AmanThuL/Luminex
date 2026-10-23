@@ -3,6 +3,7 @@
 /// @brief Owns independent all-candidate ID rendering and paced reference readback.
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
+#include "Core/Diagnostics/Result.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/Occlusion/OcclusionCheck.h"
 #include "Render/Renderer/SceneView.h"
@@ -23,13 +24,13 @@ struct OcclusionReferenceInputs {
 class OcclusionReference {
 public:
     /// Loads opaque and masked reference pipelines; reports GPU allocation/compiler errors.
-    static rojoRHI::Result<std::unique_ptr<OcclusionReference>> create(rojoRHI::Device& device);
+    static lmx::Result<std::unique_ptr<OcclusionReference>> create(rojoRHI::Device& device);
     /// Declares private depth and exact byte IDs for every candidate, with no visibility inputs.
     /// Call only inside an open paced frame. Scene bindings outlive graph execution. Extents
     /// are the active render rectangle; viewProjection is its current jittered raster matrix.
     /// strictView indicates unchanged unjittered view, coverage and active extent.
-    rojoRHI::Result<void> declare(RenderGraph& graph, rojoRHI::CommandList& commands,
-                                  const SceneView& view, const OcclusionReferenceInputs& inputs);
+    lmx::Result<void> declare(RenderGraph& graph, rojoRHI::CommandList& commands,
+                              const SceneView& view, const OcclusionReferenceInputs& inputs);
     /// Copies every completed slot to owned CPU observations before any slot may be recycled.
     /// Caller guarantees GPU completion through completedFrame using pacing or waitIdle.
     void retireThrough(uint64_t completedFrame);

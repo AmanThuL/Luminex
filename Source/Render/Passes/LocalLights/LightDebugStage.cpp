@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Passes/LocalLights/LightDebugStage.h"
 #include "Core/Diagnostics/Assert.h"
+#include "Engine/Gpu/GpuError.h"
 #include "Render/Common/Formats.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Common/StageSetup.h"
@@ -21,17 +22,17 @@ static_assert(sizeof(DebugParams) == 188);
 } // namespace
 
 //======================================================================================================================
-rojoRHI::Result<std::unique_ptr<LightDebugStage>> LightDebugStage::create(rojoRHI::Device& device) {
+lmx::Result<std::unique_ptr<LightDebugStage>> LightDebugStage::create(rojoRHI::Device& device) {
     auto stage = std::unique_ptr<LightDebugStage>(new LightDebugStage);
     auto library = device.loadShaderLibrary("Shaders/LightDebugView");
     if (!library) {
-        return std::unexpected(library.error());
+        return std::unexpected(engine::gpuError(library.error()));
     }
     stage->m_library = std::move(*library);
     auto pipeline = device.createGraphicsPipeline(fullscreenPipelineDesc(
         stage->m_library.get(), "fragmentMain", kDisplayFormat, "lmx.render.lightDebugPipeline"));
     if (!pipeline) {
-        return std::unexpected(pipeline.error());
+        return std::unexpected(engine::gpuError(pipeline.error()));
     }
     stage->m_pipeline = std::move(*pipeline);
     return stage;

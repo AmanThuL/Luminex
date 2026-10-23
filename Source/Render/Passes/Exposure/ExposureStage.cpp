@@ -10,6 +10,7 @@
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"
+#include "Engine/Gpu/GpuError.h"
 #include "Render/Renderer/Renderer.h"
 
 #include <array>
@@ -88,28 +89,28 @@ constexpr float kExposureFrameSeconds = 1.0f / 60.0f;
 } // namespace
 
 //======================================================================================================================
-rojoRHI::Result<std::unique_ptr<ExposureStage>> ExposureStage::create(rojoRHI::Device& device,
-                                                                      bool cpuReadback) {
+lmx::Result<std::unique_ptr<ExposureStage>> ExposureStage::create(rojoRHI::Device& device,
+                                                                  bool cpuReadback) {
     std::unique_ptr<ExposureStage> self(new ExposureStage);
 
     {
         auto library = device.loadShaderLibrary("Shaders/HistogramAccumulate");
         if (!library) {
-            return std::unexpected(library.error());
+            return std::unexpected(engine::gpuError(library.error()));
         }
         self->m_histogramLibrary = std::move(*library);
     }
     {
         auto library = device.loadShaderLibrary("Shaders/ExposureResolve");
         if (!library) {
-            return std::unexpected(library.error());
+            return std::unexpected(engine::gpuError(library.error()));
         }
         self->m_exposureResolveLibrary = std::move(*library);
     }
     {
         auto library = device.loadShaderLibrary("Shaders/ExposureSeed");
         if (!library) {
-            return std::unexpected(library.error());
+            return std::unexpected(engine::gpuError(library.error()));
         }
         self->m_exposureSeedLibrary = std::move(*library);
     }
@@ -121,7 +122,7 @@ rojoRHI::Result<std::unique_ptr<ExposureStage>> ExposureStage::create(rojoRHI::D
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
              .label = "lmx.render.histogramPipeline"});
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         self->m_histogramPipeline = std::move(*pipeline);
     }
@@ -132,7 +133,7 @@ rojoRHI::Result<std::unique_ptr<ExposureStage>> ExposureStage::create(rojoRHI::D
                                           .threadsPerThreadgroup = {1, 1, 1},
                                           .label = "lmx.render.exposureResolvePipeline"});
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         self->m_exposureResolvePipeline = std::move(*pipeline);
     }
@@ -142,7 +143,7 @@ rojoRHI::Result<std::unique_ptr<ExposureStage>> ExposureStage::create(rojoRHI::D
                                                       .threadsPerThreadgroup = {1, 1, 1},
                                                       .label = "lmx.render.exposureSeedPipeline"});
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         self->m_exposureSeedPipeline = std::move(*pipeline);
     }
@@ -154,7 +155,7 @@ rojoRHI::Result<std::unique_ptr<ExposureStage>> ExposureStage::create(rojoRHI::D
                                            .label = "lmx.render.histogramBuffer"},
                                           nullptr);
         if (!buffer) {
-            return std::unexpected(buffer.error());
+            return std::unexpected(engine::gpuError(buffer.error()));
         }
         self->m_histogramBuffer = std::move(*buffer);
     }
@@ -175,7 +176,7 @@ rojoRHI::Result<std::unique_ptr<ExposureStage>> ExposureStage::create(rojoRHI::D
                                                .label = "lmx.render.exposureBuffer"},
                                               kInitialExposure.data());
             if (!buffer) {
-                return std::unexpected(buffer.error());
+                return std::unexpected(engine::gpuError(buffer.error()));
             }
             self->m_exposureBuffer = std::move(*buffer);
         }

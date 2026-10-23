@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "Core/Diagnostics/Result.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/Scene/DrawSubmission.h"
 #include "Render/Renderer/SceneView.h"
@@ -58,7 +59,7 @@ struct ShadowStageInputs {
 class ShadowStage {
 public:
     /// Creates all opaque and masked variants; propagates library or pipeline creation errors.
-    static rojoRHI::Result<std::unique_ptr<ShadowStage>> create(rojoRHI::Device& device);
+    static lmx::Result<std::unique_ptr<ShadowStage>> create(rojoRHI::Device& device);
 
     /// Registers the shared shadow-pass capture layout idempotently, without a device.
     static void registerUniformLayoutsForCapture();

@@ -3,6 +3,7 @@
 /// @brief Declares post-display froxel diagnostics over the scene's actual depth and light lists.
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
+#include "Core/Diagnostics/Result.h"
 #include "Engine/Lights/LocalLight.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/LocalLights/LightClusters.h"
@@ -27,7 +28,7 @@ struct LightDebugInputs {
 class LightDebugStage {
 public:
     /// Loads the ordinary fast-math diagnostic shader and creates its opaque display pipeline.
-    static rojoRHI::Result<std::unique_ptr<LightDebugStage>> create(rojoRHI::Device& device);
+    static lmx::Result<std::unique_ptr<LightDebugStage>> create(rojoRHI::Device& device);
     /// Declares one post-display raster pass and returns the produced output version.
     GraphTexture declare(RenderGraph& graph, rojoRHI::CommandList& commands,
                          const LightDebugInputs& inputs);

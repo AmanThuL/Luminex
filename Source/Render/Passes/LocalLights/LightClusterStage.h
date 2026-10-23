@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "Core/Diagnostics/Result.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/LocalLights/LightClusters.h"
 
@@ -63,7 +64,7 @@ public:
     static void registerLayoutsForCapture();
 
     /// Loads the safe-math clustering kernels and allocates every paced slot.
-    static rojoRHI::Result<std::unique_ptr<LightClusterStage>> create(rojoRHI::Device& device);
+    static lmx::Result<std::unique_ptr<LightClusterStage>> create(rojoRHI::Device& device);
 
     /// Declares the four passes and retains the declaration's readback context. Returns an
     /// undeclared result when the frame is not clustered or has no live light.

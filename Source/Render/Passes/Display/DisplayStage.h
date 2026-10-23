@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "Core/Diagnostics/Result.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Renderer/SceneView.h"
 
@@ -23,7 +24,7 @@ struct DisplayInputs {
 // Renderer owns this stage for the full lifetime of its deferred graph callbacks.
 class DisplayStage {
 public:
-    static rojoRHI::Result<std::unique_ptr<DisplayStage>> create(rojoRHI::Device& device);
+    static lmx::Result<std::unique_ptr<DisplayStage>> create(rojoRHI::Device& device);
     // Declares the output transform, with its input versions fixed before callbacks execute.
     void declare(RenderGraph& graph, rojoRHI::CommandList& commands, const DisplayInputs& inputs);
 

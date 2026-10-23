@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Passes/Visibility/GpuVisibility.h"
 #include "Core/Diagnostics/Assert.h"
+#include "Engine/Gpu/GpuError.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Common/PacedSlots.h"
 #include "Render/Common/StageSetup.h"
@@ -13,7 +14,7 @@
 
 namespace lmx::render {
 //======================================================================================================================
-rojoRHI::Result<std::unique_ptr<GpuVisibility>> GpuVisibility::create(rojoRHI::Device& device) {
+lmx::Result<std::unique_ptr<GpuVisibility>> GpuVisibility::create(rojoRHI::Device& device) {
     std::unique_ptr<GpuVisibility> self(new GpuVisibility(device));
     constexpr std::array names{"VisibilityClassify", "VisibilityScan", "VisibilityEmit",
                                "VisibilityEmitSparse", "VisibilityClassifyOcclusion"};
@@ -31,20 +32,20 @@ rojoRHI::Result<std::unique_ptr<GpuVisibility>> GpuVisibility::create(rojoRHI::D
     auto instance = device.createBuffer(
         {.size = sizeof(emptyInstance), .label = "lmx.visibility.emptyInstances"}, &emptyInstance);
     if (!instance) {
-        return std::unexpected(instance.error());
+        return std::unexpected(engine::gpuError(instance.error()));
     }
     self->m_emptyInstances = std::move(*instance);
     auto mesh = device.createBuffer(
         {.size = sizeof(emptyMesh), .label = "lmx.visibility.emptyMeshes"}, &emptyMesh);
     if (!mesh) {
-        return std::unexpected(mesh.error());
+        return std::unexpected(engine::gpuError(mesh.error()));
     }
     self->m_emptyMeshes = std::move(*mesh);
     return self;
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> GpuVisibility::prepareSlot(Slot& slot, const VisibilityTables& tables) {
+lmx::Result<void> GpuVisibility::prepareSlot(Slot& slot, const VisibilityTables& tables) {
     const auto needed = std::max<uint32_t>(1, static_cast<uint32_t>(tables.candidates.size()));
     if (needed > slot.capacity) {
         uint32_t capacity = std::max(1u, slot.capacity);
@@ -52,7 +53,7 @@ rojoRHI::Result<void> GpuVisibility::prepareSlot(Slot& slot, const VisibilityTab
             capacity *= 2;
         Slot replacement;
         auto allocate = [&](std::unique_ptr<rojoRHI::Buffer>& buffer, uint64_t bytes,
-                            const char* name, bool writable) -> rojoRHI::Result<void> {
+                            const char* name, bool writable) -> lmx::Result<void> {
             auto result = m_device.createBuffer(
                 {.size = bytes,
                  .storageRead = true,
@@ -62,7 +63,7 @@ rojoRHI::Result<void> GpuVisibility::prepareSlot(Slot& slot, const VisibilityTab
                  .label = std::string(name) + "." + std::to_string(m_device.frameNumber() % 3)},
                 nullptr);
             if (!result) {
-                return std::unexpected(result.error());
+                return std::unexpected(engine::gpuError(result.error()));
             }
             buffer = std::move(*result);
             return {};

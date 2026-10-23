@@ -9,6 +9,7 @@
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"
 #include "Core/Math/Scalar.h"
+#include "Engine/Gpu/GpuError.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -95,7 +96,7 @@ ReconstructionSelection VendorTemporalScaler::prepare(ReconstructionMode request
     if (m_creationFailed || m_scaler) {
         return resolveReconstruction(requested, support, m_creationFailed);
     }
-    const auto fail = [&](const rojoRHI::Error& error) {
+    const auto fail = [&](const lmx::Error& error) {
         m_creationFailed = true;
         LMX_LOG_WARN("{} initialization failed at {}x{}: {}; using Native TAA", support.name, width,
                      height, error.message);
@@ -107,7 +108,7 @@ ReconstructionSelection VendorTemporalScaler::prepare(ReconstructionMode request
     if (!m_historyLibrary) {
         auto library = m_device.loadShaderLibrary("Shaders/VendorTemporalHistory");
         if (!library) {
-            return fail(library.error());
+            return fail(engine::gpuError(library.error()));
         }
         m_historyLibrary = std::move(*library);
     }
@@ -118,7 +119,7 @@ ReconstructionSelection VendorTemporalScaler::prepare(ReconstructionMode request
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
              .label = "lmx.pipeline.temporal.vendor.history"});
         if (!pipeline) {
-            return fail(pipeline.error());
+            return fail(engine::gpuError(pipeline.error()));
         }
         m_historyPipeline = std::move(*pipeline);
     }
@@ -131,7 +132,7 @@ ReconstructionSelection VendorTemporalScaler::prepare(ReconstructionMode request
                                                  .maxInputScale = support.maxInputScale,
                                                  .label = label});
     if (!scaler) {
-        return fail(scaler.error());
+        return fail(engine::gpuError(scaler.error()));
     }
     m_scaler = std::move(*scaler);
     ++m_generation;
@@ -154,11 +155,11 @@ rojoRHI::ComputePipeline& VendorTemporalScaler::historyPipeline() const {
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> VendorTemporalScaler::preparePacking() {
+lmx::Result<void> VendorTemporalScaler::preparePacking() {
     if (!m_packLibrary) {
         auto library = m_device.loadShaderLibrary("Shaders/VendorTemporalPack");
         if (!library) {
-            return std::unexpected(library.error());
+            return std::unexpected(engine::gpuError(library.error()));
         }
         m_packLibrary = std::move(*library);
     }
@@ -169,7 +170,7 @@ rojoRHI::Result<void> VendorTemporalScaler::preparePacking() {
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
              .label = "lmx.pipeline.temporal.vendor.pack"});
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         m_packPipeline = std::move(*pipeline);
     }

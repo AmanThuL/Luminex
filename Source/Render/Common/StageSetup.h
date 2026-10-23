@@ -4,6 +4,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+
+#include "Core/Diagnostics/Result.h"
+
 #include <rojoRHI/RHI.h>
 
 #include <cstddef>
@@ -21,7 +24,7 @@ rojoRHI::GraphicsPipelineDesc fullscreenPipelineDesc(rojoRHI::ShaderLibrary* lib
                                                      std::string_view label);
 
 // Initializes one two-dimensional texel or all six cube faces from the same source bytes.
-rojoRHI::Result<std::unique_ptr<rojoRHI::Texture>>
+lmx::Result<std::unique_ptr<rojoRHI::Texture>>
 createTexel(rojoRHI::Device& device, rojoRHI::Format format, rojoRHI::TextureKind kind,
             std::span<const std::byte> bytes, std::string_view label);
 
@@ -32,9 +35,9 @@ struct ComputePipelines {
 };
 
 // Creates each named library followed by its pipeline, in the caller's order.
-rojoRHI::Result<ComputePipelines> createComputePipelines(rojoRHI::Device& device,
-                                                         std::span<const char* const> names,
-                                                         std::string_view labelPrefix,
-                                                         uint32_t (*threadsFor)(uint32_t));
+lmx::Result<ComputePipelines> createComputePipelines(rojoRHI::Device& device,
+                                                     std::span<const char* const> names,
+                                                     std::string_view labelPrefix,
+                                                     uint32_t (*threadsFor)(uint32_t));
 
 } // namespace lmx::render

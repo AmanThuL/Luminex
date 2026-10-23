@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "Core/Diagnostics/Result.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Renderer/SceneView.h"
 
@@ -22,7 +23,7 @@ struct BloomInputs {
 // Renderer owns this stage for the full lifetime of its deferred graph callbacks.
 class BloomStage {
 public:
-    static rojoRHI::Result<std::unique_ptr<BloomStage>> create(rojoRHI::Device& device);
+    static lmx::Result<std::unique_ptr<BloomStage>> create(rojoRHI::Device& device);
     // Declares threshold/downsample/upsample even when display will cull their unused result.
     GraphTexture declare(RenderGraph& graph, rojoRHI::CommandList& commands,
                          const BloomInputs& inputs);
