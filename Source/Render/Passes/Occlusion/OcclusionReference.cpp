@@ -92,7 +92,7 @@ lmx::Result<void> OcclusionReference::declare(RenderGraph& graph, rojoRHI::Comma
     const uint64_t byteCount = uint64_t{width} * height * 4;
     if (!slot.buffer || slot.buffer.desc().size < byteCount) {
         auto buffer = engine::GpuBuffer::create(
-            m_device,
+            m_gpu.device(),
             {.size = byteCount, .cpuReadback = true, .label = "lmx.occlusion.reference.readback"});
         if (!buffer) {
             return std::unexpected(buffer.error());

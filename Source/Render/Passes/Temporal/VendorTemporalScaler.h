@@ -31,7 +31,7 @@ struct VendorTemporalPacked {
 class VendorTemporalScaler {
 public:
     /// Borrows the GPU context, which must outlive this adapter and its encoded work.
-    explicit VendorTemporalScaler(engine::GpuContext& gpu) : m_gpu(gpu), m_device(gpu.device()) {}
+    explicit VendorTemporalScaler(engine::GpuContext& gpu) : m_gpu(gpu) {}
 
     /// Prepares a vendor request and its packing pipeline, or reports native fallback.
     ReconstructionSelection prepare(ReconstructionMode requested, uint32_t width, uint32_t height);
@@ -64,7 +64,6 @@ public:
 
 private:
     engine::GpuContext& m_gpu;
-    rojoRHI::Device& m_device;
     engine::GpuOwned<rojoRHI::TemporalScaler> m_scaler;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_packLibrary;
     engine::GpuOwned<rojoRHI::ComputePipeline> m_packPipeline;

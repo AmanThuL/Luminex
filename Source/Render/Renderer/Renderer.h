@@ -223,7 +223,6 @@ private:
     lmx::Result<void> createTemporalTargets();
 
     engine::GpuContext& m_gpu;
-    rojoRHI::Device& m_device;
     // render()'s own pool for bloom's transients, since a caller without a graph of its own (the
     // --screenshot path, most GPU tests) has no pool to hand declarePasses(); a caller building a
     // graph of its own frame (the App) supplies its own instead and this member goes unused.

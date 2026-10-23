@@ -42,7 +42,7 @@ public:
     std::optional<OcclusionCheckResult> check(const VisibilityStatus& status);
 
 private:
-    explicit OcclusionReference(engine::GpuContext& gpu) : m_gpu(gpu), m_device(gpu.device()) {}
+    explicit OcclusionReference(engine::GpuContext& gpu) : m_gpu(gpu) {}
     struct Slot {
         engine::GpuBuffer buffer;
         bool used = false;
@@ -56,7 +56,6 @@ private:
         uint64_t invalidPixels = 0;
     };
     engine::GpuContext& m_gpu;
-    rojoRHI::Device& m_device;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_library;
     std::array<engine::GpuOwned<rojoRHI::GraphicsPipeline>, 8> m_pipelines;
     engine::GpuOwned<rojoRHI::Sampler> m_sampler;

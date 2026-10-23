@@ -100,7 +100,7 @@ void Renderer::declareOcclusion(RenderGraph& graph, rojoRHI::CommandList& comman
         auto library = m_gpu.loadShaderLibrary("HzbDebugView");
         LMX_ASSERT(library.has_value(), library.error().message);
         m_hzbDebugLibrary = std::move(*library);
-        auto pipeline = engine::adoptGpu(m_device.createGraphicsPipeline(
+        auto pipeline = engine::adoptGpu(m_gpu.device().createGraphicsPipeline(
             fullscreenPipelineDesc(m_hzbDebugLibrary.get(), "fragmentMain", kDisplayFormat,
                                    "lmx.render.hzbDebugPipeline")));
         LMX_ASSERT(pipeline.has_value(), pipeline.error().message);

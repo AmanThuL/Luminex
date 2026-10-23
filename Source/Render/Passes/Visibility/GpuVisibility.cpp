@@ -57,12 +57,12 @@ lmx::Result<void> GpuVisibility::prepareSlot(Slot& slot, const VisibilityTables&
                             bool writable) -> lmx::Result<void> {
             const std::string label =
                 std::string(name) + "." + std::to_string(m_gpu.frameNumber() % 3);
-            auto result = engine::GpuBuffer::create(m_device, {.size = bytes,
-                                                               .storageRead = true,
-                                                               .storageWrite = writable,
-                                                               .cpuReadback = writable,
-                                                               .cpuWrite = !writable,
-                                                               .label = label});
+            auto result = engine::GpuBuffer::create(m_gpu.device(), {.size = bytes,
+                                                                     .storageRead = true,
+                                                                     .storageWrite = writable,
+                                                                     .cpuReadback = writable,
+                                                                     .cpuWrite = !writable,
+                                                                     .label = label});
             if (!result) {
                 return std::unexpected(result.error());
             }

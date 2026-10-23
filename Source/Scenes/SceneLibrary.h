@@ -92,7 +92,6 @@ private:
     asset::AssetResult<std::filesystem::path> documentPath(const SceneId& id) const;
     std::string cacheKey(const SceneId& id) const;
     engine::GpuContext& m_gpu;
-    rojoRHI::Device& m_device;
     GeneratorOverrides m_overrides;
     std::vector<SceneEntry> m_entries;
     mutable std::map<std::string, SceneEntry> m_pathEntries;

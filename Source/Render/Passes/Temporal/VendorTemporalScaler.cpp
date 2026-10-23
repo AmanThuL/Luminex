@@ -114,7 +114,7 @@ ReconstructionSelection VendorTemporalScaler::prepare(ReconstructionMode request
         m_historyLibrary = std::move(*library);
     }
     if (!m_historyPipeline) {
-        auto pipeline = engine::adoptGpu(m_device.createComputePipeline(
+        auto pipeline = engine::adoptGpu(m_gpu.device().createComputePipeline(
             {.library = m_historyLibrary.get(),
              .computeEntry = "computeVendorTemporalHistory",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
@@ -125,14 +125,14 @@ ReconstructionSelection VendorTemporalScaler::prepare(ReconstructionMode request
         m_historyPipeline = std::move(*pipeline);
     }
     const std::string label = "lmx.temporal.vendor.scaler " + std::string(support.name);
-    auto scaler =
-        engine::adoptGpu(m_device.createTemporalScaler({.inputWidth = width,
-                                                        .inputHeight = height,
-                                                        .outputWidth = width,
-                                                        .outputHeight = height,
-                                                        .minInputScale = support.minInputScale,
-                                                        .maxInputScale = support.maxInputScale,
-                                                        .label = label}));
+    auto scaler = engine::adoptGpu(
+        m_gpu.device().createTemporalScaler({.inputWidth = width,
+                                             .inputHeight = height,
+                                             .outputWidth = width,
+                                             .outputHeight = height,
+                                             .minInputScale = support.minInputScale,
+                                             .maxInputScale = support.maxInputScale,
+                                             .label = label}));
     if (!scaler) {
         return fail(scaler.error());
     }
@@ -166,7 +166,7 @@ lmx::Result<void> VendorTemporalScaler::preparePacking() {
         m_packLibrary = std::move(*library);
     }
     if (!m_packPipeline) {
-        auto pipeline = engine::adoptGpu(m_device.createComputePipeline(
+        auto pipeline = engine::adoptGpu(m_gpu.device().createComputePipeline(
             {.library = m_packLibrary.get(),
              .computeEntry = "computeVendorTemporalPack",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},

@@ -51,7 +51,7 @@ public:
     }
 
 private:
-    explicit GpuVisibility(engine::GpuContext& gpu) : m_gpu(gpu), m_device(gpu.device()) {}
+    explicit GpuVisibility(engine::GpuContext& gpu) : m_gpu(gpu) {}
     struct Slot {
         engine::GpuBuffer candidates, runs, chunks, views, states, counters;
         std::vector<std::byte> candidateBytes, runBytes, chunkBytes, viewBytes;
@@ -70,7 +70,6 @@ private:
     lmx::Result<void> prepareSlot(Slot& slot, const VisibilityTables& tables);
     VisibilityStatus readback(Pending& pending);
     engine::GpuContext& m_gpu;
-    rojoRHI::Device& m_device;
     std::array<engine::GpuOwned<rojoRHI::ShaderLibrary>, 5> m_libraries;
     std::array<engine::GpuOwned<rojoRHI::ComputePipeline>, 5> m_pipelines;
     engine::GpuBuffer m_emptyInstances, m_emptyMeshes;
