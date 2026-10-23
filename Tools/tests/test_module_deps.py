@@ -1629,6 +1629,7 @@ class RepositoryContractTests(unittest.TestCase):
             [
                 "RojoRHI",
                 "RojoRHIBench",
+                "RojoRHIImGui",
                 "RojoRHILegacy",
                 "RojoRHILegacyMetal4ImGui",
                 "RojoRHILegacyTests",

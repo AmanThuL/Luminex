@@ -51,8 +51,8 @@ contract. `externals` in `Tools/module_contract.json` holds one entry per compon
 | `includeRoots` | the include roots the `"*"` allowance covers; each must be a directory inside `paths` |
 | `consumers` | unit → the headers it may include, spelled as an `#include` writes them, or `"*"` |
 
-Today there is one entry, `rhi`: paths `RojoRHI`, its eight targets (the v1 `RojoRHILegacy*`, `RojoRHIMetalCpp`
-and the v2 `RojoRHI`, `RojoRHITests`, `RojoRHILtoProbe`, `RojoRHIBench`), include root `RojoRHI/Legacy/Include`.
+Today there is one entry, `rhi`: paths `RojoRHI`, its nine targets (the v1 `RojoRHILegacy*`, `RojoRHIMetalCpp`
+and the v2 `RojoRHI`, `RojoRHIImGui`, `RojoRHITests`, `RojoRHILtoProbe`, `RojoRHIBench`), include root `RojoRHI/Legacy/Include`.
 
 | Consumer | May include |
 |---|---|
@@ -81,9 +81,9 @@ Rules the entry carries:
   reached them.
 - The component's targets are still reconciled (`RojoRHILegacy` declares `RojoRHIMetalCpp`;
   `RojoRHILegacyMetal4ImGui` adds `RojoRHILegacy` and `ImGui`; `RojoRHILegacyTests` adds `RojoRHILegacy`;
-  `RojoRHI` declares `RojoRHIMetalCpp` on metal4 only; the other v2 targets add `RojoRHI`), and no Luminex
-  target depends on a v2 one. Nothing under `RojoRHI/` can link a Luminex target without failing the target-closure check, which is how the standalone build stays
-  standalone. `Asset`'s `forbidUndefined: rojoRHI::` still runs under `--link`.
+  `RojoRHI` declares `RojoRHIMetalCpp` on metal4 only; `RojoRHIImGui` adds `RojoRHI` and `ImGui`;
+  `RojoRHITests` adds `RojoRHI` and the adapter when declared; the other v2 targets add `RojoRHI`), and no Luminex target depends on a v2 one.
+  No component target can link a Luminex target without failing the closure check. `Asset`'s `forbidUndefined: rojoRHI::` still runs under `--link`.
 
 `tests` takes no header out of the component's own suite: the repository suite keeps its own copy of
 the GPU bootstrap, merged into `Tests/Support/GpuTestSupport.h` alongside its Asset, Render and
