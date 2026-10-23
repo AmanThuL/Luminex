@@ -15,10 +15,6 @@
 #include <cstdint>
 #include <span>
 
-namespace rojoRHI {
-class Buffer;
-}
-
 namespace lmx::engine {
 
 /// Motion cannot be derived from the instance's previous transform.

@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <array>
 #include <optional>
+#include <span>
 
 namespace lmx::engine {
 namespace {
@@ -39,22 +40,20 @@ asset::AssetResult<std::vector<TextureId>> uploadImages(rojoRHI::Device& device,
                     asset::bakeMips(bytes, image.width, image.height,
                                     srgb[i] ? asset::BakeMode::Srgb : asset::BakeMode::Linear);
                 return GpuTexture::create(device,
-                                          {.width = image.width,
-                                           .height = image.height,
-                                           .format = format,
-                                           .mipLevels = baked.mipLevels,
-                                           .sampled = true,
+                                          {.format = format,
+                                           .extent = {image.width, image.height, 1},
+                                           .mips = baked.mipLevels,
+                                           .usage = rojoRHI::TextureUsage::Sampled,
                                            .label = label},
-                                          toTextureMips(baked));
+                                          toTextureData(baked));
             }
-            const rojoRHI::TextureMip level{.data = image.rgba8.data(),
-                                            .bytesPerRow = image.width * 4};
+            const rojoRHI::TextureData level{.bytes = std::as_bytes(std::span(image.rgba8)),
+                                             .bytesPerRow = image.width * 4};
             return GpuTexture::create(device,
-                                      {.width = image.width,
-                                       .height = image.height,
-                                       .format = format,
-                                       .mipLevels = 1,
-                                       .sampled = true,
+                                      {.format = format,
+                                       .extent = {image.width, image.height, 1},
+                                       .mips = 1,
+                                       .usage = rojoRHI::TextureUsage::Sampled,
                                        .label = label},
                                       std::span(&level, 1));
         }();

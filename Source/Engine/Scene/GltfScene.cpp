@@ -126,13 +126,12 @@ asset::AssetResult<void> appendGltfScene(rojoRHI::Device& device, Scene& target,
                             srgb ? asset::BakeMode::Srgb : asset::BakeMode::Linear);
         auto texture = GpuTexture::create(
             device,
-            {.width = bakedChain.width,
-             .height = bakedChain.height,
-             .format = srgb ? rojoRHI::Format::RGBA8Unorm_sRGB : rojoRHI::Format::RGBA8Unorm,
-             .mipLevels = bakedChain.mipLevels,
-             .sampled = true,
+            {.format = srgb ? rojoRHI::Format::RGBA8Unorm_sRGB : rojoRHI::Format::RGBA8Unorm,
+             .extent = {bakedChain.width, bakedChain.height, 1},
+             .mips = bakedChain.mipLevels,
+             .usage = rojoRHI::TextureUsage::Sampled,
              .label = label},
-            toTextureMips(bakedChain));
+            toTextureData(bakedChain));
         if (!texture) {
             return std::unexpected(uploadFailure(std::move(texture.error())));
         }

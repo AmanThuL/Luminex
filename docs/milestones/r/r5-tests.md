@@ -127,3 +127,11 @@ layout, underlying mip/layer metadata and storage-view presence. Existing Engine
 assertions keep field names, offsets and size; schema version 2 replaces the removed numeric slot
 assertion with explicit no-slot/no-page-channel assertions. The generic capture suite moves and
 converts separately with its resource/root-window coverage.
+
+## Scene upload conversion
+
+The case `toTextureMips points each level at its payload offset with its row pitch` becomes
+`toTextureData points each level at its payload offset with its row pitch`, matching the byte-span
+upload adapter. Payload identity, level order and row pitches remain asserted; exact byte-span
+sizes and zero bytesPerImage for these 2D subresources are also checked. This is a rename with no
+case-count change.
