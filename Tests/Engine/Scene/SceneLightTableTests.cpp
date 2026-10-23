@@ -4,7 +4,10 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Scene/Scene.h"
+#include "Support/GpuTestSupport.h"
 #include <rojoRHI/RHI.h>
+
+#include <cstring>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -25,18 +28,23 @@ engine::LocalLight testLight(float x = 0.0f) {
 }
 
 //======================================================================================================================
-engine::LightRow readLightRow(const engine::GpuBuffer& buffer, uint32_t slot) {
+engine::LightRow readLightRow(engine::GpuContext& gpu, const engine::GpuBuffer& buffer,
+                              uint32_t slot) {
     std::vector<engine::LightRow> rows(slot + 1);
-    buffer.rhi().readback(rows.data(), rows.size() * sizeof(engine::LightRow));
+    {
+        const auto bytes = lmx::render::readbackNow(gpu, buffer, lmx::render::BufferUse::ShaderRead,
+                                                    {0, rows.size() * sizeof(engine::LightRow)});
+        std::memcpy(rows.data(), bytes.data(), rows.size() * sizeof(engine::LightRow));
+    }
     return rows[slot];
 }
 
 //======================================================================================================================
-void prepareLights(rojoRHI::Device& device, engine::Scene& scene) {
-    device.beginFrame();
-    REQUIRE(scene.prepareFrame(device.frameNumber()).has_value());
-    device.endFrame(nullptr);
-    device.waitIdle();
+void prepareLights(engine::GpuContext& gpu, engine::Scene& scene) {
+    auto frame = gpu.beginFrame();
+    REQUIRE(scene.prepareFrame(gpu.frameNumber()).has_value());
+    gpu.submitAndEndFrame(frame);
+    gpu.waitIdle();
 }
 } // namespace
 
@@ -132,24 +140,25 @@ TEST_CASE("Local light edits and removals leave scene coverage unchanged", "[sce
 //======================================================================================================================
 TEST_CASE("Prepared local light edits and removals leave scene coverage unchanged",
           "[gpu][scene][light]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
     engine::Scene scene;
     const auto mesh = scene.addMesh(engine::makeCube(), "lmx.test.light.preparedCoverage.mesh");
     const auto material = scene.addMaterial({});
     scene.addObject({.mesh = mesh, .material = material});
-    REQUIRE(scene.finalize(**device).has_value());
-    prepareLights(**device, scene);
+    REQUIRE(scene.finalize(*device).has_value());
+    prepareLights(*gpu, scene);
     const auto before = scene.coverageEpoch();
     const auto id = scene.addLight(testLight());
     REQUIRE(id.has_value());
-    prepareLights(**device, scene);
+    prepareLights(*gpu, scene);
     REQUIRE(scene.coverageEpoch() == before);
     REQUIRE(scene.updateLight(*id, testLight(3.0f)).has_value());
-    prepareLights(**device, scene);
+    prepareLights(*gpu, scene);
     REQUIRE(scene.coverageEpoch() == before);
     REQUIRE(scene.removeLight(*id));
-    prepareLights(**device, scene);
+    prepareLights(*gpu, scene);
     REQUIRE(scene.coverageEpoch() == before);
 }
 
@@ -157,8 +166,9 @@ TEST_CASE("Prepared local light edits and removals leave scene coverage unchange
 TEST_CASE("A light orbit track's animation index freezes at finalize and never regrows across "
           "repeated post-finalize add/remove",
           "[gpu][scene][light]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
     engine::Scene scene;
     const auto a = scene.addLight(testLight(0.0f));
     REQUIRE(a.has_value());
@@ -168,7 +178,7 @@ TEST_CASE("A light orbit track's animation index freezes at finalize and never r
     REQUIRE(scene.animationLightId(1) == *b);
     REQUIRE_FALSE(scene.animationLightId(2).has_value());
 
-    REQUIRE(scene.finalize(**device).has_value());
+    REQUIRE(scene.finalize(*device).has_value());
 
     // A light added after finalize -- e.g. a runtime pile addition -- gets no animation index: it
     // is static by contract, and the frozen list must not grow to make room for it.
@@ -192,18 +202,19 @@ TEST_CASE("A light orbit track's animation index freezes at finalize and never r
 
 //======================================================================================================================
 TEST_CASE("A zero-light scene reports no light buffer or rows", "[gpu][scene][light]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
     engine::Scene scene;
     const auto mesh = scene.addMesh(engine::makeCube(), "lmx.test.light.empty.mesh");
     const auto material = scene.addMaterial({});
     scene.addObject({.mesh = mesh, .material = material});
-    REQUIRE(scene.finalize(**device).has_value());
-    (*device)->beginFrame();
-    REQUIRE(scene.prepareFrame((*device)->frameNumber()).has_value());
+    REQUIRE(scene.finalize(*device).has_value());
+    auto gpuFrame1 = gpu->beginFrame();
+    REQUIRE(scene.prepareFrame(gpu->frameNumber()).has_value());
     const auto tables = scene.tables();
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->submitAndEndFrame(gpuFrame1);
+    gpu->waitIdle();
     REQUIRE(tables.lights == nullptr);
     REQUIRE(tables.lightRowCount == 0);
     REQUIRE(tables.lightCapacity == 0);
@@ -214,41 +225,42 @@ TEST_CASE("A zero-light scene reports no light buffer or rows", "[gpu][scene][li
 //======================================================================================================================
 TEST_CASE("A removed local light's row zeroes range and reports a live row count and span",
           "[gpu][scene][light]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
     engine::Scene scene;
     const auto a = scene.addLight(testLight(1.0f));
     REQUIRE(a.has_value());
     const auto b = scene.addLight(testLight(2.0f));
     REQUIRE(b.has_value());
-    REQUIRE(scene.finalize(**device).has_value());
-    (*device)->beginFrame();
-    REQUIRE(scene.prepareFrame((*device)->frameNumber()).has_value());
+    REQUIRE(scene.finalize(*device).has_value());
+    auto gpuFrame2 = gpu->beginFrame();
+    REQUIRE(scene.prepareFrame(gpu->frameNumber()).has_value());
     auto tables = scene.tables();
     REQUIRE(tables.lights != nullptr);
     REQUIRE(tables.lightRowCount == 2);
     REQUIRE(tables.lightRows.size() == 2);
     REQUIRE(tables.lightRows[a->slot].range > 0.0f);
     REQUIRE(tables.liveLightCount == 2);
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->submitAndEndFrame(gpuFrame2);
+    gpu->waitIdle();
     REQUIRE(scene.removeLight(*a));
-    (*device)->beginFrame();
-    REQUIRE(scene.prepareFrame((*device)->frameNumber()).has_value());
+    auto gpuFrame3 = gpu->beginFrame();
+    REQUIRE(scene.prepareFrame(gpu->frameNumber()).has_value());
     tables = scene.tables();
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->submitAndEndFrame(gpuFrame3);
+    gpu->waitIdle();
     REQUIRE(tables.lightRows[a->slot].range == 0.0f);
     REQUIRE(tables.lightRows[b->slot].range > 0.0f);
     REQUIRE(tables.liveLightCount == 1);
-    engine::LightRow row = readLightRow(*tables.lights, a->slot);
+    engine::LightRow row = readLightRow(*gpu, *tables.lights, a->slot);
     REQUIRE(row.range == 0.0f);
     REQUIRE(scene.removeLight(*b));
-    (*device)->beginFrame();
-    REQUIRE(scene.prepareFrame((*device)->frameNumber()).has_value());
+    auto gpuFrame4 = gpu->beginFrame();
+    REQUIRE(scene.prepareFrame(gpu->frameNumber()).has_value());
     tables = scene.tables();
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->submitAndEndFrame(gpuFrame4);
+    gpu->waitIdle();
     REQUIRE(tables.lights != nullptr);
     REQUIRE(tables.lightRowCount == 2);
     REQUIRE(tables.liveLightCount == 0);
@@ -257,66 +269,72 @@ TEST_CASE("A removed local light's row zeroes range and reports a live row count
 //======================================================================================================================
 TEST_CASE("Updating a local light marks its row dirty in every paced frame slot",
           "[gpu][scene][light]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
     engine::Scene scene;
     const auto id = scene.addLight(testLight(1.0f));
     REQUIRE(id.has_value());
-    REQUIRE(scene.finalize(**device).has_value());
+    REQUIRE(scene.finalize(*device).has_value());
     // The row's creation dirties all three paced slots; four frames fully settle every slot (three
     // to clear each bit, one more to observe the resulting steady state).
     for (uint32_t frame = 0; frame < 4; ++frame) {
-        (*device)->beginFrame();
-        REQUIRE(scene.prepareFrame((*device)->frameNumber()).has_value());
-        (*device)->endFrame(nullptr);
-        (*device)->waitIdle();
+        auto gpuFrame5 = gpu->beginFrame();
+        REQUIRE(scene.prepareFrame(gpu->frameNumber()).has_value());
+        gpu->submitAndEndFrame(gpuFrame5);
+        gpu->waitIdle();
     }
     REQUIRE(scene.tableStats().rowsWritten == 0);
     REQUIRE(scene.updateLight(*id, testLight(7.0f)).has_value());
     std::array<const engine::GpuBuffer*, 3> buffers{};
     for (uint32_t frame = 0; frame < 3; ++frame) {
-        (*device)->beginFrame();
-        REQUIRE(scene.prepareFrame((*device)->frameNumber()).has_value());
+        auto gpuFrame6 = gpu->beginFrame();
+        REQUIRE(scene.prepareFrame(gpu->frameNumber()).has_value());
         const auto tables = scene.tables();
         // One light exists and only its single row changed, so exactly one row is written into
         // this frame's paced slot -- the brief's "one dirty row in three slots".
         REQUIRE(scene.tableStats().rowsWritten == 1);
         buffers[scene.tableStats().slot] = tables.lights;
-        (*device)->endFrame(nullptr);
-        (*device)->waitIdle();
+        gpu->submitAndEndFrame(gpuFrame6);
+        gpu->waitIdle();
     }
     for (auto* buffer : buffers) {
         REQUIRE(buffer != nullptr);
         engine::LightRow row{};
-        buffer->rhi().readback(&row, sizeof(row));
+        {
+            const auto bytes = lmx::render::readbackNow(
+                *gpu, *buffer, lmx::render::BufferUse::ShaderRead, {0, sizeof(row)});
+            std::memcpy(&row, bytes.data(), sizeof(row));
+        }
         REQUIRE(row.position.x == 7.0f);
     }
-    (*device)->beginFrame();
-    REQUIRE(scene.prepareFrame((*device)->frameNumber()).has_value());
+    auto gpuFrame7 = gpu->beginFrame();
+    REQUIRE(scene.prepareFrame(gpu->frameNumber()).has_value());
     REQUIRE(scene.tableStats().rowsWritten == 0);
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->submitAndEndFrame(gpuFrame7);
+    gpu->waitIdle();
 }
 
 //======================================================================================================================
 TEST_CASE("Local light table growth from 4 to 8 keeps stable rows and retires old buffers",
           "[gpu][scene][light]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
     engine::Scene scene;
     const auto first = scene.addLight(testLight(1.0f));
     REQUIRE(first.has_value());
-    REQUIRE(scene.finalize(**device).has_value());
-    prepareLights(**device, scene);
+    REQUIRE(scene.finalize(*device).has_value());
+    prepareLights(*gpu, scene);
     REQUIRE(scene.tableStats().lightCapacity == 4);
     const auto* oldBuffer = scene.tables().lights;
-    const uint64_t lastFrame = (*device)->frameNumber();
+    const uint64_t lastFrame = gpu->frameNumber();
     while (scene.localLights().size() < 5) {
         const auto id = scene.addLight(testLight(3.0f));
         REQUIRE(id.has_value());
     }
-    prepareLights(**device, scene);
-    REQUIRE((*device)->frameNumber() == lastFrame + 1);
+    prepareLights(*gpu, scene);
+    REQUIRE(gpu->frameNumber() == lastFrame + 1);
     REQUIRE(scene.tableStats().lightCapacity == 8);
     REQUIRE(scene.tableStats().growthEvents == 1);
     REQUIRE(scene.tableStats().pendingReleaseBuffers == 3);
@@ -326,14 +344,14 @@ TEST_CASE("Local light table growth from 4 to 8 keeps stable rows and retires ol
     const auto grownTables = scene.tables();
     REQUIRE(grownTables.lightRows[first->slot].position.x == 1.0f);
     REQUIRE(grownTables.lightRows[first->slot].range == 5.0f);
-    const auto readBack = readLightRow(*grownTables.lights, first->slot);
+    const auto readBack = readLightRow(*gpu, *grownTables.lights, first->slot);
     REQUIRE(readBack.position.x == 1.0f);
     REQUIRE(readBack.range == 5.0f);
-    prepareLights(**device, scene);
-    REQUIRE((*device)->frameNumber() == lastFrame + 2);
+    prepareLights(*gpu, scene);
+    REQUIRE(gpu->frameNumber() == lastFrame + 2);
     REQUIRE(scene.tableStats().pendingReleaseBuffers == 3);
-    prepareLights(**device, scene);
-    REQUIRE((*device)->frameNumber() == lastFrame + 3);
+    prepareLights(*gpu, scene);
+    REQUIRE(gpu->frameNumber() == lastFrame + 3);
     REQUIRE(scene.tableStats().pendingReleaseBuffers == 0);
 }
 
@@ -366,27 +384,28 @@ TEST_CASE("Disabling a local light preserves its identity, edits and animation b
 //======================================================================================================================
 TEST_CASE("Light enablement updates every paced slot without identity or allocation changes",
           "[gpu][scene][light]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
     engine::Scene scene;
     auto authored = testLight(3.0f);
     const auto id = scene.addLight(authored);
     REQUIRE(id);
-    REQUIRE(scene.finalize(**device));
+    REQUIRE(scene.finalize(*device));
     for (int i = 0; i < 3; ++i)
-        prepareLights(**device, scene);
+        prepareLights(*gpu, scene);
     const auto capacity = scene.tables().lightCapacity;
     for (const bool enabled : {false, true}) {
         authored.enabled = enabled;
         REQUIRE(scene.updateLight(*id, authored));
         for (int i = 0; i < 3; ++i) {
-            prepareLights(**device, scene);
+            prepareLights(*gpu, scene);
             const auto tables = scene.tables();
             REQUIRE(tables.liveLightCount == (enabled ? 1u : 0u));
             REQUIRE(tables.lightCapacity == capacity);
             REQUIRE(scene.tableStats().lightCount == 1);
             REQUIRE(scene.localLights().front() == *id);
-            const auto row = readLightRow(*tables.lights, id->slot);
+            const auto row = readLightRow(*gpu, *tables.lights, id->slot);
             REQUIRE(row.range == (enabled ? authored.range : 0.0f));
             REQUIRE((row.boundRadius > 0.0f) == enabled);
         }

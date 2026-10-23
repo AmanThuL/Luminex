@@ -105,12 +105,6 @@ struct FixtureSceneView : render::SceneView {
         return prepare(gpu.device(), gpu.frameNumber());
     }
 
-    render::SceneView prepare(rojoRHI::Device& device) const {
-        if (production)
-            return static_cast<const render::SceneView&>(*this);
-        return prepare(device, device.frameNumber());
-    }
-
 private:
     render::SceneView prepare(rojoRHI::Device& device, uint64_t frame) const {
         while (!retired.empty() && retired.front().first <= frame)
@@ -217,12 +211,6 @@ private:
         return view;
     }
 };
-inline render::SceneView prepareSceneView(const FixtureSceneView& view, rojoRHI::Device& device) {
-    return view.prepare(device);
-}
-inline render::SceneView prepareSceneView(const render::SceneView& view, rojoRHI::Device&) {
-    return view;
-}
 inline render::SceneView prepareSceneView(const FixtureSceneView& view, engine::GpuContext& gpu) {
     return view.prepare(gpu);
 }
@@ -235,14 +223,6 @@ inline render::SceneView prepareSceneView(const FixtureSceneView& view,
 }
 inline render::SceneView prepareSceneView(const render::SceneView& view,
                                           std::unique_ptr<engine::GpuContext>&) {
-    return view;
-}
-template <typename DeviceOwner>
-render::SceneView prepareSceneView(const FixtureSceneView& view, DeviceOwner& device) {
-    return view.prepare(**device);
-}
-template <typename DeviceOwner>
-render::SceneView prepareSceneView(const render::SceneView& view, DeviceOwner&) {
     return view;
 }
 } // namespace lmx::test

@@ -105,7 +105,7 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
     //
     // Stored rather than discarded: nothing in this frame reads it after the pass, but the buffer
     // is the frame's own record of where its geometry is, and discarding leaves it undefined the
-    // moment the pass ends -- so depthTarget() would hand a caller garbage rather than depth.
+    // moment the pass ends -- so depthTexture() would hand a caller garbage rather than depth.
     sceneDesc.depth = DepthAttachment{
         .handle = sceneDepth, .load = LoadOp::Clear, .store = StoreOp::Store, .clearDepth = 0.0f};
     // Attachment 1 on the temporal path only. Zero is the motion of a surface that did not move,

@@ -144,22 +144,17 @@ public:
     /// guarantees the GPU is idle first, on Renderer::resize()'s terms.
     lmx::Result<void> resize(uint32_t width, uint32_t height);
 
-    /// The depth target of `slot`, which a temporal frame renders into and the next one samples as
-    /// its previous depth. Never null after a successful create().
-    rojoRHI::Texture& depthSlot(uint32_t slot);
-
-    /// The colour history of `slot`, which holds that frame's output whichever mode produced it.
-    rojoRHI::Texture& colorSlot(uint32_t slot);
-
-    /// Borrows the depth owner of slot 0 or 1 until resize replaces both pairs.
+    /// Borrows the depth owner of slot 0 or 1 until resize replaces both pairs. A temporal frame
+    /// renders into its slot and the next frame samples it as the previous depth.
     const engine::GpuTexture& depthTexture(uint32_t slot) const;
-    /// Borrows the colour-history owner of slot 0 or 1 on depthTexture() lifetime terms.
+    /// Borrows the colour-history owner of slot 0 or 1 on depthTexture() lifetime terms. It holds
+    /// that frame's output whichever reconstruction mode produced it.
     const engine::GpuTexture& colorTexture(uint32_t slot) const;
 
     /// Imports the depth of `slot` with the use the last frame to touch it left it in, read from
     /// the graph's texture state table. The renderer leaves the frame's own slot as a shader read,
-    /// because the depth is public through Renderer::depthTarget() and a caller may sample it after
-    /// this graph.
+    /// because the depth is public through Renderer::depthTexture() and a caller may sample it
+    /// after this graph.
     GraphTexture importDepth(RenderGraph& graph, uint32_t slot);
 
     /// Imports the colour history of `slot` with the use the last frame to touch it left it in,

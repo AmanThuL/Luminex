@@ -8,57 +8,72 @@
 TEST_CASE("CPU buffer uploads preserve surrounding bytes and reach GPU reads",
           "[gpu][scene-tables]") {
     using namespace rojoRHI;
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device);
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
     std::array<uint8_t, 64> initial{};
     initial.fill(0xA5);
-    auto upload = (*device)->createBuffer({.size = initial.size(),
-                                           .cpuReadback = true,
-                                           .cpuWrite = true,
-                                           .label = "lmx.test.upload.source"},
-                                          initial.data());
+    auto upload = lmx::engine::GpuBuffer::create(*device,
+                                                 {.size = initial.size(),
+                                                  .cpuReadback = true,
+                                                  .cpuWrite = true,
+                                                  .label = "lmx.test.upload.source"},
+                                                 initial.data());
     INFO(errorOf(upload));
     REQUIRE(upload);
-    auto destination = (*device)->createBuffer(
+    auto destination = lmx::engine::GpuBuffer::create(
+        *device,
         {.size = initial.size(), .cpuReadback = true, .label = "lmx.test.upload.destination"},
         nullptr);
     INFO(errorOf(destination));
     REQUIRE(destination);
     const std::array<uint8_t, 7> patch{1, 19, 33, 47, 101, 203, 255};
     for (const uint64_t offset : {uint64_t{0}, uint64_t{23}, uint64_t{57}}) {
-        (*upload)->write(offset, patch.data(), patch.size());
+        upload->rhi().write(offset, patch.data(), patch.size());
         std::memcpy(initial.data() + offset, patch.data(), patch.size());
     }
     std::array<uint8_t, 64> cpu{};
-    (*upload)->readback(cpu.data(), cpu.size());
+    {
+        const auto bytes = lmx::render::readbackNow(
+            *gpu, *upload, lmx::render::BufferUse::ShaderRead, {0, cpu.size()});
+        std::memcpy(cpu.data(), bytes.data(), cpu.size());
+    }
     REQUIRE(cpu == initial);
-    auto& commands = (*device)->beginFrame();
+    auto gpuFrame1 = gpu->beginFrame();
+    auto& commands = gpuFrame1.commands;
     commands.beginCopyPass("lmx.test.upload.copy");
-    commands.copyBuffer(**upload, 0, **destination, 0, initial.size());
+    commands.copyBuffer(upload->rhi(), 0, destination->rhi(), 0, initial.size());
     commands.endCopyPass();
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
-    (*destination)->readback(cpu.data(), cpu.size());
+    gpu->submitAndEndFrame(gpuFrame1);
+    gpu->waitIdle();
+    {
+        const auto bytes = lmx::render::readbackNow(
+            *gpu, *destination, lmx::render::BufferUse::CopyDestination, {0, cpu.size()});
+        std::memcpy(cpu.data(), bytes.data(), cpu.size());
+    }
     REQUIRE(cpu == initial);
 
-    (*upload)->write(0, patch.data(), patch.size());
-    (*upload)->readback(cpu.data(), cpu.size());
+    upload->rhi().write(0, patch.data(), patch.size());
+    {
+        const auto bytes = lmx::render::readbackNow(
+            *gpu, *upload, lmx::render::BufferUse::CopySource, {0, cpu.size()});
+        std::memcpy(cpu.data(), bytes.data(), cpu.size());
+    }
     REQUIRE(cpu == initial);
 }
 
 //======================================================================================================================
 TEST_CASE("device-private placed buffers reject host upload permission", "[gpu][scene-tables]") {
     using namespace rojoRHI;
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device);
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
     const BufferDesc desc{.size = 256, .cpuWrite = true, .label = "lmx.test.upload.placed"};
-    const auto footprint = (*device)->bufferSizeAlign(desc);
-    auto heap = (*device)->createHeap({.size = footprint.size, .label = "lmx.test.upload.heap"});
+    const auto footprint = device->bufferSizeAlign(desc);
+    auto heap = device->createHeap({.size = footprint.size, .label = "lmx.test.upload.heap"});
     INFO(errorOf(heap));
     REQUIRE(heap);
-    auto buffer = (*device)->createPlacedBuffer(**heap, 0, desc);
+    auto buffer = device->createPlacedBuffer(**heap, 0, desc);
     REQUIRE_FALSE(buffer);
     REQUIRE(buffer.error().code == ErrorCode::InvalidDesc);
     REQUIRE(buffer.error().message.contains("cpuWrite"));
@@ -68,16 +83,16 @@ TEST_CASE("device-private placed buffers reject host upload permission", "[gpu][
 TEST_CASE("scene table structured-buffer ABI preserves every field and row stride",
           "[gpu][scene-tables]") {
     using namespace lmx;
-    auto device = rojoRHI::createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device);
-    auto library = (*device)->loadShaderLibrary("Shaders/SceneTableAbi");
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
+    auto library = gpu->loadShaderLibrary("SceneTableAbi");
     INFO(errorOf(library));
     REQUIRE(library);
-    auto pipeline = (*device)->createComputePipeline({.library = library->get(),
-                                                      .computeEntry = "computeMain",
-                                                      .threadsPerThreadgroup = {1, 1, 1},
-                                                      .label = "lmx.test.sceneTableAbi.pipeline"});
+    auto pipeline = device->createComputePipeline({.library = library->get(),
+                                                   .computeEntry = "computeMain",
+                                                   .threadsPerThreadgroup = {1, 1, 1},
+                                                   .label = "lmx.test.sceneTableAbi.pipeline"});
     INFO(errorOf(pipeline));
     REQUIRE(pipeline);
     std::array<engine::InstanceRow, 2> instances{};
@@ -128,13 +143,13 @@ TEST_CASE("scene table structured-buffer ABI preserves every field and row strid
                        .boundCentre = glm::vec3(-2.5f, 1.25f, 0.125f) + float(row),
                        .boundRadius = 8.875f + float(row)};
     }
-    auto instanceBuffer = (*device)->createBuffer(
+    auto instanceBuffer = device->createBuffer(
         {.size = sizeof(instances), .label = "lmx.test.sceneTableAbi.instances"}, instances.data());
-    auto materialBuffer = (*device)->createBuffer(
+    auto materialBuffer = device->createBuffer(
         {.size = sizeof(materials), .label = "lmx.test.sceneTableAbi.materials"}, materials.data());
-    auto meshBuffer = (*device)->createBuffer(
+    auto meshBuffer = device->createBuffer(
         {.size = sizeof(meshes), .label = "lmx.test.sceneTableAbi.meshes"}, meshes.data());
-    auto lightBuffer = (*device)->createBuffer(
+    auto lightBuffer = device->createBuffer(
         {.size = sizeof(lights), .label = "lmx.test.sceneTableAbi.lights"}, lights.data());
     REQUIRE(instanceBuffer);
     REQUIRE(materialBuffer);
@@ -155,26 +170,32 @@ TEST_CASE("scene table structured-buffer ABI preserves every field and row strid
         bytes += sizeof(engine::MeshRow);
         std::memcpy(bytes, &lights[row], sizeof(engine::LightRow));
     }
-    auto output = (*device)->createBuffer({.size = sizeof(expected),
-                                           .storageWrite = true,
-                                           .cpuReadback = true,
-                                           .label = "lmx.test.sceneTableAbi.output"},
-                                          nullptr);
+    auto output = lmx::engine::GpuBuffer::create(*device,
+                                                 {.size = sizeof(expected),
+                                                  .storageWrite = true,
+                                                  .cpuReadback = true,
+                                                  .label = "lmx.test.sceneTableAbi.output"},
+                                                 nullptr);
     REQUIRE(output);
-    auto& commands = (*device)->beginFrame();
+    auto gpuFrame2 = gpu->beginFrame();
+    auto& commands = gpuFrame2.commands;
     commands.beginComputePass("lmx.test.sceneTableAbi.read");
     commands.bindComputePipeline(**pipeline);
-    commands.bindStorageBuffer(0, **output, rojoRHI::StorageAccess::Write);
+    commands.bindStorageBuffer(0, output->rhi(), rojoRHI::StorageAccess::Write);
     commands.bindBuffer(engine::kSceneInstancesSlot, **instanceBuffer);
     commands.bindBuffer(engine::kSceneMaterialsSlot, **materialBuffer);
     commands.bindBuffer(engine::kSceneMeshesSlot, **meshBuffer);
     commands.bindBuffer(engine::kSceneLightsSlot, **lightBuffer);
     commands.dispatch(2, 1, 1);
     commands.endComputePass();
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->submitAndEndFrame(gpuFrame2);
+    gpu->waitIdle();
     decltype(expected) actual{};
-    (*output)->readback(actual.data(), sizeof(actual));
+    {
+        const auto bytes = lmx::render::readbackNow(
+            *gpu, *output, lmx::render::BufferUse::StorageWrite, {0, sizeof(actual)});
+        std::memcpy(actual.data(), bytes.data(), sizeof(actual));
+    }
     for (size_t index = 0; index < expected.size(); ++index) {
         INFO("ABI word " << index);
         REQUIRE(actual[index] == expected[index]);

@@ -243,20 +243,6 @@ lmx::Result<void> TemporalResolve::resize(uint32_t width, uint32_t height) {
 }
 
 //======================================================================================================================
-rojoRHI::Texture& TemporalResolve::depthSlot(uint32_t slot) {
-    LMX_ASSERT(slot < 2 && m_depth[slot],
-               "TemporalResolve::depthSlot: no such slot -- create() or resize() failed");
-    return m_depth[slot].rhi();
-}
-
-//======================================================================================================================
-rojoRHI::Texture& TemporalResolve::colorSlot(uint32_t slot) {
-    LMX_ASSERT(slot < 2 && m_color[slot],
-               "TemporalResolve::colorSlot: no such slot -- create() or resize() failed");
-    return m_color[slot].rhi();
-}
-
-//======================================================================================================================
 const engine::GpuTexture& TemporalResolve::depthTexture(uint32_t slot) const {
     LMX_ASSERT(slot < 2 && m_depth[slot],
                "TemporalResolve::depthSlot: no such slot -- create() or resize() failed");
@@ -273,14 +259,15 @@ const engine::GpuTexture& TemporalResolve::colorTexture(uint32_t slot) const {
 //======================================================================================================================
 GraphTexture TemporalResolve::importDepth(RenderGraph& graph, uint32_t slot) {
     static constexpr const char* kNames[2] = {"lmx.render.sceneDepth0", "lmx.render.sceneDepth1"};
-    return graph.importPersistentTexture(depthSlot(slot), rojoRHI::Format::D32Float, kNames[slot]);
+    return graph.importPersistentTexture(depthTexture(slot).rhi(), rojoRHI::Format::D32Float,
+                                         kNames[slot]);
 }
 
 //======================================================================================================================
 GraphTexture TemporalResolve::importColor(RenderGraph& graph, uint32_t slot) {
     static constexpr const char* kNames[2] = {"lmx.render.historyColor0",
                                               "lmx.render.historyColor1"};
-    return graph.importPersistentTexture(colorSlot(slot), rojoRHI::Format::RGBA16Float,
+    return graph.importPersistentTexture(colorTexture(slot).rhi(), rojoRHI::Format::RGBA16Float,
                                          kNames[slot]);
 }
 

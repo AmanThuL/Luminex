@@ -53,12 +53,6 @@ inline std::string describeSceneError(const AssetResult<T>& result) {
 
 //======================================================================================================================
 template <typename T>
-inline std::string describeSceneError(const rojoRHI::Result<T>& result) {
-    return result.has_value() ? std::string{} : result.error().message;
-}
-
-//======================================================================================================================
-template <typename T>
 inline std::string describeSceneError(const lmx::Result<T>& result) {
     return result.has_value() ? std::string{} : result.error().message;
 }
@@ -115,24 +109,6 @@ private:
 // SampleLevel-forcing entry point, independent of geometry or camera -- the same oracle the
 // deleted generateMipmaps GPU test used, repurposed here to compare two textures' mip content
 // directly.
-inline std::vector<uint8_t> readMipLevel1(rojoRHI::Device& device, rojoRHI::Texture& texture) {
-    auto destination = makeProbeTarget(device, "lmx.test.fallbackMipDestination");
-    REQUIRE(destination.has_value());
-    auto library = device.loadShaderLibrary("Shaders/SamplerSmoke");
-    REQUIRE(library.has_value());
-    auto pipeline = device.createGraphicsPipeline({.library = library->get(),
-                                                   .vertexEntry = "vertexMain",
-                                                   .fragmentEntry = "fragmentMipLevel1",
-                                                   .colorFormat = rojoRHI::Format::BGRA8Unorm,
-                                                   .label = "lmx.test.fallbackMipPipeline"});
-    REQUIRE(pipeline.has_value());
-    auto sampler = device.createSampler(
-        {.addressMode = rojoRHI::AddressMode::Clamp, .label = "lmx.test.fallbackMipSampler"});
-    REQUIRE(sampler.has_value());
-    return renderSampledImage(device, **pipeline, /*textureSlot=*/0, texture, **sampler,
-                              **destination);
-}
-
 //======================================================================================================================
 inline std::vector<uint8_t> readMipLevel1(GpuContext& gpu, const GpuTexture& texture) {
     auto destination = makeProbeTarget(gpu, "lmx.test.fallbackMipDestination");

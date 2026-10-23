@@ -64,10 +64,10 @@ using TemporalSlotUses = std::array<std::optional<TextureUse>, 4>;
 TemporalSlotUses forgetTemporalSlots(TextureStateTable& states, TemporalResolve& temporal) {
     TemporalSlotUses outgoing{};
     for (uint32_t slot = 0; slot < 2; ++slot) {
-        outgoing[slot] = states.find(temporal.depthSlot(slot));
-        outgoing[2 + slot] = states.find(temporal.colorSlot(slot));
-        states.forget(temporal.depthSlot(slot));
-        states.forget(temporal.colorSlot(slot));
+        outgoing[slot] = states.find(temporal.depthTexture(slot).rhi());
+        outgoing[2 + slot] = states.find(temporal.colorTexture(slot).rhi());
+        states.forget(temporal.depthTexture(slot).rhi());
+        states.forget(temporal.colorTexture(slot).rhi());
     }
     return outgoing;
 }
@@ -78,10 +78,10 @@ void restoreTemporalSlots(TextureStateTable& states, TemporalResolve& temporal,
                           const TemporalSlotUses& outgoing) {
     for (uint32_t slot = 0; slot < 2; ++slot) {
         if (outgoing[slot]) {
-            states.set(temporal.depthSlot(slot), *outgoing[slot]);
+            states.set(temporal.depthTexture(slot).rhi(), *outgoing[slot]);
         }
         if (outgoing[2 + slot]) {
-            states.set(temporal.colorSlot(slot), *outgoing[2 + slot]);
+            states.set(temporal.colorTexture(slot).rhi(), *outgoing[2 + slot]);
         }
     }
 }
@@ -329,8 +329,10 @@ lmx::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
         // The slots' contents went with the old textures, and the extent change resets history
         // anyway: a colour slot starts as the commit copy leaves it, a depth slot as sampled.
         for (uint32_t slot = 0; slot < 2; ++slot) {
-            m_textureStates.set(m_temporalResolve->colorSlot(slot), TextureUse::CopyDestination);
-            m_textureStates.set(m_temporalResolve->depthSlot(slot), TextureUse::ShaderRead);
+            m_textureStates.set(m_temporalResolve->colorTexture(slot).rhi(),
+                                TextureUse::CopyDestination);
+            m_textureStates.set(m_temporalResolve->depthTexture(slot).rhi(),
+                                TextureUse::ShaderRead);
         }
     }
     if (m_hzbStage) {

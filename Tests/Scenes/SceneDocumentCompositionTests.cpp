@@ -108,8 +108,9 @@ TEST_CASE("partial light CLI masks combine with authored document parameters",
 TEST_CASE("document pile edits preserve authored lights and other generator populations",
           "[gpu][scene-doc][composition]") {
     using namespace lmx;
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
     auto document = scenes::readCatalogDocument("light-lab");
     REQUIRE(document);
     const auto generatorNode = test::documentGeneratorNode(*document, "light-lab");
@@ -130,7 +131,7 @@ TEST_CASE("document pile edits preserve authored lights and other generator popu
         std::filesystem::current_path() / "SceneDocuments" / "light-ownership.scene.gltf";
     std::filesystem::create_directories(path.parent_path());
     REQUIRE(asset::saveSceneDocument(*document, path));
-    auto loaded = scenes::loadSceneDocument(**device, path);
+    auto loaded = scenes::loadSceneDocument(*device, path);
     REQUIRE(loaded);
     const auto id = *loaded->binding.nodes[authoredNode].light;
     const auto authored = *loaded->scene->light(id);
@@ -157,15 +158,16 @@ TEST_CASE("document pile edits preserve authored lights and other generator popu
             REQUIRE(loaded->binding.lightGeneratorNode.at(engine::sceneLightKey(added)) ==
                     generatorNode);
     }
-    (*device)->waitIdle();
+    gpu->waitIdle();
 }
 
 //======================================================================================================================
 TEST_CASE("document caster role survives binding with none and disabled roles supported",
           "[gpu][scene-doc][composition]") {
     using namespace lmx;
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
     for (int caster : {-1, 0, 1, 2}) {
         for (bool enabled : {false, true}) {
             auto document = scenes::readCatalogDocument("light-lab");
@@ -186,12 +188,12 @@ TEST_CASE("document caster role survives binding with none and disabled roles su
                 std::filesystem::current_path() / "SceneDocuments" / "caster.scene.gltf";
             std::filesystem::create_directories(path.parent_path());
             REQUIRE(asset::saveSceneDocument(*document, path));
-            auto loaded = scenes::loadSceneDocument(**device, path);
+            auto loaded = scenes::loadSceneDocument(*device, path);
             REQUIRE(loaded);
             REQUIRE(loaded->scene->shadowCaster ==
                     (caster < 0 ? std::optional<uint32_t>{} : caster));
-            (*device)->beginFrame();
-            REQUIRE(loaded->scene->prepareFrame((*device)->frameNumber()));
+            auto gpuFrame1 = gpu->beginFrame();
+            REQUIRE(loaded->scene->prepareFrame(gpu->frameNumber()));
             std::vector<engine::DrawItem> items;
             const auto view = render::buildSceneView(*loaded->scene, items, false);
             REQUIRE(view.shadowCaster == (enabled ? caster : -1));
@@ -201,8 +203,8 @@ TEST_CASE("document caster role survives binding with none and disabled roles su
                 if (int(role) == caster && !enabled)
                     REQUIRE(view.lights[role].strength == glm::vec3(0));
             }
-            (*device)->endFrame(nullptr);
-            (*device)->waitIdle();
+            gpu->submitAndEndFrame(gpuFrame1);
+            gpu->waitIdle();
         }
     }
 }
@@ -231,8 +233,9 @@ TEST_CASE("direct LightLab append reports shared capacity without mutating geome
 TEST_CASE("document missing directional roles stay inert in the rendered view",
           "[gpu][scene-doc][composition]") {
     using namespace lmx;
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
     auto document = scenes::readCatalogDocument("light-lab");
     REQUIRE(document);
     const auto generatorNode = test::documentGeneratorNode(*document, "light-lab");
@@ -250,33 +253,34 @@ TEST_CASE("document missing directional roles stay inert in the rendered view",
         std::filesystem::current_path() / "SceneDocuments" / "missing-roles.scene.gltf";
     std::filesystem::create_directories(path.parent_path());
     REQUIRE(asset::saveSceneDocument(*document, path));
-    auto loaded = scenes::loadSceneDocument(**device, path);
+    auto loaded = scenes::loadSceneDocument(*device, path);
     REQUIRE(loaded);
     REQUIRE_FALSE(loaded->scene->shadowCaster);
-    (*device)->beginFrame();
-    REQUIRE(loaded->scene->prepareFrame((*device)->frameNumber()));
+    auto gpuFrame2 = gpu->beginFrame();
+    REQUIRE(loaded->scene->prepareFrame(gpu->frameNumber()));
     std::vector<engine::DrawItem> items;
     const auto view = render::buildSceneView(*loaded->scene, items, false);
     REQUIRE(view.shadowCaster == -1);
     for (const auto& light : view.lights)
         REQUIRE(light.strength == glm::vec3(0));
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->submitAndEndFrame(gpuFrame2);
+    gpu->waitIdle();
 }
 
 //======================================================================================================================
 TEST_CASE("LightLab append preserves the saved material field and its bounds",
           "[gpu][scene-doc][composition][ux6-retirement]") {
     using namespace lmx;
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
     engine::Scene scene;
-    auto texture = engine::GpuTexture::create(**device, {.width = kSize,
-                                                         .height = kSize,
-                                                         .format = rojoRHI::Format::BGRA8Unorm,
-                                                         .renderTarget = true,
-                                                         .cpuReadback = true,
-                                                         .label = "UX6.saved-field-texture"});
+    auto texture = engine::GpuTexture::create(*device, {.width = kSize,
+                                                        .height = kSize,
+                                                        .format = rojoRHI::Format::BGRA8Unorm,
+                                                        .renderTarget = true,
+                                                        .cpuReadback = true,
+                                                        .label = "UX6.saved-field-texture"});
     REQUIRE(texture);
     const auto textureId = scene.addTexture(std::move(*texture));
     const auto materialId = scene.addMaterial({.diffuse = textureId, .roughness = 0.85f});
@@ -345,5 +349,5 @@ TEST_CASE("LightLab append preserves the saved material field and its bounds",
     REQUIRE(scene.boundingSphere == sphere);
     REQUIRE(scene.localLights().size() == 11);
     REQUIRE(scene.animation.lightTracks.size() == 2);
-    (*device)->waitIdle();
+    gpu->waitIdle();
 }

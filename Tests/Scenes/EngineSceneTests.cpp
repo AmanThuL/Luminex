@@ -15,14 +15,19 @@
 namespace {
 
 //======================================================================================================================
-std::vector<lmx::engine::InstanceRow> readSceneInstances(Scene& scene, rojoRHI::Device& device) {
-    device.beginFrame();
-    REQUIRE(scene.prepareFrame(device.frameNumber()));
+std::vector<lmx::engine::InstanceRow> readSceneInstances(Scene& scene, GpuContext& gpu) {
+    auto frame = gpu.beginFrame();
+    REQUIRE(scene.prepareFrame(gpu.frameNumber()));
     const auto tables = scene.tables();
-    device.endFrame(nullptr);
-    device.waitIdle();
+    gpu.submitAndEndFrame(frame);
+    gpu.waitIdle();
     std::vector<lmx::engine::InstanceRow> rows(tables.instanceCount);
-    tables.instances->rhi().readback(rows.data(), rows.size() * sizeof(lmx::engine::InstanceRow));
+    {
+        const auto bytes =
+            lmx::render::readbackNow(gpu, *tables.instances, lmx::render::BufferUse::ShaderRead,
+                                     {0, rows.size() * sizeof(lmx::engine::InstanceRow)});
+        std::memcpy(rows.data(), bytes.data(), rows.size() * sizeof(lmx::engine::InstanceRow));
+    }
     return rows;
 }
 
@@ -37,9 +42,10 @@ TEST_CASE("loadSponzaScene loads the fetched Sponza asset", "[gpu]") {
              "skipping the asset-gated pin");
     }
 
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    auto scene = lmx::test::loadCatalogScene(**device, "sponza");
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
+    auto scene = lmx::test::loadCatalogScene(*device, "sponza");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -84,9 +90,10 @@ TEST_CASE("loadHelmetScene loads the fetched DamagedHelmet asset", "[gpu]") {
              "it) -- skipping the asset-gated pin");
     }
 
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    auto scene = loadGltfScene(**device, path->string(), "Damaged Helmet");
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
+    auto scene = loadGltfScene(*device, path->string(), "Damaged Helmet");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -140,22 +147,23 @@ TEST_CASE("loadHelmetScene's unbaked fallback computes the same mip 1 the offlin
              "the asset-gated pin");
     }
 
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
 
-    auto bakedScene = loadGltfScene(**device, path->string(), "Damaged Helmet");
+    auto bakedScene = loadGltfScene(*device, path->string(), "Damaged Helmet");
     INFO(describeSceneError(bakedScene));
     REQUIRE(bakedScene.has_value());
     const lmx::engine::GpuTexture* bakedDiffuse =
         (*bakedScene)
             ->tryTexture(*(*bakedScene)->material((*bakedScene)->objects[0].material).diffuse);
     REQUIRE(bakedDiffuse != nullptr);
-    const std::vector<uint8_t> bakedMip1 = readMipLevel1(**device, bakedDiffuse->rhi());
+    const std::vector<uint8_t> bakedMip1 = readMipLevel1(*gpu, *bakedDiffuse);
 
     std::vector<uint8_t> fallbackMip1;
     {
         const TemporarilyHiddenDirectory hidden(bakedDir);
-        auto fallbackScene = loadGltfScene(**device, path->string(), "Damaged Helmet");
+        auto fallbackScene = loadGltfScene(*device, path->string(), "Damaged Helmet");
         INFO(describeSceneError(fallbackScene));
         REQUIRE(fallbackScene.has_value());
         const lmx::engine::GpuTexture* fallbackDiffuse =
@@ -163,7 +171,7 @@ TEST_CASE("loadHelmetScene's unbaked fallback computes the same mip 1 the offlin
                 ->tryTexture(
                     *(*fallbackScene)->material((*fallbackScene)->objects[0].material).diffuse);
         REQUIRE(fallbackDiffuse != nullptr);
-        fallbackMip1 = readMipLevel1(**device, fallbackDiffuse->rhi());
+        fallbackMip1 = readMipLevel1(*gpu, *fallbackDiffuse);
     }
 
     REQUIRE(bakedMip1.size() == fallbackMip1.size());
@@ -203,15 +211,16 @@ TEST_CASE("loadSponzaScene's full SceneView renders through Renderer without exh
     camera.nearZ = (*scene)->initialCamera.nearZ;
     camera.farZ = (*scene)->initialCamera.farZ;
 
-    rojoRHI::CommandList& commands = gpu->device().beginFrame();
-    REQUIRE((*scene)->prepareFrame(gpu->device().frameNumber()));
+    auto gpuFrame1 = gpu->beginFrame();
+    rojoRHI::CommandList& commands = gpuFrame1.commands;
+    REQUIRE((*scene)->prepareFrame(gpu->frameNumber()));
     std::vector<lmx::engine::DrawItem> items;
     const render::SceneView view = render::buildSceneView(**scene, items, /*wireframe=*/false);
     REQUIRE(items.size() == 25);
 
     (*renderer)->render(commands, camera, view);
-    gpu->device().endFrame(nullptr);
-    gpu->device().waitIdle();
+    gpu->submitAndEndFrame(gpuFrame1);
+    gpu->waitIdle();
 
     // The asset camera must produce pixels beyond the clear. The clear is authored in display
     // space and decoded once at pass declaration, so what lands in the target is that colour
@@ -220,7 +229,11 @@ TEST_CASE("loadSponzaScene's full SceneView renders through Renderer without exh
     const std::array<int, 3> clearBytes = lmx::test::displayBytes(
         {lmx::test::srgbDecode(0.05f), lmx::test::srgbDecode(0.07f), lmx::test::srgbDecode(0.10f)});
     std::vector<uint8_t> pixels(size_t{kProbeSize} * kProbeSize * 4);
-    (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
+    {
+        const auto bytes = lmx::render::readbackNow(*gpu, (*renderer)->colorTarget(),
+                                                    lmx::render::TextureUse::RenderTarget);
+        std::memcpy(pixels.data(), bytes.data(), pixels.size());
+    }
     bool sawNonClearPixel = false;
     for (size_t i = 0; i + 3 < pixels.size(); i += 4) {
         if (pixels[i] != clearBytes[2] || pixels[i + 1] != clearBytes[1] ||
@@ -311,13 +324,18 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
     view.boundingSphere = {0.0f, 0.0f, 0.0f,
                            spacing * static_cast<float>(distinctDiffuse.size()) + 2.0f};
 
-    rojoRHI::CommandList& commands = gpu->device().beginFrame();
-    (*renderer)->render(commands, camera, view.prepare(gpu->device()));
-    gpu->device().endFrame(nullptr);
-    gpu->device().waitIdle();
+    auto gpuFrame2 = gpu->beginFrame();
+    rojoRHI::CommandList& commands = gpuFrame2.commands;
+    (*renderer)->render(commands, camera, view.prepare(*gpu));
+    gpu->submitAndEndFrame(gpuFrame2);
+    gpu->waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kProbeSize} * kProbeSize * 4);
-    (*renderer)->colorTarget().rhi().readback(pixels.data(), pixels.size());
+    {
+        const auto bytes = lmx::render::readbackNow(*gpu, (*renderer)->colorTarget(),
+                                                    lmx::render::TextureUse::RenderTarget);
+        std::memcpy(pixels.data(), bytes.data(), pixels.size());
+    }
 
     const auto pixelAt = [&](uint32_t x, uint32_t y) {
         const size_t offset = (size_t{y} * kProbeSize + x) * 4;
@@ -431,9 +449,10 @@ TEST_CASE("loadMilkTruckScene loads the fetched CesiumMilkTruck asset with its w
              "it)");
     }
 
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    auto scene = loadGltfScene(**device, path->string(), "Milk Truck");
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
+    auto scene = loadGltfScene(*device, path->string(), "Milk Truck");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
     REQUIRE_FALSE((*scene)->objects.empty());
@@ -459,7 +478,7 @@ TEST_CASE("loadMilkTruckScene loads the fetched CesiumMilkTruck asset with its w
 
     // Nothing has moved yet, so every draw reprojects onto itself.
     std::vector<lmx::engine::DrawItem> items;
-    const auto rows = readSceneInstances(**scene, **device);
+    const auto rows = readSceneInstances(**scene, *gpu);
     render::buildSceneView(**scene, items, false);
     REQUIRE(items.size() == (*scene)->objects.size());
     for (const lmx::engine::DrawItem& item : items) {
@@ -473,7 +492,7 @@ TEST_CASE("loadMilkTruckScene loads the fetched CesiumMilkTruck asset with its w
     (*scene)->commitFrame();
     (*scene)->advanceAnimation(1.0 / 60.0);
     (*scene)->animate((*scene)->animationTime);
-    const auto movedRows = readSceneInstances(**scene, **device);
+    const auto movedRows = readSceneInstances(**scene, *gpu);
     render::buildSceneView(**scene, items, false);
     bool anyMoved = false;
     for (const lmx::engine::DrawItem& item : items) {
@@ -491,14 +510,15 @@ TEST_CASE("loadMilkTruckScene loads the fetched CesiumMilkTruck asset with its w
 // transforms, so the first frame draws the played pose and still reports no motion.
 TEST_CASE("loadGltfScene opens an animated file at the clip's t = 0, not its authored rest pose",
           "[scene][gpu]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
 
     const std::filesystem::path dir =
         std::filesystem::temp_directory_path() / "lmx-scene-animated-pose-test";
     const std::filesystem::path gltfPath = lmx::test::writeAnimatedQuadGltf(dir, "LINEAR");
 
-    auto scene = loadGltfScene(**device, gltfPath.string(), "AnimatedQuad");
+    auto scene = loadGltfScene(*device, gltfPath.string(), "AnimatedQuad");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
     REQUIRE((*scene)->objects.size() == 1);
@@ -508,7 +528,7 @@ TEST_CASE("loadGltfScene opens an animated file at the clip's t = 0, not its aut
     REQUIRE(near3(glm::vec3(clipAtZero[3]), glm::vec3(0.0f)));
 
     std::vector<lmx::engine::DrawItem> items;
-    const auto rows = readSceneInstances(**scene, **device);
+    const auto rows = readSceneInstances(**scene, *gpu);
     render::buildSceneView(**scene, items, false);
     REQUIRE(items.size() == 1);
     const auto& row = rows[items[0].instanceRow];
@@ -533,10 +553,11 @@ TEST_CASE("loadGltfScene runs authoring before finalize", "[scene][gpu]") {
              "it) -- skipping the asset-gated pin");
     }
 
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
     std::optional<LightId> authored;
-    auto scene = loadGltfScene(**device, path->string(), "DamagedHelmet",
+    auto scene = loadGltfScene(*device, path->string(), "DamagedHelmet",
                                [&authored](Scene& target) -> lmx::Result<void> {
                                    auto id = target.addLight(lmx::engine::LocalLight{});
                                    if (!id) {
@@ -603,20 +624,21 @@ TEST_CASE("Sponza authored rig preserves geometry rows and has no animation trac
     if (!findRepoAsset("Assets/Fetched/Sponza/Sponza.gltf")) {
         SKIP("Sponza asset not fetched");
     }
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
+    auto* device = &gpu->device();
+    REQUIRE(gpu);
     const auto path = lmx::scenes::catalogDocumentPath("sponza");
     REQUIRE(path);
-    auto loaded = lmx::scenes::loadSceneDocument(**device, *path);
+    auto loaded = lmx::scenes::loadSceneDocument(*device, *path);
     REQUIRE(loaded);
     auto& scene = *loaded->scene;
     lmx::app::SceneSession session;
     session.activate(*loaded, lmx::app::SceneActivationMotion::PreserveLoadedMotion);
-    const auto before = readSceneInstances(scene, **device);
+    const auto before = readSceneInstances(scene, *gpu);
     REQUIRE(scene.tables().liveLightCount == 16);
     REQUIRE(scene.tables().lights != nullptr);
     REQUIRE(session.setLocalLightRig(true));
-    const auto during = readSceneInstances(scene, **device);
+    const auto during = readSceneInstances(scene, *gpu);
     REQUIRE(scene.tables().liveLightCount > 0);
     REQUIRE(scene.tables().liveLightCount <= 32);
     REQUIRE(scene.animation.lightTracks.empty());
@@ -629,7 +651,7 @@ TEST_CASE("Sponza authored rig preserves geometry rows and has no animation trac
     session.stepAnimation();
     REQUIRE(scene.light(ids.front())->position == firstPosition);
     REQUIRE(session.setLocalLightRig(false));
-    const auto after = readSceneInstances(scene, **device);
+    const auto after = readSceneInstances(scene, *gpu);
     REQUIRE(scene.tables().liveLightCount == 0);
     REQUIRE(before.size() == after.size());
     REQUIRE(std::memcmp(before.data(), after.data(),

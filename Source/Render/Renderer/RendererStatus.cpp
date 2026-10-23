@@ -64,34 +64,9 @@ void Renderer::recordFrameStatus(const RendererFrameState& state) {
 }
 
 //======================================================================================================================
-rojoRHI::Buffer& Renderer::exposureBuffer() {
-    return m_exposureStage->buffer();
-}
-
-//======================================================================================================================
 const engine::GpuTexture& Renderer::colorTarget() {
     LMX_ASSERT(m_color, "Renderer::colorTarget: no color target -- create() failed");
     return m_color;
-}
-
-//======================================================================================================================
-rojoRHI::Texture& Renderer::hdrColorTarget() {
-    LMX_ASSERT(m_hdrColor, "Renderer::hdrColorTarget: no scene color target -- create() failed");
-    return m_hdrColor.rhi();
-}
-
-//======================================================================================================================
-rojoRHI::Texture& Renderer::depthTarget() {
-    LMX_ASSERT(m_temporalResolve != nullptr,
-               "Renderer::depthTarget: no depth target -- create() failed");
-    return m_temporalResolve->depthSlot(m_currentSlot);
-}
-
-//======================================================================================================================
-rojoRHI::Texture* Renderer::historyTarget() {
-    LMX_ASSERT(m_temporalResolve != nullptr,
-               "Renderer::historyTarget: no history -- create() failed");
-    return &m_temporalResolve->colorSlot(m_currentSlot);
 }
 
 //======================================================================================================================
