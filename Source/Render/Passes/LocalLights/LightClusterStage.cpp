@@ -58,7 +58,7 @@ void LightClusterStage::registerLayoutsForCapture() {
 //======================================================================================================================
 lmx::Result<std::unique_ptr<LightClusterStage>> LightClusterStage::create(engine::GpuContext& gpu) {
     rojoRHI::Device& device = gpu.device();
-    std::unique_ptr<LightClusterStage> self(new LightClusterStage(device));
+    std::unique_ptr<LightClusterStage> self(new LightClusterStage(gpu));
     constexpr std::array names{"LightClusterCount", "LightClusterScan", "LightClusterFill"};
     // The scan is a single thread on purpose: 3,456 counts summed in froxel order is what
     // makes every range and every counter a function of the declarations alone.
@@ -148,11 +148,12 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rojoRHI::Comm
          .perClusterCap = m_perClusterCap,
          .globalCapacity = m_globalCapacity,
          .sliceDepth = inputs.sliceDepth});
-    m_pending.push_back({.frameNumber = inputs.frameNumber,
-                         .captureLists = inputs.captureLists,
-                         .grid = &slot.grid,
-                         .indices = &slot.indices,
-                         .counters = &slot.counters});
+    m_pending.push_back({.frameNumber = inputs.frameNumber, .captureLists = inputs.captureLists});
+    const auto tickets = m_pending.back().tickets;
+    const bool captureLists = inputs.captureLists;
+    const engine::GpuBuffer* const gridOwner = &slot.grid;
+    const engine::GpuBuffer* const indexOwner = &slot.indices;
+    const engine::GpuBuffer* const counterOwner = &slot.counters;
 
     const auto grid =
         importPaced(graph, slot.grid.rhi(), "lmx.light.grid",
@@ -204,6 +205,12 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rojoRHI::Comm
             commands.bindStorageBuffer(kGridSlot, records, rojoRHI::StorageAccess::Write);
             commands.bindStorageBuffer(kCountersSlot, totals, rojoRHI::StorageAccess::Write);
             commands.dispatch(1, 1, 1);
+            tickets->counters = recordReadback(m_gpu, commands, *counterOwner,
+                                               BufferUse::StorageWrite, wholeBuffer(*counterOwner));
+            if (captureLists) {
+                tickets->grid = recordReadback(m_gpu, commands, *gridOwner, BufferUse::StorageWrite,
+                                               wholeBuffer(*gridOwner));
+            }
         });
     const auto gridBuilt = nextVersion(grid);
     const auto countersWritten = nextVersion(countersReset);
@@ -224,6 +231,12 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rojoRHI::Comm
             commands.bindStorageBuffer(kGridSlot, records, rojoRHI::StorageAccess::Read);
             commands.bindStorageBuffer(kIndicesSlot, list, rojoRHI::StorageAccess::Write);
             commands.dispatch(groups, 1, 1);
+            // The whole list: only the retired counters say how much of it is defined.
+            if (captureLists) {
+                tickets->indices =
+                    recordReadback(m_gpu, commands, *indexOwner, BufferUse::StorageWrite,
+                                   wholeBuffer(*indexOwner));
+            }
         });
     const auto listFilled = nextVersion(indices);
 

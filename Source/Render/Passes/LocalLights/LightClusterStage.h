@@ -8,6 +8,7 @@
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Gpu/GpuBuffer.h"
 #include "Engine/Gpu/GpuContext.h"
+#include "Render/Gpu/Readback.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/LocalLights/LightClusters.h"
 
@@ -85,7 +86,7 @@ public:
     std::vector<RetiredLightClusters> takeRetired();
 
 private:
-    explicit LightClusterStage(rojoRHI::Device& device) : m_device(device) {}
+    explicit LightClusterStage(engine::GpuContext& gpu) : m_gpu(gpu) {}
 
     // One paced set of owned buffers. `used` is what says a later frame's import must seed the
     // previous access, exactly as GpuVisibility's slots do.
@@ -94,15 +95,22 @@ private:
         bool used = false;
         bool shaderRead = false;
     };
+    // Recorded by the passes that write each buffer, after the write, and shared with the pending
+    // entry. A ticket names the buffer the frame wrote, never its owner. The grid and index
+    // tickets exist only when the frame captures its lists; a ticket stays empty when its graph
+    // never executed.
+    struct Tickets {
+        std::optional<ReadbackTicket> grid, indices, counters;
+    };
     struct Pending {
         uint64_t frameNumber = 0;
         bool captureLists = false;
-        const engine::GpuBuffer *grid = nullptr, *indices = nullptr, *counters = nullptr;
+        std::shared_ptr<Tickets> tickets = std::make_shared<Tickets>();
     };
 
     RetiredLightClusters readback(const Pending& pending) const;
 
-    rojoRHI::Device& m_device;
+    engine::GpuContext& m_gpu;
     std::array<engine::GpuOwned<rojoRHI::ShaderLibrary>, 3> m_libraries;
     std::array<engine::GpuOwned<rojoRHI::ComputePipeline>, 3> m_pipelines;
     std::array<Slot, 3> m_slots;

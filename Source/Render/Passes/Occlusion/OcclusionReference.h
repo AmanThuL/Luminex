@@ -7,6 +7,7 @@
 #include "Engine/Gpu/GpuBuffer.h"
 #include "Engine/Gpu/GpuContext.h"
 #include "Engine/Gpu/GpuTexture.h"
+#include "Render/Gpu/Readback.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/Occlusion/OcclusionCheck.h"
 #include "Render/Renderer/SceneView.h"
@@ -51,7 +52,11 @@ private:
         uint64_t frameNumber = 0, sceneGeneration = 0;
         uint32_t width = 0, height = 0;
         bool strict = false;
-        const engine::GpuBuffer* buffer = nullptr;
+        // Recorded by the copy pass after it fills the buffer, and shared with that pass; it names
+        // the buffer the frame wrote, never the slot's owner, and stays empty when the graph never
+        // executed.
+        std::shared_ptr<std::optional<ReadbackTicket>> ticket =
+            std::make_shared<std::optional<ReadbackTicket>>();
         std::vector<OcclusionCheckObservation> observations;
         uint64_t invalidPixels = 0;
     };

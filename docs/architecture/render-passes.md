@@ -56,7 +56,12 @@ bind the scene tables, and `encodeDrawRuns`, the direct or indirect draw-run loo
 `Source/Render/Gpu/Readback.h` is the one way Luminex reads GPU results back, in two forms. The
 recorded form, `recordReadback`, runs inside the frame that writes a buffer or texture and returns
 a `ReadbackTicket` (the resource, a `BufferRegion`, the frame number); the caller keeps its
-frame-number retirement and calls `resolve` with the ticket once that frame has retired. The
+frame-number retirement and calls `resolve` with the ticket once that frame has retired. A ticket
+names the object the owner held when it was recorded, not the owner, because an owner can take a
+new object while the readback is pending (draw-list growth does). A buffer resolve may read just
+the region's leading bytes when the retired frame says how many are defined. `GpuVisibility`,
+`LightClusterStage` and `OcclusionReference` record their tickets inside the passes that write each
+buffer, after the write; headless screenshots read the display target through `readbackNow`. The
 immediate form, `readbackNow`, waits for the GPU to go idle and returns the bytes; it is valid only
 outside a frame. Both take the resource's current `TextureUse` or `BufferUse` (the graph's own
 vocabulary), so that the switch to RojoRHI v2, which has no blocking readback, can record the

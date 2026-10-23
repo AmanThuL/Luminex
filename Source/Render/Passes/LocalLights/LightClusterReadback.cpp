@@ -13,8 +13,15 @@ namespace lmx::render {
 //======================================================================================================================
 RetiredLightClusters LightClusterStage::readback(const Pending& pending) const {
     RetiredLightClusters result{.frameNumber = pending.frameNumber};
+    const Tickets& tickets = *pending.tickets;
+    // Resolves `ticket` into `values`; an empty ticket (a graph that never ran) leaves them zero.
+    auto resolveInto = [this](const std::optional<ReadbackTicket>& ticket, auto& values) {
+        if (ticket) {
+            resolve(m_gpu, *ticket, resolveBytes(std::span(values)));
+        }
+    };
     std::array<uint32_t, kLightClusterCounterWords> words{};
-    pending.counters->rhi().readback(words.data(), sizeof(words));
+    resolveInto(tickets.counters, words);
     result.counters = {.candidates = words[0],
                        .assigned = words[1],
                        .droppedPerCluster = words[2],
@@ -25,14 +32,13 @@ RetiredLightClusters LightClusterStage::readback(const Pending& pending) const {
         return result;
     }
     result.grid.resize(kClusterCount);
-    pending.grid->rhi().readback(result.grid.data(), result.grid.size() * sizeof(ClusterRecord));
+    resolveInto(tickets.grid, result.grid);
     // Only the leading `assigned` entries are defined; the rest of the list is whatever the
     // previous occupant of this paced slot left behind, so it is never handed out.
     const uint32_t assigned = std::min(result.counters.assigned, kLightClusterIndexCapacity);
     if (assigned > 0) {
         result.indices.resize(assigned);
-        pending.indices->rhi().readback(result.indices.data(),
-                                        result.indices.size() * sizeof(uint32_t));
+        resolveInto(tickets.indices, result.indices);
     }
     return result;
 }

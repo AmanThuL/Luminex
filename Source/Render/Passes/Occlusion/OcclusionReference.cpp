@@ -104,8 +104,7 @@ lmx::Result<void> OcclusionReference::declare(RenderGraph& graph, rojoRHI::Comma
                     .sceneGeneration = view.temporal.sceneGeneration,
                     .width = width,
                     .height = height,
-                    .strict = strictView,
-                    .buffer = &slot.buffer};
+                    .strict = strictView};
     for (const auto& item : view.items) {
         LMX_ASSERT(item.instanceRow < view.tables.instanceRows.size(),
                    "reference observations require canonical instance rows");
@@ -169,14 +168,19 @@ lmx::Result<void> OcclusionReference::declare(RenderGraph& graph, rojoRHI::Comma
     CopyPassDesc copy;
     copy.textureSources = {source};
     copy.bufferDestinations = {destination};
-    graph.addCopyPass(
-        "lmx.pass.occlusion.reference.readback", std::move(copy),
-        [&commands, source, destination, width, height](const PassResources& resources) {
-            auto& texture = lmx::render::texture(resources, source);
-            auto& buffer = lmx::render::buffer(resources, destination);
-            commands.copyTextureToBuffer(texture, {.width = width, .height = height}, buffer,
-                                         {.bytesPerRow = uint64_t{width} * 4});
-        });
+    const auto ticket = pending.ticket;
+    const engine::GpuBuffer* const owner = &slot.buffer;
+    graph.addCopyPass("lmx.pass.occlusion.reference.readback", std::move(copy),
+                      [this, &commands, source, destination, width, height, byteCount, ticket,
+                       owner](const PassResources& resources) {
+                          auto& texture = lmx::render::texture(resources, source);
+                          auto& buffer = lmx::render::buffer(resources, destination);
+                          commands.copyTextureToBuffer(texture, {.width = width, .height = height},
+                                                       buffer,
+                                                       {.bytesPerRow = uint64_t{width} * 4});
+                          *ticket = recordReadback(m_gpu, commands, *owner,
+                                                   BufferUse::CopyDestination, {0, byteCount});
+                      });
     graph.readbackBuffer(nextVersion(destination));
     slot.used = true;
     m_pending.push_back(std::move(pending));
@@ -189,7 +193,9 @@ void OcclusionReference::retireThrough(uint64_t completedFrame) {
         if (pending.frameNumber > completedFrame)
             continue;
         std::vector<uint8_t> bytes(uint64_t{pending.width} * pending.height * 4);
-        pending.buffer->rhi().readback(bytes.data(), bytes.size());
+        // An empty ticket (a graph that never ran) leaves every ID zero.
+        if (*pending.ticket)
+            resolve(m_gpu, **pending.ticket, bytes);
         std::unordered_map<uint32_t, size_t> rows;
         for (size_t i = 0; i < pending.observations.size(); ++i)
             rows.emplace(pending.observations[i].instanceRow, i);
@@ -204,7 +210,7 @@ void OcclusionReference::retireThrough(uint64_t completedFrame) {
             else
                 ++pending.observations[found->second].visiblePixels;
         }
-        pending.buffer = nullptr;
+        pending.ticket.reset();
         m_retired.push_back(std::move(pending));
     }
     std::erase_if(m_pending, [completedFrame](const auto& pending) {

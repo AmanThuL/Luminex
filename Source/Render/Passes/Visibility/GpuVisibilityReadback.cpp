@@ -39,8 +39,14 @@ VisibilityStatus GpuVisibility::readback(Pending& pending) {
     auto result = std::move(pending.status);
     result.isRetired = true;
     const auto& params = pending.params;
+    const Tickets& tickets = *pending.tickets;
+    // Resolves `ticket` into `values`; an empty ticket (a graph that never ran) leaves them zero.
+    auto resolveInto = [this](const std::optional<ReadbackTicket>& ticket, auto& values) {
+        if (ticket)
+            resolve(m_gpu, *ticket, resolveBytes(std::span(values)));
+    };
     std::array<uint32_t, 2 * kVisibilityCounterWords> rawCounters{};
-    pending.counters->readback(rawCounters.data(), sizeof(rawCounters));
+    resolveInto(tickets.counters, rawCounters);
     result.sceneCounters = decodeCounters(rawCounters.data());
     result.shadowCounters = decodeCounters(rawCounters.data() + kVisibilityCounterWords);
     result.submission.listBytes =
@@ -57,11 +63,11 @@ VisibilityStatus GpuVisibility::readback(Pending& pending) {
                                                  params.argumentCapacity)
                             : 0);
     if (!states.empty())
-        pending.states->readback(states.data(), states.size() * 4);
+        resolveInto(tickets.states, states);
     if (!rows.empty())
-        pending.rows->readback(rows.data(), rows.size() * 4);
+        resolveInto(tickets.rows, rows);
     if (!arguments.empty())
-        pending.arguments->readback(arguments.data(), arguments.size() * 20);
+        resolveInto(tickets.arguments, arguments);
     std::array<VisibilityResult*, 2> views{&result.scene, &result.shadow};
     for (uint32_t v = 0; v < 2; ++v) {
         auto& view = *views[v];
