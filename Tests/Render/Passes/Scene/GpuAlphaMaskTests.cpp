@@ -26,16 +26,17 @@ lmx::engine::MeshData cutoutQuad() {
 }
 
 //======================================================================================================================
-std::unique_ptr<Texture> cutoutTexture(Device& device) {
+lmx::engine::GpuTexture cutoutTexture(Device& device) {
     const std::array<uint8_t, 16> texels{255, 255, 255, 128, 255, 255, 255, 128,
                                          255, 255, 255, 255, 255, 255, 255, 255};
     const TextureMip mip{.data = texels.data(), .bytesPerRow = 16};
-    auto texture = device.createTexture({.width = 4,
-                                         .height = 1,
-                                         .format = Format::RGBA8Unorm_sRGB,
-                                         .sampled = true,
-                                         .label = "lmx.test.cutout.texture"},
-                                        std::span{&mip, 1});
+    auto texture = lmx::engine::GpuTexture::create(device,
+                                                   {.width = 4,
+                                                    .height = 1,
+                                                    .format = Format::RGBA8Unorm_sRGB,
+                                                    .sampled = true,
+                                                    .label = "lmx.test.cutout.texture"},
+                                                   std::span{&mip, 1});
     INFO(errorOf(texture));
     REQUIRE(texture);
     return std::move(*texture);
@@ -87,7 +88,7 @@ TEST_CASE("alpha mask shares color depth and motion coverage", "[gpu][alpha-mask
     auto texture = cutoutTexture(gpu->device());
     std::array<FixtureDrawItem, 2> items;
     items[0].mesh = &*mesh;
-    items[0].material.diffuse = texture.get();
+    items[0].material.diffuse = &texture;
     items[0].material.alphaMode = lmx::engine::AlphaMode::Mask;
     items[0].material.alphaCutoff = 0.3f;
     items[0].material.albedo = {0, 0, 0, 0.5f};
@@ -162,7 +163,7 @@ TEST_CASE("alpha mask shadows preserve holes and transformed UV coverage", "[gpu
     auto texture = cutoutTexture(gpu->device());
     std::array<FixtureDrawItem, 2> items;
     items[0].mesh = &*mesh;
-    items[0].material.diffuse = texture.get();
+    items[0].material.diffuse = &texture;
     items[0].material.alphaMode = lmx::engine::AlphaMode::Mask;
     items[0].material.alphaCutoff = 0.3f;
     items[0].material.albedo.a = 0.5f;

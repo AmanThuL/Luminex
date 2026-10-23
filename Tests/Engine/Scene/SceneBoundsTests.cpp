@@ -86,7 +86,7 @@ TEST_CASE("prepared bounds are canonical uploaded rows and static slots converge
     REQUIRE(tables.instanceRows.size() == 2);
     REQUIRE(tables.instanceCapacity >= 2);
     std::array<engine::InstanceRow, 2> uploaded;
-    tables.instances->readback(uploaded.data(), sizeof(uploaded));
+    tables.instances->rhi().readback(uploaded.data(), sizeof(uploaded));
     REQUIRE(std::memcmp(uploaded.data(), tables.instanceRows.data(), sizeof(uploaded)) == 0);
     REQUIRE(uploaded[0].worldBoundsMin.x == Catch::Approx(8.5f));
     REQUIRE(uploaded[0].worldBoundsMin.y == Catch::Approx(19.0f));

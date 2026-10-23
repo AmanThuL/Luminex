@@ -82,8 +82,8 @@ MeshId Scene::addMesh(engine::MeshData data, std::string_view label) {
 }
 
 //======================================================================================================================
-TextureId Scene::addTexture(std::unique_ptr<rojoRHI::Texture> texture) {
-    LMX_ASSERT(texture != nullptr, "scene texture must not be null");
+TextureId Scene::addTexture(GpuTexture texture) {
+    LMX_ASSERT(texture, "scene texture must not be null");
     const uint32_t slot = m_storage->textureIds.allocate();
     m_storage->textures.resize(m_storage->textureIds.size());
     m_storage->textures[slot] = std::move(texture);
@@ -286,10 +286,9 @@ const MaterialRecord* Scene::tryMaterial(MaterialId id) const {
 }
 
 //======================================================================================================================
-rojoRHI::Texture* Scene::tryTexture(TextureId id) const {
-    return resolves(id, m_storage->store, m_storage->textureIds)
-               ? m_storage->textures[id.slot].get()
-               : nullptr;
+const GpuTexture* Scene::tryTexture(TextureId id) const {
+    return resolves(id, m_storage->store, m_storage->textureIds) ? &m_storage->textures[id.slot]
+                                                                 : nullptr;
 }
 
 //======================================================================================================================

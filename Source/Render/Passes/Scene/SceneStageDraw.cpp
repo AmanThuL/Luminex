@@ -87,8 +87,10 @@ void SceneStage::draw(rojoRHI::CommandList& commands, const SceneView& view,
             {kVertexBufferSlot, engine::kSceneInstancesSlot, engine::kSceneMaterialsSlot});
     }
 
+    rojoRHI::Buffer* const sceneIndices =
+        view.tables.indices ? &view.tables.indices->rhi() : nullptr;
     encodeDrawRuns(
-        commands, {inputs.draws, view.tables.indices, opaquePipeline},
+        commands, {inputs.draws, sceneIndices, opaquePipeline},
         [&](const DrawRun& run, const auto& bindPipeline) -> const engine::DrawItem& {
             const engine::DrawItem& item = view.items[run.itemIndex];
             const bool masked = item.alphaMode == engine::AlphaMode::Mask;
@@ -99,21 +101,22 @@ void SceneStage::draw(rojoRHI::CommandList& commands, const SceneView& view,
             bindPipeline(*pipeline);
             LMX_ASSERT(item.instanceRow < view.tables.instanceCount,
                        "draw instance must name a current table row");
-            commands.bindTexture(kDiffuseTextureSlot,
-                                 item.diffuse != nullptr ? *item.diffuse : *inputs.whiteTexture);
+            commands.bindTexture(kDiffuseTextureSlot, item.diffuse != nullptr
+                                                          ? item.diffuse->rhi()
+                                                          : *inputs.whiteTexture);
             commands.bindTexture(kNormalTextureSlot, item.normalMap != nullptr
-                                                         ? *item.normalMap
+                                                         ? item.normalMap->rhi()
                                                          : *inputs.flatNormalTexture);
             // The shared white fallback lets each factor pass through unchanged when a
             // material carries no map -- white is the identity for all three.
             commands.bindTexture(kMetallicRoughnessTextureSlot, item.metallicRoughness != nullptr
-                                                                    ? *item.metallicRoughness
+                                                                    ? item.metallicRoughness->rhi()
                                                                     : *inputs.whiteTexture);
             commands.bindTexture(kOcclusionTextureSlot, item.occlusion != nullptr
-                                                            ? *item.occlusion
+                                                            ? item.occlusion->rhi()
                                                             : *inputs.whiteTexture);
             commands.bindTexture(kEmissiveTextureSlot, item.emissiveMap != nullptr
-                                                           ? *item.emissiveMap
+                                                           ? item.emissiveMap->rhi()
                                                            : *inputs.whiteTexture);
 
             return item;
@@ -146,7 +149,7 @@ void SceneStage::draw(rojoRHI::CommandList& commands, const SceneView& view,
         // slot, so it is bound here rather than with the pass's shared set.
         commands.bindTexture(kSkyTextureSlot, *view.skyCubemap);
         commands.bindFrameData(kPassUniformsSlot, sky);
-        commands.drawIndexed(*view.tables.indices, view.skySphere->indexCount,
+        commands.drawIndexed(view.tables.indices->rhi(), view.skySphere->indexCount,
                              view.skySphere->firstIndex);
     }
 }

@@ -12,10 +12,8 @@
 namespace lmx::engine {
 
 //======================================================================================================================
-asset::AssetResult<std::unique_ptr<rojoRHI::Texture>> createTextureFromDds(rojoRHI::Device& device,
-                                                                           std::string_view path,
-                                                                           bool srgb,
-                                                                           std::string_view label) {
+asset::AssetResult<GpuTexture> createTextureFromDds(rojoRHI::Device& device, std::string_view path,
+                                                    bool srgb, std::string_view label) {
     asset::AssetResult<asset::DdsImage> image = asset::loadDds(path);
     if (!image) {
         return std::unexpected(image.error());
@@ -37,7 +35,7 @@ asset::AssetResult<std::unique_ptr<rojoRHI::Texture>> createTextureFromDds(rojoR
         .sampled = true,
         .label = label,
     };
-    auto texture = device.createTexture(desc, image->mips);
+    auto texture = GpuTexture::create(device, desc, image->mips);
     if (!texture) {
         return std::unexpected(asset::AssetError{asset::AssetErrorCode::UploadFailed,
                                                  std::move(texture.error().message)});

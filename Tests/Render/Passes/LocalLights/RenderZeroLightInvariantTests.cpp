@@ -145,11 +145,19 @@ std::vector<DeclaredSnapshot> zeroLightReplay(bool switches, bool highWater,
                                             .doubleSided = true}}};
     std::array<engine::MaterialRow, 2> materials{};
     materials[1].flags = engine::kMaterialMasked | engine::kMaterialDoubleSided;
-    FakeDevice::BufferObject vertices(3 * 64);
-    FakeDevice::BufferObject indices(3 * sizeof(uint32_t));
-    FakeDevice::BufferObject meshBuffer(sizeof(mesh), &mesh);
-    FakeDevice::BufferObject instanceBuffer(sizeof(instances), instances.data());
-    FakeDevice::BufferObject materialBuffer(sizeof(materials), materials.data());
+    const auto makeBuffer = [&device](uint64_t size, const void* data, std::string_view label) {
+        auto buffer = engine::GpuBuffer::create(device, {.size = size, .label = label}, data);
+        REQUIRE(buffer);
+        return std::move(*buffer);
+    };
+    const engine::GpuBuffer vertices = makeBuffer(3 * 64, nullptr, "test.zeroLight.vertices");
+    const engine::GpuBuffer indices =
+        makeBuffer(3 * sizeof(uint32_t), nullptr, "test.zeroLight.indices");
+    const engine::GpuBuffer meshBuffer = makeBuffer(sizeof(mesh), &mesh, "test.zeroLight.meshes");
+    const engine::GpuBuffer instanceBuffer =
+        makeBuffer(sizeof(instances), instances.data(), "test.zeroLight.instances");
+    const engine::GpuBuffer materialBuffer =
+        makeBuffer(sizeof(materials), materials.data(), "test.zeroLight.materials");
     FakeDevice::TextureObject sky({.width = 1,
                                    .height = 1,
                                    .format = rojoRHI::Format::RGBA8Unorm,
@@ -176,7 +184,8 @@ std::vector<DeclaredSnapshot> zeroLightReplay(bool switches, bool highWater,
     view.temporal.reconstruction = reconstruction;
     view.temporal.renderScale = scale;
     std::array<engine::LightRow, 4> emptyRows{};
-    FakeDevice::BufferObject oldLightTable(sizeof(emptyRows), emptyRows.data());
+    const engine::GpuBuffer oldLightTable =
+        makeBuffer(sizeof(emptyRows), emptyRows.data(), "test.zeroLight.lights");
     if (highWater) {
         view.tables.lightRowCount = emptyRows.size();
         view.tables.lightRows = emptyRows;

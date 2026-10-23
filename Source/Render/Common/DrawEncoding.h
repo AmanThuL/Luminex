@@ -21,9 +21,9 @@ struct SceneTableSlots {
 
 inline void bindSceneTables(rojoRHI::CommandList& commands, const engine::SceneTables& tables,
                             const SceneTableSlots& slots) {
-    commands.bindBuffer(slots.vertices, *tables.vertices);
-    commands.bindBuffer(slots.instances, *tables.instances);
-    commands.bindBuffer(slots.materials, *tables.materials);
+    commands.bindBuffer(slots.vertices, tables.vertices->rhi());
+    commands.bindBuffer(slots.instances, tables.instances->rhi());
+    commands.bindBuffer(slots.materials, tables.materials->rhi());
 }
 
 struct DrawEncodingInputs {

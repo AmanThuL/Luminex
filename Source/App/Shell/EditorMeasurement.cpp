@@ -166,8 +166,8 @@ void EditorShell::recordMeasurementFrame(uint64_t frameId, double waitMs, double
     const auto& scene = m_session.scene();
     m_measurement.recordCpu(measurementCpuSample(
         next->sequenceFrame, waitMs, encodeMs, m_measurementVisibility, m_session.tableStats(),
-        record, scene.skySphere.has_value() && scene.skyCubemap != nullptr, m_measurementTemporal,
-        m_measurementLighting));
+        record, scene.skySphere.has_value() && static_cast<bool>(scene.skyCubemap),
+        m_measurementTemporal, m_measurementLighting));
 }
 //======================================================================================================================
 void EditorShell::retireMeasurementLighting(const render::LightingStatus& status) {

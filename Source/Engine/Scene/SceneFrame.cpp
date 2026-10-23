@@ -41,21 +41,23 @@ lmx::Result<void> Scene::finalize(rojoRHI::Device& device) {
     if (indices.empty()) {
         indices.resize(1);
     }
-    auto vertexBuffer = device.createBuffer({.size = vertices.size() * sizeof(engine::Vertex),
-                                             .storageRead = true,
-                                             .cpuReadback = true,
-                                             .label = "lmx.scene.vertices"},
-                                            vertices.data());
+    auto vertexBuffer = GpuBuffer::create(device,
+                                          {.size = vertices.size() * sizeof(engine::Vertex),
+                                           .storageRead = true,
+                                           .cpuReadback = true,
+                                           .label = "lmx.scene.vertices"},
+                                          vertices.data());
     if (!vertexBuffer) {
-        return std::unexpected(gpuError(vertexBuffer.error()));
+        return std::unexpected(std::move(vertexBuffer.error()));
     }
-    auto indexBuffer = device.createBuffer({.size = indices.size() * sizeof(uint32_t),
-                                            .storageRead = true,
-                                            .cpuReadback = true,
-                                            .label = "lmx.scene.indices"},
-                                           indices.data());
+    auto indexBuffer = GpuBuffer::create(device,
+                                         {.size = indices.size() * sizeof(uint32_t),
+                                          .storageRead = true,
+                                          .cpuReadback = true,
+                                          .label = "lmx.scene.indices"},
+                                         indices.data());
     if (!indexBuffer) {
-        return std::unexpected(gpuError(indexBuffer.error()));
+        return std::unexpected(std::move(indexBuffer.error()));
     }
     for (auto result :
          {reserveTable(device, storage.instanceTable,
@@ -283,18 +285,18 @@ engine::SceneTables Scene::tables() const {
     }
     LMX_ASSERT(storage.prepared, "scene tables require prepareFrame before use");
     const uint32_t slot = storage.stats.slot;
-    return {.vertices = storage.vertices.get(),
-            .indices = storage.indices.get(),
-            .meshes = storage.meshTable.buffers[slot].get(),
-            .instances = storage.instanceTable.buffers[slot].get(),
-            .materials = storage.materialTable.buffers[slot].get(),
+    return {.vertices = &storage.vertices,
+            .indices = &storage.indices,
+            .meshes = &storage.meshTable.buffers[slot],
+            .instances = &storage.instanceTable.buffers[slot],
+            .materials = &storage.materialTable.buffers[slot],
             .meshCount = static_cast<uint32_t>(storage.meshRows.size()),
             .instanceCount = static_cast<uint32_t>(storage.instances.size()),
             .materialCount = static_cast<uint32_t>(storage.materials.size()),
             .instanceRows = storage.instanceTable.shadow,
             .instanceCapacity = storage.instanceTable.capacity,
             .lights =
-                storage.lightTable.capacity != 0 ? storage.lightTable.buffers[slot].get() : nullptr,
+                storage.lightTable.capacity != 0 ? &storage.lightTable.buffers[slot] : nullptr,
             .lightRowCount = static_cast<uint32_t>(storage.localLightIds.size()),
             .lightCapacity = storage.lightTable.capacity,
             .lightRows = storage.lightTable.shadow,

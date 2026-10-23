@@ -211,9 +211,9 @@ TEST_CASE("MaterialLab's sphere grid conserves energy in a white furnace", "[gpu
     for (DirectionalLight& light : view.lights) {
         light.strength = {0.0f, 0.0f, 0.0f};
     }
-    view.irradiance = environment.irradiance.get();
-    view.prefilteredEnv = environment.prefilteredEnv.get();
-    view.dfgLut = environment.dfgLut.get();
+    view.irradiance = &environment.irradiance.rhi();
+    view.prefilteredEnv = &environment.prefilteredEnv.rhi();
+    view.dfgLut = &environment.dfgLut.rhi();
     view.boundingSphere = {0.0f, 0.0f, 0.0f, 6.0f};
     REQUIRE(view.exposureEv == 0.0f);
 

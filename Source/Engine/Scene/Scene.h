@@ -13,6 +13,7 @@
 #include "Engine/Asset/Model/GltfLoader.h"
 #include "Engine/Asset/Model/SceneAnimation.h"
 #include "Engine/Geometry/Mesh.h"
+#include "Engine/Gpu/GpuTexture.h"
 #include "Engine/Lights/DirectionalLight.h"
 #include "Engine/Lights/LocalLight.h"
 #include "Engine/Material/MaterialRecord.h"
@@ -108,7 +109,7 @@ public:
     /// Adds immutable CPU geometry before finalize; invalid indices are misuse.
     MeshId addMesh(engine::MeshData data, std::string_view label);
     /// Takes ownership of a non-null texture and assigns a fresh identity.
-    TextureId addTexture(std::unique_ptr<rojoRHI::Texture> texture);
+    TextureId addTexture(GpuTexture texture);
     /// Adds shared scene-linear factors, asserting every supplied texture identity resolves.
     MaterialId addMaterial(MaterialRecord material);
     /// Adds an instance with valid mesh/material handles and seeds its own previous pose.
@@ -165,7 +166,7 @@ public:
     /// Returns material data or null for an unresolvable identity.
     const MaterialRecord* tryMaterial(MaterialId id) const;
     /// Returns the owned texture or null for an unresolvable identity.
-    rojoRHI::Texture* tryTexture(TextureId id) const;
+    const GpuTexture* tryTexture(TextureId id) const;
     /// Returns an editable material, asserting the identity resolves.
     MaterialRecord& material(MaterialId id);
     /// Returns a material, asserting the identity resolves.
@@ -193,14 +194,14 @@ public:
     Aabb authoredBounds = emptyAabb(); ///< Combined build-time bounds; excludes sky geometry.
     glm::vec4 boundingSphere{0.f};     ///< World-space center in xyz and radius in w.
     std::optional<MeshId> skySphere;   ///< Geometry used by the sky pass without an instance.
-    std::unique_ptr<rojoRHI::Texture> skyCubemap; ///< Authored linear-radiance environment.
+    GpuTexture skyCubemap;             ///< Authored linear-radiance environment.
     /// Image-based lighting generated from the same authored sky radiance skyCubemap carries
     /// (Engine/Asset/Texture/Ibl.h): a cosine-convolved irradiance cube, a GGX-prefiltered radiance
     /// chain, and the split-sum DFG table. Published together with the sky by the scene-build path,
     /// so a scene that has a skyCubemap has all three.
-    std::unique_ptr<rojoRHI::Texture> irradianceMap;     ///< Diffuse irradiance cubemap.
-    std::unique_ptr<rojoRHI::Texture> prefilteredEnvMap; ///< GGX-prefiltered environment chain.
-    std::unique_ptr<rojoRHI::Texture> dfgLut; ///< Split-sum material response lookup table.
+    GpuTexture irradianceMap;     ///< Diffuse irradiance cubemap.
+    GpuTexture prefilteredEnvMap; ///< GGX-prefiltered environment chain.
+    GpuTexture dfgLut;            ///< Split-sum material response lookup table.
     /// Generated populations in append order; authored document lights never enter these lists.
     std::vector<LightLabPopulation> lightLabPopulations;
     SceneCamera initialCamera{};     ///< Camera pose restored when the scene becomes active.

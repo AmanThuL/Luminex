@@ -192,11 +192,11 @@ RendererFrameImports Renderer::importFrameResources(RenderGraph& graph,
         LMX_ASSERT(view.tables.indices && view.tables.meshes && view.tables.instances &&
                        view.tables.materials,
                    "scene table bindings must be complete");
-        sceneBuffers = {graph.importBuffer(*view.tables.vertices, "lmx.scene.vertices"),
-                        graph.importBuffer(*view.tables.indices, "lmx.scene.indices"),
-                        graph.importBuffer(*view.tables.meshes, "lmx.scene.meshes"),
-                        graph.importBuffer(*view.tables.instances, "lmx.scene.instances"),
-                        graph.importBuffer(*view.tables.materials, "lmx.scene.materials")};
+        sceneBuffers = {graph.importBuffer(view.tables.vertices->rhi(), "lmx.scene.vertices"),
+                        graph.importBuffer(view.tables.indices->rhi(), "lmx.scene.indices"),
+                        graph.importBuffer(view.tables.meshes->rhi(), "lmx.scene.meshes"),
+                        graph.importBuffer(view.tables.instances->rhi(), "lmx.scene.instances"),
+                        graph.importBuffer(view.tables.materials->rhi(), "lmx.scene.materials")};
     } else {
         LMX_ASSERT(view.items.empty() && !view.skySphere, "geometry needs scene table bindings");
     }
@@ -207,7 +207,7 @@ RendererFrameImports Renderer::importFrameResources(RenderGraph& graph,
         LMX_ASSERT(view.tables.lights != nullptr, "a live local light needs its paced light table");
         LMX_ASSERT(view.tables.lightRows.size() >= view.tables.lightRowCount,
                    "the borrowed light rows must cover every addressable row slot");
-        lightsImport = graph.importBuffer(*view.tables.lights, "lmx.scene.lights");
+        lightsImport = graph.importBuffer(view.tables.lights->rhi(), "lmx.scene.lights");
     }
 
     return {.shadowMap = shadowMap,

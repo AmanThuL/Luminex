@@ -380,10 +380,10 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
         commands.bindFrameData(kObjectSlot, lmx::engine::DrawUniforms{0});
         commands.bindBuffer(lmx::engine::kVisibleRowsSlot, **visibleRows);
         commands.bindFrameData(2, identity);
-        commands.bindBuffer(kVertexBufferSlot, *tables.vertices);
-        commands.bindBuffer(lmx::engine::kSceneInstancesSlot, *tables.instances);
-        commands.bindBuffer(lmx::engine::kSceneMaterialsSlot, *tables.materials);
-        commands.drawIndexed(*tables.indices, meshRow.indexCount, meshRow.firstIndex);
+        commands.bindBuffer(kVertexBufferSlot, tables.vertices->rhi());
+        commands.bindBuffer(lmx::engine::kSceneInstancesSlot, tables.instances->rhi());
+        commands.bindBuffer(lmx::engine::kSceneMaterialsSlot, tables.materials->rhi());
+        commands.drawIndexed(tables.indices->rhi(), meshRow.indexCount, meshRow.firstIndex);
         commands.endRenderPass();
     };
     depthPass(**unbiasedDepth, **unbiasedPipeline);

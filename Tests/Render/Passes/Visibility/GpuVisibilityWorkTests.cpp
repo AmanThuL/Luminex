@@ -14,8 +14,8 @@ struct WorkFixture {
     std::unique_ptr<render::GpuVisibility> visibility;
     std::unique_ptr<render::DrawSubmission> submission;
     std::unique_ptr<render::TransientPool> pool;
-    std::unique_ptr<rojoRHI::Buffer> meshes;
-    std::vector<std::unique_ptr<rojoRHI::Buffer>> instances;
+    lmx::engine::GpuBuffer meshes;
+    std::vector<lmx::engine::GpuBuffer> instances;
     std::vector<lmx::engine::InstanceRow> rows;
     std::vector<lmx::engine::DrawItem> items;
     render::FrustumPlanes planes;
@@ -34,8 +34,8 @@ struct WorkFixture {
         submission = std::make_unique<render::DrawSubmission>(*device);
         pool = std::make_unique<render::TransientPool>(*device);
         lmx::engine::MeshRow mesh{.firstIndex = 17, .indexCount = 9};
-        auto buffer = device->createBuffer(
-            {.size = sizeof(mesh), .label = "lmx.test.visibility.mesh"}, &mesh);
+        auto buffer = lmx::engine::GpuBuffer::create(
+            *device, {.size = sizeof(mesh), .label = "lmx.test.visibility.mesh"}, &mesh);
         REQUIRE(buffer);
         meshes = std::move(*buffer);
         planes.valid = true;
@@ -62,7 +62,8 @@ struct WorkFixture {
     //==================================================================================================================
     uint64_t submit(render::SubmissionMode mode, bool enabled = true,
                     std::optional<std::array<uint32_t, 3>> capacities = std::nullopt) {
-        auto input = device->createBuffer(
+        auto input = lmx::engine::GpuBuffer::create(
+            *device,
             {.size = std::max<size_t>(1, rows.size()) * sizeof(lmx::engine::InstanceRow),
              .label = "lmx.test.visibility.instances"},
             rows.empty() ? nullptr : rows.data());
@@ -77,8 +78,8 @@ struct WorkFixture {
         view.items = items;
         view.tables.instanceRows = rows;
         view.tables.instanceCapacity = static_cast<uint32_t>(rows.size());
-        view.tables.instances = instances.back().get();
-        view.tables.meshes = meshes.get();
+        view.tables.instances = &instances.back();
+        view.tables.meshes = &meshes;
         view.submission = mode;
         view.visibilityEnabled = enabled;
         view.classifyMode = render::ClassifyMode::Gpu;
@@ -91,8 +92,9 @@ struct WorkFixture {
         lastRows->write(0, rowSentinels.data(), lastRows->size());
         lastArgs->write(0, argSentinels.data(), lastArgs->size());
         render::RenderGraph graph(*pool);
-        const auto instanceHandle = graph.importBuffer(*instances.back(), "lmx.scene.instances");
-        const auto meshHandle = graph.importBuffer(*meshes, "lmx.scene.meshes");
+        const auto instanceHandle =
+            graph.importBuffer(instances.back().rhi(), "lmx.scene.instances");
+        const auto meshHandle = graph.importBuffer(meshes.rhi(), "lmx.scene.meshes");
         const auto rowHandle =
             graph.importBuffer(*lastRows, "lmx.draw.rows", render::BufferUse::StorageWrite);
         const auto argumentHandle =

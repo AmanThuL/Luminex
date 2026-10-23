@@ -71,15 +71,15 @@ struct Scene::Storage {
     /// light added post-finalize (unindexable, static by contract) cannot make it grow without
     /// bound across repeated runtime add/remove cycles.
     std::vector<LightId> lightCreationOrder;
-    std::vector<std::unique_ptr<rojoRHI::Texture>> textures;
-    std::unique_ptr<rojoRHI::Buffer> vertices;
-    std::unique_ptr<rojoRHI::Buffer> indices;
+    std::vector<GpuTexture> textures;
+    GpuBuffer vertices;
+    GpuBuffer indices;
     PacedTable<engine::InstanceRow> instanceTable;
     PacedTable<engine::MaterialRow> materialTable;
     PacedTable<engine::MeshRow> meshTable;
     PacedTable<engine::LightRow> lightTable;
     std::vector<RetiringBuffer> retiring;
-    std::vector<std::pair<uint64_t, std::unique_ptr<rojoRHI::Texture>>> retiringTextures;
+    std::vector<std::pair<uint64_t, GpuTexture>> retiringTextures;
     rojoRHI::Device* device = nullptr;
     uint64_t lastFrame = 0;
     uint64_t coverageEpoch = 0;

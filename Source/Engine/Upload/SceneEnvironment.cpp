@@ -22,7 +22,7 @@ namespace lmx::engine {
 
 //======================================================================================================================
 asset::AssetResult<void> attachEnvironment(rojoRHI::Device& device, Scene& scene,
-                                           std::unique_ptr<rojoRHI::Texture> skyCubemap,
+                                           GpuTexture skyCubemap,
                                            const asset::ibl::CpuCubemap& environment,
                                            std::string_view label, ibl::GenerationOptions options) {
     // The sky pass recentres the sphere and forces it to the far plane; only enclosure matters.
@@ -49,14 +49,16 @@ asset::AssetResult<void> attachNeutralEnvironment(rojoRHI::Device& device, Scene
     const rojoRHI::TextureMip face{.data = kNeutralSky.data(), .bytesPerRow = 4};
     const std::array<rojoRHI::TextureMip, 6> faces = {face, face, face, face, face, face};
     // The sRGB view decodes this authored display colour before lighting consumes it.
-    auto cubemap = device.createTexture({.width = 1,
-                                         .height = 1,
-                                         .format = rojoRHI::Format::RGBA8Unorm_sRGB,
-                                         .kind = rojoRHI::TextureKind::Cube,
-                                         .mipLevels = 1,
-                                         .sampled = true,
-                                         .label = std::string(label) + ".sky"},
-                                        faces);
+    const std::string skyLabel = std::string(label) + ".sky";
+    auto cubemap = GpuTexture::create(device,
+                                      {.width = 1,
+                                       .height = 1,
+                                       .format = rojoRHI::Format::RGBA8Unorm_sRGB,
+                                       .kind = rojoRHI::TextureKind::Cube,
+                                       .mipLevels = 1,
+                                       .sampled = true,
+                                       .label = skyLabel},
+                                      faces);
     if (!cubemap) {
         return std::unexpected(asset::AssetError{asset::AssetErrorCode::UploadFailed,
                                                  std::move(cubemap.error().message)});

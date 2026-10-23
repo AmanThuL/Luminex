@@ -252,11 +252,11 @@ void Scene::fillDrawItems(std::vector<engine::DrawItem>& items) const {
         const auto* mesh = tryMesh(object.mesh);
         LMX_ASSERT(mesh, "SceneObject mesh identity is invalid");
         const MaterialRecord& factors = material(object.material);
-        const auto texture = [this](std::optional<TextureId> id) -> rojoRHI::Texture* {
+        const auto texture = [this](std::optional<TextureId> id) -> const GpuTexture* {
             if (!id) {
                 return nullptr;
             }
-            rojoRHI::Texture* resolved = tryTexture(*id);
+            const GpuTexture* resolved = tryTexture(*id);
             LMX_ASSERT(resolved, "material texture identity is invalid");
             return resolved;
         };

@@ -182,18 +182,18 @@ GraphTexture ShadowStage::declare(RenderGraph& graph, rojoRHI::CommandList& comm
 
                 if (masked) {
                     commands.bindTexture(kDiffuseTextureSlot,
-                                         item.diffuse ? *item.diffuse : *inputs.whiteTexture);
+                                         item.diffuse ? item.diffuse->rhi() : *inputs.whiteTexture);
                     commands.bindSampler(kLinearSamplerSlot, *inputs.linearSampler);
                 }
                 if (inputs.draws.mode == SubmissionMode::Direct) {
                     commands.bindFrameData(engine::kDrawUniformsSlot,
                                            engine::DrawUniforms{run.firstEntry});
-                    commands.drawIndexed(*view.tables.indices, item.mesh.indexCount,
+                    commands.drawIndexed(view.tables.indices->rhi(), item.mesh.indexCount,
                                          item.mesh.firstIndex);
                 } else {
-                    commands.drawIndexedIndirect(*view.tables.indices, *inputs.draws.arguments,
-                                                 uint64_t{run.argumentIndex} *
-                                                     sizeof(rojoRHI::DrawIndexedIndirectArgs));
+                    commands.drawIndexedIndirect(
+                        view.tables.indices->rhi(), *inputs.draws.arguments,
+                        uint64_t{run.argumentIndex} * sizeof(rojoRHI::DrawIndexedIndirectArgs));
                 }
             }
         });

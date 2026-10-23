@@ -7,9 +7,9 @@
 
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Asset/Texture/Ibl.h"
+#include "Engine/Gpu/GpuTexture.h"
 #include <rojoRHI/RHI.h>
 
-#include <memory>
 #include <string_view>
 
 namespace lmx::engine::ibl {
@@ -17,16 +17,16 @@ namespace lmx::engine::ibl {
 /// The uploaded set a Scene holds. Cube textures are RGBA16Float (linear radiance above 1.0 must
 /// survive), the DFG table is RG16Float.
 struct IblTextures {
-    std::unique_ptr<rojoRHI::Texture> irradiance;     ///< Diffuse irradiance cubemap.
-    std::unique_ptr<rojoRHI::Texture> prefilteredEnv; ///< GGX-prefiltered environment chain.
-    std::unique_ptr<rojoRHI::Texture> dfgLut;         ///< Split-sum DFG lookup table.
+    GpuTexture irradiance;     ///< Diffuse irradiance cubemap.
+    GpuTexture prefilteredEnv; ///< GGX-prefiltered environment chain.
+    GpuTexture dfgLut;         ///< Split-sum DFG lookup table.
 };
 
 /// Uploads a single-level linear-light cubemap as an RGBA16Float sampled texture. Every component
 /// must be finite and representable by binary16. `label` is copied into the GPU object's debug
 /// label; `env` remains owned by the caller and need only stay alive for this call.
-lmx::Result<std::unique_ptr<rojoRHI::Texture>>
-uploadCubemap(rojoRHI::Device& device, const asset::ibl::CpuCubemap& env, std::string_view label);
+lmx::Result<GpuTexture> uploadCubemap(rojoRHI::Device& device, const asset::ibl::CpuCubemap& env,
+                                      std::string_view label);
 
 /// Generation quality may vary with the source without changing the shader's roughness levels.
 struct GenerationOptions {

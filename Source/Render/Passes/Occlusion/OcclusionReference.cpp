@@ -131,10 +131,10 @@ lmx::Result<void> OcclusionReference::declare(RenderGraph& graph, rojoRHI::Comma
                        view.tables.materials,
                    "reference draws require scene table bindings");
         pass.bufferReads = {
-            graph.importBuffer(*view.tables.vertices, "lmx.occlusion.reference.vertices"),
-            graph.importBuffer(*view.tables.indices, "lmx.occlusion.reference.indices"),
-            graph.importBuffer(*view.tables.instances, "lmx.occlusion.reference.instances"),
-            graph.importBuffer(*view.tables.materials, "lmx.occlusion.reference.materials")};
+            graph.importBuffer(view.tables.vertices->rhi(), "lmx.occlusion.reference.vertices"),
+            graph.importBuffer(view.tables.indices->rhi(), "lmx.occlusion.reference.indices"),
+            graph.importBuffer(view.tables.instances->rhi(), "lmx.occlusion.reference.instances"),
+            graph.importBuffer(view.tables.materials->rhi(), "lmx.occlusion.reference.materials")};
     }
     pass.color = ColorAttachment{.handle = ids, .clearColor = {0, 0, 0, 0}};
     pass.depth = DepthAttachment{
@@ -157,8 +157,8 @@ lmx::Result<void> OcclusionReference::declare(RenderGraph& graph, rojoRHI::Comma
                 commands.bindPipeline(*m_pipelines[(view.wireframe ? 4 : 0) + (masked ? 2 : 0) +
                                                    (doubleSided ? 1 : 0)]);
                 commands.bindFrameData(1, ReferenceParams{viewProjection, item.instanceRow});
-                commands.bindTexture(0, item.diffuse ? *item.diffuse : *m_white);
-                commands.drawIndexed(*view.tables.indices, item.mesh.indexCount,
+                commands.bindTexture(0, item.diffuse ? item.diffuse->rhi() : *m_white);
+                commands.drawIndexed(view.tables.indices->rhi(), item.mesh.indexCount,
                                      item.mesh.firstIndex);
             }
         });

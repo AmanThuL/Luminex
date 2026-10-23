@@ -207,19 +207,20 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
             commands.bindPipeline(
                 selectedOnly ? (doubleSided ? *m_doubleSidedPipeline : *m_maskPipeline)
                              : (doubleSided ? *m_doubleSidedDepthPipeline : *m_depthPipeline));
-            commands.bindTexture(0, item.diffuse ? *item.diffuse : *m_white);
+            commands.bindTexture(0, item.diffuse ? item.diffuse->rhi() : *m_white);
             const MaskParams params{
                 .viewProj = viewProjection, .instanceRow = item.instanceRow, .selected = 1.0f};
             commands.bindFrameData(1, params);
-            commands.drawIndexed(*view.tables.indices, item.mesh.indexCount, item.mesh.firstIndex);
+            commands.drawIndexed(view.tables.indices->rhi(), item.mesh.indexCount,
+                                 item.mesh.firstIndex);
         }
     };
     // Read-only aliases keep editor passes independent of Renderer's graph-local handles.
     const std::vector<GraphBuffer> sceneBuffers{
-        graph.importBuffer(*view.tables.vertices, "lmx.selection.vertices"),
-        graph.importBuffer(*view.tables.indices, "lmx.selection.indices"),
-        graph.importBuffer(*view.tables.instances, "lmx.selection.instances"),
-        graph.importBuffer(*view.tables.materials, "lmx.selection.materials")};
+        graph.importBuffer(view.tables.vertices->rhi(), "lmx.selection.vertices"),
+        graph.importBuffer(view.tables.indices->rhi(), "lmx.selection.indices"),
+        graph.importBuffer(view.tables.instances->rhi(), "lmx.selection.instances"),
+        graph.importBuffer(view.tables.materials->rhi(), "lmx.selection.materials")};
     PassDesc coverage;
     coverage.bufferReads = sceneBuffers;
     coverage.color = ColorAttachment{.handle = mask, .clearColor = {0, 0, 0, 0}};

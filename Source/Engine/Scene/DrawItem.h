@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "Engine/Gpu/GpuTexture.h"
 #include "Engine/Material/AlphaMode.h"
 #include "Engine/Scene/SceneTables.h"
 
@@ -23,11 +24,11 @@ struct DrawItem {
     uint64_t instanceIdentity = 0;
     uint32_t instanceRow = 0; ///< Stable instance slot; independent of draw-list position.
     MeshRow mesh;             ///< Range in the scene geometry pool.
-    rojoRHI::Texture* diffuse = nullptr;           ///< Null selects the white fallback.
-    rojoRHI::Texture* normalMap = nullptr;         ///< Null selects the flat-normal fallback.
-    rojoRHI::Texture* metallicRoughness = nullptr; ///< Null selects the white fallback.
-    rojoRHI::Texture* occlusion = nullptr;         ///< Null selects the white fallback.
-    rojoRHI::Texture* emissiveMap = nullptr;       ///< Null selects the white fallback.
+    const GpuTexture* diffuse = nullptr;           ///< Null selects the white fallback.
+    const GpuTexture* normalMap = nullptr;         ///< Null selects the flat-normal fallback.
+    const GpuTexture* metallicRoughness = nullptr; ///< Null selects the white fallback.
+    const GpuTexture* occlusion = nullptr;         ///< Null selects the white fallback.
+    const GpuTexture* emissiveMap = nullptr;       ///< Null selects the white fallback.
     AlphaMode alphaMode = AlphaMode::Opaque;       ///< Coverage pipeline selection.
     bool doubleSided = false;                      ///< Masked culling pipeline selection.
 };

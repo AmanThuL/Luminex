@@ -36,12 +36,13 @@ engine::Scene contributionScene(rojoRHI::Device& device) {
     const std::array<uint8_t, 16> texels{255, 255, 255, 0, 255, 255, 255, 255,
                                          255, 255, 255, 0, 255, 255, 255, 255};
     const rojoRHI::TextureMip mip{.data = texels.data(), .bytesPerRow = 16};
-    auto texture = device.createTexture({.width = 4,
-                                         .height = 1,
-                                         .format = rojoRHI::Format::RGBA8Unorm_sRGB,
-                                         .sampled = true,
-                                         .label = "lmx.test.visibility.cutout"},
-                                        std::span{&mip, 1});
+    auto texture = engine::GpuTexture::create(device,
+                                              {.width = 4,
+                                               .height = 1,
+                                               .format = rojoRHI::Format::RGBA8Unorm_sRGB,
+                                               .sampled = true,
+                                               .label = "lmx.test.visibility.cutout"},
+                                              std::span{&mip, 1});
     INFO(errorOf(texture));
     REQUIRE(texture);
     const auto cutout = result.addTexture(std::move(*texture));

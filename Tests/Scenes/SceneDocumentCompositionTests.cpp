@@ -271,7 +271,12 @@ TEST_CASE("LightLab append preserves the saved material field and its bounds",
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
     engine::Scene scene;
-    auto texture = makeProbeTarget(**device, "UX6.saved-field-texture");
+    auto texture = engine::GpuTexture::create(**device, {.width = kSize,
+                                                         .height = kSize,
+                                                         .format = rojoRHI::Format::BGRA8Unorm,
+                                                         .renderTarget = true,
+                                                         .cpuReadback = true,
+                                                         .label = "UX6.saved-field-texture"});
     REQUIRE(texture);
     const auto textureId = scene.addTexture(std::move(*texture));
     const auto materialId = scene.addMaterial({.diffuse = textureId, .roughness = 0.85f});
@@ -281,7 +286,7 @@ TEST_CASE("LightLab append preserves the saved material field and its bounds",
     scene.authoredBounds = {{-12, -4, -8}, {16, 10, 20}};
     scene.boundingSphere = {2, 3, 4, 30};
     const auto objects = scene.objects;
-    std::vector<const rojoRHI::Texture*> textures;
+    std::vector<const engine::GpuTexture*> textures;
     std::vector<engine::MaterialRecord> materials;
     std::vector<const engine::MeshRow*> meshes;
     for (const auto& object : objects) {

@@ -120,7 +120,7 @@ size_t selectionPasses(const CompiledFrameRecord& record) {
 }
 
 //======================================================================================================================
-std::unique_ptr<Texture> outlineCutout(Device& device) {
+lmx::engine::GpuTexture outlineCutout(Device& device) {
     // Half alpha times the authored 0.5 factor is below 0.3; full alpha times that factor survives.
     // Match the projected 16-pixel width so probes lie on texel centers, away from wrapped
     // linear-filter footprints that legitimately mix the first and last texel at a UV seam.
@@ -130,12 +130,13 @@ std::unique_ptr<Texture> outlineCutout(Device& device) {
         texels[texel * 4 + 3] = 128;
     }
     const TextureMip mip{.data = texels.data(), .bytesPerRow = 64};
-    auto texture = device.createTexture({.width = 16,
-                                         .height = 1,
-                                         .format = Format::RGBA8Unorm_sRGB,
-                                         .sampled = true,
-                                         .label = "lmx.test.selection.cutout"},
-                                        std::span{&mip, 1});
+    auto texture = lmx::engine::GpuTexture::create(device,
+                                                   {.width = 16,
+                                                    .height = 1,
+                                                    .format = Format::RGBA8Unorm_sRGB,
+                                                    .sampled = true,
+                                                    .label = "lmx.test.selection.cutout"},
+                                                   std::span{&mip, 1});
     INFO(errorOf(texture));
     REQUIRE(texture);
     return std::move(*texture);
@@ -258,7 +259,7 @@ TEST_CASE("selection outline respects masked foreground cutouts without tracing 
                      glm::scale(glm::mat4{1}, glm::vec3{1.5f, 1.5f, 1});
     items[1].previousModel = items[1].model;
     items[1].material.emissive = {0.4f, 0.1f, 0.1f};
-    items[1].material.diffuse = texture.get();
+    items[1].material.diffuse = &texture;
     items[1].material.alphaMode = lmx::engine::AlphaMode::Mask;
     items[1].material.albedo.a = 0.5f;
     items[1].material.alphaCutoff = 0.3f;
@@ -303,7 +304,7 @@ TEST_CASE("selection outline shares MASK factor cutoff transformed UV and double
     REQUIRE(mesh);
     auto texture = outlineCutout(gpu->device());
     auto item = outlineItem(*mesh);
-    item.material.diffuse = texture.get();
+    item.material.diffuse = &texture;
     item.material.alphaMode = lmx::engine::AlphaMode::Mask;
     item.material.albedo.a = 0.5f;
     item.material.alphaCutoff = 0.3f;

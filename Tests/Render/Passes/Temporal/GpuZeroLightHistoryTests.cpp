@@ -223,7 +223,7 @@ void compareHistories(lmx::engine::GpuContext& gpu, const char* sceneName,
                     for (size_t i = 0; i < buffers.size(); ++i) {
                         REQUIRE(buffers[i] != nullptr);
                         image[7 + i].resize(sizes[i]);
-                        buffers[i]->readback(image[7 + i].data(), sizes[i]);
+                        buffers[i]->rhi().readback(image[7 + i].data(), sizes[i]);
                     }
                     REQUIRE(hasHdrColorDetail(image[0]));
                     REQUIRE(finiteHalfComponents(image[0]));
@@ -315,16 +315,17 @@ TEST_CASE("zero-light requested modes preserve controlled GPU histories",
     for (size_t i = 0; i < maskTexels.size(); ++i)
         maskTexels[i] = ((i / 8 + i % 8) % 2) ? 0xffffffffu : 0x00ffffffu;
     const rojoRHI::TextureMip maskMip{.data = maskTexels.data(), .bytesPerRow = 8 * 4};
-    auto mask = gpu->device().createTexture({.width = 8,
-                                             .height = 8,
-                                             .format = rojoRHI::Format::RGBA8Unorm,
-                                             .sampled = true,
-                                             .label = "lmx.test.zeroLight.mask"},
-                                            std::span{&maskMip, 1});
+    auto mask = lmx::engine::GpuTexture::create(gpu->device(),
+                                                {.width = 8,
+                                                 .height = 8,
+                                                 .format = rojoRHI::Format::RGBA8Unorm,
+                                                 .sampled = true,
+                                                 .label = "lmx.test.zeroLight.mask"},
+                                                std::span{&maskMip, 1});
     REQUIRE(mask);
     auto items = twoCubeScene(*cube);
     items[1].material.alphaMode = lmx::engine::AlphaMode::Mask;
-    items[1].material.diffuse = mask->get();
+    items[1].material.diffuse = &*mask;
     const std::array disabled{lmx::engine::LocalLight{.range = 2.0f, .enabled = false}};
     FixtureSceneView fixture = litSceneView(items);
     fixture.skySphere = &*sky;

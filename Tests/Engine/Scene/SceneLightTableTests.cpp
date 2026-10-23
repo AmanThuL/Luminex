@@ -25,9 +25,9 @@ engine::LocalLight testLight(float x = 0.0f) {
 }
 
 //======================================================================================================================
-engine::LightRow readLightRow(rojoRHI::Buffer& buffer, uint32_t slot) {
+engine::LightRow readLightRow(const engine::GpuBuffer& buffer, uint32_t slot) {
     std::vector<engine::LightRow> rows(slot + 1);
-    buffer.readback(rows.data(), rows.size() * sizeof(engine::LightRow));
+    buffer.rhi().readback(rows.data(), rows.size() * sizeof(engine::LightRow));
     return rows[slot];
 }
 
@@ -273,7 +273,7 @@ TEST_CASE("Updating a local light marks its row dirty in every paced frame slot"
     }
     REQUIRE(scene.tableStats().rowsWritten == 0);
     REQUIRE(scene.updateLight(*id, testLight(7.0f)).has_value());
-    std::array<rojoRHI::Buffer*, 3> buffers{};
+    std::array<const engine::GpuBuffer*, 3> buffers{};
     for (uint32_t frame = 0; frame < 3; ++frame) {
         (*device)->beginFrame();
         REQUIRE(scene.prepareFrame((*device)->frameNumber()).has_value());
@@ -288,7 +288,7 @@ TEST_CASE("Updating a local light marks its row dirty in every paced frame slot"
     for (auto* buffer : buffers) {
         REQUIRE(buffer != nullptr);
         engine::LightRow row{};
-        buffer->readback(&row, sizeof(row));
+        buffer->rhi().readback(&row, sizeof(row));
         REQUIRE(row.position.x == 7.0f);
     }
     (*device)->beginFrame();
