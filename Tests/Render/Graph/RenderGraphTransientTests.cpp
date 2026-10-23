@@ -19,8 +19,8 @@ TEST_CASE("two transients whose lifetimes do not overlap share one placement", "
     REQUIRE(first.used);
     REQUIRE(first.firstPass == 0);
     REQUIRE(first.lastPass == 1);
-    REQUIRE(first.size == FakeDevice::kTextureAlignment);
-    REQUIRE(first.alignment == FakeDevice::kTextureAlignment);
+    REQUIRE(first.size == FakeTransientBackend::kTextureAlignment);
+    REQUIRE(first.alignment == FakeTransientBackend::kTextureAlignment);
     REQUIRE(first.offset == 0);
     REQUIRE_FALSE(first.aliases);
 
@@ -30,9 +30,9 @@ TEST_CASE("two transients whose lifetimes do not overlap share one placement", "
     REQUIRE(second.aliases);
     REQUIRE(second.offset == first.offset);
 
-    REQUIRE(record->debug.memory.requested == 2 * FakeDevice::kTextureAlignment);
-    REQUIRE(record->debug.memory.highWater == FakeDevice::kTextureAlignment);
-    REQUIRE(record->debug.memory.aliasSavings == FakeDevice::kTextureAlignment);
+    REQUIRE(record->debug.memory.requested == 2 * FakeTransientBackend::kTextureAlignment);
+    REQUIRE(record->debug.memory.highWater == FakeTransientBackend::kTextureAlignment);
+    REQUIRE(record->debug.memory.aliasSavings == FakeTransientBackend::kTextureAlignment);
     REQUIRE(record->debug.poolingEnabled);
 }
 
@@ -70,8 +70,8 @@ TEST_CASE("a transient taking another's bytes is barriered against it", "[render
 // must close both stage uses; keeping only the last declaration would leave half of that dispatch
 // outside the alias boundary.
 TEST_CASE("an alias boundary includes every use of the closing pass", "[render][graph]") {
-    FakeDevice device;
-    TransientPool pool(device);
+    FakeTransientBackend transients;
+    TransientPool pool(transients);
     FakeBuffer orderingBuffer{256, "ordering"};
     FakeTexture outputTexture{64, 64, "output"};
     RenderGraph graph(pool);
@@ -135,15 +135,15 @@ TEST_CASE("an alias boundary includes every use of the closing pass", "[render][
 // zero-footprint frame still reserves zero bytes so the slot gives back the heap the live feature
 // used the last time this frame-in-flight slot came around.
 TEST_CASE("a culled transient releases the frame slot heap", "[render][graph]") {
-    FakeDevice device;
-    TransientPool pool(device);
+    FakeTransientBackend transients;
+    TransientPool pool(transients);
 
-    device.frame = 1;
+    transients.frame = 1;
     pool.beginFrame();
-    REQUIRE(pool.reserve(FakeDevice::kTextureAlignment).has_value());
-    REQUIRE(pool.heapBytes() == FakeDevice::kTextureAlignment);
+    REQUIRE(pool.reserve(FakeTransientBackend::kTextureAlignment).has_value());
+    REQUIRE(pool.heapBytes() == FakeTransientBackend::kTextureAlignment);
 
-    device.frame = 1 + kTransientFrameSlots;
+    transients.frame = 1 + kTransientFrameSlots;
     pool.beginFrame();
 
     FakeTexture outputTexture{64, 64, "output"};
@@ -157,7 +157,7 @@ TEST_CASE("a culled transient releases the frame slot heap", "[render][graph]") 
     graph.exportTexture(nextVersion(output));
 
     RecordingCommandList commands;
-    const CompiledFrameRecord record = graph.execute(commands, device.frame);
+    const CompiledFrameRecord record = graph.execute(commands, transients.frame);
     REQUIRE(record.debug.transients.size() == 1);
     REQUIRE_FALSE(record.debug.transients[0].used);
     REQUIRE(record.debug.memory.highWater == 0);
@@ -168,8 +168,8 @@ TEST_CASE("a culled transient releases the frame slot heap", "[render][graph]") 
 // Lifetime disjointness is the precondition, not a preference: a transient still live when the next
 // one starts gets its own bytes, and the heap grows to hold both.
 TEST_CASE("two transients whose lifetimes overlap get separate placements", "[render][graph]") {
-    FakeDevice device;
-    TransientPool pool(device);
+    FakeTransientBackend transients;
+    TransientPool pool(transients);
     FakeTexture outTarget{64, 64, "out"};
     RenderGraph graph(pool);
     const GraphTexture first = graph.createTexture(kTransientColor, "lmx.transient.first");
@@ -198,9 +198,9 @@ TEST_CASE("two transients whose lifetimes overlap get separate placements", "[re
     REQUIRE(record.has_value());
 
     REQUIRE(record->debug.transients[0].offset == 0);
-    REQUIRE(record->debug.transients[1].offset == FakeDevice::kTextureAlignment);
+    REQUIRE(record->debug.transients[1].offset == FakeTransientBackend::kTextureAlignment);
     REQUIRE_FALSE(record->debug.transients[1].aliases);
-    REQUIRE(record->debug.memory.highWater == 2 * FakeDevice::kTextureAlignment);
+    REQUIRE(record->debug.memory.highWater == 2 * FakeTransientBackend::kTextureAlignment);
     REQUIRE(record->debug.memory.aliasSavings == 0);
 }
 
@@ -270,9 +270,9 @@ TEST_CASE("pooling off gives every transient its own bytes", "[render][graph]") 
     REQUIRE(withoutPooling->debug.schedule.passes == withPooling->debug.schedule.passes);
     REQUIRE_FALSE(withoutPooling->debug.poolingEnabled);
     REQUIRE_FALSE(withoutPooling->debug.transients[1].aliases);
-    REQUIRE(withoutPooling->debug.transients[1].offset == FakeDevice::kTextureAlignment);
+    REQUIRE(withoutPooling->debug.transients[1].offset == FakeTransientBackend::kTextureAlignment);
     REQUIRE(withoutPooling->debug.memory.requested == withPooling->debug.memory.requested);
-    REQUIRE(withoutPooling->debug.memory.highWater == 2 * FakeDevice::kTextureAlignment);
+    REQUIRE(withoutPooling->debug.memory.highWater == 2 * FakeTransientBackend::kTextureAlignment);
     REQUIRE(withoutPooling->debug.memory.aliasSavings == 0);
 
     // One transition fewer, and it is exactly the reuse boundary aliasing needed.
@@ -286,8 +286,8 @@ TEST_CASE("pooling off gives every transient its own bytes", "[render][graph]") 
 // A transient only a culled pass named costs nothing: the frame did not need the pass, so it does
 // not pay for the memory the pass would have written into.
 TEST_CASE("a transient no scheduled pass touches is not placed", "[render][graph]") {
-    FakeDevice device;
-    TransientPool pool(device);
+    FakeTransientBackend transients;
+    TransientPool pool(transients);
     FakeTexture outTarget{64, 64, "out"};
     RenderGraph graph(pool);
     const GraphTexture scratch = graph.createTexture(kTransientColor, "lmx.transient.scratch");
@@ -319,8 +319,8 @@ TEST_CASE("a transient no scheduled pass touches is not placed", "[render][graph
 // write are whatever the previous occupant left, so consuming version 0 is refused rather than
 // allowed to depend on the packing.
 TEST_CASE("a transient consumed before it is written fails to compile", "[render][graph]") {
-    FakeDevice device;
-    TransientPool pool(device);
+    FakeTransientBackend transients;
+    TransientPool pool(transients);
     FakeTexture outTarget{64, 64, "out"};
     RenderGraph graph(pool);
     const GraphTexture scratch = graph.createTexture(kTransientColor, "lmx.transient.scratch");
@@ -384,8 +384,8 @@ TEST_CASE("a sink naming a transient fails to compile", "[render][graph]") {
     }};
 
     for (const auto& [verb, declareSink] : sinks) {
-        FakeDevice device;
-        TransientPool pool(device);
+        FakeTransientBackend transients;
+        TransientPool pool(transients);
         RenderGraph graph(pool);
         const GraphTexture scratch = graph.createTexture(kTransientColor, "lmx.transient.scratch");
 
@@ -437,8 +437,8 @@ TEST_CASE("the same declarations plan the same layout", "[render][graph]") {
 TEST_CASE("transient buffers alias on the buffer path", "[render][graph]") {
     constexpr TransientBufferDesc kBins{.size = 1024, .storageRead = true, .storageWrite = true};
 
-    FakeDevice device;
-    TransientPool pool(device);
+    FakeTransientBackend transients;
+    TransientPool pool(transients);
     FakeBuffer outBuffer{1024, "out"};
     RenderGraph graph(pool);
     const GraphBuffer first = graph.createBuffer(kBins, "lmx.transient.firstBins");
@@ -469,7 +469,7 @@ TEST_CASE("transient buffers alias on the buffer path", "[render][graph]") {
     INFO(errorOf(record));
     REQUIRE(record.has_value());
 
-    REQUIRE(record->debug.transients[0].alignment == FakeDevice::kBufferAlignment);
+    REQUIRE(record->debug.transients[0].alignment == FakeTransientBackend::kBufferAlignment);
     REQUIRE(record->debug.transients[1].aliases);
     REQUIRE(record->debug.transients[1].offset == record->debug.transients[0].offset);
 
@@ -494,8 +494,8 @@ TEST_CASE("transient buffers alias on the buffer path", "[render][graph]") {
 // "pass timings name every pass the graph ran" case is the schedule's positive half, with bloom
 // (the default-on feature) live.
 TEST_CASE("exposure and bloom passes are culled when both features are off", "[render][graph]") {
-    FakeDevice device;
-    TransientPool pool(device);
+    FakeTransientBackend transients;
+    TransientPool pool(transients);
 
     FakeTexture sceneColorTexture{64, 64, "sceneColor"};
     FakeTexture displayColorTexture{64, 64, "displayColor"};

@@ -95,8 +95,8 @@ std::unique_ptr<render::Renderer> contributionRenderer(engine::GpuContext& gpu) 
 }
 
 //======================================================================================================================
-ContributionTargets contributionTargets(render::Renderer& renderer, render::TransientPool& pool,
-                                        rojoRHI::CommandList& commands,
+ContributionTargets contributionTargets(rojoRHI::Device& device, render::Renderer& renderer,
+                                        render::TransientPool& pool, rojoRHI::CommandList& commands,
                                         const engine::Camera& camera, const render::SceneView& view,
                                         uint64_t frame, rojoRHI::ComputePipeline& depthPipeline) {
     pool.beginFrame();
@@ -126,11 +126,11 @@ ContributionTargets contributionTargets(render::Renderer& renderer, render::Tran
     }
     REQUIRE(std::ranges::all_of(targets.textures,
                                 [](const auto* texture) { return texture != nullptr; }));
-    auto depth = pool.device().createBuffer({.size = uint64_t{kSize} * kSize * 4,
-                                             .storageWrite = true,
-                                             .cpuReadback = true,
-                                             .label = "lmx.test.visibility.depth"},
-                                            nullptr);
+    auto depth = device.createBuffer({.size = uint64_t{kSize} * kSize * 4,
+                                      .storageWrite = true,
+                                      .cpuReadback = true,
+                                      .label = "lmx.test.visibility.depth"},
+                                     nullptr);
     REQUIRE(depth);
     targets.depth = std::move(*depth);
     const auto depthBuffer = graph.importBuffer(*targets.depth, "lmx.test.visibility.depth");
@@ -290,14 +290,17 @@ TEST_CASE("rejected geometry contributes no camera attachments through the jitte
                                                 .viewProjectionJittered;
                 requireOutsideClip(scene, viewProjection);
                 const auto frame = gpu->device().frameNumber();
-                const auto culledTargets = contributionTargets(
-                    *culled, culledPool, commands, camera, view, frame, **depthPipeline);
+                const auto culledTargets =
+                    contributionTargets(gpu->device(), *culled, culledPool, commands, camera, view,
+                                        frame, **depthPipeline);
                 view.visibilityEnabled = false;
-                const auto unculledTargets = contributionTargets(
-                    *unculled, unculledPool, commands, camera, view, frame, **depthPipeline);
+                const auto unculledTargets =
+                    contributionTargets(gpu->device(), *unculled, unculledPool, commands, camera,
+                                        view, frame, **depthPipeline);
                 view.items = {};
-                const auto emptyTargets = contributionTargets(*empty, emptyPool, commands, camera,
-                                                              view, frame, **depthPipeline);
+                const auto emptyTargets =
+                    contributionTargets(gpu->device(), *empty, emptyPool, commands, camera, view,
+                                        frame, **depthPipeline);
                 gpu->device().endFrame(nullptr);
                 scene.commitFrame();
                 gpu->device().waitIdle();
@@ -370,11 +373,13 @@ TEST_CASE("GPU classification preserves every camera attachment through the jitt
                 view.temporal.renderScale = scale;
                 view.temporal.sceneGeneration = scene.objects.front().id.store;
                 const auto frame = gpuContext->device().frameNumber();
-                const auto expected = contributionTargets(*cpu, cpuPool, commands, camera, view,
-                                                          frame, **depthPipeline);
+                const auto expected =
+                    contributionTargets(gpuContext->device(), *cpu, cpuPool, commands, camera, view,
+                                        frame, **depthPipeline);
                 view.classifyMode = render::ClassifyMode::Gpu;
-                const auto actual = contributionTargets(*gpu, gpuPool, commands, camera, view,
-                                                        frame, **depthPipeline);
+                const auto actual =
+                    contributionTargets(gpuContext->device(), *gpu, gpuPool, commands, camera, view,
+                                        frame, **depthPipeline);
                 gpuContext->device().endFrame(nullptr);
                 scene.commitFrame();
                 gpuContext->device().waitIdle();

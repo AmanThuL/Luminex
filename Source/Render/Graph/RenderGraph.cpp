@@ -229,31 +229,6 @@ GraphBuffer RenderGraph::createBuffer(const TransientBufferDesc& desc, std::stri
 }
 
 //======================================================================================================================
-rojoRHI::TextureDesc RenderGraph::textureDescOf(const Resource& resource) const {
-    const TransientTextureDesc& desc = resource.textureDesc;
-    return {.width = desc.width,
-            .height = desc.height,
-            .format = desc.format,
-            .kind = desc.kind,
-            .mipLevels = desc.mipLevels,
-            .renderTarget = desc.renderTarget,
-            .sampled = desc.sampled,
-            .storageRead = desc.storageRead,
-            .storageWrite = desc.storageWrite,
-            .cpuReadback = false,
-            .label = resource.name};
-}
-
-//======================================================================================================================
-rojoRHI::BufferDesc RenderGraph::bufferDescOf(const Resource& resource) const {
-    return {.size = resource.bufferDesc.size,
-            .storageRead = resource.bufferDesc.storageRead,
-            .storageWrite = resource.bufferDesc.storageWrite,
-            .cpuReadback = false,
-            .label = resource.name};
-}
-
-//======================================================================================================================
 void RenderGraph::checkTexture(GraphTexture handle) const {
     LMX_ASSERT(handle.index < m_resources.size(), "GraphTexture names no resource");
     LMX_ASSERT(m_resources[handle.index].kind == ResourceKind::Texture,
@@ -581,7 +556,7 @@ void RenderGraph::placeTransients(const CompiledFrameDebug& debug) {
     // Reserving before placing anything is what lets the pool decide in one step whether the frame
     // fits the generation it holds -- and a failure here is a device that could not give the frame
     // its memory, which no declaration can recover from.
-    const rojoRHI::Result<void> reserved = m_transients->reserve(debug.memory.highWater);
+    const lmx::Result<void> reserved = m_transients->reserve(debug.memory.highWater);
     LMX_ASSERT(reserved.has_value(), reserved.error().message);
     if (debug.memory.highWater == 0) {
         return;
@@ -593,13 +568,13 @@ void RenderGraph::placeTransients(const CompiledFrameDebug& debug) {
         }
         Resource& resource = m_resources[entry.resource];
         if (resource.kind == ResourceKind::Texture) {
-            const rojoRHI::Result<rojoRHI::Texture*> texture =
-                m_transients->placeTexture(textureDescOf(resource), entry.offset);
+            const lmx::Result<rojoRHI::Texture*> texture =
+                m_transients->placeTexture(resource.textureDesc, entry.offset, resource.name);
             LMX_ASSERT(texture.has_value(), texture.error().message);
             resource.texture = *texture;
         } else {
-            const rojoRHI::Result<rojoRHI::Buffer*> buffer =
-                m_transients->placeBuffer(bufferDescOf(resource), entry.offset);
+            const lmx::Result<rojoRHI::Buffer*> buffer =
+                m_transients->placeBuffer(resource.bufferDesc, entry.offset, resource.name);
             LMX_ASSERT(buffer.has_value(), buffer.error().message);
             resource.buffer = *buffer;
         }

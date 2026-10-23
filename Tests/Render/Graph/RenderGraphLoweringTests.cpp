@@ -182,7 +182,7 @@ TEST_CASE("lowering leaves transients unplaced", "[render][graph]") {
     DisjointFrame frame;
     frame.declare();
 
-    frame.device.frame = 1;
+    frame.transients.frame = 1;
     frame.pool.beginFrame();
     RecordingCommandList commands;
     frame.graph.execute(commands, 1);

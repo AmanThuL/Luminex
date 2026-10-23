@@ -8,6 +8,7 @@
 #include "Render/Graph/CompiledFrameRecord.h"
 #include "Render/Graph/LoweredFrame.h"
 #include "Render/Graph/TransientPool.h"
+#include "Render/Graph/TransientResourceDesc.h"
 #include <rojoRHI/RHI.h>
 
 #include <cstdint>
@@ -80,31 +81,6 @@ constexpr GraphTexture nextVersion(GraphTexture handle) {
 constexpr GraphBuffer nextVersion(GraphBuffer handle) {
     return {.index = handle.index, .version = handle.version + 1};
 }
-
-/// Describes a texture the graph creates, owns, and destroys within one frame.
-///
-/// It mirrors rojoRHI::TextureDesc minus the two things a transient cannot have: initial contents,
-/// and CPU-visible storage. A transient is device-private memory the graph places in a heap, so a
-/// caller that needs to read a result back imports a texture of its own instead. The name is passed
-/// beside the descriptor, exactly as importTexture takes one, and becomes the GPU object's label.
-struct TransientTextureDesc {
-    uint32_t width = 0;                                      ///< Extent in texels.
-    uint32_t height = 0;                                     ///< Extent in texels.
-    rojoRHI::Format format = rojoRHI::Format::Unknown;       ///< Pixel format.
-    rojoRHI::TextureKind kind = rojoRHI::TextureKind::Tex2D; ///< Two-dimensional or cubemap.
-    uint32_t mipLevels = 1;    ///< Mip levels allocated for each face.
-    bool renderTarget = false; ///< Enables render-target use.
-    bool sampled = false;      ///< Enables shader reads.
-    bool storageRead = false;  ///< Enables storage-binding reads.
-    bool storageWrite = false; ///< Enables storage-binding writes.
-};
-
-/// The buffer counterpart of TransientTextureDesc, on the same terms.
-struct TransientBufferDesc {
-    uint64_t size = 0;         ///< Allocation size in bytes.
-    bool storageRead = false;  ///< Enables storage-binding reads.
-    bool storageWrite = false; ///< Enables storage-binding writes.
-};
 
 /// A texture version together with the subresources of it a pass touches.
 ///
@@ -268,8 +244,8 @@ public:
     RenderGraph() = default;
 
     /// A graph whose transients are placed in `transients`, which must outlive it. The pool's
-    /// device is also what sizes the frame's transient descriptors, so a graph can plan its whole
-    /// heap layout at compile time without creating anything.
+    /// transient backend is also what sizes the frame's transient descriptors, so a graph can plan
+    /// its whole heap layout at compile time without creating anything.
     explicit RenderGraph(TransientPool& transients) : m_transients(&transients) {}
 
     /// Brings an existing texture into the graph as version 0. `format` snapshots the attachment
@@ -392,10 +368,10 @@ public:
     /// the schedule between the first and last surviving pass that names it; two transients whose
     /// lifetimes do not overlap may share bytes when their descriptors agree on every axis that
     /// decides their layout -- resource kind, format, extent, mip count, usage, and the size and
-    /// alignment the RHI reports for them. Storage mode needs no comparison because a transient is
-    /// always device-private. Offsets are assigned first-fit in lifetime order, tie-broken by
-    /// declaration order, so the layout is a function of the declarations alone and two identical
-    /// frames plan identically.
+    /// alignment the transient backend reports for them. Storage mode needs no comparison because a
+    /// transient is always device-private. Offsets are assigned first-fit in lifetime order,
+    /// tie-broken by declaration order, so the layout is a function of the declarations alone and
+    /// two identical frames plan identically.
     GraphResult<Schedule> compile() const;
 
     /// The same compilation, answering with everything it decided rather than the order alone.
@@ -594,10 +570,6 @@ private:
     // both halves; see compile()'s contract for the rules it implements.
     AliasPlan planTransients(const Schedule& schedule) const;
 
-    // The RHI descriptors a transient's Resource compiles to, labelled with its name.
-    rojoRHI::TextureDesc textureDescOf(const Resource& resource) const;
-    rojoRHI::BufferDesc bufferDescOf(const Resource& resource) const;
-
     // The render-pass op a raster pass lowers to, carrying its attachments as declared.
     BeginRenderPassOp beginRenderPassOf(const Pass& pass) const;
 
@@ -619,8 +591,8 @@ private:
     std::vector<Resource> m_resources;
     std::vector<Pass> m_passes;
     std::vector<Sink> m_sinks;
-    // Null for an import-only graph; the pool a transient is placed in and the device its
-    // descriptors are sized against.
+    // Null for an import-only graph; the pool a transient is placed in, whose backend sizes its
+    // descriptors.
     TransientPool* m_transients = nullptr;
     bool m_poolingEnabled = true;
 };

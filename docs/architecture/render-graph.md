@@ -38,7 +38,19 @@ aliasing is conservative, so two transients share memory only when their descrip
 axis that decides layout, and only bytes whose previous occupant's lifetime has already ended are
 reused. Offsets are assigned first-fit in lifetime order, tie-broken by declaration order, so the
 layout depends only on the declarations. The pool holds one placement heap per frame-in-flight
-slot. [ADR 0008](../decisions/0008-transient-graph-resources.md) owns the transient-ownership
+slot.
+
+The pool keeps that policy (slots, heap generations and their retirement, one reservation per
+frame, heap labels) and reaches the device only through `TransientBackend`
+(`TransientBackend.h`): footprints for a `TransientTextureDesc` or `TransientBufferDesc`
+(`TransientResourceDesc.h`), heap creation and destruction, placement, and releasing a heap's
+placements when its slot comes round. The backend owns the heaps and placed resources, named to
+the pool by `TransientHeapId`. `RhiTransientBackend` is the implementation over a `rojoRHI::Device`
+and the one a pool constructed from a device owns; it converts each descriptor to the RHI's with
+the graph resource's name as its label and no CPU readback. Graph and pool unit tests construct
+the pool over the device-free `FakeTransientBackend`
+(`Tests/Support/TransientBackendTestSupport.h`).
+[ADR 0008](../decisions/0008-transient-graph-resources.md) owns the transient-ownership
 and aliasing rules; ADR 0005's import-only model still governs resources a caller brings in.
 
 ## Compiled frame record and the dump

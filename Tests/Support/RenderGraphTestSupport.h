@@ -6,6 +6,7 @@
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Graph/TransientPool.h"
 #include "Support/GraphTestSupport.h"
+#include "Support/TransientBackendTestSupport.h"
 
 #include <algorithm>
 #include <array>
@@ -20,71 +21,6 @@ using namespace lmx;
 using namespace lmx::render;
 
 namespace {
-// Texture is an interface, and the graph reads three things from it: the extent, which is what the
-// attachment rules inspect since the format is declared at import, and the mip and layer counts,
-// which a declared subresource range is resolved and bounds-checked against. readback() is never
-// reached, so it is left empty rather than faked.
-//
-// `name` is the test's own label for the texture, so a recorded barrier says which resource it
-// transitioned rather than printing a pointer.
-struct FakeTexture final : rojoRHI::Texture {
-    std::string name;
-
-    //==================================================================================================================
-    FakeTexture(uint32_t width, uint32_t height, std::string label = {}, uint32_t mips = 1,
-                uint32_t layers = 1)
-        : name(std::move(label)), m_width(width), m_height(height), m_mipLevels(mips),
-          m_arrayLayers(layers) {}
-
-    //==================================================================================================================
-    uint32_t width() const override { return m_width; }
-
-    //==================================================================================================================
-    uint32_t height() const override { return m_height; }
-
-    // Unknown is the sentinel a test double uses when the graph case declares the format itself;
-    // production textures always report their concrete creation format.
-    //==================================================================================================================
-    rojoRHI::Format format() const override { return rojoRHI::Format::Unknown; }
-
-    //==================================================================================================================
-    uint32_t mipLevels() const override { return m_mipLevels; }
-
-    //==================================================================================================================
-    uint32_t arrayLayers() const override { return m_arrayLayers; }
-
-    //==================================================================================================================
-    void readback(void*, uint64_t) override {}
-
-private:
-    uint32_t m_width = 0;
-    uint32_t m_height = 0;
-    uint32_t m_mipLevels = 1;
-    uint32_t m_arrayLayers = 1;
-};
-
-// The graph never reads a buffer's size -- buffers carry no attachment or subresource rules at all
-// -- so this exists to give importBuffer a real object to borrow and to name itself in a barrier.
-struct FakeBuffer final : rojoRHI::Buffer {
-    std::string name;
-
-    //==================================================================================================================
-    explicit FakeBuffer(uint64_t size, std::string label = {})
-        : name(std::move(label)), m_size(size) {}
-
-    //==================================================================================================================
-    uint64_t size() const override { return m_size; }
-
-    //==================================================================================================================
-    void readback(void*, uint64_t) override {}
-
-    //==================================================================================================================
-    void write(uint64_t, const void*, uint64_t) override {}
-
-private:
-    uint64_t m_size = 0;
-};
-
 // Passes here are declarations and nothing else: this layer stores the body without running it, so
 // every pass gets the same empty one.
 [[maybe_unused]] const ExecuteFn kNoWork = [](const PassResources&) {};
@@ -311,9 +247,9 @@ struct RecordingCommandList final : rojoRHI::CommandList {
 
 namespace {
 
-// One transient the fake device sizes to exactly one alignment unit: 64 * 64 texels at four bytes
-// each is 16 KiB, which is FakeDevice::kTextureAlignment. Every offset below is therefore a
-// multiple of the size, which keeps the packing readable in the assertions.
+// One transient the fake backend sizes to exactly one alignment unit: 64 * 64 texels at four bytes
+// each is 16 KiB, which is FakeTransientBackend::kTextureAlignment. Every offset below is
+// therefore a multiple of the size, which keeps the packing readable in the assertions.
 [[maybe_unused]] constexpr TransientTextureDesc kTransientColor{.width = 64,
                                                                 .height = 64,
                                                                 .format =
@@ -324,8 +260,8 @@ namespace {
 // Two transients used one after the other, with an imported target between them so the first one's
 // lifetime closes before the second one's opens. It is the shape aliasing exists for.
 struct DisjointFrame {
-    FakeDevice device;
-    TransientPool pool{device};
+    FakeTransientBackend transients;
+    TransientPool pool{transients};
     FakeTexture midTarget{64, 64, "mid"};
     FakeTexture outTarget{64, 64, "out"};
     RenderGraph graph{pool};

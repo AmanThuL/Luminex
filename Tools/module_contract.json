@@ -236,7 +236,8 @@
         "Tests/Support/RenderGraphTestSupport.h",
         "Tests/Support/SceneTableTestSupport.h",
         "Tests/Support/SceneDocumentTestSupport.h",
-        "Tests/Support/SceneDocumentFixtures.h"
+        "Tests/Support/SceneDocumentFixtures.h",
+        "Tests/Support/TransientBackendTestSupport.h"
       ]
     },
     "texture-bake": {

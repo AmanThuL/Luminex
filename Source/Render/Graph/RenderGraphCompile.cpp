@@ -48,7 +48,7 @@ struct AliasClass {
 
 //======================================================================================================================
 AliasClass aliasClassOf(bool isTexture, rojoRHI::Format format, const TransientTextureDesc& texture,
-                        const TransientBufferDesc& buffer, const rojoRHI::SizeAlign& footprint) {
+                        const TransientBufferDesc& buffer, const TransientFootprint& footprint) {
     if (!isTexture) {
         return {.isTexture = false,
                 .storageRead = buffer.storageRead,
@@ -320,14 +320,12 @@ RenderGraph::AliasPlan RenderGraph::planTransients(const Schedule& schedule) con
 
         AliasClass klass;
         if (entry.used) {
-            // The RHI is asked what the descriptor costs rather than the descriptor being measured
-            // here: only the backend knows the layout it will choose, and a plan built on a guess
-            // would place resources where they do not fit.
-            rojoRHI::Device& device = m_transients->device();
-            const rojoRHI::SizeAlign footprint =
-                resource.kind == ResourceKind::Texture
-                    ? device.textureSizeAlign(textureDescOf(resource))
-                    : device.bufferSizeAlign(bufferDescOf(resource));
+            // The pool's backend is asked what the descriptor costs rather than the descriptor
+            // being measured here: only the backend knows the layout it will choose, and a plan
+            // built on a guess would place resources where they do not fit.
+            const TransientFootprint footprint = resource.kind == ResourceKind::Texture
+                                                     ? m_transients->footprint(resource.textureDesc)
+                                                     : m_transients->footprint(resource.bufferDesc);
             entry.size = footprint.size;
             entry.alignment = footprint.alignment;
             klass = aliasClassOf(resource.kind == ResourceKind::Texture, resource.format,
