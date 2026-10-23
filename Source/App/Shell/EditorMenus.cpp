@@ -136,7 +136,7 @@ void menuTooltip(const MenuItem& item) {
 
 //======================================================================================================================
 MenuContext EditorShell::menuContext(const render::Renderer& renderer,
-                                     const rojoRHI::Device& device) {
+                                     const engine::GpuContext& gpu) {
     MenuContext context{
         .documentIdle = m_documentWorkflow.step() == WorkflowStep::Idle,
         .stopped = m_playback.state() == PlaybackState::Stopped,
@@ -151,7 +151,7 @@ MenuContext EditorShell::menuContext(const render::Renderer& renderer,
         .gizmo = m_gizmo,
         .debug = activeDebugView(m_settings),
         .debugEntries = debugViewEntries(m_settings, viewportHzbLevels(renderer),
-                                         effectiveReconstruction(renderer, device)),
+                                         effectiveReconstruction(renderer, gpu)),
         .appearance = m_workspace.appearance.effective(),
         .density = m_workspace.density,
         .uiScalePercent = m_workspace.uiScalePercent,
@@ -269,10 +269,10 @@ void EditorShell::runMenuCommand(MenuCommand command, uint32_t argument) {
 }
 
 //======================================================================================================================
-void EditorShell::buildMainMenu(const render::Renderer& renderer, const rojoRHI::Device& device) {
+void EditorShell::buildMainMenu(const render::Renderer& renderer, const engine::GpuContext& gpu) {
     if (!ImGui::BeginMainMenuBar())
         return;
-    const auto context = menuContext(renderer, device);
+    const auto context = menuContext(renderer, gpu);
 #ifndef __APPLE__
     drawMenuItems(*this, buildMenuModel(context), context);
 #endif
@@ -284,12 +284,12 @@ void EditorShell::buildMainMenu(const render::Renderer& renderer, const rojoRHI:
 
 //======================================================================================================================
 void EditorShell::updateNativeMenu(const render::Renderer& renderer,
-                                   const rojoRHI::Device& device) {
+                                   const engine::GpuContext& gpu) {
 #ifdef __APPLE__
-    m_nativeMenu->update(buildMenuModel(menuContext(renderer, device)), shortcutContext());
+    m_nativeMenu->update(buildMenuModel(menuContext(renderer, gpu)), shortcutContext());
 #else
     (void)renderer;
-    (void)device;
+    (void)gpu;
 #endif
 }
 

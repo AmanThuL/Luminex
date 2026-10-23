@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "Engine/Gpu/PassTiming.h"
 #include "Render/Graph/CompiledFrameRecord.h"
 #include <rojoRHI/RHI.h>
 
@@ -93,6 +94,6 @@ struct GraphInspectorModel {
 /// labels unambiguous and guarantees a culled pass -- which has no schedule position -- remains
 /// unmeasured. Nothing here mutates `record`; the model borrows nothing from it once built.
 GraphInspectorModel buildGraphInspectorModel(const render::CompiledFrameRecord& record,
-                                             std::span<const rojoRHI::PassTiming> timings);
+                                             std::span<const engine::PassTiming> timings);
 
 } // namespace lmx::app

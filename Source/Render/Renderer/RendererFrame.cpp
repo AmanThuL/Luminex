@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Core/Diagnostics/Assert.h"
+#include "Engine/Gpu/GpuContext.h"
 #include "Render/Passes/Exposure/ExposureStage.h"
 #include "Render/Passes/Temporal/VendorTemporalScaler.h"
 #include "Render/Renderer/RendererInternal.h"
@@ -46,7 +47,8 @@ RendererFrameState Renderer::deriveFrameState(const engine::Camera& camera, cons
     const float renderScale =
         temporalEnabled
             ? (vendorTemporal ? vendorRenderScale(view.temporal.renderScale,
-                                                  m_device.capabilities().temporalScaler)
+                                                  engine::toUpscalerSupport(
+                                                      m_device.capabilities().temporalScaler))
                               : view.temporal.renderScale)
             : 1.0f;
 

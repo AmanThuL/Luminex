@@ -9,6 +9,7 @@
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"
 #include "Core/Math/Scalar.h"
+#include "Engine/Gpu/GpuContext.h"
 #include "Engine/Gpu/GpuError.h"
 
 #include <algorithm>
@@ -28,7 +29,7 @@ static_assert(offsetof(VendorPackParams, height) == 4);
 
 //======================================================================================================================
 ReconstructionSelection resolveReconstruction(ReconstructionMode requested,
-                                              const rojoRHI::TemporalScalerSupport& support,
+                                              const engine::UpscalerSupportInfo& support,
                                               bool creationFailed) {
     if (requested != ReconstructionMode::VendorTemporal) {
         return {requested, VendorFallback::None};
@@ -43,7 +44,7 @@ ReconstructionSelection resolveReconstruction(ReconstructionMode requested,
 }
 
 //======================================================================================================================
-float vendorRenderScale(float scale, const rojoRHI::TemporalScalerSupport& support) {
+float vendorRenderScale(float scale, const engine::UpscalerSupportInfo& support) {
     if (!support.available) {
         return scale;
     }
@@ -78,7 +79,7 @@ rojoRHI::TemporalScaleParams vendorTemporalParams(const FrameExtents& extents,
 //======================================================================================================================
 ReconstructionSelection VendorTemporalScaler::prepare(ReconstructionMode requested, uint32_t width,
                                                       uint32_t height) {
-    const auto& support = m_device.capabilities().temporalScaler;
+    const auto support = engine::toUpscalerSupport(m_device.capabilities().temporalScaler);
     auto selection = resolveReconstruction(requested, support);
     if (selection.mode != ReconstructionMode::VendorTemporal) {
         if (selection.fallback == VendorFallback::Unsupported && !m_warnedUnsupported) {

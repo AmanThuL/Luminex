@@ -225,10 +225,10 @@ TEST_CASE("timing rows join by schedule and leave culled passes empty", "[app]")
 
     // "lmx.pass.ghost" names no declared pass at all -- a stale label from a prior frame's shape,
     // which must be silently ignored rather than attached to the nearest row.
-    const std::array<rojoRHI::PassTiming, 3> timings = {
-        rojoRHI::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 0.21},
-        rojoRHI::PassTiming{.label = "lmx.pass.display", .gpuMilliseconds = 0.42},
-        rojoRHI::PassTiming{.label = "lmx.pass.ghost", .gpuMilliseconds = 9.99}};
+    const std::array<lmx::engine::PassTiming, 3> timings = {
+        lmx::engine::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 0.21},
+        lmx::engine::PassTiming{.label = "lmx.pass.display", .gpuMilliseconds = 0.42},
+        lmx::engine::PassTiming{.label = "lmx.pass.ghost", .gpuMilliseconds = 9.99}};
 
     const GraphInspectorModel model = buildGraphInspectorModel(*record, timings);
 
@@ -273,9 +273,9 @@ TEST_CASE("duplicate pass labels consume timings once in schedule order", "[app]
 
     const auto record = graph.compileFrame(8);
     REQUIRE(record.has_value());
-    const std::array<rojoRHI::PassTiming, 2> timings = {
-        rojoRHI::PassTiming{.label = "duplicate", .gpuMilliseconds = 0.1},
-        rojoRHI::PassTiming{.label = "duplicate", .gpuMilliseconds = 0.2}};
+    const std::array<lmx::engine::PassTiming, 2> timings = {
+        lmx::engine::PassTiming{.label = "duplicate", .gpuMilliseconds = 0.1},
+        lmx::engine::PassTiming{.label = "duplicate", .gpuMilliseconds = 0.2}};
 
     const GraphInspectorModel model = buildGraphInspectorModel(*record, timings);
 

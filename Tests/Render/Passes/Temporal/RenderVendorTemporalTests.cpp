@@ -1,5 +1,6 @@
 #include "Support/GraphTestSupport.h"
 
+#include "Engine/Gpu/GpuContext.h"
 #include "Render/Graph/GraphDump.h"
 #include "Render/Passes/Temporal/VendorTemporalScaler.h"
 #include "Render/Renderer/Renderer.h"
@@ -53,7 +54,7 @@ rojoRHI::TemporalScalerSupport supportedVendor() {
 //======================================================================================================================
 TEST_CASE("vendor temporal policy preserves native modes and translates units",
           "[render][temporal][vendor]") {
-    const auto support = supportedVendor();
+    const auto support = lmx::engine::toUpscalerSupport(supportedVendor());
     for (auto mode : {ReconstructionMode::Raw, ReconstructionMode::NativeTaa}) {
         REQUIRE(resolveReconstruction(mode, {}, true).mode == mode);
         REQUIRE(resolveReconstruction(mode, {}, true).fallback == VendorFallback::None);

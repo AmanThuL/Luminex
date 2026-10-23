@@ -73,9 +73,9 @@ TEST_CASE("timings join the record of the frame they measured", "[app]") {
         ring.retain(recordFor(frame, "lmx.pass.frame" + std::to_string(frame)));
     }
 
-    const std::array<rojoRHI::PassTiming, 2> measured = {
-        rojoRHI::PassTiming{.label = "lmx.pass.shadow", .gpuMilliseconds = 0.25},
-        rojoRHI::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 1.5}};
+    const std::array<lmx::engine::PassTiming, 2> measured = {
+        lmx::engine::PassTiming{.label = "lmx.pass.shadow", .gpuMilliseconds = 0.25},
+        lmx::engine::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 1.5}};
 
     REQUIRE(ring.joinTimings(2, measured));
 
@@ -99,8 +99,8 @@ TEST_CASE("a join with nothing to land on changes nothing", "[app]") {
     FrameRecordRing ring;
     ring.retain(recordFor(9, "lmx.pass.frame9"));
 
-    const std::array<rojoRHI::PassTiming, 1> measured = {
-        rojoRHI::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 1.0}};
+    const std::array<lmx::engine::PassTiming, 1> measured = {
+        lmx::engine::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 1.0}};
 
     REQUIRE_FALSE(ring.joinTimings(0, measured));
     REQUIRE_FALSE(ring.joinTimings(3, measured));
@@ -115,11 +115,11 @@ TEST_CASE("joining a frame twice replaces its timings", "[app]") {
     FrameRecordRing ring;
     ring.retain(recordFor(1, "lmx.pass.frame1"));
 
-    const std::array<rojoRHI::PassTiming, 2> first = {
-        rojoRHI::PassTiming{.label = "a", .gpuMilliseconds = 1.0},
-        rojoRHI::PassTiming{.label = "b", .gpuMilliseconds = 2.0}};
-    const std::array<rojoRHI::PassTiming, 1> second = {
-        rojoRHI::PassTiming{.label = "a", .gpuMilliseconds = 3.0}};
+    const std::array<lmx::engine::PassTiming, 2> first = {
+        lmx::engine::PassTiming{.label = "a", .gpuMilliseconds = 1.0},
+        lmx::engine::PassTiming{.label = "b", .gpuMilliseconds = 2.0}};
+    const std::array<lmx::engine::PassTiming, 1> second = {
+        lmx::engine::PassTiming{.label = "a", .gpuMilliseconds = 3.0}};
 
     REQUIRE(ring.joinTimings(1, first));
     REQUIRE(ring.joinTimings(1, second));
@@ -137,8 +137,8 @@ TEST_CASE("the newest timed frame is the newest one that retired", "[app]") {
         ring.retain(recordFor(frame, "lmx.pass.frame" + std::to_string(frame)));
     }
 
-    const std::array<rojoRHI::PassTiming, 1> measured = {
-        rojoRHI::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 1.0}};
+    const std::array<lmx::engine::PassTiming, 1> measured = {
+        lmx::engine::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 1.0}};
     REQUIRE(ring.joinTimings(1, measured));
     REQUIRE(ring.joinTimings(2, measured));
 
@@ -179,7 +179,7 @@ TEST_CASE("delayed timings retain the declared metrics across later scene and ex
     metadata.renderPixelWidth = 1920;
     metadata.outputPixelWidth = 2560;
     ring.retain(recordFor(2, "scene"), metadata);
-    const std::array timings = {rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 3.5}};
+    const std::array timings = {lmx::engine::PassTiming{.label = "scene", .gpuMilliseconds = 3.5}};
     REQUIRE(ring.joinTimings(1, timings));
     const auto* retired = ring.newestTimedFrame();
     REQUIRE(retired != nullptr);
@@ -219,7 +219,7 @@ TEST_CASE("CPU visibility timings stay with their declaration through delayed re
     ring.retain(recordFor(10, "scene"), first);
     FrameMetricsMetadata later{.classifyMilliseconds = 8.0, .prepareMilliseconds = 9.0};
     ring.retain(recordFor(11, "scene"), later);
-    const std::array timings{rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 4.0}};
+    const std::array timings{lmx::engine::PassTiming{.label = "scene", .gpuMilliseconds = 4.0}};
     REQUIRE(ring.joinTimings(10, timings));
     REQUIRE(ring.newestTimedFrame()->record.frameId == 10);
     REQUIRE(ring.newestTimedFrame()->metrics->classifyMilliseconds == 0.25);

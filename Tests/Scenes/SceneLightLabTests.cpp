@@ -6,6 +6,7 @@
 #include "App/Model/Scene/SceneSession.h"
 #include "Scenes/LightLab.h"
 #include "Scenes/SceneLibrary.h"
+#include "Support/GpuTestSupport.h"
 #include "Support/SceneDocumentTestSupport.h"
 
 #include "Engine/Lights/LocalLightMath.h"
@@ -209,9 +210,8 @@ TEST_CASE("lightLabLights stacks every pile light at one shared position", "[sce
 //======================================================================================================================
 TEST_CASE("LightLab loads from the catalog with its requested population",
           "[gpu][scene][light-lab]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
-    scenes::SceneLibrary library(**device, 4096, 0, 128, 16);
+    auto gpu = createTestGpu();
+    scenes::SceneLibrary library(*gpu, 4096, 0, 128, 16);
     const auto id = scenes::parseSceneId("light-lab");
     REQUIRE(id);
     REQUIRE(library.entry(*id).available);
@@ -250,10 +250,10 @@ TEST_CASE("LightLab loads from the catalog with its requested population",
     REQUIRE(loaded.animation.duration == lmx::test::catalogCamera("light-lab").animation.duration);
     REQUIRE(loaded.animation.loop);
     REQUIRE_FALSE(loaded.animation.cameraTrack.empty());
-    (*device)->beginFrame();
-    REQUIRE(loaded.prepareFrame((*device)->frameNumber()));
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    lmx::engine::Frame gpuFrame = gpu->beginFrame();
+    REQUIRE(loaded.prepareFrame(gpu->frameNumber()));
+    gpu->submitAndEndFrame(gpuFrame);
+    gpu->waitIdle();
 }
 
 //======================================================================================================================

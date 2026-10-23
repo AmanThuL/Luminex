@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "Engine/Gpu/GpuContext.h"
 #include "Scenes/SceneDocuments.h"
 #include <map>
 #include <span>
@@ -48,8 +49,8 @@ std::span<const std::string_view> sceneStableIds();
 class SceneLibrary {
 public:
     /// Explicit optional population overrides affect generators only; absence preserves the
-    /// document.
-    explicit SceneLibrary(rojoRHI::Device& device, std::optional<uint32_t> labInstances = {},
+    /// document. `gpu` must outlive the library; scenes are created on its device.
+    explicit SceneLibrary(engine::GpuContext& gpu, std::optional<uint32_t> labInstances = {},
                           std::optional<uint32_t> labOccluders = {},
                           std::optional<uint32_t> labLights = {},
                           std::optional<uint32_t> labLightPile = {});
@@ -90,6 +91,7 @@ public:
 private:
     asset::AssetResult<std::filesystem::path> documentPath(const SceneId& id) const;
     std::string cacheKey(const SceneId& id) const;
+    engine::GpuContext& m_gpu;
     rojoRHI::Device& m_device;
     GeneratorOverrides m_overrides;
     std::vector<SceneEntry> m_entries;

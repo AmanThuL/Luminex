@@ -1,3 +1,4 @@
+#include "Support/GpuTestSupport.h"
 #include <catch2/catch_test_macros.hpp>
 
 #include "App/Model/Scene/EditorSelection.h"
@@ -554,9 +555,8 @@ TEST_CASE("hierarchy counts include disabled local lights and count only scene s
 //======================================================================================================================
 TEST_CASE("catalog LightLab and Sponza hierarchy counts include every local light",
           "[gpu][selection]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
-    scenes::SceneLibrary library(**device);
+    auto gpu = createTestGpu();
+    scenes::SceneLibrary library(*gpu);
     for (const auto name : {"light-lab", "sponza"}) {
         CAPTURE(name);
         const auto id = scenes::parseSceneId(name);
@@ -582,7 +582,7 @@ TEST_CASE("catalog LightLab and Sponza hierarchy counts include every local ligh
             REQUIRE(count.shown <= count.total);
         }
     }
-    (*device)->waitIdle();
+    gpu->waitIdle();
 }
 
 //======================================================================================================================

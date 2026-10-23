@@ -4,6 +4,7 @@
 #include "Render/Renderer/SceneViewBuilder.h"
 #include "Scenes/CatalogScenes.h"
 #include "Support/EngineSceneTestSupport.h"
+#include "Support/GpuTestSupport.h"
 #include "Support/SceneDocumentTestSupport.h"
 #include "Support/SceneTableTestSupport.h"
 
@@ -354,9 +355,8 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
 
 //======================================================================================================================
 TEST_CASE("SceneLibrary lists the scenes in a fixed order", "[gpu]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    lmx::scenes::SceneLibrary library(**device);
+    auto gpu = createTestGpu();
+    lmx::scenes::SceneLibrary library(*gpu);
 
     REQUIRE(library.entries().size() == 6);
     REQUIRE(lmx::scenes::sceneIdString(library.entries()[0].id) == "sponza");
@@ -383,9 +383,8 @@ TEST_CASE("SceneLibrary reports the fetched scenes' availability from what this 
     // Not asset-gated in the usual sense: it checks that `available` agrees with whatever this
     // checkout actually has (present or not), so it is meaningful either way rather than being
     // skipped when the fetched assets are missing.
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    lmx::scenes::SceneLibrary library(**device);
+    auto gpu = createTestGpu();
+    lmx::scenes::SceneLibrary library(*gpu);
 
     const bool sponzaPresent = findRepoAsset("Assets/Fetched/Sponza/Sponza.gltf").has_value();
     REQUIRE(library.entries()[0].available == sponzaPresent);
@@ -412,9 +411,8 @@ TEST_CASE("SceneLibrary::get lazily loads a scene once and caches the instance",
         SKIP("Assets/Fetched/Sponza/Sponza.gltf not present (xmake setup fetches it)");
     }
 
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    lmx::scenes::SceneLibrary library(**device);
+    auto gpu = createTestGpu();
+    lmx::scenes::SceneLibrary library(*gpu);
 
     auto first = library.get(lmx::scenes::defaultSceneId());
     INFO(describeSceneError(first));

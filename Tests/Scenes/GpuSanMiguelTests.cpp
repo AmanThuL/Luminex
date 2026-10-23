@@ -1,3 +1,4 @@
+#include "Support/GpuTestSupport.h"
 #include <catch2/catch_test_macros.hpp>
 
 #include "Engine/Scene/Scene.h"
@@ -10,9 +11,8 @@
 
 //======================================================================================================================
 TEST_CASE("San Miguel keeps masked content and a continuous comparison rail", "[gpu][san-miguel]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    lmx::scenes::SceneLibrary library(**device);
+    auto gpu = createTestGpu();
+    lmx::scenes::SceneLibrary library(*gpu);
     const auto id = lmx::scenes::parseSceneId("san-miguel");
     REQUIRE(id.has_value());
     if (!library.entry(*id).available) {

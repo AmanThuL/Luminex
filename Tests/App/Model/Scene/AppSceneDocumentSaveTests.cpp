@@ -9,6 +9,7 @@
 #include "Engine/Asset/Document/SceneDocumentDiff.h"
 #include "Scenes/SceneDocumentExport.h"
 #include "Support/EngineTestSupport.h"
+#include "Support/GpuTestSupport.h"
 #include "Support/GraphTestSupport.h"
 #include "Support/SceneDocumentFixtures.h"
 #include <catch2/catch_approx.hpp>
@@ -75,7 +76,8 @@ bool dirty(const app::SceneSession& session) {
 TEST_CASE("explicit saved camera changes generation without ordinary view persistence",
           "[app][document-save]") {
     FakeDevice device;
-    scenes::SceneLibrary library(device);
+    engine::GpuContext gpu{device};
+    scenes::SceneLibrary library(gpu);
     auto id = scenes::sceneIdFromPath(savePath("camera"));
     REQUIRE(library.get(id));
     app::SceneSession session;
@@ -104,7 +106,8 @@ TEST_CASE("explicit saved camera changes generation without ordinary view persis
 TEST_CASE("a saved camera yaw beyond a half turn wraps, saves and stays clean",
           "[app][document-save]") {
     FakeDevice device;
-    scenes::SceneLibrary library(device);
+    engine::GpuContext gpu{device};
+    scenes::SceneLibrary library(gpu);
     const auto path = savePath("yaw-wrap");
     auto id = scenes::sceneIdFromPath(path);
     REQUIRE(library.get(id));
@@ -152,7 +155,8 @@ TEST_CASE("steep orientations without an exact quaternion save, reload and stay 
     doc.nodes.push_back({.name = "Key node", .light = 2, .role = "key"});
     doc.rootNodes.insert(doc.rootNodes.end(), {3, 4});
     FakeDevice device;
-    scenes::SceneLibrary library(device);
+    engine::GpuContext gpu{device};
+    scenes::SceneLibrary library(gpu);
     const auto path = savePath("steep", doc);
     auto id = scenes::sceneIdFromPath(path);
     REQUIRE(library.get(id));
@@ -188,7 +192,8 @@ TEST_CASE("steep orientations without an exact quaternion save, reload and stay 
 TEST_CASE("Save and Save As adopt one snapshot while preserving live identity and own state",
           "[app][document-save]") {
     FakeDevice device;
-    scenes::SceneLibrary library(device);
+    engine::GpuContext gpu{device};
+    scenes::SceneLibrary library(gpu);
     const auto path = savePath("adoption");
     auto id = scenes::sceneIdFromPath(path);
     REQUIRE(library.get(id));
@@ -245,7 +250,8 @@ TEST_CASE("Save and Save As adopt one snapshot while preserving live identity an
 TEST_CASE("save failures preserve metadata baselines and block save-first destruction",
           "[app][document-save]") {
     FakeDevice device;
-    scenes::SceneLibrary library(device);
+    engine::GpuContext gpu{device};
+    scenes::SceneLibrary library(gpu);
     const auto path = savePath("failed");
     auto id = scenes::sceneIdFromPath(path);
     REQUIRE(library.get(id));
@@ -309,7 +315,8 @@ TEST_CASE("save failures preserve metadata baselines and block save-first destru
 TEST_CASE("read-only companion and Save As aliases preserve both existing files",
           "[app][document-save]") {
     FakeDevice device;
-    scenes::SceneLibrary library(device);
+    engine::GpuContext gpu{device};
+    scenes::SceneLibrary library(gpu);
     const auto path = savePath("protected");
     auto id = scenes::sceneIdFromPath(path);
     REQUIRE(library.get(id));
@@ -358,7 +365,8 @@ TEST_CASE("read-only companion and Save As aliases preserve both existing files"
 TEST_CASE("replacement builds before invalidation and discard cannot return through the cache",
           "[app][document-save]") {
     FakeDevice device;
-    scenes::SceneLibrary library(device);
+    engine::GpuContext gpu{device};
+    scenes::SceneLibrary library(gpu);
     const auto path = savePath("replace-current");
     const auto destination = savePath("replace-next");
     auto id = scenes::sceneIdFromPath(path);
@@ -411,7 +419,8 @@ TEST_CASE("replacement builds before invalidation and discard cannot return thro
 TEST_CASE("session reload preserves the operator view only when its subject survives",
           "[app][document-save][session]") {
     FakeDevice device;
-    scenes::SceneLibrary library(device);
+    engine::GpuContext gpu{device};
+    scenes::SceneLibrary library(gpu);
     auto id = scenes::sceneIdFromPath(savePath("session-view"));
     REQUIRE(library.get(id));
     app::SceneSession session;
@@ -466,7 +475,8 @@ TEST_CASE("session reload preserves the operator view only when its subject surv
 TEST_CASE("Save As retires a cached destination without invalidating the live source",
           "[app][document-save]") {
     FakeDevice device;
-    scenes::SceneLibrary library(device);
+    engine::GpuContext gpu{device};
+    scenes::SceneLibrary library(gpu);
     const auto source = savePath("alias-source");
     auto id = scenes::sceneIdFromPath(source);
     REQUIRE(library.get(id));
@@ -529,7 +539,8 @@ TEST_CASE("Save preserves immutable imported poses and generated session default
     REQUIRE(asset::saveSceneDocument(doc, path));
     const auto oldCwd = fs::current_path();
     FakeDevice device;
-    scenes::SceneLibrary library(device);
+    engine::GpuContext gpu{device};
+    scenes::SceneLibrary library(gpu);
     auto id = scenes::sceneIdFromPath(path);
     fs::current_path(root);
     const auto result = library.get(id);
@@ -643,7 +654,8 @@ TEST_CASE("Save As protects the actual padded alternate source buffer",
     const auto originalJson = *readWholeFile(source);
     const auto originalBin = *readWholeFile(sourceBuffer);
     FakeDevice device;
-    scenes::SceneLibrary library(device);
+    engine::GpuContext gpu{device};
+    scenes::SceneLibrary library(gpu);
     auto id = scenes::sceneIdFromPath(source);
     REQUIRE(library.get(id));
     app::SceneSession session;
@@ -712,7 +724,8 @@ TEST_CASE("queued Quit waits for actual Save As adoption or preserves a failed l
     std::error_code ignored;
     fs::remove(destination, ignored);
     FakeDevice device;
-    scenes::SceneLibrary library(device);
+    engine::GpuContext gpu{device};
+    scenes::SceneLibrary library(gpu);
     auto id = scenes::sceneIdFromPath(source);
     REQUIRE(library.get(id));
     app::SceneSession session;
@@ -809,7 +822,8 @@ TEST_CASE("confirmed Save persists exposure before Open chooser cancellation",
                 const auto originalJson = *readWholeFile(source);
                 const auto originalBin = *readWholeFile(companion);
                 FakeDevice device;
-                scenes::SceneLibrary library(device);
+                engine::GpuContext gpu{device};
+                scenes::SceneLibrary library(gpu);
                 auto id = scenes::sceneIdFromPath(source);
                 REQUIRE(library.get(id));
                 app::SceneSession session;
@@ -901,7 +915,8 @@ TEST_CASE("confirmed Save persists exposure before Open chooser cancellation",
 TEST_CASE("save watcher adopts only the verified editor write of the watched pair",
           "[app][document-save][save-watch]") {
     FakeDevice device;
-    scenes::SceneLibrary library(device);
+    engine::GpuContext gpu{device};
+    scenes::SceneLibrary library(gpu);
     const auto path = savePath("watch-write");
     auto id = scenes::sceneIdFromPath(path);
     REQUIRE(library.get(id));
@@ -987,7 +1002,8 @@ TEST_CASE("save watcher adopts only the verified editor write of the watched pai
 TEST_CASE("successful Save and Save As retain a later external pair for review",
           "[app][document-save][saved-pair-watch]") {
     FakeDevice device;
-    scenes::SceneLibrary library(device);
+    engine::GpuContext gpu{device};
+    scenes::SceneLibrary library(gpu);
     const auto originalPath = savePath("success-watch-original");
     auto id = scenes::sceneIdFromPath(originalPath);
     REQUIRE(library.get(id));
@@ -1052,7 +1068,8 @@ TEST_CASE("successful Save and Save As retain a later external pair for review",
 TEST_CASE("save refuses a pair replaced between canonical read and hash",
           "[app][document-save][save-pair-verification]") {
     FakeDevice device;
-    scenes::SceneLibrary library(device);
+    engine::GpuContext gpu{device};
+    scenes::SceneLibrary library(gpu);
     const auto originalPath = savePath("verification-race-original");
     auto id = scenes::sceneIdFromPath(originalPath);
     REQUIRE(library.get(id));
@@ -1117,7 +1134,8 @@ TEST_CASE("a formatting-only disk change adopts its hash and a real change does 
 TEST_CASE("content Save As rejects geometry and texture aliases before invoking the writer",
           "[app][document-save][ux6-write]") {
     FakeDevice device;
-    scenes::SceneLibrary library(device);
+    engine::GpuContext gpu{device};
+    scenes::SceneLibrary library(gpu);
     const auto path = savePath("content-alias");
     auto id = scenes::sceneIdFromPath(path);
     REQUIRE(library.get(id));
@@ -1189,7 +1207,8 @@ TEST_CASE("document probe ignores geometry and an unrelated bin beside geometry-
 TEST_CASE("content save receipt covers JSON and animation only and adopts a clean document",
           "[app][document-save][ux6-write]") {
     FakeDevice device;
-    scenes::SceneLibrary library(device);
+    engine::GpuContext gpu{device};
+    scenes::SceneLibrary library(gpu);
     const auto path = savePath("content-receipt");
     auto id = scenes::sceneIdFromPath(path);
     REQUIRE(library.get(id));
@@ -1219,9 +1238,8 @@ TEST_CASE("content save receipt covers JSON and animation only and adopts a clea
 //======================================================================================================================
 TEST_CASE("a mesh rotation without an exact quaternion saves, adopts and stays clean",
           "[gpu][app][document-save][ux6-mesh-export]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
-    scenes::SceneLibrary library(**device);
+    auto gpu = createTestGpu();
+    scenes::SceneLibrary library(*gpu);
     auto doc = test::contentDocument();
     doc.nodes[1].mobility = asset::DocMobility::Movable;
     const auto path = savePath("mesh-rotation", doc);
@@ -1243,15 +1261,14 @@ TEST_CASE("a mesh rotation without an exact quaternion saves, adopts and stays c
     CHECK(reloaded->nodes[1].rotation == asset::rotationForEulerDegrees(angles));
     CHECK(session.scene().objects[index].eulerDegrees ==
           asset::eulerDegreesForRotation(reloaded->nodes[1].rotation));
-    (*device)->waitIdle();
+    gpu->waitIdle();
 }
 
 //======================================================================================================================
 TEST_CASE("saved mesh selection survives Save and verified proposal reload",
           "[gpu][app][document-save][ux6-mesh-export]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
-    scenes::SceneLibrary library(**device);
+    auto gpu = createTestGpu();
+    scenes::SceneLibrary library(*gpu);
     auto doc = test::contentDocument();
     doc.nodes[1].mobility = asset::DocMobility::Movable;
     const auto path = savePath("mesh-selection", doc);
@@ -1304,7 +1321,7 @@ TEST_CASE("saved mesh selection survives Save and verified proposal reload",
         selection.importedNode = 0;
         CHECK_FALSE(app::canPreserveSessionSelection(selection, *session.loadedScene(), proposal));
     }
-    (*device)->waitIdle();
+    gpu->waitIdle();
 }
 
 //======================================================================================================================
@@ -1317,7 +1334,8 @@ TEST_CASE("schema one native Save and Save As adopt schema two with matching rec
     // Install actual schema-one bytes; savePath uses the current disk writer.
     std::ofstream(path, std::ios::binary | std::ios::trunc)
         << asset::sceneDocumentJson(doc, "legacy-native.scene.bin");
-    scenes::SceneLibrary library(device);
+    engine::GpuContext gpu{device};
+    scenes::SceneLibrary library(gpu);
     auto id = scenes::sceneIdFromPath(path);
     REQUIRE(library.get(id));
     app::SceneSession session;

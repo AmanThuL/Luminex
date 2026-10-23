@@ -171,7 +171,7 @@ std::string_view graphResourceLogicalName(std::string_view name) {
 
 //======================================================================================================================
 GraphNodeModel buildGraphNodeModel(const CompiledFrameRecord& record,
-                                   std::span<const rojoRHI::PassTiming> timings) {
+                                   std::span<const engine::PassTiming> timings) {
     const CompiledFrameDebug& debug = record.debug;
     const GraphInspectorModel rows = buildGraphInspectorModel(record, timings);
 

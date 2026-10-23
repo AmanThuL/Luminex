@@ -8,9 +8,8 @@
 //======================================================================================================================
 TEST_CASE("every catalog document instantiates and Sponza retains its lights and rail",
           "[gpu][scene-doc]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
-    lmx::scenes::SceneLibrary library(**device);
+    auto gpu = createTestGpu();
+    lmx::scenes::SceneLibrary library(*gpu);
     for (const auto& entry : library.entries()) {
         INFO(entry.stableId);
         REQUIRE(entry.available);
@@ -28,16 +27,15 @@ TEST_CASE("every catalog document instantiates and Sponza retains its lights and
             REQUIRE(loaded->binding.localLightGroup.has_value());
         }
     }
-    (*device)->waitIdle();
+    gpu->waitIdle();
 }
 
 //======================================================================================================================
 TEST_CASE("document reload failure preserves activation and success invalidates old pointer state",
           "[gpu][scene-doc]") {
     using namespace lmx;
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
-    scenes::SceneLibrary library(**device);
+    auto gpu = createTestGpu();
+    scenes::SceneLibrary library(*gpu);
     auto document = scenes::readCatalogDocument("light-lab");
     REQUIRE(document);
     const auto generatorNode = test::documentGeneratorNode(*document, "light-lab");

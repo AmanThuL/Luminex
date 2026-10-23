@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Core/Diagnostics/Result.h"
+#include "Engine/Gpu/PassTiming.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/Temporal/Temporal.h"
 #include "Render/Passes/Temporal/TemporalHistory.h"
@@ -27,7 +28,7 @@ struct ReconstructionSelection {
 
 /// Resolves a request without allocating resources; native modes never consult vendor support.
 ReconstructionSelection resolveReconstruction(ReconstructionMode requested,
-                                              const rojoRHI::TemporalScalerSupport& support,
+                                              const engine::UpscalerSupportInfo& support,
                                               bool creationFailed = false);
 
 class VendorTemporalScaler;

@@ -13,6 +13,7 @@
 #include "App/Model/Scene/EditorSelection.h"
 #include "App/Model/Scene/SceneSession.h"
 #include "App/Model/Session/SessionEdits.h"
+#include "Engine/Gpu/PassTiming.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/View/Camera.h"
 #include "Render/Renderer/Renderer.h"
@@ -47,7 +48,7 @@ struct InspectorPanelContext {
     /// for the Temporal block's "Frame GPU time" status row. Read-only here -- the shell's
     /// applyDynamicResolution() is what advances it, once per buildUI.
     const DynamicResolutionState& dynamicResolutionState;
-    const rojoRHI::TemporalScalerSupport&
+    const engine::UpscalerSupportInfo&
         temporalSupport;          ///< Fixed device capability and display name.
     uint32_t viewportWidth = 0;   ///< Measured image backing width in pixels.
     uint32_t viewportHeight = 0;  ///< Measured image backing height in pixels.

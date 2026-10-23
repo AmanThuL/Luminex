@@ -10,7 +10,7 @@
 namespace lmx::render {
 
 /// Clamps input/output scale into the engine and supported vendor intervals.
-float vendorRenderScale(float scale, const rojoRHI::TemporalScalerSupport& support);
+float vendorRenderScale(float scale, const engine::UpscalerSupportInfo& support);
 
 /// Vendor history resets independently of the engine's interchangeable color/depth histories.
 bool vendorHistoryReset(HistoryResetReason reason, ReconstructionMode previousMode, bool recreated);

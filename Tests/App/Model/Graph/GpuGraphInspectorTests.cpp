@@ -70,6 +70,7 @@ TEST_CASE("the inspector model agrees with the dump for the same frame", "[gpu]"
     auto device = createDevice();
     INFO(errorOf(device));
     REQUIRE(device.has_value());
+    lmx::engine::GpuContext timingSource{**device};
 
     auto target = (*device)->createBuffer(
         {.size = kBytes, .storageRead = true, .label = "lmx.test.inspector.target"}, nullptr);
@@ -122,15 +123,17 @@ TEST_CASE("the inspector model agrees with the dump for the same frame", "[gpu]"
     graph.exportBuffer(nextVersion(targetHandle));
 
     records.retain(graph.execute(commands, (*device)->frameNumber()));
-    records.joinTimings((*device)->passTimingsFrame(), (*device)->passTimings());
+    const lmx::engine::PassTimingFrame published = timingSource.passTimings();
+    records.joinTimings(published.frame, published.passes);
     (*device)->endFrame(nullptr);
 
     // The one sequence passTimings() documents as publishing a specific frame: drain, then open one
     // more frame, which publishes the frame that just retired.
     (*device)->waitIdle();
     (*device)->beginFrame();
-    const uint64_t measured = (*device)->passTimingsFrame();
-    REQUIRE(records.joinTimings(measured, (*device)->passTimings()));
+    const lmx::engine::PassTimingFrame retired = timingSource.passTimings();
+    const uint64_t measured = retired.frame;
+    REQUIRE(records.joinTimings(measured, retired.passes));
     (*device)->endFrame(nullptr);
     (*device)->waitIdle();
 

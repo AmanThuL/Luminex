@@ -12,7 +12,7 @@ namespace lmx::app {
 
 //======================================================================================================================
 std::string_view reconstructionName(render::ReconstructionMode mode,
-                                    const rojoRHI::TemporalScalerSupport& support) {
+                                    const engine::UpscalerSupportInfo& support) {
     switch (mode) {
     case render::ReconstructionMode::Raw:
         return "Raw";
@@ -66,7 +66,7 @@ void observeRetiredTemporal(TemporalEditorState& state, const RetainedFrame* fra
 TemporalPresentation temporalPresentation(const TemporalEditorState& state,
                                           const EditorRenderSettings& settings,
                                           const render::TemporalStatus& status,
-                                          const rojoRHI::TemporalScalerSupport& support,
+                                          const engine::UpscalerSupportInfo& support,
                                           uint32_t outputWidth, uint32_t outputHeight) {
     TemporalPresentation result;
     result.requestedName = reconstructionName(settings.reconstruction, support);

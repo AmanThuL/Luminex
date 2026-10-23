@@ -15,6 +15,7 @@
 #include "Core/Diagnostics/Log.h"
 #include "Core/Util/Parse.h"
 #include "Core/Util/Stopwatch.h"
+#include "Engine/Gpu/GpuContext.h"
 #include "Render/Common/RhiLog.h"
 #include "Render/Graph/FrameDeclaration.h"
 #include "Render/Graph/RenderGraph.h"
@@ -90,15 +91,16 @@ float dynamicResolutionBudgetFromEnv() {
 // order keeps the device alive until every dependent object has been released.
 int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& options,
         const std::shared_ptr<lmx::app::ConsoleLog>& consoleLog) {
-    auto device = rojoRHI::createDevice();
-    if (!device) {
-        LMX_LOG_ERROR("createDevice failed: {}", device.error().message);
+    auto context = lmx::engine::GpuContext::create({});
+    if (!context) {
+        LMX_LOG_ERROR("createDevice failed: {}", context.error().message);
         return 1;
     }
-    LMX_LOG_INFO("Metal 4 device: {}", (*device)->deviceName());
+    lmx::engine::GpuContext& gpu = **context;
+    LMX_LOG_INFO("Metal 4 device: {}", gpu.device().deviceName());
 
     lmx::scenes::SceneLibrary sceneLibrary(
-        **device, options.generatorOverrides.instances, options.generatorOverrides.occluders,
+        gpu, options.generatorOverrides.instances, options.generatorOverrides.occluders,
         options.generatorOverrides.lights, options.generatorOverrides.pile);
 
     // Swapchain dimensions follow the backing store, not logical window points.
@@ -109,10 +111,10 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         return 1;
     }
 
-    auto swapchain = (*device)->createSwapchain({.nativeLayer = metalLayer,
-                                                 .width = static_cast<uint32_t>(pixelWidth),
-                                                 .height = static_cast<uint32_t>(pixelHeight),
-                                                 .format = rojoRHI::Format::BGRA8Unorm});
+    auto swapchain = gpu.device().createSwapchain({.nativeLayer = metalLayer,
+                                                   .width = static_cast<uint32_t>(pixelWidth),
+                                                   .height = static_cast<uint32_t>(pixelHeight),
+                                                   .format = rojoRHI::Format::BGRA8Unorm});
     if (!swapchain) {
         LMX_LOG_ERROR("createSwapchain failed: {}", swapchain.error().message);
         return 1;
@@ -127,10 +129,10 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
                  pointHeight, pixelWidth, pixelHeight);
 
     // Per-frame graphs die before the pool; the renderer and shell unwind before its resources.
-    lmx::render::TransientPool transientPool(**device);
+    lmx::render::TransientPool transientPool(gpu.device());
 
     // The viewport adopts its panel size after the first UI layout.
-    auto renderer = lmx::render::Renderer::create(**device, static_cast<uint32_t>(pixelWidth),
+    auto renderer = lmx::render::Renderer::create(gpu.device(), static_cast<uint32_t>(pixelWidth),
                                                   static_cast<uint32_t>(pixelHeight));
     if (!renderer) {
         LMX_LOG_ERROR("Renderer::create failed: {}", renderer.error().message);
@@ -143,8 +145,8 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
     (*renderer)->clearColor[3] = 1.0f;
 
     // EditorShell must release ImGui resources before the renderer and device.
-    auto shell = lmx::app::EditorShell::create(window, **device, sceneLibrary, options.initialScene,
-                                               consoleLog);
+    auto shell =
+        lmx::app::EditorShell::create(window, gpu, sceneLibrary, options.initialScene, consoleLog);
     if (!shell) {
         return 1;
     }
@@ -193,7 +195,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
     double elapsedSeconds = 0.0;
 
     while (running) {
-        shell->updateNativeMenu(**renderer, **device);
+        shell->updateNativeMenu(**renderer, gpu);
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             // ImGui must observe every event before input ownership is queried.
@@ -269,8 +271,8 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
 
         // Resize can drain and replace scene targets, so it precedes the ImGui frame that uses
         // them.
-        if (!shell->applyPendingViewportResize(**device, **renderer)) {
-            (*device)->waitIdle();
+        if (!shell->applyPendingViewportResize(gpu, **renderer)) {
+            gpu.waitIdle();
             return 1;
         }
 
@@ -279,7 +281,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         ImGui_ImplSDL3_NewFrame();
         rojoRHI::metal4::imguiNewFrame();
         ImGui::NewFrame();
-        shell->buildUI(**device, **renderer, deltaSeconds, frameRecords);
+        shell->buildUI(gpu, **renderer, deltaSeconds, frameRecords);
         ImGui::Render();
 
         // The ImGui frame is closed before acquisition; dropped drawables retain capture intent.
@@ -305,7 +307,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
             const auto outputPath = shell->captureOutputPath(capturePath);
             const bool targetAvailable = shell->sessionCaptureTargetAvailable();
             if (targetAvailable)
-                capturingThisFrame = rojoRHI::metal4::beginCapture(**device, outputPath);
+                capturingThisFrame = rojoRHI::metal4::beginCapture(gpu.device(), outputPath);
             auto& result = shell->actions().captureResult();
             std::error_code pathError;
             result.path = std::filesystem::absolute(outputPath, pathError).string();
@@ -320,22 +322,24 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         }
 
         const lmx::Stopwatch measurementWait;
-        rojoRHI::CommandList& commands = (*device)->beginFrame();
+        lmx::engine::Frame gpuFrame = gpu.beginFrame();
+        rojoRHI::CommandList& commands = gpuFrame.commands;
         const lmx::Stopwatch measurementEncode;
-        shell->retireMeasurement((*device)->passTimingsFrame(), (*device)->passTimings());
+        const lmx::engine::PassTimingFrame retiredTimings = gpu.passTimings();
+        shell->retireMeasurement(retiredTimings.frame, retiredTimings.passes);
         // The dynamic-resolution controller's attribution is by frame number, so this frame's
         // number is recorded as soon as it exists -- right after the beginFrame() that assigns it.
-        shell->controllerDeclared((*device)->frameNumber());
+        shell->controllerDeclared(gpu.frameNumber());
         (*renderer)->timeSeconds = timeSeconds;
 
         // This frame will be declared (the drawable was acquired above), so the scene's animation
         // clock and camera-track follow advance now, before the SceneView below captures whatever
         // pose and object transforms result.
         shell->advanceFrameAnimation();
-        if (auto prepared = shell->prepareSceneFrame((*device)->frameNumber()); !prepared) {
+        if (auto prepared = shell->prepareSceneFrame(gpu.frameNumber()); !prepared) {
             LMX_LOG_ERROR("scene table preparation failed: {}", prepared.error().message);
-            (*device)->endFrame(nullptr);
-            (*device)->waitIdle();
+            gpu.submitAndEndFrame(gpuFrame);
+            gpu.waitIdle();
             return 1;
         }
 
@@ -352,7 +356,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
                                             view, shell->poolingEnabled());
         shell->retireVisibility(**renderer);
         shell->retireLighting(**renderer);
-        shell->observeDeclaration(**renderer, (*device)->frameNumber());
+        shell->observeDeclaration(**renderer, gpu.frameNumber());
         lmx::render::RenderGraph& graph = frame.graph();
         const lmx::render::GraphTexture displayColor =
             shell->declareSelection(graph, commands, frame.displayColor(), view, **renderer);
@@ -394,17 +398,18 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         shell->commitFrame();
         // Published by this frame's beginFrame() and naming a frame that has already retired, which
         // is why the join is by number rather than by position.
-        frameRecords.joinTimings((*device)->passTimingsFrame(), (*device)->passTimings());
-        (*device)->endFrame(swapchain->get());
+        const lmx::engine::PassTimingFrame publishedTimings = gpu.passTimings();
+        frameRecords.joinTimings(publishedTimings.frame, publishedTimings.passes);
+        rojoRHI::Swapchain* const presented[] = {swapchain->get()};
+        gpu.submitAndEndFrame(gpuFrame, presented);
         const double measurementEncodeMs = measurementEncode.elapsedMilliseconds();
-        if (const auto* measuredRecord = frameRecords.find((*device)->frameNumber())) {
+        if (const auto* measuredRecord = frameRecords.find(gpu.frameNumber())) {
             shell->recordMeasurementFrame(
-                (*device)->frameNumber(),
-                measurementWait.elapsedMillisecondsUntil(measurementEncode), measurementEncodeMs,
-                measuredRecord->record);
+                gpu.frameNumber(), measurementWait.elapsedMillisecondsUntil(measurementEncode),
+                measurementEncodeMs, measuredRecord->record);
         }
         if (shell->measurementNeedsRetirementWait()) {
-            (*device)->waitIdle();
+            gpu.waitIdle();
             (*renderer)->drainVisibilityAfterIdle();
             (*renderer)->drainLightingAfterIdle();
             shell->retireVisibility(**renderer);
@@ -438,7 +443,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
                 rojoRHI::debug::CaptureSchema::instance().setContext(std::move(ctx));
             }
             // Captured work must complete before the trace document is finalized.
-            (*device)->waitIdle();
+            gpu.waitIdle();
             rojoRHI::metal4::endCapture();
             auto& result = shell->actions().captureResult();
             std::error_code outputError;
@@ -456,7 +461,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
     }
 
     // Establish one explicit idle boundary before dependent resources unwind.
-    (*device)->waitIdle();
+    gpu.waitIdle();
     (*renderer)->drainVisibilityAfterIdle();
     (*renderer)->drainLightingAfterIdle();
     shell->retireVisibility(**renderer);

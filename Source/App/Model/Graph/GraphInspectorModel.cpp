@@ -76,7 +76,7 @@ GraphInspectorTransientRow shapeTransient(const CompiledFrameDebug& debug,
 
 //======================================================================================================================
 GraphInspectorModel buildGraphInspectorModel(const CompiledFrameRecord& record,
-                                             std::span<const rojoRHI::PassTiming> timings) {
+                                             std::span<const engine::PassTiming> timings) {
     const CompiledFrameDebug& debug = record.debug;
     GraphInspectorModel model;
     model.frameId = record.frameId;

@@ -18,6 +18,7 @@
 #include "Core/Util/Parse.h"
 #include "Engine/Asset/Image/BmpImage.h"
 #include "Engine/Asset/Image/PngImage.h"
+#include "Engine/Gpu/GpuContext.h"
 #include "Engine/Scene/Scene.h"
 #include "Render/Graph/FrameDeclaration.h"
 #include "Render/Renderer/Renderer.h"
@@ -141,15 +142,16 @@ int runOffscreen(AppOptions options) {
             return 1;
         }
     }
-    auto device = rojoRHI::createDevice();
-    if (!device) {
-        LMX_LOG_ERROR("createDevice failed: {}", device.error().message);
+    auto context = engine::GpuContext::create({});
+    if (!context) {
+        LMX_LOG_ERROR("createDevice failed: {}", context.error().message);
         return 1;
     }
-    LMX_LOG_INFO("Metal 4 device: {}", (*device)->deviceName());
+    engine::GpuContext& gpu = **context;
+    LMX_LOG_INFO("Metal 4 device: {}", gpu.device().deviceName());
 
     scenes::SceneLibrary library(
-        **device, options.generatorOverrides.instances, options.generatorOverrides.occluders,
+        gpu, options.generatorOverrides.instances, options.generatorOverrides.occluders,
         options.generatorOverrides.lights, options.generatorOverrides.pile);
     const scenes::SceneEntry& entry = library.entry(sceneId);
     if (!entry.available) {
@@ -166,10 +168,10 @@ int runOffscreen(AppOptions options) {
     LMX_LOG_INFO("scene: {} ({} objects)", activeScene->name, activeScene->objects.size());
 
     // The renderer dies before its frame transients and their pool, while the device is alive.
-    render::TransientPool transientPool(**device);
+    render::TransientPool transientPool(gpu.device());
 
     // Shared storage permits direct CPU readback after GPU completion.
-    auto renderer = render::Renderer::create(**device, kScreenshotWidth, kScreenshotHeight,
+    auto renderer = render::Renderer::create(gpu.device(), kScreenshotWidth, kScreenshotHeight,
                                              /*cpuReadback=*/true);
     if (!renderer) {
         LMX_LOG_ERROR("Renderer::create failed: {}", renderer.error().message);
@@ -197,9 +199,10 @@ int runOffscreen(AppOptions options) {
         std::ofstream file(options.captureSequencePath / "manifest.json", std::ios::trunc);
         if (!file)
             return false;
-        file << captureManifestJson(options, (*device)->deviceName(), (*renderer)->displayDomain(),
-                                    kScreenshotWidth, kScreenshotHeight, hasCameraTrack, records,
-                                    complete, sceneDocumentPath, loadedSnapshot.hash, failure);
+        file << captureManifestJson(options, gpu.device().deviceName(),
+                                    (*renderer)->displayDomain(), kScreenshotWidth,
+                                    kScreenshotHeight, hasCameraTrack, records, complete,
+                                    sceneDocumentPath, loadedSnapshot.hash, failure);
         file.close();
         return static_cast<bool>(file);
     };
@@ -228,14 +231,16 @@ int runOffscreen(AppOptions options) {
             session.prepareScreenshotFrame(frame);
         }
 
-        rojoRHI::CommandList& commands = (*device)->beginFrame();
-        frameRecords.joinTimings((*device)->passTimingsFrame(), (*device)->passTimings());
+        engine::Frame gpuFrame = gpu.beginFrame();
+        rojoRHI::CommandList& commands = gpuFrame.commands;
+        const engine::PassTimingFrame timings = gpu.passTimings();
+        frameRecords.joinTimings(timings.frame, timings.passes);
         applyDynamicResolution(resolutionState, resolutionController, resolutionSettings,
                                frameRecords.newestTimedFrame());
-        if (auto prepared = session.prepareFrame((*device)->frameNumber()); !prepared) {
+        if (auto prepared = session.prepareFrame(gpu.frameNumber()); !prepared) {
             LMX_LOG_ERROR("scene table preparation failed: {}", prepared.error().message);
-            (*device)->endFrame(nullptr);
-            (*device)->waitIdle();
+            gpu.submitAndEndFrame(gpuFrame);
+            gpu.waitIdle();
             return 1;
         }
         std::vector<engine::DrawItem> items;
@@ -270,13 +275,13 @@ int runOffscreen(AppOptions options) {
         declared.graph().exportTexture(declared.displayColor());
         frameRecords.retain(declared.execute());
         if (options.dynamicResolution)
-            resolutionController.declared((*device)->frameNumber());
-        (*device)->endFrame(nullptr);
+            resolutionController.declared(gpu.frameNumber());
+        gpu.submitAndEndFrame(gpuFrame);
 
         // readback() has no synchronization; wait until the GPU releases the shared target, and
         // commitFrame() must not promote this frame's motion to "previous" before the GPU has
         // actually consumed it.
-        (*device)->waitIdle();
+        gpu.waitIdle();
         session.commitFrame();
         (*renderer)->drainVisibilityAfterIdle();
         (*renderer)->drainLightingAfterIdle();
@@ -333,7 +338,7 @@ int runOffscreen(AppOptions options) {
                                        captureFrameMetadataJson(
                                            sceneId, frames, frame, temporal, temporalView,
                                            view.temporal.renderScale, status,
-                                           (*device)->deviceName(), visibilityEnabled, submission,
+                                           gpu.device().deviceName(), visibilityEnabled, submission,
                                            labInstances, classifyMode, classifyCheck,
                                            &captureVisibility, &options, &captureLighting))) {
                     return 1;
@@ -376,7 +381,7 @@ int runOffscreen(AppOptions options) {
                            captureFrameMetadataJson(
                                sceneId, frames, frames - 1, temporal, temporalView,
                                (*renderer)->temporalStatus().renderScale,
-                               (*renderer)->temporalStatus(), (*device)->deviceName(),
+                               (*renderer)->temporalStatus(), gpu.device().deviceName(),
                                visibilityEnabled, submission, labInstances, classifyMode,
                                classifyCheck, &captureVisibility, &options, &captureLighting))) {
         return 1;

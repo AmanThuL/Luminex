@@ -7,6 +7,7 @@
 #include "Render/Renderer/SceneViewBuilder.h"
 #include "Scenes/CatalogScenes.h"
 #include "Scenes/SceneLibrary.h"
+#include "Support/GpuTestSupport.h"
 #include "Support/SceneDocumentTestSupport.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -18,9 +19,8 @@ using namespace lmx;
 //======================================================================================================================
 TEST_CASE("visibility lab keeps its requested population and initial boundary lanes",
           "[gpu][scene][visibility]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
-    scenes::SceneLibrary library(**device);
+    auto gpu = createTestGpu();
+    scenes::SceneLibrary library(*gpu);
     const auto id = scenes::parseSceneId("visibility-lab");
     REQUIRE(id);
     REQUIRE(library.entry(*id).available);
@@ -33,8 +33,8 @@ TEST_CASE("visibility lab keeps its requested population and initial boundary la
     REQUIRE(scene.animation.cameraTrack.size() == 721);
     REQUIRE(scene.animation.cameraTrack.front().position == scene.initialCamera.position);
     REQUIRE(scene.animation.cameraTrack.back().position == scene.initialCamera.position);
-    (*device)->beginFrame();
-    REQUIRE(scene.prepareFrame((*device)->frameNumber()));
+    lmx::engine::Frame gpuFrame = gpu->beginFrame();
+    REQUIRE(scene.prepareFrame(gpu->frameNumber()));
     std::vector<engine::DrawItem> items;
     const auto view = render::buildSceneView(scene, items, false);
     auto camera = engine::cameraFromScene(scene.initialCamera);
@@ -66,8 +66,8 @@ TEST_CASE("visibility lab keeps its requested population and initial boundary la
         if (seconds == 6.0)
             REQUIRE(classification.visible == 4096);
     }
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->submitAndEndFrame(gpuFrame);
+    gpu->waitIdle();
 }
 
 //======================================================================================================================

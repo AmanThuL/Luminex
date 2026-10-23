@@ -1,3 +1,4 @@
+#include "Support/GpuTestSupport.h"
 #include <catch2/catch_test_macros.hpp>
 
 #include "App/Model/Rendering/Settings/EditorRenderDefaults.h"
@@ -261,9 +262,8 @@ TEST_CASE("Inherited light disablement does not mark saved light fields edited",
 //======================================================================================================================
 TEST_CASE("Stopped TemporalLab animated source rows carry no edit mark or mobility",
           "[gpu][app][inspector-subject][mobility-display]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
-    scenes::SceneLibrary library(**device);
+    auto gpu = createTestGpu();
+    scenes::SceneLibrary library(*gpu);
     const auto id = scenes::parseSceneId("temporal-lab");
     REQUIRE(id);
     REQUIRE(library.get(*id));
@@ -290,5 +290,5 @@ TEST_CASE("Stopped TemporalLab animated source rows carry no edit mark or mobili
         }
     }
     CHECK(animated >= 2);
-    (*device)->waitIdle();
+    gpu->waitIdle();
 }
