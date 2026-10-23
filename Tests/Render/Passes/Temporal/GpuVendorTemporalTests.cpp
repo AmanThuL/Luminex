@@ -403,16 +403,15 @@ std::vector<FixtureDrawItem> movingQuadItems(const Camera& camera, const Fixture
 //======================================================================================================================
 TEST_CASE("vendor reconstruction settles a static jittered frame", "[gpu][temporal][vendor]") {
     using namespace rojoRHI;
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
-    if (!(*device)->capabilities().temporalScaler.available) {
+    auto gpu = createTestGpu();
+    if (!gpu->device().capabilities().temporalScaler.available) {
         SKIP("The device reports no vendor temporal scaler capability");
     }
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.vendorCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.vendorCube");
     REQUIRE(cube.has_value());
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(64.0f), "lmx.test.vendorFloor");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(64.0f),
+                                        "lmx.test.vendorFloor");
     REQUIRE(plane.has_value());
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
     const std::vector<FixtureDrawItem> items = checkerAndPoleItems(camera, *cube, *plane);
@@ -421,9 +420,9 @@ TEST_CASE("vendor reconstruction settles a static jittered frame", "[gpu][tempor
         CAPTURE(scale);
         base.temporal.renderScale = scale;
         const auto sequence = [&](ReconstructionMode mode) {
-            auto renderer = Renderer::create(**device, kScenarioWidth, kScenarioHeight, true);
+            auto renderer = Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, true);
             REQUIRE(renderer.has_value());
-            return renderSequence(**device, **renderer, 32, mode, base, camera,
+            return renderSequence(gpu->device(), **renderer, 32, mode, base, camera,
                                   TemporalDebugView::Off, nullptr);
         };
         const auto spatial = sequence(ReconstructionMode::Raw);
@@ -441,19 +440,17 @@ TEST_CASE("vendor reconstruction settles a static jittered frame", "[gpu][tempor
 //======================================================================================================================
 TEST_CASE("vendor reconstruction fills the display extent", "[gpu][temporal][vendor]") {
     using namespace rojoRHI;
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
-    if (!(*device)->capabilities().temporalScaler.available) {
+    auto gpu = createTestGpu();
+    if (!gpu->device().capabilities().temporalScaler.available) {
         SKIP("The device reports no vendor temporal scaler capability");
     }
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(32.0f), "lmx.test.vendorCoverage");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(32.0f),
+                                        "lmx.test.vendorCoverage");
     REQUIRE(plane.has_value());
     const Camera camera;
-    auto empty = Renderer::create(**device, kScenarioWidth, kScenarioHeight, true);
+    auto empty = Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, true);
     REQUIRE(empty.has_value());
-    renderFrame(**device, **empty, camera, scenarioSceneView({}, {0.0f, 0.0f, -1.0f}));
+    renderFrame(gpu->device(), **empty, camera, scenarioSceneView({}, {0.0f, 0.0f, -1.0f}));
     std::vector<uint8_t> background(kScenarioPixels * 4);
     (*empty)->colorTarget().readback(background.data(), background.size());
     const std::array<FixtureDrawItem, 1> items = {
@@ -462,10 +459,10 @@ TEST_CASE("vendor reconstruction fills the display extent", "[gpu][temporal][ven
         CAPTURE(scale);
         FixtureSceneView base = scenarioSceneView(items, {0.0f, 0.0f, -1.0f});
         base.temporal.renderScale = scale;
-        auto renderer = Renderer::create(**device, kScenarioWidth, kScenarioHeight, true);
+        auto renderer = Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, true);
         REQUIRE(renderer.has_value());
         const auto frames =
-            renderSequence(**device, **renderer, 32, ReconstructionMode::VendorTemporal, base,
+            renderSequence(gpu->device(), **renderer, 32, ReconstructionMode::VendorTemporal, base,
                            camera, TemporalDebugView::Off, nullptr);
         uint32_t clearPixels = 0;
         for (size_t pixel = 0; pixel < kScenarioPixels; ++pixel) {
@@ -483,16 +480,15 @@ TEST_CASE("vendor reconstruction fills the display extent", "[gpu][temporal][ven
 //======================================================================================================================
 TEST_CASE("a vendor reconstructed moving quad leaves no trail", "[gpu][temporal][vendor]") {
     using namespace rojoRHI;
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
-    if (!(*device)->capabilities().temporalScaler.available) {
+    auto gpu = createTestGpu();
+    if (!gpu->device().capabilities().temporalScaler.available) {
         SKIP("The device reports no vendor temporal scaler capability");
     }
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.vendorCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.vendorCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(32.0f), "lmx.test.vendorWall");
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(32.0f), "lmx.test.vendorWall");
     REQUIRE(plane.has_value());
     const Camera camera = movingQuadCamera();
     std::vector<FixtureDrawItem> items = movingQuadItems(camera, *cube, *plane);
@@ -504,9 +500,9 @@ TEST_CASE("a vendor reconstructed moving quad leaves no trail", "[gpu][temporal]
     };
     constexpr uint32_t kFrames = 28;
     const auto sequence = [&](ReconstructionMode mode) {
-        auto renderer = Renderer::create(**device, kScenarioWidth, kScenarioHeight, true);
+        auto renderer = Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, true);
         REQUIRE(renderer.has_value());
-        return renderSequence(**device, **renderer, kFrames, mode, base, camera,
+        return renderSequence(gpu->device(), **renderer, kFrames, mode, base, camera,
                               TemporalDebugView::Off, animate);
     };
     const auto spatial = sequence(ReconstructionMode::Raw);
@@ -526,19 +522,17 @@ TEST_CASE("a vendor reconstructed moving quad leaves no trail", "[gpu][temporal]
 TEST_CASE("native and vendor reconstruction retain separate valid histories",
           "[gpu][temporal][vendor]") {
     using namespace rojoRHI;
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
-    if (!(*device)->capabilities().temporalScaler.available) {
+    auto gpu = createTestGpu();
+    if (!gpu->device().capabilities().temporalScaler.available) {
         SKIP("The device reports no vendor temporal scaler capability");
     }
-    auto plane = lmx::test::fixtureMesh(**device, lmx::engine::makePlane(32.0f),
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(32.0f),
                                         "lmx.test.vendorSwitchPlane");
     REQUIRE(plane.has_value());
     const Camera camera;
-    auto empty = Renderer::create(**device, kScenarioWidth, kScenarioHeight, true);
+    auto empty = Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, true);
     REQUIRE(empty.has_value());
-    renderFrame(**device, **empty, camera, scenarioSceneView({}, {0.0f, 0.0f, -1.0f}));
+    renderFrame(gpu->device(), **empty, camera, scenarioSceneView({}, {0.0f, 0.0f, -1.0f}));
     const auto clear = readHalf4((*empty)->hdrColorTarget());
     const std::array<FixtureDrawItem, 1> items = {
         staticItem(*plane, facingPlaneModel(-2.0f), {0.6f, 0.6f, 0.6f, 1.0f})};
@@ -548,9 +542,9 @@ TEST_CASE("native and vendor reconstruction retain separate valid histories",
                                            ? ReconstructionMode::VendorTemporal
                                            : ReconstructionMode::NativeTaa;
     };
-    auto renderer = Renderer::create(**device, kScenarioWidth, kScenarioHeight, true);
+    auto renderer = Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, true);
     REQUIRE(renderer.has_value());
-    const auto frames = renderSequence(**device, **renderer, 24, ReconstructionMode::NativeTaa,
+    const auto frames = renderSequence(gpu->device(), **renderer, 24, ReconstructionMode::NativeTaa,
                                        base, camera, TemporalDebugView::Off, switchMode);
     CHECK(frames[8].status.lastReset == HistoryResetReason::None);
     CHECK(frames[16].status.lastReset == HistoryResetReason::None);
@@ -568,16 +562,15 @@ TEST_CASE("native and vendor reconstruction retain separate valid histories",
 //======================================================================================================================
 TEST_CASE("vendor reconstruction follows an exposure step", "[gpu][temporal][vendor]") {
     using namespace rojoRHI;
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
-    if (!(*device)->capabilities().temporalScaler.available) {
+    auto gpu = createTestGpu();
+    if (!gpu->device().capabilities().temporalScaler.available) {
         SKIP("The device reports no vendor temporal scaler capability");
     }
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.vendorCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.vendorCube");
     REQUIRE(cube.has_value());
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(64.0f), "lmx.test.vendorFloor");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(64.0f),
+                                        "lmx.test.vendorFloor");
     REQUIRE(plane.has_value());
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
     std::vector<FixtureDrawItem> items;
@@ -589,9 +582,9 @@ TEST_CASE("vendor reconstruction follows an exposure step", "[gpu][temporal][ven
         view.exposureEv = frame >= kStepFrame ? 2.0f : 0.0f;
     };
     const auto sequence = [&](ReconstructionMode mode) {
-        auto renderer = Renderer::create(**device, kScenarioWidth, kScenarioHeight, true);
+        auto renderer = Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, true);
         REQUIRE(renderer.has_value());
-        return renderSequence(**device, **renderer, kFrames, mode, base, camera,
+        return renderSequence(gpu->device(), **renderer, kFrames, mode, base, camera,
                               TemporalDebugView::Off, animate);
     };
     const auto raw = sequence(ReconstructionMode::Raw);
@@ -612,25 +605,23 @@ TEST_CASE("vendor reconstruction follows an exposure step", "[gpu][temporal][ven
 TEST_CASE("vendor scaler recreates on output resize and survives content scale changes",
           "[gpu][temporal][vendor]") {
     using namespace rojoRHI;
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
-    if (!(*device)->capabilities().temporalScaler.available) {
+    auto gpu = createTestGpu();
+    if (!gpu->device().capabilities().temporalScaler.available) {
         SKIP("The device reports no vendor temporal scaler capability");
     }
-    auto renderer = Renderer::create(**device, kScenarioWidth, kScenarioHeight, true);
+    auto renderer = Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, true);
     REQUIRE(renderer.has_value());
     const Camera camera;
     FixtureSceneView view = scenarioSceneView({}, {0.0f, 0.0f, -1.0f});
     view.temporal.enabled = true;
     view.temporal.jitterEnabled = true;
     view.temporal.reconstruction = ReconstructionMode::VendorTemporal;
-    renderFrame(**device, **renderer, camera, view);
+    renderFrame(gpu->device(), **renderer, camera, view);
     const auto first = (*renderer)->temporalStatus();
     REQUIRE(first.vendorScalerGeneration > 0);
     REQUIRE(first.vendorReset);
     view.temporal.renderScale = 0.5f;
-    renderFrame(**device, **renderer, camera, view);
+    renderFrame(gpu->device(), **renderer, camera, view);
     const auto scaled = (*renderer)->temporalStatus();
     CHECK(scaled.lastReset == HistoryResetReason::None);
     CHECK_FALSE(scaled.vendorReset);
@@ -642,7 +633,7 @@ TEST_CASE("vendor scaler recreates on output resize and survives content scale c
     auto resized = (*renderer)->resize(256, 144);
     INFO(errorOf(resized));
     REQUIRE(resized.has_value());
-    renderFrame(**device, **renderer, camera, view);
+    renderFrame(gpu->device(), **renderer, camera, view);
     const auto afterResize = (*renderer)->temporalStatus();
     CHECK(afterResize.lastReset == HistoryResetReason::ExtentChanged);
     CHECK(afterResize.vendorReset);
@@ -653,16 +644,16 @@ TEST_CASE("vendor scaler recreates on output resize and survives content scale c
     CHECK(output.size() == 256 * 144);
 
     view.temporal.cameraCut = true;
-    renderFrame(**device, **renderer, camera, view);
+    renderFrame(gpu->device(), **renderer, camera, view);
     CHECK((*renderer)->temporalStatus().lastReset == HistoryResetReason::CameraCut);
     CHECK((*renderer)->temporalStatus().vendorReset);
     CHECK((*renderer)->temporalStatus().vendorScalerGeneration ==
           afterResize.vendorScalerGeneration);
     view.temporal.cameraCut = false;
     view.temporal.enabled = false;
-    renderFrame(**device, **renderer, camera, view);
+    renderFrame(gpu->device(), **renderer, camera, view);
     view.temporal.enabled = true;
-    renderFrame(**device, **renderer, camera, view);
+    renderFrame(gpu->device(), **renderer, camera, view);
     CHECK((*renderer)->temporalStatus().vendorReset);
     CHECK((*renderer)->temporalStatus().vendorScalerGeneration ==
           afterResize.vendorScalerGeneration);
@@ -671,14 +662,12 @@ TEST_CASE("vendor scaler recreates on output resize and survives content scale c
 //======================================================================================================================
 TEST_CASE("vendor frames overlap while scale and diagnostics change", "[gpu][temporal][vendor]") {
     using namespace rojoRHI;
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
-    if (!(*device)->capabilities().temporalScaler.available) {
+    auto gpu = createTestGpu();
+    if (!gpu->device().capabilities().temporalScaler.available) {
         SKIP("The device reports no vendor temporal scaler capability");
     }
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(32.0f), "lmx.test.vendorOverlap");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(32.0f),
+                                        "lmx.test.vendorOverlap");
     REQUIRE(plane.has_value());
     const std::array<FixtureDrawItem, 1> items = {
         staticItem(*plane, facingPlaneModel(-2.0f), {0.6f, 0.6f, 0.6f, 1.0f})};
@@ -686,20 +675,20 @@ TEST_CASE("vendor frames overlap while scale and diagnostics change", "[gpu][tem
     view.temporal.enabled = true;
     view.temporal.jitterEnabled = true;
     view.temporal.reconstruction = ReconstructionMode::VendorTemporal;
-    auto renderer = Renderer::create(**device, kScenarioWidth, kScenarioHeight, true);
+    auto renderer = Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, true);
     REQUIRE(renderer.has_value());
     for (uint32_t frame = 0; frame < 5; ++frame) {
         view.temporal.renderScale = frame % 2 == 0 ? 0.5f : 1.0f;
         view.temporal.debugView =
             frame % 2 == 0 ? TemporalDebugView::Off : TemporalDebugView::MotionVectors;
-        renderFrameInFlight(**device, **renderer, Camera{}, view);
+        renderFrameInFlight(gpu->device(), **renderer, Camera{}, view);
         CHECK((*renderer)->temporalStatus().vendorScalerGeneration == 1);
         if (frame > 0) {
             CHECK((*renderer)->temporalStatus().lastReset == HistoryResetReason::None);
             CHECK_FALSE((*renderer)->temporalStatus().vendorReset);
         }
     }
-    (*device)->waitIdle();
+    gpu->device().waitIdle();
     const float mean = meanOver(luminances(readHalf4(*(*renderer)->historyTarget())), allPixels());
     CHECK(std::isfinite(mean));
     CHECK(mean > 0.01f);

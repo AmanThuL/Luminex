@@ -10,6 +10,7 @@
 #include "Render/Passes/Temporal/TemporalResolveInternal.h"
 
 #include "Core/Diagnostics/Assert.h"
+#include "Engine/Gpu/GpuError.h"
 #include "Render/Passes/Temporal/VendorTemporalScaler.h"
 
 #include <glm/mat4x4.hpp>
@@ -46,48 +47,49 @@ bool sameExtents(const FrameExtents& a, const FrameExtents& b) {
 } // namespace
 
 //======================================================================================================================
-TemporalResolve::TemporalResolve(rojoRHI::Device& device, bool cpuReadback)
-    : m_device(device), m_vendor(std::make_unique<VendorTemporalScaler>(device)),
+TemporalResolve::TemporalResolve(engine::GpuContext& gpu, bool cpuReadback)
+    : m_device(gpu.device()), m_vendor(std::make_unique<VendorTemporalScaler>(gpu)),
       m_cpuReadback(cpuReadback) {}
 
 //======================================================================================================================
 TemporalResolve::~TemporalResolve() = default;
 
 //======================================================================================================================
-rojoRHI::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(rojoRHI::Device& device,
-                                                                          bool cpuReadback) {
-    auto self = std::unique_ptr<TemporalResolve>(new TemporalResolve(device, cpuReadback));
+lmx::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(engine::GpuContext& gpu,
+                                                                      bool cpuReadback) {
+    rojoRHI::Device& device = gpu.device();
+    auto self = std::unique_ptr<TemporalResolve>(new TemporalResolve(gpu, cpuReadback));
 
     {
-        auto library = device.loadShaderLibrary("Shaders/TemporalReproject");
+        auto library = gpu.loadShaderLibrary("TemporalReproject");
         if (!library) {
             return std::unexpected(library.error());
         }
         self->m_reprojectLibrary = std::move(*library);
     }
     {
-        auto library = device.loadShaderLibrary("Shaders/TemporalResolve");
+        auto library = gpu.loadShaderLibrary("TemporalResolve");
         if (!library) {
             return std::unexpected(library.error());
         }
         self->m_resolveLibrary = std::move(*library);
     }
     {
-        auto library = device.loadShaderLibrary("Shaders/TemporalDebugView");
+        auto library = gpu.loadShaderLibrary("TemporalDebugView");
         if (!library) {
             return std::unexpected(library.error());
         }
         self->m_debugViewLibrary = std::move(*library);
     }
     {
-        auto library = device.loadShaderLibrary("Shaders/SpatialUpscale");
+        auto library = gpu.loadShaderLibrary("SpatialUpscale");
         if (!library) {
             return std::unexpected(library.error());
         }
         self->m_spatialUpscaleLibrary = std::move(*library);
     }
     {
-        auto library = device.loadShaderLibrary("Shaders/TemporalUpscale");
+        auto library = gpu.loadShaderLibrary("TemporalUpscale");
         if (!library) {
             return std::unexpected(library.error());
         }
@@ -101,7 +103,7 @@ rojoRHI::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(rojoRH
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
              .label = "lmx.render.temporalReprojectPipeline"});
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         self->m_reprojectPipeline = std::move(*pipeline);
     }
@@ -112,7 +114,7 @@ rojoRHI::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(rojoRH
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
              .label = "lmx.render.temporalResolvePipeline"});
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         self->m_resolvePipeline = std::move(*pipeline);
     }
@@ -123,7 +125,7 @@ rojoRHI::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(rojoRH
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
              .label = "lmx.render.spatialUpscalePipeline"});
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         self->m_spatialUpscalePipeline = std::move(*pipeline);
     }
@@ -134,7 +136,7 @@ rojoRHI::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(rojoRH
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
              .label = "lmx.render.temporalUpscalePipeline"});
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         self->m_temporalUpscalePipeline = std::move(*pipeline);
     }
@@ -143,7 +145,7 @@ rojoRHI::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(rojoRH
             fullscreenPipelineDesc(self->m_debugViewLibrary.get(), "fragmentMain", kDisplayFormat,
                                    "lmx.render.temporalDebugViewPipeline"));
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         self->m_debugViewPipeline = std::move(*pipeline);
     }
@@ -153,7 +155,7 @@ rojoRHI::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(rojoRH
                                              .addressMode = rojoRHI::AddressMode::Clamp,
                                              .label = "lmx.render.temporalSampler"});
         if (!sampler) {
-            return std::unexpected(sampler.error());
+            return std::unexpected(engine::gpuError(sampler.error()));
         }
         self->m_sampler = std::move(*sampler);
     }
@@ -165,7 +167,7 @@ rojoRHI::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(rojoRH
                                              .storageWrite = true,
                                              .label = "lmx.render.temporalDiagnosticFallback"});
         if (!texture) {
-            return std::unexpected(texture.error());
+            return std::unexpected(engine::gpuError(texture.error()));
         }
         self->m_diagnosticFallback = std::move(*texture);
     }
@@ -176,7 +178,7 @@ rojoRHI::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(rojoRH
                                              .sampled = true,
                                              .label = "lmx.render.temporalViewFallback"});
         if (!texture) {
-            return std::unexpected(texture.error());
+            return std::unexpected(engine::gpuError(texture.error()));
         }
         self->m_viewFallback = std::move(*texture);
     }
@@ -184,7 +186,7 @@ rojoRHI::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(rojoRH
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> TemporalResolve::resize(uint32_t width, uint32_t height) {
+lmx::Result<void> TemporalResolve::resize(uint32_t width, uint32_t height) {
     LMX_ASSERT(width > 0 && height > 0, "TemporalResolve::resize: the extent must be non-empty");
 
     std::unique_ptr<rojoRHI::Texture> depth[2];
@@ -204,7 +206,7 @@ rojoRHI::Result<void> TemporalResolve::resize(uint32_t width, uint32_t height) {
                                                     .sampled = true,
                                                     .label = kDepthLabels[slot]});
         if (!depthTexture) {
-            return std::unexpected(depthTexture.error());
+            return std::unexpected(engine::gpuError(depthTexture.error()));
         }
         // Storage-write because the resolve writes its slot directly rather than through a copy;
         // sampled because the next frame reprojects it. cpuReadback is what lets a test compare an
@@ -218,7 +220,7 @@ rojoRHI::Result<void> TemporalResolve::resize(uint32_t width, uint32_t height) {
                                                     .cpuReadback = m_cpuReadback,
                                                     .label = kColorLabels[slot]});
         if (!colorTexture) {
-            return std::unexpected(colorTexture.error());
+            return std::unexpected(engine::gpuError(colorTexture.error()));
         }
         depth[slot] = std::move(*depthTexture);
         color[slot] = std::move(*colorTexture);

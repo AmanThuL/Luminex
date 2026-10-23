@@ -15,8 +15,8 @@ struct FixtureMesh {
     engine::MeshData data;
     mutable std::vector<std::shared_ptr<FixtureSceneState>> retained;
 };
-inline rojoRHI::Result<FixtureMesh> fixtureMesh(rojoRHI::Device&, engine::MeshData data,
-                                                std::string_view) {
+inline lmx::Result<FixtureMesh> fixtureMesh(rojoRHI::Device&, engine::MeshData data,
+                                            std::string_view) {
     return FixtureMesh{.data = std::move(data), .retained = {}};
 }
 

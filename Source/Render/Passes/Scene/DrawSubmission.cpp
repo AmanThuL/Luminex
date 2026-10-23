@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Passes/Scene/DrawSubmission.h"
 #include "Core/Diagnostics/Assert.h"
+#include "Engine/Gpu/GpuError.h"
 #include "Render/Renderer/SceneView.h"
 #include <algorithm>
 #include <limits>
@@ -57,10 +58,10 @@ PreparedSubmission buildDrawSubmission(const SceneView& view, const VisibilityRe
 DrawSubmission::DrawSubmission(rojoRHI::Device& device) : m_device(device) {}
 
 //======================================================================================================================
-rojoRHI::Result<void> DrawSubmission::prepare(uint64_t frameNumber, const SceneView& view,
-                                              const VisibilityResult& scene,
-                                              const VisibilityResult& shadow) {
-    LMX_ASSERT(frameNumber == m_device.frameNumber() && frameNumber > m_lastFrame,
+lmx::Result<void> DrawSubmission::prepare(uint64_t frameNumber, const SceneView& view,
+                                          const VisibilityResult& scene,
+                                          const VisibilityResult& shadow) {
+    LMX_ASSERT(frameNumber > m_lastFrame,
                "submission preparation requires a newly paced device frame");
     std::erase_if(m_retiring,
                   [frameNumber](const auto& entry) { return frameNumber >= entry.releaseFrame; });
@@ -95,7 +96,7 @@ rojoRHI::Result<void> DrawSubmission::prepare(uint64_t frameNumber, const SceneV
                                                .label = "lmx.draw.rows." + suffix},
                                               nullptr);
             if (!rows) {
-                return std::unexpected(rows.error());
+                return std::unexpected(engine::gpuError(rows.error()));
             }
             auto args = m_device.createBuffer(
                 {.size = uint64_t{capacity} * sizeof(rojoRHI::DrawIndexedIndirectArgs),
@@ -105,7 +106,7 @@ rojoRHI::Result<void> DrawSubmission::prepare(uint64_t frameNumber, const SceneV
                  .label = "lmx.draw.args." + suffix},
                 nullptr);
             if (!args) {
-                return std::unexpected(args.error());
+                return std::unexpected(engine::gpuError(args.error()));
             }
             replacements[i] = {.rows = std::move(*rows),
                                .arguments = std::move(*args),

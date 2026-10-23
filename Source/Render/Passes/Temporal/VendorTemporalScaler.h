@@ -4,12 +4,13 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
+#include "Core/Diagnostics/Result.h"
 #include "Render/Passes/Temporal/TemporalResolve.h"
 
 namespace lmx::render {
 
 /// Clamps input/output scale into the engine and supported vendor intervals.
-float vendorRenderScale(float scale, const rojoRHI::TemporalScalerSupport& support);
+float vendorRenderScale(float scale, const engine::UpscalerSupportInfo& support);
 
 /// Vendor history resets independently of the engine's interchangeable color/depth histories.
 bool vendorHistoryReset(HistoryResetReason reason, ReconstructionMode previousMode, bool recreated);
@@ -29,14 +30,14 @@ struct VendorTemporalPacked {
 /// changes only change the content rectangle. A failed extent is retried only after a resize.
 class VendorTemporalScaler {
 public:
-    /// Borrows the device, which must outlive this adapter and its encoded work.
-    explicit VendorTemporalScaler(rojoRHI::Device& device) : m_device(device) {}
+    /// Borrows the GPU context, which must outlive this adapter and its encoded work.
+    explicit VendorTemporalScaler(engine::GpuContext& gpu) : m_gpu(gpu), m_device(gpu.device()) {}
 
     /// Prepares a vendor request and its packing pipeline, or reports native fallback.
     ReconstructionSelection prepare(ReconstructionMode requested, uint32_t width, uint32_t height);
 
     /// Creates only the engine packing pipeline; works without a vendor capability or scaler.
-    rojoRHI::Result<void> preparePacking();
+    lmx::Result<void> preparePacking();
 
     /// Prepared pipeline for the engine-owned, exposure-corrected history diagnostic.
     rojoRHI::ComputePipeline& historyPipeline() const;
@@ -62,11 +63,12 @@ public:
     uint32_t generation() const { return m_generation; }
 
 private:
+    engine::GpuContext& m_gpu;
     rojoRHI::Device& m_device;
     std::unique_ptr<rojoRHI::TemporalScaler> m_scaler;
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_packLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_packLibrary;
     std::unique_ptr<rojoRHI::ComputePipeline> m_packPipeline;
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_historyLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_historyLibrary;
     std::unique_ptr<rojoRHI::ComputePipeline> m_historyPipeline;
     uint32_t m_width = 0;
     uint32_t m_height = 0;

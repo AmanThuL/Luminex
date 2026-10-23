@@ -56,10 +56,10 @@ std::span<const std::string_view> sceneStableIds() {
     return kIds;
 }
 //======================================================================================================================
-SceneLibrary::SceneLibrary(rojoRHI::Device& device, std::optional<uint32_t> instances,
+SceneLibrary::SceneLibrary(engine::GpuContext& gpu, std::optional<uint32_t> instances,
                            std::optional<uint32_t> occluders, std::optional<uint32_t> lights,
                            std::optional<uint32_t> pile)
-    : m_device(device), m_overrides{instances, occluders, lights, pile} {
+    : m_gpu(gpu), m_device(gpu.device()), m_overrides{instances, occluders, lights, pile} {
     for (size_t i = 0; i < kIds.size(); ++i) {
         auto document = readCatalogDocument(kIds[i]);
         const bool ready = document && available(*document);
@@ -76,7 +76,7 @@ SceneLibrary::SceneLibrary(rojoRHI::Device& device, std::optional<uint32_t> inst
 }
 //======================================================================================================================
 SceneLibrary::~SceneLibrary() {
-    m_device.waitIdle();
+    m_gpu.waitIdle();
 }
 //======================================================================================================================
 std::span<const SceneEntry> SceneLibrary::entries() const {
@@ -148,7 +148,7 @@ asset::AssetResult<engine::LoadedScene*> SceneLibrary::reload(
     const auto key = cacheKey(id);
     auto old = m_scenes.find(key);
     if (old != m_scenes.end()) {
-        m_device.waitIdle();
+        m_gpu.waitIdle();
         if (beforeReplace)
             beforeReplace(old->second);
         old->second = std::move(*replacement);
@@ -169,7 +169,7 @@ void SceneLibrary::forget(const SceneId& id,
     const auto found = m_scenes.find(cacheKey(id));
     if (found == m_scenes.end())
         return;
-    m_device.waitIdle();
+    m_gpu.waitIdle();
     if (beforeRemove)
         beforeRemove(found->second);
     m_scenes.erase(found);
@@ -187,7 +187,7 @@ SceneLibrary::adoptSaved(engine::LoadedScene& source, const SceneId& destination
     LMX_ASSERT(old != m_scenes.end(), "save adoption requires a loaded source");
     if (old->first != newKey) {
         if (auto target = m_scenes.find(newKey); target != m_scenes.end()) {
-            m_device.waitIdle();
+            m_gpu.waitIdle();
             if (beforeReplace)
                 beforeReplace(target->second);
             m_scenes.erase(target);

@@ -12,20 +12,19 @@ namespace engine = lmx::engine;
 //======================================================================================================================
 TEST_CASE("GPU VisibilityLab states and canonical output equal the CPU at three rail times",
           "[gpu][visibility]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
-    auto loaded = lmx::test::loadCatalogScene(**device, "visibility-lab", 4096);
+    auto gpu = createTestGpu();
+    auto loaded = lmx::test::loadCatalogScene(gpu->device(), "visibility-lab", 4096);
     REQUIRE(loaded);
     auto& world = **loaded;
-    auto renderer = render::Renderer::create(**device, 160, 90, true);
+    auto renderer = render::Renderer::create(*gpu, 160, 90, true);
     REQUIRE(renderer);
     auto camera = engine::cameraFromScene(world.initialCamera);
     for (auto mode : {render::SubmissionMode::Indirect, render::SubmissionMode::Batched}) {
         for (double seconds : {0.0, 3.0, 6.0}) {
             world.animationTime = seconds;
             world.followCameraTrack(camera);
-            auto& commands = (*device)->beginFrame();
-            REQUIRE(world.prepareFrame((*device)->frameNumber()));
+            auto& commands = gpu->device().beginFrame();
+            REQUIRE(world.prepareFrame(gpu->device().frameNumber()));
             std::vector<engine::DrawItem> items;
             auto view = render::buildSceneView(world, items, false);
             view.classifyMode = render::ClassifyMode::Gpu;
@@ -37,10 +36,10 @@ TEST_CASE("GPU VisibilityLab states and canonical output equal the CPU at three 
                                                              camera.viewMatrix());
             const auto expected = render::classifyView(planes, items, view.tables);
             (*renderer)->render(commands, camera, view, false);
-            const auto declared = (*device)->frameNumber();
-            (*device)->endFrame(nullptr);
+            const auto declared = gpu->device().frameNumber();
+            gpu->device().endFrame(nullptr);
             world.commitFrame();
-            (*device)->waitIdle();
+            gpu->device().waitIdle();
             (*renderer)->drainVisibilityAfterIdle();
             const auto results = (*renderer)->takeRetiredVisibility();
             REQUIRE(results.size() == 1);
@@ -64,14 +63,13 @@ TEST_CASE("GPU VisibilityLab states and canonical output equal the CPU at three 
 //======================================================================================================================
 TEST_CASE("Empty GPU view and classifier switches preserve final frame diagnostics",
           "[gpu][visibility]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
-    auto renderer = render::Renderer::create(**device, 32, 32, true);
+    auto gpu = createTestGpu();
+    auto renderer = render::Renderer::create(*gpu, 32, 32, true);
     REQUIRE(renderer);
     std::vector<uint64_t> gpuFrames;
     for (auto classifier : {render::ClassifyMode::Gpu, render::ClassifyMode::Cpu,
                             render::ClassifyMode::Gpu, render::ClassifyMode::Gpu}) {
-        auto& commands = (*device)->beginFrame();
+        auto& commands = gpu->device().beginFrame();
         render::SceneView view;
         view.temporal.enabled = false;
         view.classifyMode = classifier;
@@ -79,10 +77,10 @@ TEST_CASE("Empty GPU view and classifier switches preserve final frame diagnosti
         view.submission = render::SubmissionMode::Batched;
         (*renderer)->render(commands, engine::Camera{}, view, false);
         if (classifier == render::ClassifyMode::Gpu)
-            gpuFrames.push_back((*device)->frameNumber());
-        (*device)->endFrame(nullptr);
+            gpuFrames.push_back(gpu->device().frameNumber());
+        gpu->device().endFrame(nullptr);
     }
-    (*device)->waitIdle();
+    gpu->device().waitIdle();
     (*renderer)->drainVisibilityAfterIdle();
     const auto results = (*renderer)->takeRetiredVisibility();
     REQUIRE(results.size() == gpuFrames.size());

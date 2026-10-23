@@ -46,7 +46,7 @@ std::string_view visibilityReasonName(render::VisibilityReason reason) {
 }
 //======================================================================================================================
 std::vector<VisibilityField> visibilityFields(const render::VisibilityStatus& status,
-                                              std::span<const rojoRHI::PassTiming> timings) {
+                                              std::span<const engine::PassTiming> timings) {
     std::vector<VisibilityField> fields;
     fields.push_back({"Classifier", std::string(classifyModeName(status.classifyMode)),
                       VisibilityFieldGroup::Frame});
@@ -252,7 +252,7 @@ void VisibilityDisplay::retire(const render::VisibilityStatus& status) {
 }
 //======================================================================================================================
 void VisibilityDisplay::observeTimings(uint64_t frame,
-                                       std::span<const rojoRHI::PassTiming> timings) {
+                                       std::span<const engine::PassTiming> timings) {
     if (timings.empty() || (!m_timings.empty() && m_timings.back().frame >= frame))
         return;
     m_timings.push_back({.frame = frame, .passes = {timings.begin(), timings.end()}});
@@ -260,10 +260,10 @@ void VisibilityDisplay::observeTimings(uint64_t frame,
         m_timings.pop_front();
 }
 //======================================================================================================================
-std::span<const rojoRHI::PassTiming> VisibilityDisplay::timings() const {
+std::span<const engine::PassTiming> VisibilityDisplay::timings() const {
     const auto found = std::ranges::find_if(
         m_timings, [&](const auto& timing) { return timing.frame == m_status.frameNumber; });
-    return found == m_timings.end() ? std::span<const rojoRHI::PassTiming>{} : found->passes;
+    return found == m_timings.end() ? std::span<const engine::PassTiming>{} : found->passes;
 }
 //======================================================================================================================
 void VisibilityDisplay::publishReadings(double nowSeconds) {

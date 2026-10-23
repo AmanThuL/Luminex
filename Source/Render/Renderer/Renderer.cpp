@@ -150,7 +150,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& c
                              .bloomIntensity = view.bloomIntensity});
     if (lightDebugEnabled) {
         if (!m_lightDebug) {
-            auto stage = LightDebugStage::create(m_device);
+            auto stage = LightDebugStage::create(m_gpu);
             LMX_ASSERT(stage.has_value(), stage.error().message);
             m_lightDebug = std::move(*stage);
         }
@@ -195,7 +195,7 @@ void Renderer::render(rojoRHI::CommandList& commands, const engine::Camera& came
     const GraphTexture displayColor = declarePasses(graph, commands, camera, view);
     // The display-transformed image is this frame's whole result, so it is what the graph roots.
     graph.exportTexture(displayColor);
-    graph.execute(commands, m_device.frameNumber());
+    graph.execute(commands, m_gpu.frameNumber());
 
     if (barrierForSampling) {
         // For a sampling pass outside this graph: a hand-encoded pass declares nothing, so there

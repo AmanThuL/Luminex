@@ -42,11 +42,10 @@ std::optional<bool> inspectorIsStatic(const SceneSession& session,
 bool inspectorSubjectEdited(const SceneSession& session, const EditorSelection& selection);
 
 /// Changes only the selected subject's own flag through SceneSession's validated edit path.
-rojoRHI::Result<void> setInspectorEnabled(SceneSession& session, const EditorSelection& selection,
-                                          bool enabled);
+lmx::Result<void> setInspectorEnabled(SceneSession& session, const EditorSelection& selection,
+                                      bool enabled);
 
 /// Restores the selected subject's loaded/saved own flag without changing its other fields.
-rojoRHI::Result<void> resetInspectorEnabled(SceneSession& session,
-                                            const EditorSelection& selection);
+lmx::Result<void> resetInspectorEnabled(SceneSession& session, const EditorSelection& selection);
 
 } // namespace lmx::app

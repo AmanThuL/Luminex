@@ -42,6 +42,7 @@
 #include "App/Panels/Viewport/ViewportGizmo.h"
 #include "App/Shell/ChildRun.h"
 #include "App/Shell/NativeMenu.h"
+#include "Engine/Gpu/GpuContext.h"
 #include "Engine/View/Camera.h"
 #include "Render/Passes/SelectionOutline/SelectionOutline.h"
 #include "Render/Passes/Temporal/ResolutionController.h"
@@ -93,10 +94,10 @@ struct WorkspaceSettings {
 ///
 /// It owns selection presentation resources but no Scene. The SceneLibrary (which owns every Scene
 /// it has built, for the device's lifetime) is passed in and outlives the shell; everything else
-/// the shell touches (the scene target it displays, the device it resizes against) is passed in per
-/// call, which keeps the destruction order the RHI requires visible in run(): the shell is declared
-/// last and so torn down first, while the device is still alive for imguiShutdown() to drain
-/// against.
+/// the shell touches (the scene target it displays, the GPU context it resizes against) is passed
+/// in per call, which keeps the destruction order the RHI requires visible in run(): the shell is
+/// declared last and so torn down first, while the device is still alive for imguiShutdown() to
+/// drain against.
 class EditorShell {
 public:
     /// Creates the ImGui context and both backends (order per Metal4ImGui.h), then loads the
@@ -105,7 +106,7 @@ public:
     /// fails to load --
     /// both are startup-fatal, unlike a later scene switch (the Scene panel -> selectScene), which
     /// logs and keeps the previous scene active instead.
-    static std::unique_ptr<EditorShell> create(SDL_Window* window, rojoRHI::Device& device,
+    static std::unique_ptr<EditorShell> create(SDL_Window* window, engine::GpuContext& gpu,
                                                scenes::SceneLibrary& library,
                                                scenes::SceneId initialScene,
                                                std::shared_ptr<ConsoleLog> consoleLog);
@@ -125,7 +126,7 @@ public:
     /// data naming a texture that no longer exists, which is why the frame loop calls it at the
     /// top of the frame rather than next to the size measurement that feeds it.
     /// False on renderer allocation failure: the caller must leave the frame loop before drawing.
-    bool applyPendingViewportResize(rojoRHI::Device& device, render::Renderer& renderer);
+    bool applyPendingViewportResize(engine::GpuContext& gpu, render::Renderer& renderer);
 
     /// Applies queued font/control scaling before backend and ImGui NewFrame calls.
     /// Uses the unscaled base style so repeated zoom/reset operations cannot accumulate drift.
@@ -154,12 +155,12 @@ public:
     /// Heals the Scene panel's selection against the active scene before any panel draws (spec
     /// section 5): a stale scene id or out-of-range index resolves to None and the healed value is
     /// what the Inspector sees this frame.
-    void buildUI(rojoRHI::Device& device, render::Renderer& renderer, float deltaSeconds,
+    void buildUI(engine::GpuContext& gpu, render::Renderer& renderer, float deltaSeconds,
                  const FrameRecordRing& frameRecords);
 
     /// Seeds rendering and local-light startup options before the first frame; returns a rig
     /// activation error without starting the frame loop if the requested rig cannot be added.
-    rojoRHI::Result<void> primeTemporal(const AppOptions& options);
+    lmx::Result<void> primeTemporal(const AppOptions& options);
 
     /// Appends editor-only selection presentation; returns scene display unchanged without a cue.
     render::GraphTexture declareSelection(render::RenderGraph& graph,
@@ -175,7 +176,7 @@ public:
     render::SceneView sceneView();
 
     /// Uploads active scene tables after frame pacing and animation, before obtaining the view.
-    rojoRHI::Result<void> prepareSceneFrame(uint64_t frameNumber);
+    lmx::Result<void> prepareSceneFrame(uint64_t frameNumber);
 
     /// True exactly once per reset trigger (spec 9): first frame, scene switch, auto-exposure
     /// enable, and resize. Consuming clears the flag, so main.cpp calling this once a frame is
@@ -205,7 +206,7 @@ public:
     /// scale, while the controller is active -- dynamic resolution and the temporal path both on.
     /// Skipped otherwise: with either off the frame does not run at a scale the controller chose,
     /// so attributing it to one would judge the controller by a picture it never asked for. Call
-    /// once per frame, after `device.beginFrame()`, with the device's own frame number.
+    /// once per frame, after `gpu.beginFrame()`, with the context's frame number.
     void controllerDeclared(uint64_t frame);
 
     /// Retains the current declaration's temporal event and effective status for editor observers.
@@ -215,7 +216,7 @@ public:
     FrameMetricsMetadata frameMetrics(const render::Renderer& renderer);
 
     /// Joins exact retired GPU timings to a pending interactive measurement.
-    void retireMeasurement(uint64_t frameId, std::span<const rojoRHI::PassTiming> timings);
+    void retireMeasurement(uint64_t frameId, std::span<const engine::PassTiming> timings);
     /// Joins the exact retired local-light diagnostics to their declared measurement frame.
     void retireMeasurementLighting(const render::LightingStatus& status);
     /// Publishes queued GPU visibility using saved declaration identities and exact measurement
@@ -268,7 +269,7 @@ public:
     /// Opens the run-local socket after startup or an operator Listen action.
     bool startSessionListener();
     /// Publishes native menu state before SDL polls AppKit events; a no-op outside macOS.
-    void updateNativeMenu(const render::Renderer& renderer, const rojoRHI::Device& device);
+    void updateNativeMenu(const render::Renderer& renderer, const engine::GpuContext& gpu);
     /// Drains native actions in order and consumes framing with the supplied renderer.
     /// afterPanels resolves keyboard intents using this frame's widget ownership.
     void consumeNativeMenuCommands(const render::Renderer& renderer, bool afterPanels = false);
@@ -292,12 +293,12 @@ private:
 
     // Submitted before the dockspace so the work area the topology is built into already excludes
     // the menu bar. Menu items only read visibility and raise intents.
-    void buildMainMenu(const render::Renderer& renderer, const rojoRHI::Device& device);
+    void buildMainMenu(const render::Renderer& renderer, const engine::GpuContext& gpu);
     /// Resolves the reconstruction the renderer runs for the current request: a vendor request
     /// falls back to Native TAA without device support or after the scaler's creation failed.
     render::ReconstructionMode effectiveReconstruction(const render::Renderer& renderer,
-                                                       const rojoRHI::Device& device) const;
-    MenuContext menuContext(const render::Renderer& renderer, const rojoRHI::Device& device);
+                                                       const engine::GpuContext& gpu) const;
+    MenuContext menuContext(const render::Renderer& renderer, const engine::GpuContext& gpu);
     void consumeFrameSelection(const render::Renderer& renderer);
     void resetCamera();
     void frameSelected(const render::Renderer& renderer);
@@ -315,7 +316,7 @@ private:
     void updateUiScaleShortcuts();
     // Draws every visible panel in dock order and folds each window's close button back into
     // m_workspace.visibility. Panels draw the state this shell owns; they keep no copy of it.
-    void buildPanels(rojoRHI::Device& device, render::Renderer& renderer,
+    void buildPanels(engine::GpuContext& gpu, render::Renderer& renderer,
                      const FrameRecordRing& frameRecords);
     // Leaves SDL relative mouse mode, restores the cursor, clears the look latch, and discards the
     // motion accumulated while looking, so a later look cannot start with a jump. Safe to call when
@@ -355,7 +356,7 @@ private:
     void cancelAwaitingSessionApprovals(std::string_view reason);
     void updateCameraInput(float deltaSeconds);
     uint64_t metricsContextEpoch();
-    bool startMeasurement(rojoRHI::Device& device, const render::Renderer& renderer,
+    bool startMeasurement(engine::GpuContext& gpu, const render::Renderer& renderer,
                           bool sessionOwned = false);
     void exportMeasurement();
 

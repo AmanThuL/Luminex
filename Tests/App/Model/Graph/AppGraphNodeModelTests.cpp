@@ -489,8 +489,8 @@ TEST_CASE("the shape signature ignores measurements and notices shape changes", 
     declareBaseFrame(frame, {});
     const auto record = frame.graph.compileFrame(2);
     REQUIRE(record.has_value());
-    const std::array<rojoRHI::PassTiming, 1> timings = {
-        rojoRHI::PassTiming{.label = "lmx.pass.shadow", .gpuMilliseconds = 7.25}};
+    const std::array<lmx::engine::PassTiming, 1> timings = {
+        lmx::engine::PassTiming{.label = "lmx.pass.shadow", .gpuMilliseconds = 7.25}};
 
     BaseFrame other;
     declareBaseFrame(other, {});
@@ -543,11 +543,11 @@ TEST_CASE("node facts equal the inspector rows for the same pass", "[app]") {
     const auto record = frame.graph.compileFrame(11);
     REQUIRE(record.has_value());
 
-    const std::array<rojoRHI::PassTiming, 4> timings = {
-        rojoRHI::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 0.1},
-        rojoRHI::PassTiming{.label = "lmx.pass.resolve", .gpuMilliseconds = 0.2},
-        rojoRHI::PassTiming{.label = "lmx.pass.bloom", .gpuMilliseconds = 0.3},
-        rojoRHI::PassTiming{.label = "lmx.pass.composite", .gpuMilliseconds = 0.4}};
+    const std::array<lmx::engine::PassTiming, 4> timings = {
+        lmx::engine::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 0.1},
+        lmx::engine::PassTiming{.label = "lmx.pass.resolve", .gpuMilliseconds = 0.2},
+        lmx::engine::PassTiming{.label = "lmx.pass.bloom", .gpuMilliseconds = 0.3},
+        lmx::engine::PassTiming{.label = "lmx.pass.composite", .gpuMilliseconds = 0.4}};
 
     const GraphInspectorModel rows = buildGraphInspectorModel(*record, timings);
     const GraphNodeModel model = buildGraphNodeModel(*record, timings);

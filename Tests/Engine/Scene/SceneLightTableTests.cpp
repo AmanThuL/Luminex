@@ -94,7 +94,7 @@ TEST_CASE("Adding a local light beyond the frozen capacity fails", "[scene][ligh
     REQUIRE(scene.localLights().size() == engine::kMaxLocalLights);
     const auto overflow = scene.addLight(testLight());
     REQUIRE_FALSE(overflow.has_value());
-    REQUIRE(overflow.error().code == rojoRHI::ErrorCode::InvalidDesc);
+    REQUIRE(overflow.error().code == lmx::ErrorCode::InvalidArgument);
 }
 
 //======================================================================================================================
@@ -102,7 +102,7 @@ TEST_CASE("Adding or updating an invalid local light fails without asserting", "
     engine::Scene scene;
     const auto invalid = scene.addLight({.range = -1.0f});
     REQUIRE_FALSE(invalid.has_value());
-    REQUIRE(invalid.error().code == rojoRHI::ErrorCode::InvalidDesc);
+    REQUIRE(invalid.error().code == lmx::ErrorCode::InvalidArgument);
     const auto id = scene.addLight(testLight());
     REQUIRE(id.has_value());
     const auto badUpdate = scene.updateLight(*id, {.range = -1.0f});

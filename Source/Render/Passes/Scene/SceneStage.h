@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "Core/Diagnostics/Result.h"
+#include "Engine/Gpu/GpuContext.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/Scene/DrawSubmission.h"
 #include "Render/Passes/Temporal/TemporalHistory.h"
@@ -64,8 +66,8 @@ struct SceneStageInputs {
 class SceneStage {
 public:
     /// Creates all variants for the scene color format; propagates GPU creation errors.
-    static rojoRHI::Result<std::unique_ptr<SceneStage>> create(rojoRHI::Device& device,
-                                                               rojoRHI::Format sceneColorFormat);
+    static lmx::Result<std::unique_ptr<SceneStage>> create(engine::GpuContext& gpu,
+                                                           rojoRHI::Format sceneColorFormat);
 
     /// Registers draw and shared table layouts independently to retain the capture schema's
     /// serialized ordering.
@@ -93,12 +95,12 @@ private:
     std::unique_ptr<rojoRHI::Buffer> m_fallbackLightRows;
     std::unique_ptr<rojoRHI::Buffer> m_fallbackClusterGrid;
     std::unique_ptr<rojoRHI::Buffer> m_fallbackClusterIndices;
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_sceneLibrary;
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_sceneAutoLibrary;
-    std::array<std::unique_ptr<rojoRHI::ShaderLibrary>, 2> m_maskSceneLibraries;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_sceneLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_sceneAutoLibrary;
+    std::array<engine::GpuOwned<rojoRHI::ShaderLibrary>, 2> m_maskSceneLibraries;
     std::array<std::unique_ptr<rojoRHI::GraphicsPipeline>, 16> m_maskScenePipelines;
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_skyLibrary;
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_skyAutoLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_skyLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_skyAutoLibrary;
     std::unique_ptr<rojoRHI::GraphicsPipeline> m_scenePipeline;
     std::unique_ptr<rojoRHI::GraphicsPipeline> m_sceneWireframePipeline;
     std::unique_ptr<rojoRHI::GraphicsPipeline> m_scenePipelineAuto;

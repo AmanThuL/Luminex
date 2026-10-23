@@ -216,7 +216,7 @@ bool MeasurementRun::recordCpu(MeasurementCpuSample sample) {
 }
 
 //======================================================================================================================
-bool MeasurementRun::retire(uint64_t frameId, std::span<const rojoRHI::PassTiming> passes) {
+bool MeasurementRun::retire(uint64_t frameId, std::span<const engine::PassTiming> passes) {
     if (!active())
         return false;
     if (m_lastFrameId != 0 && frameId > m_lastFrameId) {

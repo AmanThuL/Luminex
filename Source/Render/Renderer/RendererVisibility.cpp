@@ -29,7 +29,7 @@ std::array<GraphBuffer, 2> Renderer::prepareVisibility(RenderGraph& graph,
                                                        const SceneView& view,
                                                        const FrustumPlanes& planes,
                                                        std::span<const GraphBuffer> sceneBuffers) {
-    const auto frame = m_device.frameNumber();
+    const auto frame = m_gpu.frameNumber();
     // Retirement precedes draw-buffer growth, whose release list may destroy completed storage.
     if (m_gpuVisibility && frame >= 3)
         m_gpuVisibility->retireThrough(frame - 3);
@@ -69,7 +69,7 @@ std::array<GraphBuffer, 2> Renderer::prepareVisibility(RenderGraph& graph,
         m_visibilityStatus.shadow.candidates = m_visibilityStatus.scene.candidates;
         m_visibilityStatus.shadowCounters = m_visibilityStatus.sceneCounters;
         if (!m_gpuVisibility) {
-            auto stage = GpuVisibility::create(m_device);
+            auto stage = GpuVisibility::create(m_gpu);
             LMX_ASSERT(stage.has_value(), stage.error().message);
             m_gpuVisibility = std::move(*stage);
         }

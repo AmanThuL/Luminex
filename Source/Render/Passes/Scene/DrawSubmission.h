@@ -3,6 +3,7 @@
 /// @brief Declares CPU draw preparation and three paced GPU submission slots.
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
+#include "Core/Diagnostics/Result.h"
 #include "Render/Graph/ResourceUse.h"
 #include "Render/Passes/Visibility/Visibility.h"
 #include <array>
@@ -46,8 +47,8 @@ public:
     /// Borrows the device until destruction, after the caller has retired all submitted work.
     explicit DrawSubmission(rojoRHI::Device& device);
     /// Prepares only the slot retired by the current beginFrame; allocation errors propagate.
-    rojoRHI::Result<void> prepare(uint64_t frameNumber, const SceneView& view,
-                                  const VisibilityResult& scene, const VisibilityResult& shadow);
+    lmx::Result<void> prepare(uint64_t frameNumber, const SceneView& view,
+                              const VisibilityResult& scene, const VisibilityResult& shadow);
     /// Last prepared scene commands, valid through graph execution.
     const DrawList& scene() const { return m_prepared.scene; }
     /// Last prepared shadow commands, valid through graph execution.

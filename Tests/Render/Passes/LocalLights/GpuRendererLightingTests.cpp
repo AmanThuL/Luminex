@@ -23,15 +23,13 @@ TEST_CASE("a zero-light frame is byte-identical across the three local-light mod
           "[gpu][light]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.modeCube");
+    auto cube = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.modeCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
-    auto renderer = Renderer::create(**device, kSceneProbeSize, kSceneProbeSize,
+    auto renderer = Renderer::create(*gpu, kSceneProbeSize, kSceneProbeSize,
                                      /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
@@ -48,25 +46,25 @@ TEST_CASE("a zero-light frame is byte-identical across the three local-light mod
             REQUIRE(light.has_value());
             REQUIRE(scene.removeLight(*light));
         }
-        CommandList& commands = (*device)->beginFrame();
-        const lmx::render::SceneView prepared = lmx::test::prepareSceneView(view, device);
+        CommandList& commands = gpu->device().beginFrame();
+        const lmx::render::SceneView prepared = lmx::test::prepareSceneView(view, gpu->device());
         if (removeLast)
             REQUIRE(prepared.tables.lightRowCount > 0);
         REQUIRE(prepared.tables.liveLightCount == expectedLights);
-        lmx::render::TransientPool transients(**device);
+        lmx::render::TransientPool transients(gpu->device());
         transients.beginFrame();
         lmx::render::RenderGraph graph(transients);
         const auto output = (*renderer)->declarePasses(graph, commands, sceneCamera(), prepared);
         graph.exportTexture(output);
-        const auto record = graph.compileFrame((*device)->frameNumber());
+        const auto record = graph.compileFrame(gpu->device().frameNumber());
         REQUIRE(record.has_value());
         const auto dump = lmx::render::dumpCompiledFrame(*record);
         REQUIRE((dump.find("lmx.scene.lights") != std::string::npos) == (expectedLights > 0));
         if (expectedLights == 0)
             REQUIRE(dump.find("lmx.pass.light.") == std::string::npos);
-        graph.execute(commands, (*device)->frameNumber());
-        (*device)->endFrame(nullptr);
-        (*device)->waitIdle();
+        graph.execute(commands, gpu->device().frameNumber());
+        gpu->device().endFrame(nullptr);
+        gpu->device().waitIdle();
         std::vector<uint16_t> texels(size_t{kSceneProbeSize} * kSceneProbeSize * 4);
         (*renderer)->hdrColorTarget().readback(texels.data(), texels.size() * sizeof(uint16_t));
         return texels;
@@ -148,16 +146,14 @@ TEST_CASE("a point light shades the scene pass to its CPU mirror times pre-expos
           "[gpu][light]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto quad =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(8.0f), "lmx.test.litProbeQuad");
+    auto quad = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(8.0f),
+                                       "lmx.test.litProbeQuad");
     INFO(errorOf(quad));
     REQUIRE(quad.has_value());
 
-    auto renderer = Renderer::create(**device, kBrdfProbeSize, kBrdfProbeSize,
+    auto renderer = Renderer::create(*gpu, kBrdfProbeSize, kBrdfProbeSize,
                                      /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
@@ -195,8 +191,8 @@ TEST_CASE("a point light shades the scene pass to its CPU mirror times pre-expos
 
     const Camera camera = pinnedAngleCamera();
 
-    CommandList& commands = (*device)->beginFrame();
-    const lmx::render::SceneView prepared = lmx::test::prepareSceneView(view, device);
+    CommandList& commands = gpu->device().beginFrame();
+    const lmx::render::SceneView prepared = lmx::test::prepareSceneView(view, gpu->device());
     REQUIRE(prepared.tables.liveLightCount == 1);
     REQUIRE(prepared.tables.lightRowCount == 1);
     REQUIRE(prepared.tables.lights != nullptr);
@@ -208,8 +204,8 @@ TEST_CASE("a point light shades the scene pass to its CPU mirror times pre-expos
     const glm::mat4 normalTransform = prepared.tables.instanceRows[0].normalMatrix;
 
     (*renderer)->render(commands, camera, prepared, /*barrierForSampling=*/false);
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->device().endFrame(nullptr);
+    gpu->device().waitIdle();
 
     std::vector<uint16_t> texels(size_t{kBrdfProbeSize} * kBrdfProbeSize * 4);
     (*renderer)->hdrColorTarget().readback(texels.data(), texels.size() * sizeof(uint16_t));
@@ -256,16 +252,14 @@ TEST_CASE("the masked and auto-exposure scene variants light a local light ident
           "[gpu][light]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto quad =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(8.0f), "lmx.test.litVariantQuad");
+    auto quad = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(8.0f),
+                                       "lmx.test.litVariantQuad");
     INFO(errorOf(quad));
     REQUIRE(quad.has_value());
 
-    auto renderer = Renderer::create(**device, kBrdfProbeSize, kBrdfProbeSize,
+    auto renderer = Renderer::create(*gpu, kBrdfProbeSize, kBrdfProbeSize,
                                      /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
@@ -308,11 +302,11 @@ TEST_CASE("the masked and auto-exposure scene variants light a local light ident
         view.exposureReset = automatic;
         view.localLightMode = lmx::engine::LocalLightMode::Direct;
 
-        CommandList& commands = (*device)->beginFrame();
-        (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, device),
+        CommandList& commands = gpu->device().beginFrame();
+        (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, gpu->device()),
                             /*barrierForSampling=*/false);
-        (*device)->endFrame(nullptr);
-        (*device)->waitIdle();
+        gpu->device().endFrame(nullptr);
+        gpu->device().waitIdle();
 
         std::vector<uint16_t> texels(size_t{kBrdfProbeSize} * kBrdfProbeSize * 4);
         (*renderer)->hdrColorTarget().readback(texels.data(), texels.size() * sizeof(uint16_t));
@@ -337,15 +331,14 @@ TEST_CASE("LightLab graph declares the selected light consumers",
     using namespace lmx::render;
     for (const auto mode :
          {lmx::engine::LocalLightMode::Clustered, lmx::engine::LocalLightMode::Direct}) {
-        auto device = rojoRHI::createDevice();
-        REQUIRE(device);
-        auto scene = lmx::test::loadCatalogScene(**device, "light-lab", 256, 0);
+        auto gpu = createTestGpu();
+        auto scene = lmx::test::loadCatalogScene(gpu->device(), "light-lab", 256, 0);
         REQUIRE(scene);
-        auto renderer = Renderer::create(**device, 64, 64, true);
+        auto renderer = Renderer::create(*gpu, 64, 64, true);
         REQUIRE(renderer);
-        TransientPool pool(**device);
-        auto& commands = (*device)->beginFrame();
-        REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
+        TransientPool pool(gpu->device());
+        auto& commands = gpu->device().beginFrame();
+        REQUIRE((*scene)->prepareFrame(gpu->device().frameNumber()));
         std::vector<lmx::engine::DrawItem> items;
         auto view = buildSceneView(**scene, items, false);
         view.localLightMode = mode;
@@ -355,7 +348,7 @@ TEST_CASE("LightLab graph declares the selected light consumers",
         pool.beginFrame();
         RenderGraph graph(pool);
         graph.exportTexture((*renderer)->declarePasses(graph, commands, camera, view));
-        const auto record = graph.compileFrame((*device)->frameNumber());
+        const auto record = graph.compileFrame(gpu->device().frameNumber());
         REQUIRE(record);
         const auto& debug = record->debug;
         const bool clustered = mode == lmx::engine::LocalLightMode::Clustered;
@@ -374,9 +367,9 @@ TEST_CASE("LightLab graph declares the selected light consumers",
             });
             REQUIRE(barrier == clustered);
         }
-        graph.execute(commands, (*device)->frameNumber());
-        (*device)->endFrame(nullptr);
-        (*device)->waitIdle();
+        graph.execute(commands, gpu->device().frameNumber());
+        gpu->device().endFrame(nullptr);
+        gpu->device().waitIdle();
         const std::string path =
             std::string(LMX_REPO_ROOT) + "/Tests/Golden/" +
             (clustered ? "frame-light-clustered.txt" : "frame-light-direct.txt");
@@ -440,9 +433,8 @@ std::vector<uint8_t> lightAttachmentBytes(rojoRHI::Texture& texture, uint32_t by
 TEST_CASE("LightLab direct and clustered paths preserve all written scene attachments",
           "[gpu][light][clustered-consumer]") {
     using namespace lmx::render;
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
-    auto scene = lmx::test::loadCatalogScene(**device, "light-lab", 256, 0);
+    auto gpu = createTestGpu();
+    auto scene = lmx::test::loadCatalogScene(gpu->device(), "light-lab", 256, 0);
     REQUIRE(scene);
     const auto camera = lmx::engine::cameraFromScene((*scene)->initialCamera);
     // Temporal off writes HDR/depth only. Raw, unjittered temporal frames also initialize the
@@ -451,12 +443,12 @@ TEST_CASE("LightLab direct and clustered paths preserve all written scene attach
         std::array<std::vector<uint8_t>, 4> reference;
         for (const auto mode :
              {lmx::engine::LocalLightMode::Direct, lmx::engine::LocalLightMode::Clustered}) {
-            auto renderer = Renderer::create(**device, 160, 90, true);
+            auto renderer = Renderer::create(*gpu, 160, 90, true);
             REQUIRE(renderer);
             LightingDepthReadback depthReadback;
             for (uint32_t step = 0; step < 2; ++step) {
-                auto& commands = (*device)->beginFrame();
-                REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
+                auto& commands = gpu->device().beginFrame();
+                REQUIRE((*scene)->prepareFrame(gpu->device().frameNumber()));
                 std::vector<lmx::engine::DrawItem> items;
                 auto view = buildSceneView(**scene, items, false);
                 view.localLightMode = mode;
@@ -465,9 +457,9 @@ TEST_CASE("LightLab direct and clustered paths preserve all written scene attach
                 view.temporal.reconstruction = ReconstructionMode::Raw;
                 view.bloomEnabled = false;
                 (*renderer)->render(commands, camera, view, false);
-                depthReadback = copyLightingDepth(**device, commands, **renderer);
-                (*device)->endFrame(nullptr);
-                (*device)->waitIdle();
+                depthReadback = copyLightingDepth(gpu->device(), commands, **renderer);
+                gpu->device().endFrame(nullptr);
+                gpu->device().waitIdle();
             }
             (*renderer)->drainLightingAfterIdle();
             const auto status = (*renderer)->lightingStatus();
@@ -505,11 +497,10 @@ TEST_CASE("LightLab direct and clustered paths preserve all written scene attach
 TEST_CASE("lighting retirement keeps declaration modes through paced switches",
           "[gpu][light][clustered-consumer]") {
     using namespace lmx::render;
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
-    auto scene = lmx::test::loadCatalogScene(**device, "light-lab", 64, 0);
+    auto gpu = createTestGpu();
+    auto scene = lmx::test::loadCatalogScene(gpu->device(), "light-lab", 64, 0);
     REQUIRE(scene);
-    auto renderer = Renderer::create(**device, 64, 64, true);
+    auto renderer = Renderer::create(*gpu, 64, 64, true);
     REQUIRE(renderer);
     const auto camera = lmx::engine::cameraFromScene((*scene)->initialCamera);
     const std::array modes{
@@ -544,24 +535,24 @@ TEST_CASE("lighting retirement keeps declaration modes through paced switches",
     };
     uint32_t step = 0;
     for (const auto mode : modes) {
-        auto& commands = (*device)->beginFrame();
+        auto& commands = gpu->device().beginFrame();
         if (step == 0)
-            firstFrame = (*device)->frameNumber();
+            firstFrame = gpu->device().frameNumber();
         (*scene)->advanceAnimation(0.4);
-        REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
+        REQUIRE((*scene)->prepareFrame(gpu->device().frameNumber()));
         std::vector<lmx::engine::DrawItem> items;
         auto view = buildSceneView(**scene, items, false);
         view.localLightMode = mode;
         view.lightCheck = true;
         view.temporal.enabled = false;
-        view.temporal.sceneGeneration = 42 + (*device)->frameNumber();
+        view.temporal.sceneGeneration = 42 + gpu->device().frameNumber();
         (*renderer)->render(commands, camera, view, false);
         check();
         REQUIRE(retiredCount == (step < 3 ? 0 : step - 2));
-        (*device)->endFrame(nullptr);
+        gpu->device().endFrame(nullptr);
         ++step;
     }
-    (*device)->waitIdle();
+    gpu->device().waitIdle();
     (*renderer)->drainLightingAfterIdle();
     check();
     REQUIRE(retiredCount == modes.size());
@@ -572,10 +563,9 @@ TEST_CASE("lighting retirement keeps declaration modes through paced switches",
 TEST_CASE("cluster overflow darkens only pixels in truncated froxels",
           "[gpu][light][clustered-consumer]") {
     using namespace lmx::render;
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(20.0f), "lmx.test.overflowPlane");
+    auto gpu = createTestGpu();
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(20.0f),
+                                        "lmx.test.overflowPlane");
     REQUIRE(plane);
     const glm::mat4 model = glm::rotate(glm::mat4{1}, glm::radians(90.0f), glm::vec3{1, 0, 0});
     const std::array<FixtureDrawItem, 1> items{
@@ -592,7 +582,7 @@ TEST_CASE("cluster overflow darkens only pixels in truncated froxels",
         light.strength = {0, 0, 0};
     constexpr uint32_t width = 160, height = 90;
     const auto camera = sceneCamera();
-    auto renderer = Renderer::create(**device, width, height, true);
+    auto renderer = Renderer::create(*gpu, width, height, true);
     REQUIRE(renderer);
     std::array<std::vector<uint16_t>, 2> images;
     std::vector<float> depth(width * height);
@@ -601,9 +591,9 @@ TEST_CASE("cluster overflow darkens only pixels in truncated froxels",
     uint32_t path = 0;
     for (const auto mode :
          {lmx::engine::LocalLightMode::Direct, lmx::engine::LocalLightMode::Clustered}) {
-        auto& commands = (*device)->beginFrame();
+        auto& commands = gpu->device().beginFrame();
         view.localLightMode = mode;
-        const auto prepared = lmx::test::prepareSceneView(view, device);
+        const auto prepared = lmx::test::prepareSceneView(view, gpu->device());
         LightClusterParams params{.view = camera.viewMatrix(),
                                   .inverseJitteredProjection = glm::inverse(
                                       camera.projectionMatrix(float(width) / float(height))),
@@ -613,9 +603,9 @@ TEST_CASE("cluster overflow darkens only pixels in truncated froxels",
                                   .sliceDepth = slices};
         mirror = buildLightClusters(prepared.tables.lightRows, params);
         (*renderer)->render(commands, camera, prepared, false);
-        auto depthReadback = copyLightingDepth(**device, commands, **renderer);
-        (*device)->endFrame(nullptr);
-        (*device)->waitIdle();
+        auto depthReadback = copyLightingDepth(gpu->device(), commands, **renderer);
+        gpu->device().endFrame(nullptr);
+        gpu->device().waitIdle();
         (*renderer)->drainLightingAfterIdle();
         images[path].resize(width * height * 4);
         (*renderer)->hdrColorTarget().readback(images[path].data(), images[path].size() * 2);

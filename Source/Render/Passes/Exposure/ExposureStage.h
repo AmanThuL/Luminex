@@ -4,6 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "Core/Diagnostics/Result.h"
+#include "Engine/Gpu/GpuContext.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Renderer/SceneView.h"
 
@@ -21,8 +23,8 @@ struct ExposureMeteringInputs {
 // Renderer owns this stage for the full lifetime of its deferred graph callbacks.
 class ExposureStage {
 public:
-    static rojoRHI::Result<std::unique_ptr<ExposureStage>> create(rojoRHI::Device& device,
-                                                                  bool cpuReadback);
+    static lmx::Result<std::unique_ptr<ExposureStage>> create(engine::GpuContext& gpu,
+                                                              bool cpuReadback);
     // The frame composition root imports the persistent pair before scene declaration.
     rojoRHI::Buffer& buffer() { return *m_exposureBuffer; }
     // Seeds manual/reset exposure before the scene reads it; callbacks live through execution.
@@ -35,9 +37,9 @@ public:
 private:
     ExposureStage() = default;
 
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_histogramLibrary;
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_exposureResolveLibrary;
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_exposureSeedLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_histogramLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_exposureResolveLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_exposureSeedLibrary;
     std::unique_ptr<rojoRHI::ComputePipeline> m_histogramPipeline;
     std::unique_ptr<rojoRHI::ComputePipeline> m_exposureResolvePipeline;
     std::unique_ptr<rojoRHI::ComputePipeline> m_exposureSeedPipeline;

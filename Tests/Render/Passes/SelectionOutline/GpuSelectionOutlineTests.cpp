@@ -146,21 +146,19 @@ std::unique_ptr<Texture> outlineCutout(Device& device) {
 TEST_CASE(
     "selection outline changes visible borders but preserves solid interiors and scales thickness",
     "[gpu][selection-outline]") {
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device);
-    TransientPool pool(**device);
-    auto renderer = Renderer::create(**device, kSize, kSize, true);
+    auto gpu = createTestGpu();
+    TransientPool pool(gpu->device());
+    auto renderer = Renderer::create(*gpu, kSize, kSize, true);
     INFO(errorOf(renderer));
     REQUIRE(renderer);
-    auto outline = SelectionOutline::create(**device, kSize, kSize, true);
+    auto outline = SelectionOutline::create(*gpu, kSize, kSize, true);
     INFO(errorOf(outline));
     REQUIRE(outline);
-    auto mesh = fixtureMesh(**device, outlineQuad(), "lmx.test.selection.quad");
+    auto mesh = fixtureMesh(gpu->device(), outlineQuad(), "lmx.test.selection.quad");
     REQUIRE(mesh);
     const auto item = outlineItem(*mesh);
     const auto view = outlineView(std::span{&item, 1});
-    const auto thin = outlineFrame(**device, pool, **renderer, outline->get(), view);
+    const auto thin = outlineFrame(gpu->device(), pool, **renderer, outline->get(), view);
     REQUIRE(selectionPasses(thin.record) == 3);
     REQUIRE(changedPixels(thin) > 0);
     // The quad projects to [24,40), leaving an 8-pixel interior well away from the border.
@@ -168,7 +166,7 @@ TEST_CASE(
     REQUIRE(changedPixels(thin, 0, 0, 16, 16) == 0);
     REQUIRE(changedPixels(thin, 23, 28, 25, 36) > 0);
     REQUIRE(changedPixels(thin, 21, 28, 22, 36) == 0);
-    const auto thick = outlineFrame(**device, pool, **renderer, outline->get(), view, 2.0f);
+    const auto thick = outlineFrame(gpu->device(), pool, **renderer, outline->get(), view, 2.0f);
     REQUIRE(changedPixels(thick) > changedPixels(thin));
     REQUIRE(changedPixels(thick, 21, 28, 22, 36) > 0);
     REQUIRE(changedPixels(thick, 28, 28, 36, 36) == 0);
@@ -178,15 +176,14 @@ TEST_CASE(
 //======================================================================================================================
 TEST_CASE("selection outline respects full and partial foreground occlusion",
           "[gpu][selection-outline]") {
-    auto device = createDevice();
-    REQUIRE(device);
-    TransientPool pool(**device);
-    auto renderer = Renderer::create(**device, kSize, kSize, true);
+    auto gpu = createTestGpu();
+    TransientPool pool(gpu->device());
+    auto renderer = Renderer::create(*gpu, kSize, kSize, true);
     REQUIRE(renderer);
-    auto outline = SelectionOutline::create(**device, kSize, kSize, true);
+    auto outline = SelectionOutline::create(*gpu, kSize, kSize, true);
     INFO(errorOf(outline));
     REQUIRE(outline);
-    auto mesh = fixtureMesh(**device, outlineQuad(), "lmx.test.selection.occlusionQuad");
+    auto mesh = fixtureMesh(gpu->device(), outlineQuad(), "lmx.test.selection.occlusionQuad");
     REQUIRE(mesh);
     std::array items{outlineItem(*mesh), outlineItem(*mesh)};
     items[1].model = glm::translate(glm::mat4{1}, glm::vec3{0, 0, 1}) *
@@ -194,11 +191,11 @@ TEST_CASE("selection outline respects full and partial foreground occlusion",
     items[1].previousModel = items[1].model;
     items[1].material.emissive = {0.3f, 0.1f, 0.1f};
     const auto view = outlineView(items);
-    const auto hidden = outlineFrame(**device, pool, **renderer, outline->get(), view);
+    const auto hidden = outlineFrame(gpu->device(), pool, **renderer, outline->get(), view);
     REQUIRE(hidden.outlined == hidden.display);
     items[1].model = glm::translate(glm::mat4{1}, glm::vec3{1, 0, 1});
     items[1].previousModel = items[1].model;
-    const auto partial = outlineFrame(**device, pool, **renderer, outline->get(), view);
+    const auto partial = outlineFrame(gpu->device(), pool, **renderer, outline->get(), view);
     REQUIRE(changedPixels(partial, 23, 28, 25, 36) > 0);
     // The occlusion cut is inside the object's silhouette, not a selected geometry border.
     REQUIRE(changedPixels(partial, 30, 28, 34, 36) == 0);
@@ -209,15 +206,14 @@ TEST_CASE("selection outline respects full and partial foreground occlusion",
 //======================================================================================================================
 TEST_CASE("selection outline never traces or paints a thin foreground rod",
           "[gpu][selection-outline]") {
-    auto device = createDevice();
-    REQUIRE(device);
-    TransientPool pool(**device);
-    auto renderer = Renderer::create(**device, kSize, kSize, true);
+    auto gpu = createTestGpu();
+    TransientPool pool(gpu->device());
+    auto renderer = Renderer::create(*gpu, kSize, kSize, true);
     REQUIRE(renderer);
-    auto outline = SelectionOutline::create(**device, kSize, kSize, true);
+    auto outline = SelectionOutline::create(*gpu, kSize, kSize, true);
     INFO(errorOf(outline));
     REQUIRE(outline);
-    auto mesh = fixtureMesh(**device, outlineQuad(), "lmx.test.selection.rodQuad");
+    auto mesh = fixtureMesh(gpu->device(), outlineQuad(), "lmx.test.selection.rodQuad");
     REQUIRE(mesh);
     std::array items{outlineItem(*mesh), outlineItem(*mesh)};
     // At z=1 this projects to [31,33) x [16,48): a two-pixel rod crossing both natural borders.
@@ -229,7 +225,7 @@ TEST_CASE("selection outline never traces or paints a thin foreground rod",
     for (const float backingScale : std::array{1.0f, 2.0f}) {
         CAPTURE(backingScale);
         const auto frame =
-            outlineFrame(**device, pool, **renderer, outline->get(), view, backingScale);
+            outlineFrame(gpu->device(), pool, **renderer, outline->get(), view, backingScale);
         const auto rod = pixelAt(frame.display, 31, 32);
         const auto selected = pixelAt(frame.display, 28, 32);
         REQUIRE(rod.r > rod.b);
@@ -245,17 +241,17 @@ TEST_CASE("selection outline never traces or paints a thin foreground rod",
 //======================================================================================================================
 TEST_CASE("selection outline respects masked foreground cutouts without tracing their interior",
           "[gpu][selection-outline][alpha-mask]") {
-    auto device = createDevice();
-    REQUIRE(device);
-    TransientPool pool(**device);
-    auto renderer = Renderer::create(**device, kSize, kSize, true);
+    auto gpu = createTestGpu();
+    TransientPool pool(gpu->device());
+    auto renderer = Renderer::create(*gpu, kSize, kSize, true);
     REQUIRE(renderer);
-    auto outline = SelectionOutline::create(**device, kSize, kSize, true);
+    auto outline = SelectionOutline::create(*gpu, kSize, kSize, true);
     INFO(errorOf(outline));
     REQUIRE(outline);
-    auto mesh = fixtureMesh(**device, outlineQuad(), "lmx.test.selection.maskedForegroundQuad");
+    auto mesh =
+        fixtureMesh(gpu->device(), outlineQuad(), "lmx.test.selection.maskedForegroundQuad");
     REQUIRE(mesh);
-    auto texture = outlineCutout(**device);
+    auto texture = outlineCutout(gpu->device());
     std::array items{outlineItem(*mesh), outlineItem(*mesh)};
     // Foreground covers [16,48) squared; its alpha boundary is at x=32, inside the selected quad.
     items[1].model = glm::translate(glm::mat4{1}, glm::vec3{0, 0, 1}) *
@@ -274,7 +270,7 @@ TEST_CASE("selection outline respects masked foreground cutouts without tracing 
             items[1].material.uvTransform[0][0] = flipped ? -1.0f : 1.0f;
             items[1].material.uvTransform[3][0] = flipped ? 1.0f : 0.0f;
             const auto frame =
-                outlineFrame(**device, pool, **renderer, outline->get(), view, backingScale);
+                outlineFrame(gpu->device(), pool, **renderer, outline->get(), view, backingScale);
             const auto transparent = pixelAt(frame.display, flipped ? 36 : 28, 32);
             const auto opaque = pixelAt(frame.display, flipped ? 28 : 36, 32);
             REQUIRE(transparent.b > transparent.r);
@@ -296,41 +292,40 @@ TEST_CASE("selection outline respects masked foreground cutouts without tracing 
 //======================================================================================================================
 TEST_CASE("selection outline shares MASK factor cutoff transformed UV and double-sided coverage",
           "[gpu][selection-outline][alpha-mask]") {
-    auto device = createDevice();
-    REQUIRE(device);
-    TransientPool pool(**device);
-    auto renderer = Renderer::create(**device, kSize, kSize, true);
+    auto gpu = createTestGpu();
+    TransientPool pool(gpu->device());
+    auto renderer = Renderer::create(*gpu, kSize, kSize, true);
     REQUIRE(renderer);
-    auto outline = SelectionOutline::create(**device, kSize, kSize, true);
+    auto outline = SelectionOutline::create(*gpu, kSize, kSize, true);
     INFO(errorOf(outline));
     REQUIRE(outline);
-    auto mesh = fixtureMesh(**device, outlineQuad(), "lmx.test.selection.maskQuad");
+    auto mesh = fixtureMesh(gpu->device(), outlineQuad(), "lmx.test.selection.maskQuad");
     REQUIRE(mesh);
-    auto texture = outlineCutout(**device);
+    auto texture = outlineCutout(gpu->device());
     auto item = outlineItem(*mesh);
     item.material.diffuse = texture.get();
     item.material.alphaMode = lmx::engine::AlphaMode::Mask;
     item.material.albedo.a = 0.5f;
     item.material.alphaCutoff = 0.3f;
     const auto view = outlineView(std::span{&item, 1});
-    const auto front = outlineFrame(**device, pool, **renderer, outline->get(), view);
+    const auto front = outlineFrame(gpu->device(), pool, **renderer, outline->get(), view);
     REQUIRE(changedPixels(front, 23, 28, 25, 36) == 0);
     REQUIRE(changedPixels(front, 38, 28, 42, 36) > 0);
     item.material.uvTransform[0][0] = -1;
     item.material.uvTransform[3][0] = 1;
-    const auto flipped = outlineFrame(**device, pool, **renderer, outline->get(), view);
+    const auto flipped = outlineFrame(gpu->device(), pool, **renderer, outline->get(), view);
     REQUIRE(changedPixels(flipped, 23, 28, 25, 36) > 0);
     REQUIRE(changedPixels(flipped, 38, 28, 42, 36) == 0);
     item.model = glm::rotate(glm::mat4{1}, glm::pi<float>(), glm::vec3{0, 1, 0});
     item.previousModel = item.model;
-    const auto culled = outlineFrame(**device, pool, **renderer, outline->get(), view);
+    const auto culled = outlineFrame(gpu->device(), pool, **renderer, outline->get(), view);
     REQUIRE(culled.outlined == culled.display);
     item.material.doubleSided = true;
-    const auto back = outlineFrame(**device, pool, **renderer, outline->get(), view);
+    const auto back = outlineFrame(gpu->device(), pool, **renderer, outline->get(), view);
     REQUIRE(changedPixels(back, 23, 28, 25, 36) == 0);
     REQUIRE(changedPixels(back, 38, 28, 42, 36) > 0);
     item.material.alphaCutoff = 0.6f;
-    const auto rejected = outlineFrame(**device, pool, **renderer, outline->get(), view);
+    const auto rejected = outlineFrame(gpu->device(), pool, **renderer, outline->get(), view);
     REQUIRE(rejected.outlined == rejected.display);
 }
 
@@ -338,18 +333,17 @@ TEST_CASE("selection outline shares MASK factor cutoff transformed UV and double
 TEST_CASE(
     "selection presentation leaves ordinary display scene color and temporal history untouched",
     "[gpu][selection-outline][temporal]") {
-    auto device = createDevice();
-    REQUIRE(device);
-    TransientPool referencePool(**device);
-    TransientPool outlinedPool(**device);
-    auto reference = Renderer::create(**device, kSize, kSize, true);
+    auto gpu = createTestGpu();
+    TransientPool referencePool(gpu->device());
+    TransientPool outlinedPool(gpu->device());
+    auto reference = Renderer::create(*gpu, kSize, kSize, true);
     REQUIRE(reference);
-    auto renderer = Renderer::create(**device, kSize, kSize, true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, true);
     REQUIRE(renderer);
-    auto outline = SelectionOutline::create(**device, kSize, kSize, true);
+    auto outline = SelectionOutline::create(*gpu, kSize, kSize, true);
     INFO(errorOf(outline));
     REQUIRE(outline);
-    auto mesh = fixtureMesh(**device, outlineQuad(), "lmx.test.selection.historyQuad");
+    auto mesh = fixtureMesh(gpu->device(), outlineQuad(), "lmx.test.selection.historyQuad");
     REQUIRE(mesh);
     auto item = outlineItem(*mesh);
     auto view = outlineView(std::span{&item, 1});
@@ -358,9 +352,9 @@ TEST_CASE(
     view.temporal.reconstruction = ReconstructionMode::NativeTaa;
     for (uint32_t index = 0; index < 4; ++index) {
         INFO("declared frame " << index);
-        const auto plain = outlineFrame(**device, referencePool, **reference, nullptr, view);
+        const auto plain = outlineFrame(gpu->device(), referencePool, **reference, nullptr, view);
         const auto selected =
-            outlineFrame(**device, outlinedPool, **renderer, outline->get(), view);
+            outlineFrame(gpu->device(), outlinedPool, **renderer, outline->get(), view);
         REQUIRE(selectionPasses(plain.record) == 0);
         REQUIRE(selectionPasses(selected.record) == 3);
         REQUIRE(selected.display == plain.display);
@@ -375,22 +369,21 @@ TEST_CASE(
 //======================================================================================================================
 TEST_CASE("rejected selection refreshes its UI target without a stale outline",
           "[gpu][selection-outline][visibility]") {
-    auto device = createDevice();
-    REQUIRE(device);
-    TransientPool pool(**device);
-    auto renderer = Renderer::create(**device, kSize, kSize, true);
+    auto gpu = createTestGpu();
+    TransientPool pool(gpu->device());
+    auto renderer = Renderer::create(*gpu, kSize, kSize, true);
     REQUIRE(renderer);
-    auto outline = SelectionOutline::create(**device, kSize, kSize, true);
+    auto outline = SelectionOutline::create(*gpu, kSize, kSize, true);
     REQUIRE(outline);
-    auto mesh = fixtureMesh(**device, outlineQuad(), "lmx.test.selection.rejectedQuad");
+    auto mesh = fixtureMesh(gpu->device(), outlineQuad(), "lmx.test.selection.rejectedQuad");
     REQUIRE(mesh);
     auto item = outlineItem(*mesh);
     const auto view = outlineView(std::span{&item, 1});
-    const auto highlighted = outlineFrame(**device, pool, **renderer, outline->get(), view);
+    const auto highlighted = outlineFrame(gpu->device(), pool, **renderer, outline->get(), view);
     REQUIRE(highlighted.outlined != highlighted.display);
     item.model[3].x = 100;
     const auto rejected =
-        outlineFrame(**device, pool, **renderer, outline->get(), view, 1.0f, false);
+        outlineFrame(gpu->device(), pool, **renderer, outline->get(), view, 1.0f, false);
     REQUIRE(rejected.outlined == rejected.display);
     REQUIRE(rejected.outlined != highlighted.outlined);
     const auto dump = dumpCompiledFrame(rejected.record);
@@ -398,38 +391,37 @@ TEST_CASE("rejected selection refreshes its UI target without a stale outline",
     REQUIRE(dump.find("lmx.pass.selection.coverage") == std::string::npos);
     REQUIRE(dump.find("lmx.pass.selection.visibility") == std::string::npos);
     item.model[3].x = 0;
-    const auto returned = outlineFrame(**device, pool, **renderer, outline->get(), view);
+    const auto returned = outlineFrame(gpu->device(), pool, **renderer, outline->get(), view);
     REQUIRE(returned.outlined == highlighted.outlined);
 }
 
 //======================================================================================================================
 TEST_CASE("disabled selection and foreground contribute no outline coverage",
           "[gpu][selection-outline][disabled-instance]") {
-    auto device = createDevice();
-    REQUIRE(device);
-    TransientPool pool(**device);
-    auto renderer = Renderer::create(**device, kSize, kSize, true);
+    auto gpu = createTestGpu();
+    TransientPool pool(gpu->device());
+    auto renderer = Renderer::create(*gpu, kSize, kSize, true);
     REQUIRE(renderer);
-    auto outline = SelectionOutline::create(**device, kSize, kSize, true);
+    auto outline = SelectionOutline::create(*gpu, kSize, kSize, true);
     REQUIRE(outline);
-    auto mesh = fixtureMesh(**device, outlineQuad(), "lmx.test.selection.disabled");
+    auto mesh = fixtureMesh(gpu->device(), outlineQuad(), "lmx.test.selection.disabled");
     REQUIRE(mesh);
     std::array items{outlineItem(*mesh), outlineItem(*mesh)};
     items[1].model = glm::translate(glm::mat4(1), glm::vec3(0, 0, 1));
     items[1].enabled = false;
     const auto view = outlineView(items);
-    const auto behindDisabled = outlineFrame(**device, pool, **renderer, outline->get(), view);
+    const auto behindDisabled = outlineFrame(gpu->device(), pool, **renderer, outline->get(), view);
     REQUIRE(changedPixels(behindDisabled) > 0);
     items[1].model[3].x = 100;
     items[1].enabled = true;
-    const auto unobstructed = outlineFrame(**device, pool, **renderer, outline->get(), view);
+    const auto unobstructed = outlineFrame(gpu->device(), pool, **renderer, outline->get(), view);
     REQUIRE(unobstructed.outlined == behindDisabled.outlined);
     items[0].enabled = false;
-    const auto disabled = outlineFrame(**device, pool, **renderer, outline->get(), view);
+    const auto disabled = outlineFrame(gpu->device(), pool, **renderer, outline->get(), view);
     REQUIRE(disabled.outlined == disabled.display);
     REQUIRE(selectionPasses(disabled.record) == 1);
     REQUIRE(view.state->scene.objects.size() == 2);
     items[0].enabled = true;
-    const auto restored = outlineFrame(**device, pool, **renderer, outline->get(), view);
+    const auto restored = outlineFrame(gpu->device(), pool, **renderer, outline->get(), view);
     REQUIRE(restored.outlined == unobstructed.outlined);
 }

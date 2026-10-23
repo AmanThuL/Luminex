@@ -61,8 +61,8 @@ bool sessionEditNeedsCameraCut(const SceneTreeView& tree, std::span<const Propos
 
 /// Revalidates the entire batch, then applies it on the editor thread. A failed validation changes
 /// nothing; the caller requires stopped playback and no active measurement.
-rojoRHI::Result<void> applyEdits(SceneSession& session, const SceneTreeView& tree,
-                                 std::span<const ProposalEdit> edits);
+lmx::Result<void> applyEdits(SceneSession& session, const SceneTreeView& tree,
+                             std::span<const ProposalEdit> edits);
 
 /// Tracks which saved fields came from a reviewed session proposal until Save or Revert.
 class SessionAttribution {

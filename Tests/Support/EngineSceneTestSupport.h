@@ -58,6 +58,12 @@ inline std::string describeSceneError(const rojoRHI::Result<T>& result) {
 }
 
 //======================================================================================================================
+template <typename T>
+inline std::string describeSceneError(const lmx::Result<T>& result) {
+    return result.has_value() ? std::string{} : result.error().message;
+}
+
+//======================================================================================================================
 // Compare all matrix elements so transform tests pin the complete round-trip.
 inline bool matricesNear(const glm::mat4& a, const glm::mat4& b, float margin) {
     for (int col = 0; col < 4; ++col) {

@@ -9,6 +9,7 @@
 #include "Render/Common/StageSetup.h"
 
 #include "Core/Diagnostics/Assert.h"
+#include "Engine/Gpu/GpuError.h"
 #include "Engine/View/Camera.h"
 
 #include <algorithm>
@@ -41,15 +42,16 @@ SelectionOutline::SelectionOutline(rojoRHI::Device& device, bool readback)
     : m_device(device), m_readback(readback) {}
 
 //======================================================================================================================
-rojoRHI::Result<std::unique_ptr<SelectionOutline>>
-SelectionOutline::create(rojoRHI::Device& device, uint32_t width, uint32_t height, bool readback) {
+lmx::Result<std::unique_ptr<SelectionOutline>>
+SelectionOutline::create(engine::GpuContext& gpu, uint32_t width, uint32_t height, bool readback) {
+    rojoRHI::Device& device = gpu.device();
     auto self = std::unique_ptr<SelectionOutline>(new SelectionOutline(device, readback));
-    auto maskLibrary = device.loadShaderLibrary("Shaders/SelectionMask");
+    auto maskLibrary = gpu.loadShaderLibrary("SelectionMask");
     if (!maskLibrary) {
         return std::unexpected(maskLibrary.error());
     }
     self->m_maskLibrary = std::move(*maskLibrary);
-    auto outlineLibrary = device.loadShaderLibrary("Shaders/SelectionOutline");
+    auto outlineLibrary = gpu.loadShaderLibrary("SelectionOutline");
     if (!outlineLibrary) {
         return std::unexpected(outlineLibrary.error());
     }
@@ -67,7 +69,7 @@ SelectionOutline::create(rojoRHI::Device& device, uint32_t width, uint32_t heigh
              .depthCompare = rojoRHI::DepthCompare::Greater,
              .label = doubleSided ? "lmx.selection.maskDoubleSided" : "lmx.selection.mask"});
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         (doubleSided ? self->m_doubleSidedPipeline : self->m_maskPipeline) = std::move(*pipeline);
         auto depthPipeline = device.createGraphicsPipeline(
@@ -82,7 +84,7 @@ SelectionOutline::create(rojoRHI::Device& device, uint32_t width, uint32_t heigh
              .depthCompare = rojoRHI::DepthCompare::Greater,
              .label = doubleSided ? "lmx.selection.depthDoubleSided" : "lmx.selection.depth"});
         if (!depthPipeline) {
-            return std::unexpected(depthPipeline.error());
+            return std::unexpected(engine::gpuError(depthPipeline.error()));
         }
         (doubleSided ? self->m_doubleSidedDepthPipeline : self->m_depthPipeline) =
             std::move(*depthPipeline);
@@ -90,19 +92,19 @@ SelectionOutline::create(rojoRHI::Device& device, uint32_t width, uint32_t heigh
     auto outline = device.createGraphicsPipeline(fullscreenPipelineDesc(
         self->m_outlineLibrary.get(), "fragmentMain", kDisplayFormat, "lmx.selection.outline"));
     if (!outline) {
-        return std::unexpected(outline.error());
+        return std::unexpected(engine::gpuError(outline.error()));
     }
     self->m_outlinePipeline = std::move(*outline);
     auto passthrough = device.createGraphicsPipeline(fullscreenPipelineDesc(
         self->m_outlineLibrary.get(), "fragmentCopy", kDisplayFormat, "lmx.selection.passthrough"));
     if (!passthrough) {
-        return std::unexpected(passthrough.error());
+        return std::unexpected(engine::gpuError(passthrough.error()));
     }
     self->m_passthroughPipeline = std::move(*passthrough);
     auto sampler =
         device.createSampler({.maxAnisotropy = 16, .label = "lmx.selection.materialSampler"});
     if (!sampler) {
-        return std::unexpected(sampler.error());
+        return std::unexpected(engine::gpuError(sampler.error()));
     }
     self->m_sampler = std::move(*sampler);
     const std::array<uint8_t, 4> white{255, 255, 255, 255};
@@ -122,7 +124,7 @@ SelectionOutline::create(rojoRHI::Device& device, uint32_t width, uint32_t heigh
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> SelectionOutline::resize(uint32_t width, uint32_t height) {
+lmx::Result<void> SelectionOutline::resize(uint32_t width, uint32_t height) {
     auto target = m_device.createTexture({.width = width,
                                           .height = height,
                                           .format = kDisplayFormat,
@@ -131,7 +133,7 @@ rojoRHI::Result<void> SelectionOutline::resize(uint32_t width, uint32_t height) 
                                           .cpuReadback = m_readback,
                                           .label = "lmx.selection.display"});
     if (!target) {
-        return std::unexpected(target.error());
+        return std::unexpected(engine::gpuError(target.error()));
     }
     m_target = std::move(*target);
     return {};

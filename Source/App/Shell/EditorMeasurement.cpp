@@ -44,7 +44,7 @@ std::string temporalName(const EditorRenderSettings& settings) {
 }
 } // namespace
 //======================================================================================================================
-bool EditorShell::startMeasurement(rojoRHI::Device& device, const render::Renderer& renderer,
+bool EditorShell::startMeasurement(engine::GpuContext& gpu, const render::Renderer& renderer,
                                    bool sessionOwned) {
     if (m_sessionChild) {
         m_measurementFeedback = "Stop the headless capture before starting a measurement.";
@@ -101,7 +101,7 @@ bool EditorShell::startMeasurement(rojoRHI::Device& device, const render::Render
         m_session.lightLabPileAvailable() ? m_session.lightLabPileCount() : m_labLightPile;
     plan.lightCheck = m_settings.lightCheck;
     plan.lightDebugView = lightDebugViewName(m_settings.lightDebugView);
-    if (!m_measurement.start(std::move(plan), collectMeasurementProvenance(device))) {
+    if (!m_measurement.start(std::move(plan), collectMeasurementProvenance(gpu.device()))) {
         m_measurementFeedback = m_measurement.failure();
         return false;
     }
@@ -126,8 +126,7 @@ bool EditorShell::startMeasurement(rojoRHI::Device& device, const render::Render
     return true;
 }
 //======================================================================================================================
-void EditorShell::retireMeasurement(uint64_t frameId,
-                                    std::span<const rojoRHI::PassTiming> timings) {
+void EditorShell::retireMeasurement(uint64_t frameId, std::span<const engine::PassTiming> timings) {
     m_visibilityDisplay.observeTimings(frameId, timings);
     m_lightingDisplay.observeTimings(frameId, timings);
     if (m_measurement.active())

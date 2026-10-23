@@ -19,7 +19,7 @@ LightClusterOutputs Renderer::prepareLighting(RenderGraph& graph, rojoRHI::Comma
                                               std::optional<GraphBuffer> lights,
                                               const FrameExtents& extents,
                                               const CameraFrameState& cameraState) {
-    const uint64_t frame = m_device.frameNumber();
+    const uint64_t frame = m_gpu.frameNumber();
     // beginFrame has paced this slot; read its previous contents before any new GPU write.
     if (frame >= 3)
         retireLightingThrough(frame - 3);
@@ -34,7 +34,7 @@ LightClusterOutputs Renderer::prepareLighting(RenderGraph& graph, rojoRHI::Comma
     if (m_lightingStatus.effective == engine::LocalLightMode::Clustered) {
         LMX_ASSERT(lights.has_value(), "clustered lighting requires the imported scene light rows");
         if (!m_lightClusters) {
-            auto stage = LightClusterStage::create(m_device);
+            auto stage = LightClusterStage::create(m_gpu);
             LMX_ASSERT(stage.has_value(), stage.error().message);
             m_lightClusters = std::move(*stage);
         }

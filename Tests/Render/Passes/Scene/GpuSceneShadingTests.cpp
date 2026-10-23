@@ -42,14 +42,12 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
 
     constexpr uint32_t kSourceTextureSlot = 0;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto scene = lmx::test::loadCatalogScene(**device, "material-lab");
+    auto scene = lmx::test::loadCatalogScene(gpu->device(), "material-lab");
     REQUIRE(scene.has_value());
 
-    auto renderer = Renderer::create(**device, kDepthReconstructSize, kDepthReconstructSize);
+    auto renderer = Renderer::create(*gpu, kDepthReconstructSize, kDepthReconstructSize);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -65,34 +63,34 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
 
     // The depth buffer is D32Float, which readback() has no packed texel size for, so the probe
     // pass copies it into a half-float target that does.
-    auto probeImage = (*device)->createTexture({.width = kDepthReconstructSize,
-                                                .height = kDepthReconstructSize,
-                                                .format = Format::RGBA16Float,
-                                                .renderTarget = true,
-                                                .cpuReadback = true,
-                                                .label = "lmx.test.depthProbeImage"});
+    auto probeImage = gpu->device().createTexture({.width = kDepthReconstructSize,
+                                                   .height = kDepthReconstructSize,
+                                                   .format = Format::RGBA16Float,
+                                                   .renderTarget = true,
+                                                   .cpuReadback = true,
+                                                   .label = "lmx.test.depthProbeImage"});
     INFO(errorOf(probeImage));
     REQUIRE(probeImage.has_value());
 
-    auto probeLibrary = (*device)->loadShaderLibrary("Shaders/FullscreenSample");
+    auto probeLibrary = gpu->device().loadShaderLibrary("Shaders/FullscreenSample");
     INFO(errorOf(probeLibrary));
     REQUIRE(probeLibrary.has_value());
 
     auto probePipeline =
-        (*device)->createGraphicsPipeline({.library = probeLibrary->get(),
-                                           .vertexEntry = "vertexMain",
-                                           .fragmentEntry = "fragmentMain",
-                                           .colorFormat = Format::RGBA16Float,
-                                           .cullMode = CullMode::None,
-                                           .label = "lmx.test.depthProbePipeline"});
+        gpu->device().createGraphicsPipeline({.library = probeLibrary->get(),
+                                              .vertexEntry = "vertexMain",
+                                              .fragmentEntry = "fragmentMain",
+                                              .colorFormat = Format::RGBA16Float,
+                                              .cullMode = CullMode::None,
+                                              .label = "lmx.test.depthProbePipeline"});
     INFO(errorOf(probePipeline));
     REQUIRE(probePipeline.has_value());
 
-    CommandList& commands = (*device)->beginFrame();
-    REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
+    CommandList& commands = gpu->device().beginFrame();
+    REQUIRE((*scene)->prepareFrame(gpu->device().frameNumber()));
     std::vector<lmx::engine::DrawItem> items;
     const auto view = lmx::render::buildSceneView(**scene, items, false);
-    (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, device),
+    (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, gpu->device()),
                         /*barrierForSampling=*/false);
     commands.textureBarrier((*renderer)->depthTarget(), TextureUse::RenderTarget,
                             TextureUse::ShaderRead);
@@ -104,8 +102,8 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
     commands.bindTexture(kSourceTextureSlot, (*renderer)->depthTarget());
     commands.draw(3);
     commands.endRenderPass();
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->device().endFrame(nullptr);
+    gpu->device().waitIdle();
 
     std::vector<uint16_t> texels(size_t{kDepthReconstructSize} * kDepthReconstructSize * 4);
     (*probeImage)->readback(texels.data(), texels.size() * sizeof(uint16_t));
@@ -173,26 +171,24 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
 TEST_CASE("MaterialLab's sphere grid conserves energy in a white furnace", "[gpu]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto scene = lmx::test::loadCatalogScene(**device, "material-lab");
+    auto scene = lmx::test::loadCatalogScene(gpu->device(), "material-lab");
     INFO(errorOf(scene));
     REQUIRE(scene.has_value());
 
-    auto renderer = Renderer::create(**device, kBrdfProbeSize, kBrdfProbeSize,
+    auto renderer = Renderer::create(*gpu, kBrdfProbeSize, kBrdfProbeSize,
                                      /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
     const lmx::engine::ibl::IblTextures environment =
-        lmx::test::makeUniformIbl(**device, glm::vec3(1.0f), "lmx.test.whiteFurnace");
+        lmx::test::makeUniformIbl(gpu->device(), glm::vec3(1.0f), "lmx.test.whiteFurnace");
 
     // Only the sphere grid: the patches, ramp and depth probes sit outside this frustum anyway, and
     // leaving them out keeps every drawn pixel one of the 25 materials under test.
-    CommandList& commands = (*device)->beginFrame();
-    REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
+    CommandList& commands = gpu->device().beginFrame();
+    REQUIRE((*scene)->prepareFrame(gpu->device().frameNumber()));
     std::vector<lmx::engine::DrawItem> allItems;
     const auto sceneView = lmx::render::buildSceneView(**scene, allItems, false);
     std::vector<lmx::engine::DrawItem> items;
@@ -226,10 +222,10 @@ TEST_CASE("MaterialLab's sphere grid conserves energy in a white furnace", "[gpu
     Camera camera;
     camera.position = {0.0f, 0.0f, 12.0f};
 
-    (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, device),
+    (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, gpu->device()),
                         /*barrierForSampling=*/false);
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->device().endFrame(nullptr);
+    gpu->device().waitIdle();
 
     std::vector<uint16_t> texels(size_t{kBrdfProbeSize} * kBrdfProbeSize * 4);
     (*renderer)->hdrColorTarget().readback(texels.data(), texels.size() * sizeof(uint16_t));
@@ -275,16 +271,14 @@ TEST_CASE("MaterialLab's sphere grid conserves energy in a white furnace", "[gpu
 TEST_CASE("dielectric and conductor probes match a CPU BRDF reference at pinned angles", "[gpu]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto quad =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(8.0f), "lmx.test.brdfProbeQuad");
+    auto quad = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(8.0f),
+                                       "lmx.test.brdfProbeQuad");
     INFO(errorOf(quad));
     REQUIRE(quad.has_value());
 
-    auto renderer = Renderer::create(**device, kBrdfProbeSize, kBrdfProbeSize,
+    auto renderer = Renderer::create(*gpu, kBrdfProbeSize, kBrdfProbeSize,
                                      /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
@@ -342,11 +336,11 @@ TEST_CASE("dielectric and conductor probes match a CPU BRDF reference at pinned 
                           .direction = glm::normalize(probe.lightDirection)};
         view.boundingSphere = {0.0f, 0.0f, 0.0f, 12.0f};
 
-        CommandList& commands = (*device)->beginFrame();
-        (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, device),
+        CommandList& commands = gpu->device().beginFrame();
+        (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, gpu->device()),
                             /*barrierForSampling=*/false);
-        (*device)->endFrame(nullptr);
-        (*device)->waitIdle();
+        gpu->device().endFrame(nullptr);
+        gpu->device().waitIdle();
 
         std::vector<uint16_t> texels(size_t{kBrdfProbeSize} * kBrdfProbeSize * 4);
         (*renderer)->hdrColorTarget().readback(texels.data(), texels.size() * sizeof(uint16_t));

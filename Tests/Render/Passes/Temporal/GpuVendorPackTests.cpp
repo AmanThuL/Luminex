@@ -9,39 +9,38 @@ TEST_CASE("vendor packing translates invalid motion and working exposure without
           "[gpu][temporal][vendor][pack]") {
     using namespace rojoRHI;
     using namespace lmx::render;
-    auto device = createDevice();
-    REQUIRE(device);
-    VendorTemporalScaler adapter(**device);
+    auto gpu = createTestGpu();
+    VendorTemporalScaler adapter(*gpu);
     REQUIRE(adapter.preparePacking());
     const std::array<uint16_t, 4> motionBits{0x7c00, 0x7c00, 0x3400, 0xb800};
     const std::array<uint8_t, 2> reactiveBytes{64, 128};
     const TextureMip motionMip{motionBits.data(), 8};
     const TextureMip reactiveMip{reactiveBytes.data(), 2};
-    auto motion = (*device)->createTexture({.width = 2,
-                                            .height = 1,
-                                            .format = Format::RG16Float,
-                                            .sampled = true,
-                                            .label = "lmx.test.vendor.pack.motion"},
-                                           {&motionMip, 1});
-    auto reactive = (*device)->createTexture({.width = 2,
-                                              .height = 1,
-                                              .format = Format::R8Unorm,
-                                              .sampled = true,
-                                              .label = "lmx.test.vendor.pack.reactive"},
-                                             {&reactiveMip, 1});
+    auto motion = gpu->device().createTexture({.width = 2,
+                                               .height = 1,
+                                               .format = Format::RG16Float,
+                                               .sampled = true,
+                                               .label = "lmx.test.vendor.pack.motion"},
+                                              {&motionMip, 1});
+    auto reactive = gpu->device().createTexture({.width = 2,
+                                                 .height = 1,
+                                                 .format = Format::R8Unorm,
+                                                 .sampled = true,
+                                                 .label = "lmx.test.vendor.pack.reactive"},
+                                                {&reactiveMip, 1});
     const float exposurePair[] = {4.0f, 2.0f};
-    auto exposure = (*device)->createBuffer({.size = sizeof(exposurePair),
-                                             .storageRead = true,
-                                             .label = "lmx.test.vendor.pack.exposure"},
-                                            exposurePair);
-    auto readback = (*device)->createBuffer(
+    auto exposure = gpu->device().createBuffer({.size = sizeof(exposurePair),
+                                                .storageRead = true,
+                                                .label = "lmx.test.vendor.pack.exposure"},
+                                               exposurePair);
+    auto readback = gpu->device().createBuffer(
         {.size = 12, .cpuReadback = true, .label = "lmx.test.vendor.pack.readback"}, nullptr);
     REQUIRE(motion);
     REQUIRE(reactive);
     REQUIRE(exposure);
     REQUIRE(readback);
-    auto& commands = (*device)->beginFrame();
-    TransientPool pool(**device);
+    auto& commands = gpu->device().beginFrame();
+    TransientPool pool(gpu->device());
     pool.beginFrame();
     RenderGraph graph(pool);
     TemporalInputs inputs;
@@ -74,9 +73,9 @@ TEST_CASE("vendor packing translates invalid motion and working exposure without
                                          {.offset = 10, .bytesPerRow = 2});
         });
     graph.exportBuffer(nextVersion(output));
-    graph.execute(commands, (*device)->frameNumber());
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    graph.execute(commands, gpu->device().frameNumber());
+    gpu->device().endFrame(nullptr);
+    gpu->device().waitIdle();
     std::array<uint16_t, 6> result{};
     (*readback)->readback(result.data(), sizeof(result));
     REQUIRE(result[0] == 0);

@@ -16,27 +16,26 @@ using lmx::test::FixtureSceneView;
 TEST_CASE("the temporal-off frame declares the pre-temporal graph", "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.temporalCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.temporalCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
     const std::array<FixtureDrawItem, 1> items = {FixtureDrawItem{.mesh = &*cube}};
     const FixtureSceneView view = temporalSceneView(items);
 
-    lmx::render::TransientPool transients(**device);
-    CommandList& commands = (*device)->beginFrame();
+    lmx::render::TransientPool transients(gpu->device());
+    CommandList& commands = gpu->device().beginFrame();
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
     const lmx::render::GraphTexture display = (*renderer)->declarePasses(
-        graph, commands, temporalCamera(), lmx::test::prepareSceneView(view, device));
+        graph, commands, temporalCamera(), lmx::test::prepareSceneView(view, gpu->device()));
     graph.presentTexture(display);
 
     const auto record = graph.compileFrame(1);
@@ -44,8 +43,8 @@ TEST_CASE("the temporal-off frame declares the pre-temporal graph", "[gpu][tempo
     REQUIRE(record.has_value());
     requireMatchesGolden(lmx::render::dumpCompiledFrame(*record), "frame-temporal-off.txt");
 
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->device().endFrame(nullptr);
+    gpu->device().waitIdle();
 }
 
 //======================================================================================================================
@@ -59,15 +58,14 @@ TEST_CASE("a temporal frame declares the motion, resolve and debug view passes",
           "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.temporalCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.temporalCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -80,14 +78,14 @@ TEST_CASE("a temporal frame declares the motion, resolve and debug view passes",
 
     // The dumped frame is the second one, so its history is valid and the record shows the
     // reprojection pass a frame with no history could not declare at all.
-    renderFrame(**device, **renderer, temporalCamera(), view);
+    renderFrame(gpu->device(), **renderer, temporalCamera(), view);
 
-    lmx::render::TransientPool transients(**device);
-    CommandList& commands = (*device)->beginFrame();
+    lmx::render::TransientPool transients(gpu->device());
+    CommandList& commands = gpu->device().beginFrame();
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
     const lmx::render::GraphTexture display = (*renderer)->declarePasses(
-        graph, commands, temporalCamera(), lmx::test::prepareSceneView(view, device));
+        graph, commands, temporalCamera(), lmx::test::prepareSceneView(view, gpu->device()));
     graph.presentTexture(display);
 
     const auto record = graph.compileFrame(2);
@@ -95,8 +93,8 @@ TEST_CASE("a temporal frame declares the motion, resolve and debug view passes",
     REQUIRE(record.has_value());
     requireMatchesGolden(lmx::render::dumpCompiledFrame(*record), "frame-temporal.txt");
 
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->device().endFrame(nullptr);
+    gpu->device().waitIdle();
 }
 
 //======================================================================================================================
@@ -107,15 +105,14 @@ TEST_CASE("a temporal frame declares the motion, resolve and debug view passes",
 TEST_CASE("a raw temporal frame declares the commit copy and no resolve", "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.temporalCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.temporalCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -126,14 +123,14 @@ TEST_CASE("a raw temporal frame declares the commit copy and no resolve", "[gpu]
     view.temporal.reconstruction = lmx::render::ReconstructionMode::Raw;
     view.temporal.debugView = lmx::render::TemporalDebugView::MotionVectors;
 
-    renderFrame(**device, **renderer, temporalCamera(), view);
+    renderFrame(gpu->device(), **renderer, temporalCamera(), view);
 
-    lmx::render::TransientPool transients(**device);
-    CommandList& commands = (*device)->beginFrame();
+    lmx::render::TransientPool transients(gpu->device());
+    CommandList& commands = gpu->device().beginFrame();
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
     const lmx::render::GraphTexture display = (*renderer)->declarePasses(
-        graph, commands, temporalCamera(), lmx::test::prepareSceneView(view, device));
+        graph, commands, temporalCamera(), lmx::test::prepareSceneView(view, gpu->device()));
     graph.presentTexture(display);
 
     const auto record = graph.compileFrame(2);
@@ -141,8 +138,8 @@ TEST_CASE("a raw temporal frame declares the commit copy and no resolve", "[gpu]
     REQUIRE(record.has_value());
     requireMatchesGolden(lmx::render::dumpCompiledFrame(*record), "frame-temporal-raw.txt");
 
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->device().endFrame(nullptr);
+    gpu->device().waitIdle();
 }
 
 //======================================================================================================================
@@ -154,15 +151,14 @@ TEST_CASE("a raw temporal frame declares the commit copy and no resolve", "[gpu]
 TEST_CASE("an upscaled raw temporal frame declares the spatial commit", "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.temporalCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.temporalCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -174,7 +170,7 @@ TEST_CASE("an upscaled raw temporal frame declares the spatial commit", "[gpu][t
     view.temporal.debugView = lmx::render::TemporalDebugView::MotionVectors;
     view.temporal.renderScale = 0.5f;
 
-    renderFrame(**device, **renderer, temporalCamera(), view);
+    renderFrame(gpu->device(), **renderer, temporalCamera(), view);
     const lmx::render::TemporalStatus status = (*renderer)->temporalStatus();
     CHECK(status.upscaled);
     CHECK(status.extents.renderWidth == kSize / 2);
@@ -183,12 +179,12 @@ TEST_CASE("an upscaled raw temporal frame declares the spatial commit", "[gpu][t
     CHECK(status.extents.outputHeight == kSize);
     CHECK(status.renderScale == 0.5f);
 
-    lmx::render::TransientPool transients(**device);
-    CommandList& commands = (*device)->beginFrame();
+    lmx::render::TransientPool transients(gpu->device());
+    CommandList& commands = gpu->device().beginFrame();
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
     const lmx::render::GraphTexture display = (*renderer)->declarePasses(
-        graph, commands, temporalCamera(), lmx::test::prepareSceneView(view, device));
+        graph, commands, temporalCamera(), lmx::test::prepareSceneView(view, gpu->device()));
     graph.presentTexture(display);
 
     const auto record = graph.compileFrame(2);
@@ -201,8 +197,8 @@ TEST_CASE("an upscaled raw temporal frame declares the spatial commit", "[gpu][t
     CHECK(dump.find("render area 32x32") != std::string::npos);
     CHECK(dump.find("lmx.pass.temporal.commitHistory") == std::string::npos);
 
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->device().endFrame(nullptr);
+    gpu->device().waitIdle();
 }
 
 //======================================================================================================================
@@ -214,15 +210,14 @@ TEST_CASE("an upscaled raw temporal frame declares the spatial commit", "[gpu][t
 TEST_CASE("an upscaled native TAA frame declares the temporal upscale", "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.temporalCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.temporalCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -237,14 +232,14 @@ TEST_CASE("an upscaled native TAA frame declares the temporal upscale", "[gpu][t
     // The dumped frame is the second one, so its history is valid and its predecessor rasterised at
     // the same render extent -- which is what makes this the steady upscaled declaration rather
     // than the first frame after a scale change.
-    renderFrame(**device, **renderer, temporalCamera(), view);
+    renderFrame(gpu->device(), **renderer, temporalCamera(), view);
 
-    lmx::render::TransientPool transients(**device);
-    CommandList& commands = (*device)->beginFrame();
+    lmx::render::TransientPool transients(gpu->device());
+    CommandList& commands = gpu->device().beginFrame();
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
     const lmx::render::GraphTexture display = (*renderer)->declarePasses(
-        graph, commands, temporalCamera(), lmx::test::prepareSceneView(view, device));
+        graph, commands, temporalCamera(), lmx::test::prepareSceneView(view, gpu->device()));
     graph.presentTexture(display);
 
     const auto record = graph.compileFrame(2);
@@ -260,8 +255,8 @@ TEST_CASE("an upscaled native TAA frame declares the temporal upscale", "[gpu][t
     CHECK(dump.find("lmx.pass.temporal.commitHistory") == std::string::npos);
     CHECK(dump.find("lmx.pass.temporal.commitUpscaled") == std::string::npos);
 
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->device().endFrame(nullptr);
+    gpu->device().waitIdle();
 }
 
 //======================================================================================================================
@@ -271,11 +266,9 @@ TEST_CASE("an upscaled native TAA frame declares the temporal upscale", "[gpu][t
 TEST_CASE("a scale-1 temporal frame declares no upscaling pass", "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -284,15 +277,15 @@ TEST_CASE("a scale-1 temporal frame declares no upscaling pass", "[gpu][temporal
     view.temporal.jitterEnabled = true;
     view.temporal.reconstruction = lmx::render::ReconstructionMode::Raw;
     view.temporal.renderScale = 1.0f;
-    renderFrame(**device, **renderer, temporalCamera(), view);
+    renderFrame(gpu->device(), **renderer, temporalCamera(), view);
     CHECK_FALSE((*renderer)->temporalStatus().upscaled);
 
-    lmx::render::TransientPool transients(**device);
-    CommandList& commands = (*device)->beginFrame();
+    lmx::render::TransientPool transients(gpu->device());
+    CommandList& commands = gpu->device().beginFrame();
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
-    graph.presentTexture((*renderer)->declarePasses(graph, commands, temporalCamera(),
-                                                    lmx::test::prepareSceneView(view, device)));
+    graph.presentTexture((*renderer)->declarePasses(
+        graph, commands, temporalCamera(), lmx::test::prepareSceneView(view, gpu->device())));
     const auto record = graph.compileFrame(2);
     REQUIRE(record.has_value());
     const std::string dump = lmx::render::dumpCompiledFrame(*record);
@@ -301,8 +294,8 @@ TEST_CASE("a scale-1 temporal frame declares no upscaling pass", "[gpu][temporal
     CHECK(dump.find("lmx.pass.temporal.upscale") == std::string::npos);
     CHECK(dump.find("render area") == std::string::npos);
 
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->device().endFrame(nullptr);
+    gpu->device().waitIdle();
 }
 
 //======================================================================================================================
@@ -314,15 +307,14 @@ TEST_CASE("a scale-1 frame after a scale change declares the upscale kernel once
           "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.temporalCube");
+    auto cube =
+        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.temporalCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -335,24 +327,24 @@ TEST_CASE("a scale-1 frame after a scale change declares the upscale kernel once
     // The predecessor: a whole frame at half scale, so the history the following frames read was
     // accumulated with a 32x32 depth slot behind it.
     view.temporal.renderScale = 0.5f;
-    renderFrame(**device, **renderer, temporalCamera(), view);
+    renderFrame(gpu->device(), **renderer, temporalCamera(), view);
 
-    lmx::render::TransientPool transients(**device);
+    lmx::render::TransientPool transients(gpu->device());
     // Declares one frame at `scale` and answers its compiled record's dump. Every call is a
     // declared temporal frame, so the order of the calls is the order of the frames.
     const auto declareDump = [&](float scale) {
         view.temporal.renderScale = scale;
-        CommandList& commands = (*device)->beginFrame();
+        CommandList& commands = gpu->device().beginFrame();
         transients.beginFrame();
         lmx::render::RenderGraph graph(transients);
-        graph.presentTexture((*renderer)->declarePasses(graph, commands, temporalCamera(),
-                                                        lmx::test::prepareSceneView(view, device)));
+        graph.presentTexture((*renderer)->declarePasses(
+            graph, commands, temporalCamera(), lmx::test::prepareSceneView(view, gpu->device())));
         const auto record = graph.compileFrame(2);
         INFO((record.has_value() ? std::string{} : record.error().message));
         REQUIRE(record.has_value());
         std::string dump = lmx::render::dumpCompiledFrame(*record);
-        (*device)->endFrame(nullptr);
-        (*device)->waitIdle();
+        gpu->device().endFrame(nullptr);
+        gpu->device().waitIdle();
         return dump;
     };
 

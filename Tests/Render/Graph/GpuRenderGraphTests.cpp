@@ -252,6 +252,7 @@ TEST_CASE("a retained frame record joins the timings of the frame it describes",
     auto device = createDevice();
     INFO(errorOf(device));
     REQUIRE(device.has_value());
+    lmx::engine::GpuContext timingSource{**device};
 
     auto storage = (*device)->createBuffer(
         {.size = kFillBytes, .storageRead = true, .label = "lmx.test.graph.retained"}, nullptr);
@@ -276,7 +277,8 @@ TEST_CASE("a retained frame record joins the timings of the frame it describes",
         graph.exportBuffer(nextVersion(target));
 
         records.retain(graph.execute(commands, (*device)->frameNumber()));
-        records.joinTimings((*device)->passTimingsFrame(), (*device)->passTimings());
+        const lmx::engine::PassTimingFrame published = timingSource.passTimings();
+        records.joinTimings(published.frame, published.passes);
         (*device)->endFrame(nullptr);
     };
 
@@ -288,8 +290,9 @@ TEST_CASE("a retained frame record joins the timings of the frame it describes",
     // more frame, which publishes the frame that just retired.
     (*device)->waitIdle();
     (*device)->beginFrame();
-    const uint64_t measured = (*device)->passTimingsFrame();
-    REQUIRE(records.joinTimings(measured, (*device)->passTimings()));
+    const lmx::engine::PassTimingFrame retired = timingSource.passTimings();
+    const uint64_t measured = retired.frame;
+    REQUIRE(records.joinTimings(measured, retired.passes));
     (*device)->endFrame(nullptr);
     (*device)->waitIdle();
 

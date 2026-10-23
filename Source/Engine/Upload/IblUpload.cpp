@@ -6,6 +6,8 @@
 #include "Engine/Upload/IblUpload.h"
 
 #include "Core/Diagnostics/Assert.h"
+#include "Core/Diagnostics/Result.h"
+#include "Engine/Gpu/GpuError.h"
 
 #include <glm/gtc/packing.hpp>
 
@@ -29,7 +31,7 @@ constexpr float kMaxHalf = 65504.0f;
 //======================================================================================================================
 // Uploads a cube chain as RGBA16Float. `chain` is mip-major (chain[0] is the base level); the
 // staging buffers stay alive across createTexture because TextureMip only borrows their storage.
-rojoRHI::Result<std::unique_ptr<rojoRHI::Texture>>
+lmx::Result<std::unique_ptr<rojoRHI::Texture>>
 uploadCubeChain(rojoRHI::Device& device, std::span<const asset::ibl::CpuCubemap> chain,
                 const std::string& label) {
     LMX_ASSERT(!chain.empty(), "uploadCube: a cube needs at least its base level");
@@ -65,21 +67,25 @@ uploadCubeChain(rojoRHI::Device& device, std::span<const asset::ibl::CpuCubemap>
                             .bytesPerRow = uint64_t{chain[mip].faceSize} * kHalf4Stride});
         }
     }
-    return device.createTexture({.width = chain[0].faceSize,
-                                 .height = chain[0].faceSize,
-                                 .format = rojoRHI::Format::RGBA16Float,
-                                 .kind = rojoRHI::TextureKind::Cube,
-                                 .mipLevels = mipCount,
-                                 .sampled = true,
-                                 .label = label},
-                                mips);
+    auto texture = device.createTexture({.width = chain[0].faceSize,
+                                         .height = chain[0].faceSize,
+                                         .format = rojoRHI::Format::RGBA16Float,
+                                         .kind = rojoRHI::TextureKind::Cube,
+                                         .mipLevels = mipCount,
+                                         .sampled = true,
+                                         .label = label},
+                                        mips);
+    if (!texture) {
+        return std::unexpected(gpuError(texture.error()));
+    }
+    return std::move(*texture);
 }
 
 //======================================================================================================================
-rojoRHI::Result<std::unique_ptr<rojoRHI::Texture>> uploadDfgLut(rojoRHI::Device& device,
-                                                                const std::vector<glm::vec2>& lut,
-                                                                uint32_t size,
-                                                                const std::string& label) {
+lmx::Result<std::unique_ptr<rojoRHI::Texture>> uploadDfgLut(rojoRHI::Device& device,
+                                                            const std::vector<glm::vec2>& lut,
+                                                            uint32_t size,
+                                                            const std::string& label) {
     std::vector<uint16_t> halves(lut.size() * 2);
     for (size_t texel = 0; texel < lut.size(); ++texel) {
         halves[texel * 2] = glm::packHalf1x16(lut[texel].x);
@@ -88,19 +94,23 @@ rojoRHI::Result<std::unique_ptr<rojoRHI::Texture>> uploadDfgLut(rojoRHI::Device&
     const rojoRHI::TextureMip mip{.data = halves.data(),
                                   .bytesPerRow = uint64_t{size} * kHalf2Stride};
     const std::array<rojoRHI::TextureMip, 1> mips = {mip};
-    return device.createTexture({.width = size,
-                                 .height = size,
-                                 .format = rojoRHI::Format::RG16Float,
-                                 .mipLevels = 1,
-                                 .sampled = true,
-                                 .label = label},
-                                mips);
+    auto texture = device.createTexture({.width = size,
+                                         .height = size,
+                                         .format = rojoRHI::Format::RG16Float,
+                                         .mipLevels = 1,
+                                         .sampled = true,
+                                         .label = label},
+                                        mips);
+    if (!texture) {
+        return std::unexpected(gpuError(texture.error()));
+    }
+    return std::move(*texture);
 }
 
 } // namespace
 
 //======================================================================================================================
-rojoRHI::Result<std::unique_ptr<rojoRHI::Texture>>
+lmx::Result<std::unique_ptr<rojoRHI::Texture>>
 uploadCubemap(rojoRHI::Device& device, const asset::ibl::CpuCubemap& env, std::string_view label) {
     LMX_ASSERT(env.faceSize > 0, "uploadCubemap: the environment cube has no texels");
     return uploadCubeChain(device, std::span<const asset::ibl::CpuCubemap>(&env, 1),
@@ -108,8 +118,8 @@ uploadCubemap(rojoRHI::Device& device, const asset::ibl::CpuCubemap& env, std::s
 }
 
 //======================================================================================================================
-rojoRHI::Result<IblTextures> generate(rojoRHI::Device& device, const asset::ibl::CpuCubemap& env,
-                                      std::string_view label, GenerationOptions options) {
+lmx::Result<IblTextures> generate(rojoRHI::Device& device, const asset::ibl::CpuCubemap& env,
+                                  std::string_view label, GenerationOptions options) {
     LMX_ASSERT(env.faceSize > 0, "ibl::generate: the environment cube has no texels");
     LMX_ASSERT(options.specularBaseFaceSize >= (1u << (asset::ibl::kSpecularMipCount - 1)),
                "ibl::generate: the specular base extent must hold every roughness mip");

@@ -1,8 +1,10 @@
 #pragma once
 
+#include "Core/Diagnostics/Result.h"
 #include "Engine/Asset/Asset.h"
 #include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Geometry/Mesh.h"
+#include "Engine/Gpu/GpuContext.h"
 #include "Engine/View/Camera.h"
 #include "Render/Renderer/Renderer.h"
 #include <rojoRHI/RHI.h>
@@ -22,6 +24,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -76,6 +79,11 @@ std::string errorOf(const rojoRHI::Result<T>& result) {
     return result ? std::string{} : result.error().message;
 }
 
+template <typename T>
+std::string errorOf(const lmx::Result<T>& result) {
+    return result ? std::string{} : result.error().message;
+}
+
 //======================================================================================================================
 // For probes whose expected value is an arithmetic result rather than an on/off channel.
 inline bool channelNear(uint8_t actual, int expected, int tolerance) {
@@ -119,6 +127,16 @@ template <typename T>
 //======================================================================================================================
 std::string errorOf(const lmx::asset::AssetResult<T>& result) {
     return result ? std::string{} : result.error().message;
+}
+
+//======================================================================================================================
+// A GPU context over a real device with validation on, as rojoRHI::createDevice() defaults to; the
+// case stops here when no device can be created.
+inline std::unique_ptr<lmx::engine::GpuContext> createTestGpu() {
+    auto gpu = lmx::engine::GpuContext::create({});
+    INFO(errorOf(gpu));
+    REQUIRE(gpu.has_value());
+    return std::move(*gpu);
 }
 
 } // namespace

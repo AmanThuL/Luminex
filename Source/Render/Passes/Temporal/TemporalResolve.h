@@ -5,6 +5,9 @@
 
 #pragma once
 
+#include "Core/Diagnostics/Result.h"
+#include "Engine/Gpu/GpuContext.h"
+#include "Engine/Gpu/PassTiming.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/Temporal/Temporal.h"
 #include "Render/Passes/Temporal/TemporalHistory.h"
@@ -26,7 +29,7 @@ struct ReconstructionSelection {
 
 /// Resolves a request without allocating resources; native modes never consult vendor support.
 ReconstructionSelection resolveReconstruction(ReconstructionMode requested,
-                                              const rojoRHI::TemporalScalerSupport& support,
+                                              const engine::UpscalerSupportInfo& support,
                                               bool creationFailed = false);
 
 class VendorTemporalScaler;
@@ -128,8 +131,8 @@ public:
     /// `cpuReadback` puts both history pairs in shared storage so Texture::readback() works, on
     /// Renderer::create()'s terms: it is what the GPU tests and the offscreen path need, and the
     /// windowed App leaves it false.
-    static rojoRHI::Result<std::unique_ptr<TemporalResolve>> create(rojoRHI::Device& device,
-                                                                    bool cpuReadback);
+    static lmx::Result<std::unique_ptr<TemporalResolve>> create(engine::GpuContext& gpu,
+                                                                bool cpuReadback);
 
     /// Non-copyable: it owns GPU targets whose identity is what the frame's imports name.
     TemporalResolve(const TemporalResolve&) = delete;
@@ -138,7 +141,7 @@ public:
 
     /// Recreates both slot pairs at the new extent, replacing any already held. The caller
     /// guarantees the GPU is idle first, on Renderer::resize()'s terms.
-    rojoRHI::Result<void> resize(uint32_t width, uint32_t height);
+    lmx::Result<void> resize(uint32_t width, uint32_t height);
 
     /// The depth target of `slot`, which a temporal frame renders into and the next one samples as
     /// its previous depth. Never null after a successful create().
@@ -201,7 +204,7 @@ public:
     uint64_t depthBytes() const;
 
 private:
-    explicit TemporalResolve(rojoRHI::Device& device, bool cpuReadback);
+    explicit TemporalResolve(engine::GpuContext& gpu, bool cpuReadback);
 
     // The reprojection diagnostic (ADR 0013), unchanged from M6.1 but now reading the previous
     // colour slot: it measures the motion vectors and the history, and nothing downstream shades
@@ -257,11 +260,11 @@ private:
 
     rojoRHI::Device& m_device;
     std::unique_ptr<VendorTemporalScaler> m_vendor;
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_reprojectLibrary;
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_resolveLibrary;
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_debugViewLibrary;
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_spatialUpscaleLibrary;
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_temporalUpscaleLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_reprojectLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_resolveLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_debugViewLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_spatialUpscaleLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_temporalUpscaleLibrary;
     std::unique_ptr<rojoRHI::ComputePipeline> m_reprojectPipeline;
     std::unique_ptr<rojoRHI::ComputePipeline> m_resolvePipeline;
     std::unique_ptr<rojoRHI::ComputePipeline> m_spatialUpscalePipeline;

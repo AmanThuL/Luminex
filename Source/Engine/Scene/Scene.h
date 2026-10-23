@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "Core/Diagnostics/Result.h"
 #include "Core/Math/Aabb.h"
 #include "Core/Math/Transform.h"
 #include "Engine/Asset/Asset.h"
@@ -121,15 +122,16 @@ public:
     /// Submitted references retain the resource until three paced frames after its last use.
     void removeTexture(TextureId id);
     /// Adds a local point or spot light, validating it the way `engine::makeLightRow` does and
-    /// failing with `InvalidDesc` for invalid parameters or once `engine::kMaxLocalLights` live
+    /// failing with `InvalidArgument` for invalid parameters or once `engine::kMaxLocalLights` live
     /// lights already exist. May be called before or after finalize.
-    rojoRHI::Result<LightId> addLight(const engine::LocalLight& light);
+    lmx::Result<LightId> addLight(const engine::LocalLight& light);
     /// Removes a live local light and returns whether the identity resolved; a stale or foreign
     /// identity is reported rather than asserted. Preserves later row slots.
     bool removeLight(LightId id);
     /// Replaces a live local light's parameters, validating them the way `addLight` does; an
-    /// invalid identity or invalid light fails with `InvalidDesc` and leaves the light unchanged.
-    rojoRHI::Result<void> updateLight(LightId id, const engine::LocalLight& light);
+    /// invalid identity or invalid light fails with `InvalidArgument` and leaves the light
+    /// unchanged.
+    lmx::Result<void> updateLight(LightId id, const engine::LocalLight& light);
     /// Returns the live local light's authored parameters, or null for an unresolvable identity.
     const engine::LocalLight* light(LightId id) const;
     /// Returns every existing local light identity, including disabled lights, by row slot.
@@ -169,10 +171,10 @@ public:
     /// Returns a material, asserting the identity resolves.
     const MaterialRecord& material(MaterialId id) const;
     /// Merges immutable geometry and allocates three paced table slots; returns GPU failures.
-    rojoRHI::Result<void> finalize(rojoRHI::Device& device);
+    lmx::Result<void> finalize(rojoRHI::Device& device);
     /// Updates this frame's retired slot after Device::beginFrame and before any declaration.
     /// Frame numbers must strictly advance and match the owning device; returns growth failures.
-    rojoRHI::Result<void> prepareFrame(uint64_t frameNumber);
+    lmx::Result<void> prepareFrame(uint64_t frameNumber);
     /// Reports live counts, allocation capacities and the last preparation's upload work.
     SceneTableStats tableStats() const;
     /// Monotonic coverage revision, refreshed for public object/material edits by prepareFrame.
@@ -254,7 +256,7 @@ private:
 };
 
 /// Authors scene content, such as local lights, into a loaded scene before it is finalized.
-using SceneAuthoring = std::function<rojoRHI::Result<void>(Scene&)>;
+using SceneAuthoring = std::function<lmx::Result<void>(Scene&)>;
 
 /// Builds a Scene from the .gltf or .glb file at `path` (absolute, or relative to the working
 /// directory): uploads its meshes, materials and textures, carries its first animation in as rigid

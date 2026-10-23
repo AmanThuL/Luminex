@@ -19,7 +19,7 @@ void FrameRecordRing::retain(render::CompiledFrameRecord record,
 }
 
 //======================================================================================================================
-bool FrameRecordRing::joinTimings(uint64_t frameId, std::span<const rojoRHI::PassTiming> timings) {
+bool FrameRecordRing::joinTimings(uint64_t frameId, std::span<const engine::PassTiming> timings) {
     if (frameId == 0) {
         return false;
     }

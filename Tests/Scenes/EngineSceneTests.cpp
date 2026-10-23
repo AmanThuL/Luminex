@@ -4,6 +4,7 @@
 #include "Render/Renderer/SceneViewBuilder.h"
 #include "Scenes/CatalogScenes.h"
 #include "Support/EngineSceneTestSupport.h"
+#include "Support/GpuTestSupport.h"
 #include "Support/SceneDocumentTestSupport.h"
 #include "Support/SceneTableTestSupport.h"
 
@@ -183,14 +184,13 @@ TEST_CASE("loadSponzaScene's full SceneView renders through Renderer without exh
              "skipping the asset-gated pin");
     }
 
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    auto scene = lmx::test::loadCatalogScene(**device, "sponza");
+    auto gpu = createTestGpu();
+    auto scene = lmx::test::loadCatalogScene(gpu->device(), "sponza");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
     constexpr uint32_t kProbeSize = 64;
-    auto renderer = render::Renderer::create(**device, kProbeSize, kProbeSize,
+    auto renderer = render::Renderer::create(*gpu, kProbeSize, kProbeSize,
                                              /*cpuReadback=*/true);
     INFO(describeSceneError(renderer));
     REQUIRE(renderer.has_value());
@@ -203,15 +203,15 @@ TEST_CASE("loadSponzaScene's full SceneView renders through Renderer without exh
     camera.nearZ = (*scene)->initialCamera.nearZ;
     camera.farZ = (*scene)->initialCamera.farZ;
 
-    rojoRHI::CommandList& commands = (*device)->beginFrame();
-    REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
+    rojoRHI::CommandList& commands = gpu->device().beginFrame();
+    REQUIRE((*scene)->prepareFrame(gpu->device().frameNumber()));
     std::vector<lmx::engine::DrawItem> items;
     const render::SceneView view = render::buildSceneView(**scene, items, /*wireframe=*/false);
     REQUIRE(items.size() == 25);
 
     (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->device().endFrame(nullptr);
+    gpu->device().waitIdle();
 
     // The asset camera must produce pixels beyond the clear. The clear is authored in display
     // space and decoded once at pass declaration, so what lands in the target is that colour
@@ -242,9 +242,8 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
              "skipping the asset-gated pin");
     }
 
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    auto scene = lmx::test::loadCatalogScene(**device, "sponza");
+    auto gpu = createTestGpu();
+    auto scene = lmx::test::loadCatalogScene(gpu->device(), "sponza");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -268,12 +267,13 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
     }
     REQUIRE(distinctDiffuse.size() >= 2);
 
-    auto quad = lmx::test::fixtureMesh(**device, makeUvQuad(0.45f), "lmx.test.sponzaDiffuseQuad");
+    auto quad =
+        lmx::test::fixtureMesh(gpu->device(), makeUvQuad(0.45f), "lmx.test.sponzaDiffuseQuad");
     INFO(describeSceneError(quad));
     REQUIRE(quad.has_value());
 
     constexpr uint32_t kProbeSize = 64;
-    auto renderer = render::Renderer::create(**device, kProbeSize, kProbeSize,
+    auto renderer = render::Renderer::create(*gpu, kProbeSize, kProbeSize,
                                              /*cpuReadback=*/true);
     INFO(describeSceneError(renderer));
     REQUIRE(renderer.has_value());
@@ -311,10 +311,11 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
     view.boundingSphere = {0.0f, 0.0f, 0.0f,
                            spacing * static_cast<float>(distinctDiffuse.size()) + 2.0f};
 
-    rojoRHI::CommandList& commands = (*device)->beginFrame();
-    (*renderer)->render(commands, camera, view.prepare(**device), /*barrierForSampling=*/false);
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    rojoRHI::CommandList& commands = gpu->device().beginFrame();
+    (*renderer)->render(commands, camera, view.prepare(gpu->device()),
+                        /*barrierForSampling=*/false);
+    gpu->device().endFrame(nullptr);
+    gpu->device().waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kProbeSize} * kProbeSize * 4);
     (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
@@ -354,9 +355,8 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
 
 //======================================================================================================================
 TEST_CASE("SceneLibrary lists the scenes in a fixed order", "[gpu]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    lmx::scenes::SceneLibrary library(**device);
+    auto gpu = createTestGpu();
+    lmx::scenes::SceneLibrary library(*gpu);
 
     REQUIRE(library.entries().size() == 6);
     REQUIRE(lmx::scenes::sceneIdString(library.entries()[0].id) == "sponza");
@@ -383,9 +383,8 @@ TEST_CASE("SceneLibrary reports the fetched scenes' availability from what this 
     // Not asset-gated in the usual sense: it checks that `available` agrees with whatever this
     // checkout actually has (present or not), so it is meaningful either way rather than being
     // skipped when the fetched assets are missing.
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    lmx::scenes::SceneLibrary library(**device);
+    auto gpu = createTestGpu();
+    lmx::scenes::SceneLibrary library(*gpu);
 
     const bool sponzaPresent = findRepoAsset("Assets/Fetched/Sponza/Sponza.gltf").has_value();
     REQUIRE(library.entries()[0].available == sponzaPresent);
@@ -412,9 +411,8 @@ TEST_CASE("SceneLibrary::get lazily loads a scene once and caches the instance",
         SKIP("Assets/Fetched/Sponza/Sponza.gltf not present (xmake setup fetches it)");
     }
 
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    lmx::scenes::SceneLibrary library(**device);
+    auto gpu = createTestGpu();
+    lmx::scenes::SceneLibrary library(*gpu);
 
     auto first = library.get(lmx::scenes::defaultSceneId());
     INFO(describeSceneError(first));
@@ -540,7 +538,7 @@ TEST_CASE("loadGltfScene runs authoring before finalize", "[scene][gpu]") {
     REQUIRE(device.has_value());
     std::optional<LightId> authored;
     auto scene = loadGltfScene(**device, path->string(), "DamagedHelmet",
-                               [&authored](Scene& target) -> rojoRHI::Result<void> {
+                               [&authored](Scene& target) -> lmx::Result<void> {
                                    auto id = target.addLight(lmx::engine::LocalLight{});
                                    if (!id) {
                                        return std::unexpected(id.error());

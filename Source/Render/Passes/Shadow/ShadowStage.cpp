@@ -7,6 +7,7 @@
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Projection.h"
+#include "Engine/Gpu/GpuError.h"
 #include "Render/Common/DrawEncoding.h"
 #include <rojoRHI/CaptureSchema.h>
 
@@ -78,11 +79,12 @@ ShadowMatrices fitShadowOrtho(const glm::vec4& boundingSphere, const glm::vec3& 
 }
 
 //======================================================================================================================
-rojoRHI::Result<std::unique_ptr<ShadowStage>> ShadowStage::create(rojoRHI::Device& device) {
+lmx::Result<std::unique_ptr<ShadowStage>> ShadowStage::create(engine::GpuContext& gpu) {
+    rojoRHI::Device& device = gpu.device();
     std::unique_ptr<ShadowStage> self(new ShadowStage);
 
     {
-        auto library = device.loadShaderLibrary("Shaders/ShadowPass");
+        auto library = gpu.loadShaderLibrary("ShadowPass");
         if (!library) {
             return std::unexpected(library.error());
         }
@@ -107,12 +109,12 @@ rojoRHI::Result<std::unique_ptr<ShadowStage>> ShadowStage::create(rojoRHI::Devic
                                            .depthBias = kShadowDepthBias,
                                            .label = "lmx.render.shadowPipeline"});
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         self->m_shadowPipeline = std::move(*pipeline);
     }
 
-    auto shadowMaskLibrary = device.loadShaderLibrary("Shaders/ShadowPassMask");
+    auto shadowMaskLibrary = gpu.loadShaderLibrary("ShadowPassMask");
     if (!shadowMaskLibrary) {
         return std::unexpected(shadowMaskLibrary.error());
     }
@@ -132,7 +134,7 @@ rojoRHI::Result<std::unique_ptr<ShadowStage>> ShadowStage::create(rojoRHI::Devic
              .label = doubleSided ? "lmx.render.maskShadowPipeline.doubleSided"
                                   : "lmx.render.maskShadowPipeline"});
         if (!pipeline) {
-            return std::unexpected(pipeline.error());
+            return std::unexpected(engine::gpuError(pipeline.error()));
         }
         self->m_maskShadowPipelines[doubleSided] = std::move(*pipeline);
     }

@@ -13,6 +13,7 @@
 #include "Core/IO/File.h"
 #include "Core/Util/Sha256.h"
 #include "Core/Util/Stopwatch.h"
+#include "Engine/Gpu/GpuContext.h"
 #include "Render/Graph/FrameDeclaration.h"
 #include "Render/Renderer/Renderer.h"
 
@@ -95,11 +96,12 @@ int runMeasurement(const AppOptions& options) {
         LMX_LOG_ERROR("measurement output already exists: {}", options.measurementPath.string());
         return 1;
     }
-    auto device = rojoRHI::createDevice({.enableValidation = false});
-    if (!device) {
-        LMX_LOG_ERROR("measurement device: {}", device.error().message);
+    auto context = engine::GpuContext::create({.validation = false});
+    if (!context) {
+        LMX_LOG_ERROR("measurement device: {}", context.error().message);
         return 1;
     }
+    engine::GpuContext& gpu = **context;
     MeasurementPlan plan;
     plan.warmupFrames = options.warmup;
     plan.measuredFrames = options.frames;
@@ -136,11 +138,11 @@ int runMeasurement(const AppOptions& options) {
     plan.lightDebugView = lightDebugViewName(options.lightDebugView);
     MeasurementRun run;
     scenes::SceneLibrary library(
-        **device, options.generatorOverrides.instances, options.generatorOverrides.occluders,
+        gpu, options.generatorOverrides.instances, options.generatorOverrides.occluders,
         options.generatorOverrides.lights, options.generatorOverrides.pile);
     auto loaded = library.get(options.initialScene);
     if (!loaded) {
-        run.start(plan, collectMeasurementProvenance(**device));
+        run.start(plan, collectMeasurementProvenance(gpu.device()));
         run.cancel(loaded.error().message);
         writeReport(options.measurementPath, run);
         LMX_LOG_ERROR("measurement scene failed to load: {}", loaded.error().message);
@@ -151,7 +153,7 @@ int runMeasurement(const AppOptions& options) {
                      SceneActivationMotion::PreserveLoadedMotion);
     if (options.localLightRigOverride && session.localLightRigAvailable()) {
         if (auto rig = session.setLocalLightRig(options.localLightRig); !rig) {
-            run.start(plan, collectMeasurementProvenance(**device));
+            run.start(plan, collectMeasurementProvenance(gpu.device()));
             run.cancel(rig.error().message);
             writeReport(options.measurementPath, run);
             LMX_LOG_ERROR("measurement local-light rig failed: {}", rig.error().message);
@@ -164,13 +166,13 @@ int runMeasurement(const AppOptions& options) {
     plan.sceneDocumentHash = loadedSnapshot.hash;
     plan.localLightRig = session.localLightRigEnabled();
     plan.startingPopulation = measurementPopulation(session.scene());
-    if (!run.start(plan, collectMeasurementProvenance(**device))) {
+    if (!run.start(plan, collectMeasurementProvenance(gpu.device()))) {
         writeReport(options.measurementPath, run);
         LMX_LOG_ERROR("{}", run.failure());
         return 1;
     }
-    render::TransientPool pool(**device);
-    auto renderer = render::Renderer::create(**device, plan.width, plan.height);
+    render::TransientPool pool(gpu.device());
+    auto renderer = render::Renderer::create(gpu, plan.width, plan.height);
     if (!renderer) {
         run.cancel(renderer.error().message);
         writeReport(options.measurementPath, run);
@@ -184,15 +186,17 @@ int runMeasurement(const AppOptions& options) {
         if (!plan.cameraTrack)
             session.camera() = engine::cameraFromScene((*loaded)->initialCamera);
         const Stopwatch wait;
-        auto& commands = (*device)->beginFrame();
+        engine::Frame gpuFrame = gpu.beginFrame();
+        auto& commands = gpuFrame.commands;
         const Stopwatch encode;
-        if (!run.retire((*device)->passTimingsFrame(), (*device)->passTimings())) {
-            (*device)->endFrame(nullptr);
+        const engine::PassTimingFrame timings = gpu.passTimings();
+        if (!run.retire(timings.frame, timings.passes)) {
+            gpu.submitAndEndFrame(gpuFrame);
             break;
         }
-        if (auto prepared = session.prepareFrame((*device)->frameNumber()); !prepared) {
+        if (auto prepared = session.prepareFrame(gpu.frameNumber()); !prepared) {
             run.cancel(prepared.error().message);
-            (*device)->endFrame(nullptr);
+            gpu.submitAndEndFrame(gpuFrame);
             break;
         }
         std::vector<engine::DrawItem> items;
@@ -220,7 +224,7 @@ int runMeasurement(const AppOptions& options) {
         declaration.graph().exportTexture(declaration.displayColor());
         auto record = declaration.execute();
         session.commitFrame();
-        (*device)->endFrame(nullptr);
+        gpu.submitAndEndFrame(gpuFrame);
         const double encodeMs = encode.elapsedMilliseconds();
         run.recordCpu(
             measurementCpuSample(frame.sequenceFrame, wait.elapsedMillisecondsUntil(encode),
@@ -233,7 +237,7 @@ int runMeasurement(const AppOptions& options) {
         }
         // The RHI publishes only its newest retired frame. Explicit serialization is required to
         // preserve every frame's timestamps; report this pacing, and exclude it from CPU encoding.
-        (*device)->waitIdle();
+        gpu.waitIdle();
         (*renderer)->drainVisibilityAfterIdle();
         (*renderer)->drainLightingAfterIdle();
         for (const auto& status : (*renderer)->takeRetiredLighting())
@@ -244,12 +248,13 @@ int runMeasurement(const AppOptions& options) {
                 run.retireVisibility(status);
     }
     if (run.state() == MeasurementState::Draining) {
-        (*device)->beginFrame();
-        run.retire((*device)->passTimingsFrame(), (*device)->passTimings());
-        (*device)->endFrame(nullptr);
+        engine::Frame drainFrame = gpu.beginFrame();
+        const engine::PassTimingFrame timings = gpu.passTimings();
+        run.retire(timings.frame, timings.passes);
+        gpu.submitAndEndFrame(drainFrame);
         run.finishDrain();
     }
-    (*device)->waitIdle();
+    gpu.waitIdle();
     if (!writeReport(options.measurementPath, run)) {
         LMX_LOG_ERROR("could not write measurement report: {}", options.measurementPath.string());
         return 1;

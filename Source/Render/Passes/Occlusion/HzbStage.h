@@ -4,6 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
+#include "Core/Diagnostics/Result.h"
+#include "Engine/Gpu/GpuContext.h"
 #include "Render/Graph/RenderGraph.h"
 
 #include <glm/mat4x4.hpp>
@@ -48,10 +50,10 @@ struct HzbSource {
 class HzbStage {
 public:
     /// Loads reduction/publish pipelines. Readback enables only diagnostic texture readback.
-    static rojoRHI::Result<std::unique_ptr<HzbStage>> create(rojoRHI::Device& device,
-                                                             bool cpuReadback = false);
+    static lmx::Result<std::unique_ptr<HzbStage>> create(engine::GpuContext& gpu,
+                                                         bool cpuReadback = false);
     /// Allocates from output extent only; unchanged dimensions preserve identity and history.
-    rojoRHI::Result<void> resize(uint32_t outputWidth, uint32_t outputHeight);
+    lmx::Result<void> resize(uint32_t outputWidth, uint32_t outputHeight);
     /// Returns the last declared source, or an unbuilt record before the first build.
     const HzbSource& previousSource() const { return m_sources[m_lastBuilt]; }
     /// Returns the last declared pyramid, or an allocated unbuilt texture initially.
@@ -77,9 +79,9 @@ private:
     HzbLayout m_layout;
     std::array<std::unique_ptr<rojoRHI::Texture>, 2> m_textures;
     std::array<HzbSource, 2> m_sources;
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_reduceLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_reduceLibrary;
     std::unique_ptr<rojoRHI::ComputePipeline> m_reducePipeline;
-    std::unique_ptr<rojoRHI::ShaderLibrary> m_publishLibrary;
+    engine::GpuOwned<rojoRHI::ShaderLibrary> m_publishLibrary;
     std::unique_ptr<rojoRHI::ComputePipeline> m_publishPipeline;
     std::unique_ptr<rojoRHI::Buffer> m_publishBuffer;
     bool m_published = false;

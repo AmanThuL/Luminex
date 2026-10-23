@@ -6,6 +6,7 @@
 #include "Engine/Scene/SceneInstantiate.h"
 
 #include "Core/Diagnostics/Log.h"
+#include "Core/Diagnostics/Result.h"
 #include "Core/Math/Aabb.h"
 #include "Core/Math/Sphere.h"
 #include "Core/Math/Transform.h"
@@ -13,6 +14,7 @@
 #include "Engine/Asset/Model/GltfLoader.h"
 #include "Engine/Asset/Texture/TextureBake.h"
 #include "Engine/Geometry/Mesh.h"
+#include "Engine/Gpu/GpuError.h"
 #include "Engine/Upload/DdsUpload.h"
 #include "Engine/Upload/SceneEnvironment.h"
 
@@ -34,7 +36,7 @@ namespace lmx::engine {
 namespace {
 
 //======================================================================================================================
-asset::AssetError uploadFailure(rojoRHI::Error error) {
+asset::AssetError uploadFailure(lmx::Error error) {
     return asset::AssetError{asset::AssetErrorCode::UploadFailed, std::move(error.message)};
 }
 
@@ -131,7 +133,7 @@ asset::AssetResult<void> appendGltfScene(rojoRHI::Device& device, Scene& target,
              .label = label},
             bakedChain.mips);
         if (!texture) {
-            return std::unexpected(uploadFailure(std::move(texture.error())));
+            return std::unexpected(uploadFailure(gpuError(texture.error())));
         }
         const TextureId ptr = scene->addTexture(std::move(*texture));
         uploaded[index] = ptr;

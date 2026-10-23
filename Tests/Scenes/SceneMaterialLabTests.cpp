@@ -332,9 +332,8 @@ TEST_CASE("MaterialLab document's normal-map probe encodes an exact flat {128,12
 TEST_CASE("MaterialLab document's known-colour patches round-trip the display transform and its "
           "gradient ramp reads back monotonic",
           "[gpu]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    auto scene = lmx::test::loadCatalogScene(**device, "material-lab");
+    auto gpu = createTestGpu();
+    auto scene = lmx::test::loadCatalogScene(gpu->device(), "material-lab");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -355,7 +354,7 @@ TEST_CASE("MaterialLab document's known-colour patches round-trip the display tr
     REQUIRE(ramp != nullptr);
 
     constexpr uint32_t kProbeSize = 64;
-    auto renderer = render::Renderer::create(**device, kProbeSize, kProbeSize,
+    auto renderer = render::Renderer::create(*gpu, kProbeSize, kProbeSize,
                                              /*cpuReadback=*/true);
     INFO(describeSceneError(renderer));
     REQUIRE(renderer.has_value());
@@ -368,8 +367,8 @@ TEST_CASE("MaterialLab document's known-colour patches round-trip the display tr
     camera.nearZ = 0.1f;
     camera.farZ = 20.0f;
 
-    rojoRHI::CommandList& commands = (*device)->beginFrame();
-    REQUIRE((*scene)->prepareFrame((*device)->frameNumber()).has_value());
+    rojoRHI::CommandList& commands = gpu->device().beginFrame();
+    REQUIRE((*scene)->prepareFrame(gpu->device().frameNumber()).has_value());
     std::vector<lmx::engine::DrawItem> allItems;
     render::buildSceneView(**scene, allItems, false);
     std::vector<lmx::engine::DrawItem> items;
@@ -391,7 +390,7 @@ TEST_CASE("MaterialLab document's known-colour patches round-trip the display tr
     // (Engine/Asset/Texture/Ibl.h) -- so what reaches the target is the patch's total reflectance
     // and nothing about the geometry of a light rig enters the expectation.
     const lmx::engine::ibl::IblTextures environment =
-        lmx::test::makeUniformIbl(**device, glm::vec3(1.0f), "lmx.test.patchFurnace");
+        lmx::test::makeUniformIbl(gpu->device(), glm::vec3(1.0f), "lmx.test.patchFurnace");
     view.irradiance = environment.irradiance.get();
     view.prefilteredEnv = environment.prefilteredEnv.get();
     view.dfgLut = environment.dfgLut.get();
@@ -401,8 +400,8 @@ TEST_CASE("MaterialLab document's known-colour patches round-trip the display tr
     view.boundingSphere = {14.0f, 0.75f, 0.0f, 5.0f};
 
     (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->device().endFrame(nullptr);
+    gpu->device().waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kProbeSize} * kProbeSize * 4);
     (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
@@ -499,9 +498,8 @@ TEST_CASE("MaterialLab document's known-colour patches round-trip the display tr
 TEST_CASE("MaterialLab document's mip probe converges to mid-gray under strong minification, "
           "proving its mips are filtered rather than point-picked",
           "[gpu]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device.has_value());
-    auto scene = lmx::test::loadCatalogScene(**device, "material-lab");
+    auto gpu = createTestGpu();
+    auto scene = lmx::test::loadCatalogScene(gpu->device(), "material-lab");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -509,7 +507,7 @@ TEST_CASE("MaterialLab document's mip probe converges to mid-gray under strong m
     REQUIRE(probe != nullptr);
 
     constexpr uint32_t kProbeSize = 64;
-    auto renderer = render::Renderer::create(**device, kProbeSize, kProbeSize,
+    auto renderer = render::Renderer::create(*gpu, kProbeSize, kProbeSize,
                                              /*cpuReadback=*/true);
     INFO(describeSceneError(renderer));
     REQUIRE(renderer.has_value());
@@ -522,8 +520,8 @@ TEST_CASE("MaterialLab document's mip probe converges to mid-gray under strong m
     camera.nearZ = 0.1f;
     camera.farZ = 20.0f;
 
-    rojoRHI::CommandList& commands = (*device)->beginFrame();
-    REQUIRE((*scene)->prepareFrame((*device)->frameNumber()).has_value());
+    rojoRHI::CommandList& commands = gpu->device().beginFrame();
+    REQUIRE((*scene)->prepareFrame(gpu->device().frameNumber()).has_value());
     std::vector<lmx::engine::DrawItem> allItems;
     render::buildSceneView(**scene, allItems, false);
     std::vector<lmx::engine::DrawItem> items;
@@ -533,7 +531,7 @@ TEST_CASE("MaterialLab document's mip probe converges to mid-gray under strong m
     view.items = items;
     view.tables = (*scene)->tables();
     const lmx::engine::ibl::IblTextures environment =
-        lmx::test::makeUniformIbl(**device, glm::vec3(1.0f), "lmx.test.mipProbeFurnace");
+        lmx::test::makeUniformIbl(gpu->device(), glm::vec3(1.0f), "lmx.test.mipProbeFurnace");
     view.irradiance = environment.irradiance.get();
     view.prefilteredEnv = environment.prefilteredEnv.get();
     view.dfgLut = environment.dfgLut.get();
@@ -543,8 +541,8 @@ TEST_CASE("MaterialLab document's mip probe converges to mid-gray under strong m
     view.boundingSphere = {probe->position.x, probe->position.y, probe->position.z, 2.0f};
 
     (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
-    (*device)->endFrame(nullptr);
-    (*device)->waitIdle();
+    gpu->device().endFrame(nullptr);
+    gpu->device().waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kProbeSize} * kProbeSize * 4);
     (*renderer)->colorTarget().readback(pixels.data(), pixels.size());

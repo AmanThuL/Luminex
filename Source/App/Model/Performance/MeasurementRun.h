@@ -4,10 +4,10 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
+#include "Engine/Gpu/PassTiming.h"
 #include "Engine/Scene/Scene.h"
 #include "Render/Passes/LocalLights/LightingStatus.h"
 #include "Render/Passes/Visibility/Visibility.h"
-#include <rojoRHI/Device.h>
 
 #include <cstdint>
 #include <optional>
@@ -135,7 +135,7 @@ struct MeasurementCpuSample {
 /// A sample becomes reportable only after matching nonempty GPU timings arrive.
 struct MeasurementSample {
     MeasurementCpuSample cpu; ///< Declaration metrics; GPU list payload resolves on retirement.
-    std::vector<rojoRHI::PassTiming> passes; ///< Retired timings joined by exact frame id.
+    std::vector<engine::PassTiming> passes; ///< Retired timings joined by exact frame id.
     std::optional<render::VisibilityStatus> visibility; ///< Exact-frame retired GPU counters.
     bool retired = false; ///< Distinguishes absent timings from zero-duration timings.
     std::optional<render::LightingStatus> lighting; ///< Exact-frame retired light counts and lists.
@@ -158,7 +158,7 @@ public:
     /// Records one submitted frame in plan order, then advances the plan.
     bool recordCpu(MeasurementCpuSample sample);
     /// Joins a retired RHI publication; repeated identical publications are harmless.
-    bool retire(uint64_t frameId, std::span<const rojoRHI::PassTiming> passes);
+    bool retire(uint64_t frameId, std::span<const engine::PassTiming> passes);
     /// Joins GPU classifier counters by exact submitted frame, independently of timings.
     bool retireVisibility(const render::VisibilityStatus& status);
     /// Joins lighting counters by declaration frame and scene, independently of other retirements.

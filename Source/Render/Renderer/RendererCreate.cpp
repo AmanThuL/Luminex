@@ -14,6 +14,7 @@
 #include <chrono>
 
 #include "Core/Diagnostics/Assert.h"
+#include "Engine/Gpu/GpuError.h"
 
 #include <array>
 #include <cmath>
@@ -51,51 +52,52 @@ void registerUniformLayoutsForCapture() {
 }
 
 //======================================================================================================================
-Renderer::Renderer(rojoRHI::Device& device, bool cpuReadback)
-    : m_device(device), m_transientPool(device), m_drawSubmission(device),
-      m_cpuReadback(cpuReadback) {}
+Renderer::Renderer(engine::GpuContext& gpu, bool cpuReadback)
+    : m_gpu(gpu), m_device(gpu.device()), m_transientPool(gpu.device()),
+      m_drawSubmission(gpu.device()), m_cpuReadback(cpuReadback) {}
 
 //======================================================================================================================
 Renderer::~Renderer() = default;
 
 //======================================================================================================================
-rojoRHI::Result<std::unique_ptr<Renderer>> Renderer::create(rojoRHI::Device& device, uint32_t width,
-                                                            uint32_t height, bool cpuReadback) {
+lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu, uint32_t width,
+                                                        uint32_t height, bool cpuReadback) {
     LMX_ASSERT(width > 0 && height > 0, "Renderer::create: width and height must be non-zero");
 
     // Registration is idempotent and keeps capture startup independent of Renderer state.
     registerUniformLayoutsForCapture();
 
-    std::unique_ptr<Renderer> self(new Renderer(device, cpuReadback));
+    rojoRHI::Device& device = gpu.device();
+    std::unique_ptr<Renderer> self(new Renderer(gpu, cpuReadback));
 
     {
-        auto stage = ShadowStage::create(device);
+        auto stage = ShadowStage::create(gpu);
         if (!stage) {
             return std::unexpected(stage.error());
         }
         self->m_shadowStage = std::move(*stage);
     }
     {
-        auto stage = SceneStage::create(device, kSceneColorFormat);
+        auto stage = SceneStage::create(gpu, kSceneColorFormat);
         if (!stage) {
             return std::unexpected(stage.error());
         }
         self->m_sceneStage = std::move(*stage);
     }
 
-    auto displayStage = DisplayStage::create(device);
+    auto displayStage = DisplayStage::create(gpu);
     if (!displayStage) {
         return std::unexpected(displayStage.error());
     }
     self->m_displayStage = std::move(*displayStage);
 
-    auto exposureStage = ExposureStage::create(device, cpuReadback);
+    auto exposureStage = ExposureStage::create(gpu, cpuReadback);
     if (!exposureStage) {
         return std::unexpected(exposureStage.error());
     }
     self->m_exposureStage = std::move(*exposureStage);
 
-    auto bloomStage = BloomStage::create(device);
+    auto bloomStage = BloomStage::create(gpu);
     if (!bloomStage) {
         return std::unexpected(bloomStage.error());
     }
@@ -110,7 +112,7 @@ rojoRHI::Result<std::unique_ptr<Renderer>> Renderer::create(rojoRHI::Device& dev
                                                .sampled = true,
                                                .label = "lmx.render.shadowMap"});
         if (!shadowMap) {
-            return std::unexpected(shadowMap.error());
+            return std::unexpected(engine::gpuError(shadowMap.error()));
         }
         self->m_shadowMap = std::move(*shadowMap);
     }
@@ -157,7 +159,7 @@ rojoRHI::Result<std::unique_ptr<Renderer>> Renderer::create(rojoRHI::Device& dev
                                              .maxAnisotropy = 16,
                                              .label = "lmx.render.linearSampler"});
         if (!sampler) {
-            return std::unexpected(sampler.error());
+            return std::unexpected(engine::gpuError(sampler.error()));
         }
         self->m_linearSampler = std::move(*sampler);
     }
@@ -172,7 +174,7 @@ rojoRHI::Result<std::unique_ptr<Renderer>> Renderer::create(rojoRHI::Device& dev
                                              .compare = rojoRHI::CompareFunc::GreaterEqual,
                                              .label = "lmx.render.shadowSampler"});
         if (!sampler) {
-            return std::unexpected(sampler.error());
+            return std::unexpected(engine::gpuError(sampler.error()));
         }
         self->m_shadowSampler = std::move(*sampler);
     }
@@ -187,7 +189,7 @@ rojoRHI::Result<std::unique_ptr<Renderer>> Renderer::create(rojoRHI::Device& dev
                                                      .addressMode = rojoRHI::AddressMode::Clamp,
                                                      .label = "lmx.render.iblSampler"});
         if (!sampler) {
-            return std::unexpected(sampler.error());
+            return std::unexpected(engine::gpuError(sampler.error()));
         }
         self->m_iblSampler = std::move(*sampler);
     }
@@ -195,7 +197,7 @@ rojoRHI::Result<std::unique_ptr<Renderer>> Renderer::create(rojoRHI::Device& dev
     // The reconstruction stage owns both history pairs and the passes over them, so it is built
     // before the first resize(), which is what allocates its slots at this renderer's extent.
     {
-        auto stage = TemporalResolve::create(device, self->m_cpuReadback);
+        auto stage = TemporalResolve::create(gpu, self->m_cpuReadback);
         if (!stage) {
             return std::unexpected(stage.error());
         }
@@ -212,7 +214,7 @@ rojoRHI::Result<std::unique_ptr<Renderer>> Renderer::create(rojoRHI::Device& dev
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
+lmx::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
     LMX_ASSERT(width > 0 && height > 0, "Renderer::resize: width and height must be non-zero");
 
     // Scene-linear radiance: rendered into by the scene and sky passes, sampled by the display
@@ -226,7 +228,7 @@ rojoRHI::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
                                             .cpuReadback = m_cpuReadback,
                                             .label = "lmx.render.sceneColorHdr"});
     if (!hdrColor) {
-        return std::unexpected(hdrColor.error());
+        return std::unexpected(engine::gpuError(hdrColor.error()));
     }
     // The display transform's output: what the viewport samples and a screenshot reads back.
     auto color = m_device.createTexture({.width = width,
@@ -237,7 +239,7 @@ rojoRHI::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
                                          .cpuReadback = m_cpuReadback,
                                          .label = "lmx.render.displayColor"});
     if (!color) {
-        return std::unexpected(color.error());
+        return std::unexpected(engine::gpuError(color.error()));
     }
     // Swap the targets only after every allocation succeeds.
     m_hdrColor = std::move(*hdrColor);
@@ -273,7 +275,7 @@ rojoRHI::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> Renderer::createTemporalTargets() {
+lmx::Result<void> Renderer::createTemporalTargets() {
     LMX_ASSERT(m_width > 0 && m_height > 0,
                "Renderer::createTemporalTargets: the render extent must be non-empty");
 
@@ -287,7 +289,7 @@ rojoRHI::Result<void> Renderer::createTemporalTargets() {
                                           .cpuReadback = m_cpuReadback,
                                           .label = "lmx.render.motion"});
     if (!motion) {
-        return std::unexpected(motion.error());
+        return std::unexpected(engine::gpuError(motion.error()));
     }
     // The per-pixel reactive weight: the scene pass's second extra attachment, read by the resolve
     // alone. One byte per pixel, and colour-renderable rather than storage, because a fragment
@@ -300,7 +302,7 @@ rojoRHI::Result<void> Renderer::createTemporalTargets() {
                                             .cpuReadback = m_cpuReadback,
                                             .label = "lmx.render.reactive"});
     if (!reactive) {
-        return std::unexpected(reactive.error());
+        return std::unexpected(engine::gpuError(reactive.error()));
     }
 
     m_motion = std::move(*motion);

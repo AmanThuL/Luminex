@@ -118,17 +118,16 @@ std::vector<uint8_t> targetBytes(Texture& texture, uint32_t bytesPerPixel) {
 //======================================================================================================================
 TEST_CASE("production occlusion preserves exact static geometry attachments and independent IDs",
           "[gpu][occlusion-integration]") {
-    auto device = createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
     auto scene = occludedScene();
-    REQUIRE(scene.finalize(**device));
-    auto renderer = Renderer::create(**device, 64, 64, true);
+    REQUIRE(scene.finalize(gpu->device()));
+    auto renderer = Renderer::create(*gpu, 64, 64, true);
     REQUIRE(renderer);
     engine::Camera camera;
     camera.fovY = glm::half_pi<float>();
     std::vector<uint32_t> depth, occludedDepth;
     auto baseline = checkedFrame(
-        **device, scene, **renderer, camera, 1, false,
+        gpu->device(), scene, **renderer, camera, 1, false,
         [](SceneView& view) {
             view.occlusionEnabled = false;
             view.occlusionCheck = false;
@@ -137,9 +136,10 @@ TEST_CASE("production occlusion preserves exact static geometry attachments and 
     const auto hdr = targetBytes((*renderer)->hdrColorTarget(), 8);
     const auto motion = targetBytes(*(*renderer)->motionTarget(), 4);
     const auto reactive = targetBytes(*(*renderer)->reactiveTarget(), 1);
-    auto first = checkedFrame(**device, scene, **renderer, camera);
+    auto first = checkedFrame(gpu->device(), scene, **renderer, camera);
     REQUIRE(first.sceneCounters.occluded == 0);
-    auto second = checkedFrame(**device, scene, **renderer, camera, 1, false, {}, &occludedDepth);
+    auto second =
+        checkedFrame(gpu->device(), scene, **renderer, camera, 1, false, {}, &occludedDepth);
     REQUIRE(second.sceneCounters.occluded == 1);
     REQUIRE(second.occlusionInvalidReason == OcclusionInvalidReason::None);
     REQUIRE(second.occlusionSourceFrame + 1 == second.frameNumber);
@@ -152,7 +152,7 @@ TEST_CASE("production occlusion preserves exact static geometry attachments and 
     for (const float scale : {1.0f, 0.5f, 1.0f}) {
         for (uint32_t phase = 0; phase < 16; ++phase) {
             CAPTURE(scale, phase);
-            const auto status = checkedFrame(**device, scene, **renderer, camera, scale, true);
+            const auto status = checkedFrame(gpu->device(), scene, **renderer, camera, scale, true);
             REQUIRE(status.occlusionSourceFrame + 1 == status.frameNumber);
             REQUIRE(status.occlusionInvalidReason == OcclusionInvalidReason::None);
             REQUIRE(status.sceneCounters.occluded == 1);
@@ -164,25 +164,24 @@ TEST_CASE("production occlusion preserves exact static geometry attachments and 
 //======================================================================================================================
 TEST_CASE("newly visible geometry is recovered on its second visible frame",
           "[gpu][occlusion-integration][occlusion-recovery]") {
-    auto device = createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
     auto scene = occludedScene(1.2f);
-    REQUIRE(scene.finalize(**device));
-    auto renderer = Renderer::create(**device, 64, 64, true);
+    REQUIRE(scene.finalize(gpu->device()));
+    auto renderer = Renderer::create(*gpu, 64, 64, true);
     REQUIRE(renderer);
     engine::Camera camera;
     camera.fovY = glm::half_pi<float>();
-    checkedFrame(**device, scene, **renderer, camera);
-    auto hidden = checkedFrame(**device, scene, **renderer, camera);
+    checkedFrame(gpu->device(), scene, **renderer, camera);
+    auto hidden = checkedFrame(gpu->device(), scene, **renderer, camera);
     REQUIRE(hidden.sceneCounters.occluded == 1);
     camera.position.x = 0.9f;
-    auto revealed = checkedFrame(**device, scene, **renderer, camera);
+    auto revealed = checkedFrame(gpu->device(), scene, **renderer, camera);
     REQUIRE(revealed.occlusionInvalidReason == OcclusionInvalidReason::None);
     REQUIRE_FALSE(revealed.occlusionCheck.strict);
     REQUIRE(revealed.occlusionCheck.visibleInstances == 2);
     REQUIRE(revealed.occlusionCheck.falselyRejectedInstances == 1);
     REQUIRE(revealed.occlusionCheck.maximumMissingStreak == 1);
-    auto recovered = checkedFrame(**device, scene, **renderer, camera);
+    auto recovered = checkedFrame(gpu->device(), scene, **renderer, camera);
     REQUIRE(recovered.occlusionCheck.visibleInstances == 2);
     REQUIRE(recovered.occlusionCheck.falselyRejectedInstances == 0);
     REQUIRE(recovered.sceneCounters.occluded == 0);
@@ -191,16 +190,15 @@ TEST_CASE("newly visible geometry is recovered on its second visible frame",
 //======================================================================================================================
 TEST_CASE("global occlusion invalidation retains all candidates before reusing depth evidence",
           "[gpu][occlusion-integration][occlusion-invalidation]") {
-    auto device = createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
     auto scene = occludedScene();
-    REQUIRE(scene.finalize(**device));
-    auto renderer = Renderer::create(**device, 64, 64, true);
+    REQUIRE(scene.finalize(gpu->device()));
+    auto renderer = Renderer::create(*gpu, 64, 64, true);
     REQUIRE(renderer);
     engine::Camera camera;
     camera.fovY = glm::half_pi<float>();
-    checkedFrame(**device, scene, **renderer, camera);
-    REQUIRE(checkedFrame(**device, scene, **renderer, camera).sceneCounters.occluded == 1);
+    checkedFrame(gpu->device(), scene, **renderer, camera);
+    REQUIRE(checkedFrame(gpu->device(), scene, **renderer, camera).sceneCounters.occluded == 1);
     OcclusionInvalidReason expected = OcclusionInvalidReason::CoverageChanged;
     std::function<void(SceneView&)> configure;
     SECTION("move occluder") {
@@ -244,27 +242,27 @@ TEST_CASE("global occlusion invalidation retains all candidates before reusing d
         expected = OcclusionInvalidReason::OutputExtentChanged;
     }
     SECTION("toggle off then on") {
-        checkedFrame(**device, scene, **renderer, camera, 1, false, [](SceneView& view) {
+        checkedFrame(gpu->device(), scene, **renderer, camera, 1, false, [](SceneView& view) {
             view.occlusionEnabled = false;
             view.occlusionCheck = false;
         });
         expected = OcclusionInvalidReason::PreviouslyDisabled;
     }
     SECTION("unrendered frame gap") {
-        (*device)->beginFrame();
-        (*device)->endFrame(nullptr);
+        gpu->device().beginFrame();
+        gpu->device().endFrame(nullptr);
         expected = OcclusionInvalidReason::SourceGap;
     }
-    const auto status = checkedFrame(**device, scene, **renderer, camera, 1, false, configure);
+    const auto status = checkedFrame(gpu->device(), scene, **renderer, camera, 1, false, configure);
     REQUIRE(status.occlusionInvalidReason == expected);
     REQUIRE(status.sceneCounters.occluded == 0);
     REQUIRE(status.occlusionCheck.falselyRejectedInstances == 0);
-    const auto following =
-        checkedFrame(**device, scene, **renderer, camera, 1, false, [configure](SceneView& view) {
-            if (configure)
-                configure(view);
-            view.temporal.cameraCut = false;
-        });
+    const auto following = checkedFrame(gpu->device(), scene, **renderer, camera, 1, false,
+                                        [configure](SceneView& view) {
+                                            if (configure)
+                                                configure(view);
+                                            view.temporal.cameraCut = false;
+                                        });
     REQUIRE(following.occlusionInvalidReason == OcclusionInvalidReason::None);
     REQUIRE(following.occlusionSourceFrame + 1 == following.frameNumber);
     REQUIRE(following.occlusionCheck.falselyRejectedInstances == 0);
@@ -273,20 +271,19 @@ TEST_CASE("global occlusion invalidation retains all candidates before reusing d
 //======================================================================================================================
 TEST_CASE("occlusion joins overlapping retired frames across slot reuse in both submission modes",
           "[gpu][occlusion-integration][occlusion-overlap]") {
-    auto device = createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
     auto scene = occludedScene();
-    REQUIRE(scene.finalize(**device));
+    REQUIRE(scene.finalize(gpu->device()));
     engine::Camera camera;
     camera.fovY = glm::half_pi<float>();
     for (const auto mode : {SubmissionMode::Indirect, SubmissionMode::Batched}) {
-        auto renderer = Renderer::create(**device, 64, 64, true);
+        auto renderer = Renderer::create(*gpu, 64, 64, true);
         REQUIRE(renderer);
         std::vector<VisibilityStatus> statuses;
-        const uint64_t firstFrame = (*device)->frameNumber() + 1;
+        const uint64_t firstFrame = gpu->device().frameNumber() + 1;
         for (uint32_t frame = 0; frame < 8; ++frame) {
-            auto& commands = (*device)->beginFrame();
-            REQUIRE(scene.prepareFrame((*device)->frameNumber()));
+            auto& commands = gpu->device().beginFrame();
+            REQUIRE(scene.prepareFrame(gpu->device().frameNumber()));
             std::vector<engine::DrawItem> items;
             auto view = buildSceneView(scene, items, false);
             view.classifyMode = ClassifyMode::Gpu;
@@ -301,13 +298,13 @@ TEST_CASE("occlusion joins overlapping retired frames across slot reuse in both 
             view.temporal.sceneGeneration = 9;
             view.temporal.renderScale = frame % 2 == 0 ? 1.0f : 0.5f;
             (*renderer)->render(commands, camera, view, false);
-            (*device)->endFrame(nullptr);
+            gpu->device().endFrame(nullptr);
             scene.commitFrame();
             auto retired = (*renderer)->takeRetiredVisibility();
             for (auto& status : retired)
                 statuses.push_back(std::move(status));
         }
-        (*device)->waitIdle();
+        gpu->device().waitIdle();
         (*renderer)->drainVisibilityAfterIdle();
         auto retired = (*renderer)->takeRetiredVisibility();
         for (auto& status : retired)
@@ -338,21 +335,21 @@ TEST_CASE("occlusion joins overlapping retired frames across slot reuse in both 
 //======================================================================================================================
 TEST_CASE("enabled toggles invalidate positively rejecting occluder history and restore rejection",
           "[gpu][occlusion-integration][disabled-instance][occlusion-enabled-toggle]") {
-    auto device = createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
     auto scene = occludedScene();
-    REQUIRE(scene.finalize(**device));
+    REQUIRE(scene.finalize(gpu->device()));
     const auto foregroundId = scene.objects[0].id;
     const auto targetId = scene.objects[1].id;
     engine::Camera camera;
     camera.fovY = glm::half_pi<float>();
     for (auto mode : {SubmissionMode::Indirect, SubmissionMode::Batched}) {
         CAPTURE(static_cast<int>(mode));
-        auto renderer = Renderer::create(**device, 64, 64, true);
+        auto renderer = Renderer::create(*gpu, 64, 64, true);
         REQUIRE(renderer);
         const auto configure = [mode](SceneView& view) { view.submission = mode; };
-        checkedFrame(**device, scene, **renderer, camera, 1, false, configure);
-        const auto hidden = checkedFrame(**device, scene, **renderer, camera, 1, false, configure);
+        checkedFrame(gpu->device(), scene, **renderer, camera, 1, false, configure);
+        const auto hidden =
+            checkedFrame(gpu->device(), scene, **renderer, camera, 1, false, configure);
         REQUIRE(hidden.sceneCounters.occluded == 1);
         REQUIRE(hidden.scene.candidates[1].reason == VisibilityReason::Occluded);
         REQUIRE(hidden.occlusionCheck.visibleInstances == 1);
@@ -360,7 +357,7 @@ TEST_CASE("enabled toggles invalidate positively rejecting occluder history and 
         scene.setObjectEnabled(0, false);
         REQUIRE(scene.coverageEpoch() > coverageBefore);
         const auto revealed =
-            checkedFrame(**device, scene, **renderer, camera, 1, false, configure);
+            checkedFrame(gpu->device(), scene, **renderer, camera, 1, false, configure);
         REQUIRE(revealed.occlusionInvalidReason == OcclusionInvalidReason::CoverageChanged);
         REQUIRE(revealed.sceneCounters.occluded == 0);
         REQUIRE(revealed.sceneCounters.candidates == 1);
@@ -373,19 +370,20 @@ TEST_CASE("enabled toggles invalidate positively rejecting occluder history and 
         REQUIRE(revealed.scene.candidates[1].state == VisibilityState::Visible);
         REQUIRE(revealed.occlusionCheck.falselyRejectedInstances == 0);
         REQUIRE(revealed.occlusionCheck.visibleInstances == 1);
-        const auto off = checkedFrame(**device, scene, **renderer, camera, 1, false, configure);
+        const auto off =
+            checkedFrame(gpu->device(), scene, **renderer, camera, 1, false, configure);
         REQUIRE(off.occlusionInvalidReason == OcclusionInvalidReason::None);
         REQUIRE(off.sceneCounters.occluded == 0);
         REQUIRE(off.sceneCounters.disabled == 1);
         scene.setObjectEnabled(0, true);
         const auto restored =
-            checkedFrame(**device, scene, **renderer, camera, 1, false, configure);
+            checkedFrame(gpu->device(), scene, **renderer, camera, 1, false, configure);
         REQUIRE(restored.occlusionInvalidReason == OcclusionInvalidReason::CoverageChanged);
         REQUIRE(restored.sceneCounters.disabled == 0);
         REQUIRE(restored.sceneCounters.occluded == 0);
         REQUIRE(restored.sceneCounters.historyInvalid == 2);
         const auto hiddenAgain =
-            checkedFrame(**device, scene, **renderer, camera, 1, false, configure);
+            checkedFrame(gpu->device(), scene, **renderer, camera, 1, false, configure);
         REQUIRE(hiddenAgain.occlusionInvalidReason == OcclusionInvalidReason::None);
         REQUIRE(hiddenAgain.sceneCounters.occluded == 1);
         REQUIRE(hiddenAgain.scene.candidates[1].reason == VisibilityReason::Occluded);

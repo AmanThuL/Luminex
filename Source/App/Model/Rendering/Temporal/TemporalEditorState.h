@@ -6,6 +6,7 @@
 #pragma once
 #include "App/Model/Graph/FrameRecordRing.h"
 #include "App/Model/Rendering/Settings/EditorRenderSettings.h"
+#include "Engine/Gpu/PassTiming.h"
 #include "Scenes/SceneLibrary.h"
 
 #include <cstdint>
@@ -62,12 +63,12 @@ void observeRetiredTemporal(TemporalEditorState& state, const RetainedFrame* fra
 TemporalPresentation temporalPresentation(const TemporalEditorState& state,
                                           const EditorRenderSettings& settings,
                                           const render::TemporalStatus& status,
-                                          const rojoRHI::TemporalScalerSupport& support,
+                                          const engine::UpscalerSupportInfo& support,
                                           uint32_t outputWidth, uint32_t outputHeight);
 
 /// Names a reconstruction option using the device capability's human-readable vendor name.
 std::string_view reconstructionName(render::ReconstructionMode mode,
-                                    const rojoRHI::TemporalScalerSupport& support);
+                                    const engine::UpscalerSupportInfo& support);
 
 /// Transfers the session content-change reset into the editor camera-cut latch once.
 void syncSessionTemporalReset(TemporalEditorState& state, SceneSession& session);

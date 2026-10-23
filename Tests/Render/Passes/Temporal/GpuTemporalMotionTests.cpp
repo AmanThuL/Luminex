@@ -16,16 +16,14 @@ using lmx::test::FixtureSceneView;
 TEST_CASE("motion vectors reproject a moved camera", "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(10.0f), "lmx.test.temporalPlane");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(10.0f),
+                                        "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -40,8 +38,8 @@ TEST_CASE("motion vectors reproject a moved camera", "[gpu][temporal]") {
     previousCamera.position = {0.15f, 0.05f, 0.0f};
     Camera currentCamera; // at the origin, which is what planePointAtPixel's ray assumes
 
-    renderFrame(**device, **renderer, previousCamera, view);
-    renderFrame(**device, **renderer, currentCamera, view);
+    renderFrame(gpu->device(), **renderer, previousCamera, view);
+    renderFrame(gpu->device(), **renderer, currentCamera, view);
 
     const lmx::render::FrameExtents extents{
         .renderWidth = kSize, .renderHeight = kSize, .outputWidth = kSize, .outputHeight = kSize};
@@ -72,16 +70,14 @@ TEST_CASE("motion vectors reproject a moved camera", "[gpu][temporal]") {
 TEST_CASE("motion vectors reproject a moved object", "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(10.0f), "lmx.test.temporalPlane");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(10.0f),
+                                        "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -98,9 +94,9 @@ TEST_CASE("motion vectors reproject a moved object", "[gpu][temporal]") {
 
     FixtureSceneView view = temporalSceneView(first);
     view.temporal.enabled = true;
-    renderFrame(**device, **renderer, camera, view);
+    renderFrame(gpu->device(), **renderer, camera, view);
     view.items = second;
-    renderFrame(**device, **renderer, camera, view);
+    renderFrame(gpu->device(), **renderer, camera, view);
 
     const lmx::render::FrameExtents extents{
         .renderWidth = kSize, .renderHeight = kSize, .outputWidth = kSize, .outputHeight = kSize};
@@ -130,16 +126,14 @@ TEST_CASE("motion vectors reproject a moved object", "[gpu][temporal]") {
 TEST_CASE("jitter leaves a static scene's motion at zero", "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(10.0f), "lmx.test.temporalPlane");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(10.0f),
+                                        "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -151,9 +145,9 @@ TEST_CASE("jitter leaves a static scene's motion at zero", "[gpu][temporal]") {
     view.temporal.jitterEnabled = true;
 
     const Camera camera;
-    renderFrame(**device, **renderer, camera, view);
-    renderFrame(**device, **renderer, camera, view);
-    renderFrame(**device, **renderer, camera, view);
+    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(gpu->device(), **renderer, camera, view);
 
     const std::vector<uint8_t> pixels = readMotion(**renderer);
     for (const std::pair<uint32_t, uint32_t> probe :
@@ -172,16 +166,14 @@ TEST_CASE("jitter leaves a static scene's motion at zero", "[gpu][temporal]") {
 TEST_CASE("an invalid motion class writes the sentinel", "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(10.0f), "lmx.test.temporalPlane");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(10.0f),
+                                        "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -195,7 +187,7 @@ TEST_CASE("an invalid motion class writes the sentinel", "[gpu][temporal]") {
     view.temporal.enabled = true;
 
     const Camera camera;
-    renderFrame(**device, **renderer, camera, view);
+    renderFrame(gpu->device(), **renderer, camera, view);
 
     const std::vector<uint8_t> pixels = readMotion(**renderer);
     const glm::vec2 sentinel = motionAt(pixels, kSize / 2, kSize / 2);
@@ -211,16 +203,14 @@ TEST_CASE("an invalid motion class writes the sentinel", "[gpu][temporal]") {
 TEST_CASE("the reprojection diagnostic is zero on a static scene", "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(10.0f), "lmx.test.temporalPlane");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(10.0f),
+                                        "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -232,8 +222,8 @@ TEST_CASE("the reprojection diagnostic is zero on a static scene", "[gpu][tempor
     view.temporal.debugView = lmx::render::TemporalDebugView::ReprojectionError;
 
     const Camera camera;
-    renderFrame(**device, **renderer, camera, view);
-    renderFrame(**device, **renderer, camera, view);
+    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(gpu->device(), **renderer, camera, view);
     REQUIRE((*renderer)->temporalStatus().lastReset == lmx::render::HistoryResetReason::None);
 
     // The committed history is this frame's scene colour, and a still scene reprojects onto
@@ -270,16 +260,14 @@ TEST_CASE("the reprojection diagnostic is zero on a static scene", "[gpu][tempor
 TEST_CASE("the reprojection diagnostic reads motion at the sampled texel", "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(10.0f), "lmx.test.temporalPlane");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(10.0f),
+                                        "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -319,9 +307,9 @@ TEST_CASE("the reprojection diagnostic reads motion at the sampled texel", "[gpu
     view.temporal.renderScale = kScale;
     view.temporal.debugView = lmx::render::TemporalDebugView::ReprojectionError;
 
-    renderFrame(**device, **renderer, camera, view);
-    renderFrame(**device, **renderer, camera, view);
-    renderFrame(**device, **renderer, camera, view);
+    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(gpu->device(), **renderer, camera, view);
     const lmx::render::TemporalStatus status = (*renderer)->temporalStatus();
     REQUIRE(status.lastReset == lmx::render::HistoryResetReason::None);
     REQUIRE(status.historyValid);
@@ -398,15 +386,13 @@ TEST_CASE("the reprojection diagnostic reads motion at the sampled texel", "[gpu
 TEST_CASE("TemporalLab writes motion for its animated tracks", "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto scene = lmx::test::loadCatalogScene(**device, "temporal-lab");
+    auto scene = lmx::test::loadCatalogScene(gpu->device(), "temporal-lab");
     INFO(errorOf(scene));
     REQUIRE(scene.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -420,15 +406,15 @@ TEST_CASE("TemporalLab writes motion for its animated tracks", "[gpu][temporal]"
     (*scene)->resetMotion();
     std::vector<lmx::engine::DrawItem> items;
     for (int frame = 0; frame < 2; ++frame) {
-        auto& commands = (*device)->beginFrame();
-        REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
+        auto& commands = gpu->device().beginFrame();
+        REQUIRE((*scene)->prepareFrame(gpu->device().frameNumber()));
         auto view = lmx::render::buildSceneView(**scene, items,
                                                 /*wireframe=*/false);
         view.temporal.enabled = true;
         view.temporal.debugView = lmx::render::TemporalDebugView::MotionVectors;
         (*renderer)->render(commands, camera, view, false);
-        (*device)->endFrame(nullptr);
-        (*device)->waitIdle();
+        gpu->device().endFrame(nullptr);
+        gpu->device().waitIdle();
         (*scene)->commitFrame();
         (*scene)->advanceAnimation(1.0 / 60.0);
         (*scene)->animate((*scene)->animationTime);
@@ -478,16 +464,14 @@ TEST_CASE("TemporalLab writes motion for its animated tracks", "[gpu][temporal]"
 TEST_CASE("a history fetch at the border does not read the opposite edge", "[gpu][temporal]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(10.0f), "lmx.test.temporalPlane");
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(10.0f),
+                                        "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -521,8 +505,8 @@ TEST_CASE("a history fetch at the border does not read the opposite edge", "[gpu
     Camera currentCamera;
     currentCamera.position = {0.002f, 0.0f, 0.0f};
 
-    renderFrame(**device, **renderer, previousCamera, view);
-    renderFrame(**device, **renderer, currentCamera, view);
+    renderFrame(gpu->device(), **renderer, previousCamera, view);
+    renderFrame(gpu->device(), **renderer, currentCamera, view);
     REQUIRE((*renderer)->temporalStatus().lastReset == lmx::render::HistoryResetReason::None);
 
     const std::vector<uint8_t> motion = readMotion(**renderer);
@@ -553,14 +537,12 @@ TEST_CASE("subpixel diagonal motion preserves constant reprojected radiance",
           "[gpu][temporal][taa-reprojection]") {
     using namespace rojoRHI;
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
-    auto plane =
-        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(10.0f), "lmx.test.constantPlane");
+    auto gpu = createTestGpu();
+    auto plane = lmx::test::fixtureMesh(gpu->device(), lmx::engine::makePlane(10.0f),
+                                        "lmx.test.constantPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -580,8 +562,8 @@ TEST_CASE("subpixel diagonal motion preserves constant reprojected radiance",
     view.temporal.reconstruction = lmx::render::ReconstructionMode::NativeTaa;
     view.temporal.debugView = lmx::render::TemporalDebugView::ReprojectedHistory;
     Camera camera;
-    renderFrame(**device, **renderer, camera, view);
-    renderFrame(**device, **renderer, camera, view);
+    renderFrame(gpu->device(), **renderer, camera, view);
+    renderFrame(gpu->device(), **renderer, camera, view);
     std::vector<uint8_t> stationary(size_t{kSize} * kSize * 4);
     (*renderer)->colorTarget().readback(stationary.data(), stationary.size());
     const Pixel expected = pixelAt(stationary, kSize / 2, kSize / 2);
@@ -591,7 +573,7 @@ TEST_CASE("subpixel diagonal motion preserves constant reprojected radiance",
 
     const float halfPixel = -kPlaneZ * std::tan(camera.fovY * 0.5f) / float(kSize);
     camera.position = {halfPixel, halfPixel, 0.0f};
-    renderFrame(**device, **renderer, camera, view);
+    renderFrame(gpu->device(), **renderer, camera, view);
     const glm::vec2 motion = motionAt(readMotion(**renderer), kSize / 2, kSize / 2);
     REQUIRE(std::abs(motion.x) * float(kSize) == Catch::Approx(0.5f).margin(1e-3));
     REQUIRE(std::abs(motion.y) * float(kSize) == Catch::Approx(0.5f).margin(1e-3));
@@ -619,27 +601,25 @@ TEST_CASE("sky motion follows the camera's rotation alone", "[gpu][temporal]") {
     const TextureMip skyMip{.data = kSkyTexel.data(), .bytesPerRow = 4};
     const std::array<TextureMip, 6> skyFaces = {skyMip, skyMip, skyMip, skyMip, skyMip, skyMip};
 
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
+    auto gpu = createTestGpu();
 
-    auto skySphere =
-        lmx::test::fixtureMesh(**device, lmx::engine::fromGeo(lmx::asset::makeSphere(0.5f, 20, 20)),
-                               "lmx.test.temporalSkySphere");
+    auto skySphere = lmx::test::fixtureMesh(
+        gpu->device(), lmx::engine::fromGeo(lmx::asset::makeSphere(0.5f, 20, 20)),
+        "lmx.test.temporalSkySphere");
     INFO(errorOf(skySphere));
     REQUIRE(skySphere.has_value());
 
-    auto skyCubemap = (*device)->createTexture({.width = 1,
-                                                .height = 1,
-                                                .format = Format::RGBA8Unorm,
-                                                .kind = TextureKind::Cube,
-                                                .sampled = true,
-                                                .label = "lmx.test.temporalSkyCubemap"},
-                                               skyFaces);
+    auto skyCubemap = gpu->device().createTexture({.width = 1,
+                                                   .height = 1,
+                                                   .format = Format::RGBA8Unorm,
+                                                   .kind = TextureKind::Cube,
+                                                   .sampled = true,
+                                                   .label = "lmx.test.temporalSkyCubemap"},
+                                                  skyFaces);
     INFO(errorOf(skyCubemap));
     REQUIRE(skyCubemap.has_value());
 
-    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
@@ -658,8 +638,8 @@ TEST_CASE("sky motion follows the camera's rotation alone", "[gpu][temporal]") {
     Camera rotated = translated;
     rotated.yaw = 0.05f;
 
-    renderFrame(**device, **renderer, origin, view);
-    renderFrame(**device, **renderer, translated, view);
+    renderFrame(gpu->device(), **renderer, origin, view);
+    renderFrame(gpu->device(), **renderer, translated, view);
 
     // Translation alone: the sphere moves with the eye, so every sky texel reprojects onto itself.
     const std::vector<uint8_t> translationPixels = readMotion(**renderer);
@@ -672,7 +652,7 @@ TEST_CASE("sky motion follows the camera's rotation alone", "[gpu][temporal]") {
         REQUIRE(actual.y == 0.0f);
     }
 
-    renderFrame(**device, **renderer, rotated, view);
+    renderFrame(gpu->device(), **renderer, rotated, view);
 
     const lmx::render::FrameExtents extents{
         .renderWidth = kSize, .renderHeight = kSize, .outputWidth = kSize, .outputHeight = kSize};

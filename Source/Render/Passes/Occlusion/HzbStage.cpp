@@ -9,6 +9,7 @@
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Align.h"
 #include "Core/Math/Scalar.h"
+#include "Engine/Gpu/GpuError.h"
 
 #include <algorithm>
 #include <format>
@@ -53,12 +54,12 @@ HzbLayout hzbLayout(uint32_t outputWidth, uint32_t outputHeight) {
 }
 
 //======================================================================================================================
-rojoRHI::Result<std::unique_ptr<HzbStage>> HzbStage::create(rojoRHI::Device& device,
-                                                            bool cpuReadback) {
+lmx::Result<std::unique_ptr<HzbStage>> HzbStage::create(engine::GpuContext& gpu, bool cpuReadback) {
+    rojoRHI::Device& device = gpu.device();
     auto stage = std::unique_ptr<HzbStage>(new HzbStage);
     stage->m_device = &device;
     stage->m_cpuReadback = cpuReadback;
-    auto reduceLibrary = device.loadShaderLibrary("Shaders/HzbReduce");
+    auto reduceLibrary = gpu.loadShaderLibrary("HzbReduce");
     if (!reduceLibrary) {
         return std::unexpected(reduceLibrary.error());
     }
@@ -69,10 +70,10 @@ rojoRHI::Result<std::unique_ptr<HzbStage>> HzbStage::create(rojoRHI::Device& dev
          .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
          .label = "lmx.render.hzbReducePipeline"});
     if (!reduce) {
-        return std::unexpected(reduce.error());
+        return std::unexpected(engine::gpuError(reduce.error()));
     }
     stage->m_reducePipeline = std::move(*reduce);
-    auto publishLibrary = device.loadShaderLibrary("Shaders/HzbPublish");
+    auto publishLibrary = gpu.loadShaderLibrary("HzbPublish");
     if (!publishLibrary) {
         return std::unexpected(publishLibrary.error());
     }
@@ -82,20 +83,20 @@ rojoRHI::Result<std::unique_ptr<HzbStage>> HzbStage::create(rojoRHI::Device& dev
                                                  .threadsPerThreadgroup = {1, 1, 1},
                                                  .label = "lmx.render.hzbPublishPipeline"});
     if (!publish) {
-        return std::unexpected(publish.error());
+        return std::unexpected(engine::gpuError(publish.error()));
     }
     stage->m_publishPipeline = std::move(*publish);
     auto buffer = device.createBuffer(
         {.size = sizeof(float), .storageWrite = true, .label = "lmx.render.hzbPublish"}, nullptr);
     if (!buffer) {
-        return std::unexpected(buffer.error());
+        return std::unexpected(engine::gpuError(buffer.error()));
     }
     stage->m_publishBuffer = std::move(*buffer);
     return stage;
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> HzbStage::resize(uint32_t outputWidth, uint32_t outputHeight) {
+lmx::Result<void> HzbStage::resize(uint32_t outputWidth, uint32_t outputHeight) {
     if (outputWidth == m_outputWidth && outputHeight == m_outputHeight) {
         return {};
     }
@@ -112,7 +113,7 @@ rojoRHI::Result<void> HzbStage::resize(uint32_t outputWidth, uint32_t outputHeig
                                                 .cpuReadback = m_cpuReadback,
                                                 .label = label});
         if (!texture) {
-            return std::unexpected(texture.error());
+            return std::unexpected(engine::gpuError(texture.error()));
         }
         textures[index] = std::move(*texture);
     }

@@ -14,9 +14,9 @@ namespace lmx::app {
 namespace {
 
 //======================================================================================================================
-rojoRHI::Result<void> staleSubject() {
+lmx::Result<void> staleSubject() {
     return std::unexpected(
-        rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, "Selected subject is no longer available"});
+        lmx::Error{lmx::ErrorCode::InvalidArgument, "Selected subject is no longer available"});
 }
 
 //======================================================================================================================
@@ -231,8 +231,8 @@ bool inspectorSubjectEdited(const SceneSession& session, const EditorSelection& 
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> setInspectorEnabled(SceneSession& session, const EditorSelection& selection,
-                                          bool enabled) {
+lmx::Result<void> setInspectorEnabled(SceneSession& session, const EditorSelection& selection,
+                                      bool enabled) {
     if (!inspectorEnabledState(session, selection))
         return staleSubject();
     switch (selection.subject) {
@@ -260,8 +260,7 @@ rojoRHI::Result<void> setInspectorEnabled(SceneSession& session, const EditorSel
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> resetInspectorEnabled(SceneSession& session,
-                                            const EditorSelection& selection) {
+lmx::Result<void> resetInspectorEnabled(SceneSession& session, const EditorSelection& selection) {
     const auto state = inspectorEnabledState(session, selection);
     return state ? setInspectorEnabled(session, selection, state->baseline) : staleSubject();
 }

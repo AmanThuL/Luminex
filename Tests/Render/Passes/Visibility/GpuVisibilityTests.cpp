@@ -31,8 +31,8 @@ engine::Scene visibilityScene() {
 }
 
 //======================================================================================================================
-std::unique_ptr<render::Renderer> visibilityRenderer(rojoRHI::Device& device) {
-    auto renderer = render::Renderer::create(device, kSize, kSize, true);
+std::unique_ptr<render::Renderer> visibilityRenderer(engine::GpuContext& gpu) {
+    auto renderer = render::Renderer::create(gpu, kSize, kSize, true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
     for (uint32_t i = 0; i < 3; ++i) {
@@ -97,8 +97,7 @@ std::vector<uint8_t> visibilityPixels(rojoRHI::Buffer& buffer) {
 //======================================================================================================================
 TEST_CASE("production visibility and submission modes preserve raster output",
           "[gpu][visibility]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
     auto scene = visibilityScene();
     const auto mesh = scene.objects.front().mesh;
     const auto material = scene.objects.front().material;
@@ -110,15 +109,15 @@ TEST_CASE("production visibility and submission modes preserve raster output",
         scene.addObject({.position = p, .mesh = mesh, .material = material});
     const float edge = 3.0f * std::tan(engine::Camera{}.fovY * 0.5f);
     scene.addObject({.position = {edge, 0, -3}, .mesh = mesh, .material = material});
-    REQUIRE(scene.finalize(**device));
-    auto renderer = visibilityRenderer(**device);
+    REQUIRE(scene.finalize(gpu->device()));
+    auto renderer = visibilityRenderer(*gpu);
     auto baseline =
-        submitVisibility(**device, scene, *renderer, render::SubmissionMode::Direct, false);
+        submitVisibility(gpu->device(), scene, *renderer, render::SubmissionMode::Direct, false);
     const auto reference = visibilityPixels(*baseline);
     for (const auto mode : {render::SubmissionMode::Direct, render::SubmissionMode::Indirect,
                             render::SubmissionMode::Batched}) {
         for (bool cull : {false, true}) {
-            auto snapshot = submitVisibility(**device, scene, *renderer, mode, cull);
+            auto snapshot = submitVisibility(gpu->device(), scene, *renderer, mode, cull);
             REQUIRE(visibilityPixels(*snapshot) == reference);
             const auto& status = renderer->visibilityStatus();
             REQUIRE(status.scene.candidates.size() == 8);
@@ -135,11 +134,10 @@ TEST_CASE("production visibility and submission modes preserve raster output",
 //======================================================================================================================
 TEST_CASE("visibility buffers retain four overlapping frame lists and images",
           "[gpu][visibility]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
     auto scene = visibilityScene();
-    REQUIRE(scene.finalize(**device));
-    auto renderer = visibilityRenderer(**device);
+    REQUIRE(scene.finalize(gpu->device()));
+    auto renderer = visibilityRenderer(*gpu);
     std::array<std::unique_ptr<rojoRHI::Buffer>, 4> snapshots;
     for (uint32_t frame = 0; frame < 4; ++frame) {
         if (frame == 2) {
@@ -151,13 +149,13 @@ TEST_CASE("visibility buffers retain four overlapping frame lists and images",
         }
         scene.objects[0].position.x = frame % 2 == 0 ? -0.6f : -100;
         scene.objects[1].position.x = frame % 2 == 0 ? 100 : 0.6f;
-        snapshots[frame] = submitVisibility(**device, scene, *renderer,
+        snapshots[frame] = submitVisibility(gpu->device(), scene, *renderer,
                                             render::SubmissionMode::Indirect, true, false);
         REQUIRE(renderer->visibilityStatus().scene.rejected == (frame < 2 ? 1 : 11));
         if (frame == 2)
             REQUIRE(renderer->visibilityStatus().submission.pendingReleaseBuffers == 6);
     }
-    (*device)->waitIdle();
+    gpu->device().waitIdle();
     for (uint32_t frame = 0; frame < 4; ++frame) {
         const auto pixels = visibilityPixels(*snapshots[frame]);
         for (uint32_t side = 0; side < 2; ++side) {

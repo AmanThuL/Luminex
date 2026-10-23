@@ -30,7 +30,8 @@ TEST_CASE("Measurement samples real declarations with mixed and disabled populat
                     scene.setObjectEnabled(i, i < enabled);
                 }
                 REQUIRE(scene.finalize(device));
-                auto renderer = render::Renderer::create(device, 32, 32);
+                engine::GpuContext gpu{device};
+                auto renderer = render::Renderer::create(gpu, 32, 32);
                 REQUIRE(renderer);
                 auto& commands = device.beginFrame();
                 REQUIRE(scene.prepareFrame(device.frameNumber()));

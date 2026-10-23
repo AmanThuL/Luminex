@@ -157,7 +157,7 @@ void Scene::removeTexture(TextureId id) {
 }
 
 //======================================================================================================================
-rojoRHI::Result<LightId> Scene::addLight(const engine::LocalLight& light) {
+lmx::Result<LightId> Scene::addLight(const engine::LocalLight& light) {
     auto row = engine::makeLightRow(light);
     if (!row) {
         return std::unexpected(row.error());
@@ -165,7 +165,7 @@ rojoRHI::Result<LightId> Scene::addLight(const engine::LocalLight& light) {
     auto& storage = *m_storage;
     if (storage.liveLightIds.size() >= engine::kMaxLocalLights) {
         return std::unexpected(
-            rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, "local light capacity exceeded"});
+            lmx::Error{lmx::ErrorCode::InvalidArgument, "local light capacity exceeded"});
     }
     const uint32_t slot = storage.localLightIds.allocate();
     if (slot >= storage.localLightData.size()) {
@@ -199,11 +199,11 @@ bool Scene::removeLight(LightId id) {
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> Scene::updateLight(LightId id, const engine::LocalLight& light) {
+lmx::Result<void> Scene::updateLight(LightId id, const engine::LocalLight& light) {
     auto& storage = *m_storage;
     if (!resolves(id, storage.store, storage.localLightIds)) {
         return std::unexpected(
-            rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, "light identity is invalid"});
+            lmx::Error{lmx::ErrorCode::InvalidArgument, "light identity is invalid"});
     }
     auto row = engine::makeLightRow(light);
     if (!row) {

@@ -6,7 +6,7 @@
 #pragma once
 #include "App/Model/Performance/PassTimingHistory.h"
 #include "App/Model/Rendering/Settings/DiagnosticRefresh.h"
-#include <rojoRHI/RHI.h>
+#include "Engine/Gpu/PassTiming.h"
 
 #include <cstdint>
 #include <optional>
@@ -42,7 +42,7 @@ struct PerformanceFrameSample {
     PerformanceRenderingTimings renderingTimings; ///< Exact observations accompanying this sample.
     uint64_t frameId = 0;                         ///< The device frame number this sample measured.
     uint64_t contextEpoch = 0;                    ///< Scene/mode revision captured at declaration.
-    std::span<const rojoRHI::PassTiming> timings; ///< Per-pass GPU times, schedule order.
+    std::span<const engine::PassTiming> timings;  ///< Per-pass GPU times, schedule order.
     uint32_t objectCount = 0;                     ///< Scene object count at this frame.
     uint32_t drawCount = 0;                       ///< Draw-call count at this frame.
     uint32_t viewportLogicalWidth = 0;            ///< Viewport panel size, in ImGui logical points.

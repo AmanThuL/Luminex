@@ -62,7 +62,7 @@ EditorShell::EditorShell(SDL_Window* window, scenes::SceneLibrary& library,
       m_sessionLog(std::move(consoleLog)) {}
 
 //======================================================================================================================
-std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::Device& device,
+std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, engine::GpuContext& gpu,
                                                  scenes::SceneLibrary& library,
                                                  scenes::SceneId initialScene,
                                                  std::shared_ptr<ConsoleLog> consoleLog) {
@@ -86,7 +86,7 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
         return nullptr;
     }
     // ImGui's pipeline format must match the swapchain drawable.
-    if (!rojoRHI::metal4::imguiInit(device, rojoRHI::Format::BGRA8Unorm)) {
+    if (!rojoRHI::metal4::imguiInit(gpu.device(), rojoRHI::Format::BGRA8Unorm)) {
         ImGui_ImplSDL3_Shutdown();
         editor_style::setEditorFonts({});
         ImGui::DestroyContext();
@@ -99,7 +99,7 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
     int pixelWidth = 0;
     int pixelHeight = 0;
     SDL_GetWindowSizeInPixels(window, &pixelWidth, &pixelHeight);
-    auto outline = render::SelectionOutline::create(device, static_cast<uint32_t>(pixelWidth),
+    auto outline = render::SelectionOutline::create(gpu, static_cast<uint32_t>(pixelWidth),
                                                     static_cast<uint32_t>(pixelHeight));
     if (!outline) {
         LMX_LOG_ERROR("Selection presentation creation failed: {}", outline.error().message);
@@ -202,7 +202,7 @@ EditorShell::~EditorShell() {
 }
 
 //======================================================================================================================
-bool EditorShell::applyPendingViewportResize(rojoRHI::Device& device, render::Renderer& renderer) {
+bool EditorShell::applyPendingViewportResize(engine::GpuContext& gpu, render::Renderer& renderer) {
     if (m_viewportWidth == 0 || m_viewportHeight == 0) {
         return true;
     }
@@ -214,7 +214,7 @@ bool EditorShell::applyPendingViewportResize(rojoRHI::Device& device, render::Re
     }
 
     // In-flight encoders and residency sets retain the old targets; drain before replacement.
-    device.waitIdle();
+    gpu.waitIdle();
     // Remove the old target from ImGui's persistent residency set before freeing it.
     rojoRHI::metal4::imguiForgetTexture(renderer.colorTarget());
     if (auto resized = renderer.resize(m_viewportWidth, m_viewportHeight); !resized) {
@@ -314,10 +314,10 @@ void EditorShell::prepareUIFrame() {
 }
 
 //======================================================================================================================
-void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, float deltaSeconds,
+void EditorShell::buildUI(engine::GpuContext& gpu, render::Renderer& renderer, float deltaSeconds,
                           const FrameRecordRing& frameRecords) {
     m_sessionHzbLevels = viewportHzbLevels(renderer);
-    m_sessionEffectiveReconstruction = effectiveReconstruction(renderer, device);
+    m_sessionEffectiveReconstruction = effectiveReconstruction(renderer, gpu);
     refreshDocumentDirty();
     const RetainedFrame* newestTimed = frameRecords.newestTimedFrame();
     observeRetiredTemporal(m_temporalState, newestTimed);
@@ -357,9 +357,9 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
     }
 
     if (sample) {
-        const auto presentation = temporalPresentation(
-            m_temporalState, m_settings, renderer.temporalStatus(),
-            device.capabilities().temporalScaler, renderer.width(), renderer.height());
+        const auto presentation =
+            temporalPresentation(m_temporalState, m_settings, renderer.temporalStatus(),
+                                 gpu.upscalerSupport(), renderer.width(), renderer.height());
         if (m_temporalState.liveTimedPassSumMilliseconds && !presentation.waitingForDeclaration)
             sample->renderingTimings.compatibleGpu =
                 PerformanceTimingReading{m_temporalState.liveMeasurementFrame,
@@ -399,7 +399,7 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
 
     // Before the dockspace, so the work area the topology is built into excludes the menu bar.
     finishMeasurementPlayback();
-    buildMainMenu(renderer, device);
+    buildMainMenu(renderer, gpu);
     consumeFrameSelection(renderer);
 
     const ImGuiID dockspaceId = ImGui::DockSpaceOverViewport();
@@ -410,25 +410,24 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
     }
 
     ImGui::BeginDisabled(m_documentWorkflow.step() != WorkflowStep::Idle);
-    buildPanels(device, renderer, frameRecords);
+    buildPanels(gpu, renderer, frameRecords);
     ImGui::EndDisabled();
     // Input consumes this frame's hover state and Inspector edits.
     updateCameraInput(deltaSeconds);
     updateEditorShortcuts(renderer);
-    if (const auto reason =
-            reconcileDebugView(m_settings, effectiveReconstruction(renderer, device)))
+    if (const auto reason = reconcileDebugView(m_settings, effectiveReconstruction(renderer, gpu)))
         m_notices.post({ActionStatus::Unavailable, *reason, {}}, ImGui::GetTime());
     refreshDocumentDirty();
     buildDocumentWorkflow();
     postCaptureNotice();
     editor_style::drawNotice(m_notices, ImGui::GetTime());
     drawStyleGalleryPanel(m_styleGallery);
-    updateNativeMenu(renderer, device);
+    updateNativeMenu(renderer, gpu);
     consumeNativeMenuCommands(renderer, true);
 }
 
 //======================================================================================================================
-void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& renderer,
+void EditorShell::buildPanels(engine::GpuContext& gpu, render::Renderer& renderer,
                               const FrameRecordRing& frameRecords) {
     const auto priorRigOverride = m_session.localLightRigOverride();
     if (m_pendingSessionMeasurementStart) {
@@ -437,7 +436,7 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
         if (m_documentWorkflow.step() != WorkflowStep::Idle)
             finishSessionStep(approval, false, SessionError::Unavailable,
                               "Finish the current document operation first.");
-        else if (startMeasurement(device, renderer, true))
+        else if (startMeasurement(gpu, renderer, true))
             m_sessionMeasurementApproval = approval;
         else
             finishSessionStep(approval, false, SessionError::Unavailable, m_measurementFeedback);
@@ -479,17 +478,17 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
     if (m_workspace.visibility.isVisible(EditorPanel::Viewport)) {
         bool open = true;
         const ViewportPanelResult result = drawViewportPanel(
-            open, ViewportPanelContext{.renderer = renderer,
-                                       .outlineTarget = m_selectionOutline->target(),
-                                       .showOutline = m_showSelectionOutline,
-                                       .scene = m_session.scene(),
-                                       .settings = m_settings,
-                                       .temporalState = m_temporalState,
-                                       .selection = m_selection,
-                                       .effectiveReconstruction =
-                                           effectiveReconstruction(renderer, device),
-                                       .visibilityDisplay = &m_visibilityDisplay,
-                                       .gizmo = &gizmo});
+            open,
+            ViewportPanelContext{.renderer = renderer,
+                                 .outlineTarget = m_selectionOutline->target(),
+                                 .showOutline = m_showSelectionOutline,
+                                 .scene = m_session.scene(),
+                                 .settings = m_settings,
+                                 .temporalState = m_temporalState,
+                                 .selection = m_selection,
+                                 .effectiveReconstruction = effectiveReconstruction(renderer, gpu),
+                                 .visibilityDisplay = &m_visibilityDisplay,
+                                 .gizmo = &gizmo});
         setPanelVisible(EditorPanel::Viewport, open);
         m_viewportHovered = result.hovered;
         m_viewportFocused = result.focused;
@@ -538,6 +537,7 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
     } else {
         selectionHidden = selectionHiddenByFilter(m_session.scene(), m_selection, m_sceneFilter);
     }
+    const engine::UpscalerSupportInfo upscalerSupport = gpu.upscalerSupport();
     const auto inspectorContext =
         InspectorPanelContext{.selection = m_selection,
                               .session = m_session,
@@ -547,7 +547,7 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
                               .exposureResetPending = m_exposureResetPending,
                               .temporalState = m_temporalState,
                               .dynamicResolutionState = m_dynamicResolutionState,
-                              .temporalSupport = device.capabilities().temporalScaler,
+                              .temporalSupport = upscalerSupport,
                               .viewportWidth = m_viewportWidth,
                               .viewportHeight = m_viewportHeight,
                               .viewportVisible = viewportUsable,
@@ -591,7 +591,7 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
         drawPerformancePanel(open, m_performanceModel, m_performancePanel, &measurement);
         switch (measurement.action) {
         case MeasurementAction::Start:
-            startMeasurement(device, renderer);
+            startMeasurement(gpu, renderer);
             break;
         case MeasurementAction::Stop:
             stopPlayback();
@@ -664,7 +664,7 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> EditorShell::primeTemporal(const AppOptions& options) {
+lmx::Result<void> EditorShell::primeTemporal(const AppOptions& options) {
     m_settings.localLightMode = options.localLightMode;
     m_settings.lightCheck = options.lightCheck;
     m_settings.lightDebugView = options.lightDebugView;
@@ -692,7 +692,7 @@ rojoRHI::Result<void> EditorShell::primeTemporal(const AppOptions& options) {
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> EditorShell::prepareSceneFrame(uint64_t frameNumber) {
+lmx::Result<void> EditorShell::prepareSceneFrame(uint64_t frameNumber) {
     return m_session.prepareFrame(frameNumber);
 }
 
@@ -826,10 +826,10 @@ void EditorShell::commitFrame() {
 //======================================================================================================================
 render::ReconstructionMode
 EditorShell::effectiveReconstruction(const render::Renderer& renderer,
-                                     const rojoRHI::Device& device) const {
-    return render::resolveReconstruction(
-               m_settings.reconstruction, device.capabilities().temporalScaler,
-               renderer.temporalStatus().vendorFallback == render::VendorFallback::CreationFailed)
+                                     const engine::GpuContext& gpu) const {
+    return render::resolveReconstruction(m_settings.reconstruction, gpu.upscalerSupport(),
+                                         renderer.temporalStatus().vendorFallback ==
+                                             render::VendorFallback::CreationFailed)
         .mode;
 }
 

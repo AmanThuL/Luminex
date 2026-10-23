@@ -355,7 +355,7 @@ void declareDeadStageFrame(DeadStageFrame& frame) {
 
 //======================================================================================================================
 GraphNodeModel modelOf(RenderGraph& graph, uint64_t frameId,
-                       std::span<const rojoRHI::PassTiming> timings = {}) {
+                       std::span<const lmx::engine::PassTiming> timings = {}) {
     const auto record = graph.compileFrame(frameId);
     REQUIRE(record.has_value());
     return buildGraphNodeModel(*record, timings);
@@ -510,10 +510,10 @@ TEST_CASE("a group sums the GPU time of its measured members and counts them",
     BloomFrame frame;
     declareBloomFrame(frame);
     // Timings arrive in schedule order; the last two scheduled passes go unmeasured.
-    const std::array<rojoRHI::PassTiming, 3> timings = {
-        rojoRHI::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 0.125},
-        rojoRHI::PassTiming{.label = "lmx.pass.bloom.threshold", .gpuMilliseconds = 0.5},
-        rojoRHI::PassTiming{.label = "lmx.pass.bloom.downsample0", .gpuMilliseconds = 0.25}};
+    const std::array<lmx::engine::PassTiming, 3> timings = {
+        lmx::engine::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 0.125},
+        lmx::engine::PassTiming{.label = "lmx.pass.bloom.threshold", .gpuMilliseconds = 0.5},
+        lmx::engine::PassTiming{.label = "lmx.pass.bloom.downsample0", .gpuMilliseconds = 0.25}};
     const GraphNodeModel model = modelOf(frame.graph, 5, timings);
 
     // The join really landed, so the sum below is not vacuous.
@@ -633,9 +633,9 @@ TEST_CASE("item cells are identical for two compiles and ignore timings", "[app]
 
     BloomFrame second;
     declareBloomFrame(second);
-    const std::array<rojoRHI::PassTiming, 2> timings = {
-        rojoRHI::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 2.5},
-        rojoRHI::PassTiming{.label = "lmx.pass.bloom.threshold", .gpuMilliseconds = 3.5}};
+    const std::array<lmx::engine::PassTiming, 2> timings = {
+        lmx::engine::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 2.5},
+        lmx::engine::PassTiming{.label = "lmx.pass.bloom.threshold", .gpuMilliseconds = 3.5}};
     const GraphNodeModel measured = modelOf(second.graph, 98765, timings);
 
     // The timings really did land, so the comparison below is not vacuous.
@@ -671,8 +671,8 @@ TEST_CASE("the layout signature follows the options and not the measurements",
           "[app][graph-layout]") {
     BloomFrame frame;
     declareBloomFrame(frame);
-    const std::array<rojoRHI::PassTiming, 1> timings = {
-        rojoRHI::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 9.5}};
+    const std::array<lmx::engine::PassTiming, 1> timings = {
+        lmx::engine::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 9.5}};
     const GraphNodeModel plain = modelOf(frame.graph, 1);
     const GraphNodeModel measured = modelOf(frame.graph, 4242, timings);
 

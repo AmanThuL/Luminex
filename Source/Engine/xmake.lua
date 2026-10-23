@@ -1,6 +1,6 @@
 -- Scene vocabulary and identity below the renderer: Render depends on Engine.
 target("Engine")
     set_kind("static")
-    add_files("View/*.cpp", "Lights/*.cpp", "Geometry/*.cpp", "Scene/*.cpp", "Upload/*.cpp")
+    add_files("Gpu/*.cpp", "View/*.cpp", "Lights/*.cpp", "Geometry/*.cpp", "Scene/*.cpp", "Upload/*.cpp")
     add_files("Lights/LocalLightMath.cpp", {cxflags = "-ffp-contract=off"})
     add_deps("Core", "RojoRHILegacy", "Asset")
