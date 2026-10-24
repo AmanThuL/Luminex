@@ -249,6 +249,14 @@ void EditorShell::primeWindows(std::span<const DetachedWindow> windows) {
 }
 
 //======================================================================================================================
+void EditorShell::closeDetachedWindows() {
+    setPanelVisible(EditorPanel::Performance, false);
+    setPanelVisible(EditorPanel::RenderGraph, false);
+    setPanelVisible(EditorPanel::Session, false);
+    m_styleGallery.open = false;
+}
+
+//======================================================================================================================
 std::array<float, 4> EditorShell::uiClearColor() const {
     const auto c = m_activePalette[static_cast<std::size_t>(ThemeRole::SurfaceCanvas)];
     return {c.r, c.g, c.b, c.a};

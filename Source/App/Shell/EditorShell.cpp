@@ -9,6 +9,7 @@
 #include "App/Model/Scene/SceneTree.h"
 #include "App/Shell/AppAppearance.h"
 #include "App/Shell/EditorFont.h"
+#include "App/Shell/EditorSurfaces.h"
 #include "App/Shell/EditorThemeApply.h"
 
 #include "App/Panels/Console/ConsolePanel.h"
@@ -24,7 +25,7 @@
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"
 #include "Render/Passes/Temporal/TemporalResolve.h"
-#include <rojoRHI/Metal4/Metal4ImGui.h>
+#include <rojoRHI/ImGuiAdapter.h>
 
 #include <SDL3/SDL.h>
 #include <imgui.h>
@@ -73,9 +74,7 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, engine::Gpu
     verifyImGuiSlotNames();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-    // Platform viewports draw windows the RHI's single swapchain knows nothing about: the vendored
-    // Metal 4 ImGui backend creates a CAMetalLayer per extra window and renders it with its own
-    // command buffer on the shared device queue. main.cpp drives them after each presented frame.
+    // The adapter owns platform swapchains; SDL surface callbacks keep their native views alive.
     io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
     editor_style::setEditorFonts(configureEditorFonts());
 
@@ -86,7 +85,12 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, engine::Gpu
         return nullptr;
     }
     // ImGui's pipeline format must match the swapchain drawable.
-    if (!rojoRHI::metal4::imguiInit(gpu.device(), rojoRHI::Format::BGRA8Unorm)) {
+    auto initialized = rojoRHI::imgui::init({.device = gpu.device(),
+                                             .colorFormat = rojoRHI::Format::BGRA8Unorm,
+                                             .surfaces = editorSurfaceCallbacks(),
+                                             .label = "lmx.imgui"});
+    if (!initialized) {
+        LMX_LOG_ERROR("ImGui renderer initialization failed: {}", initialized.error().message);
         ImGui_ImplSDL3_Shutdown();
         editor_style::setEditorFonts({});
         ImGui::DestroyContext();
@@ -119,11 +123,6 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, engine::Gpu
     if (!scene) {
         LMX_LOG_ERROR("EditorShell::create: initial scene '{}' failed to load: {}",
                       library.entry(initialScene).displayName, scene.error().message);
-        releaseRenderGraphPanelState(self->m_renderGraphPanel);
-        ImGui_ImplSDL3_Shutdown();
-        rojoRHI::metal4::imguiShutdown();
-        editor_style::setEditorFonts({});
-        ImGui::DestroyContext();
         return nullptr;
     }
     self->m_activeSceneId = initialScene;
@@ -197,8 +196,8 @@ EditorShell::~EditorShell() {
     // backends and, like them, well before DestroyContext().
     releaseRenderGraphPanelState(m_renderGraphPanel);
     // Backends unregister from the ImGui context, so destroy the context last.
+    rojoRHI::imgui::shutdown();
     ImGui_ImplSDL3_Shutdown();
-    rojoRHI::metal4::imguiShutdown();
     editor_style::setEditorFonts({});
     ImGui::DestroyContext();
 }
@@ -217,11 +216,7 @@ bool EditorShell::applyPendingViewportResize(engine::GpuContext& gpu, render::Re
 
     // In-flight encoders and residency sets retain the old targets; drain before replacement.
     gpu.waitIdle();
-    // Remove the old target from ImGui's persistent residency set before freeing it.
-    rojoRHI::metal4::imguiForgetTexture(renderer.colorTarget().rhi());
     if (auto resized = renderer.resize(m_viewportWidth, m_viewportHeight); !resized) {
-        // Renderer::resize can replace some targets before a later allocation fails. Do not
-        // declare another frame against mixed extents, even if the requested size now matches.
         LMX_LOG_ERROR("viewport resize to {}x{} failed; stopping rendering: {}", m_viewportWidth,
                       m_viewportHeight, resized.error().message);
         return false;
@@ -734,11 +729,10 @@ render::SceneView EditorShell::sceneView() {
 }
 
 //======================================================================================================================
-render::GraphTexture EditorShell::declareSelection(render::RenderGraph& graph,
-                                                   rojoRHI::CommandList& commands,
-                                                   render::GraphTexture display,
-                                                   const render::SceneView& view,
-                                                   const render::Renderer& renderer) {
+render::GraphTexture EditorShell::declareSelection(
+    [[maybe_unused]] render::RenderGraph& graph, [[maybe_unused]] rojoRHI::CommandList& commands,
+    render::GraphTexture display, [[maybe_unused]] const render::SceneView& view,
+    [[maybe_unused]] const render::Renderer& renderer) {
 #ifndef LMX_PENDING_POST
     if (m_selectionOutline->target().desc().width != renderer.width() ||
         m_selectionOutline->target().desc().height != renderer.height() ||

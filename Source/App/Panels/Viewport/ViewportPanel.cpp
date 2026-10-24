@@ -13,7 +13,7 @@
 #ifndef LMX_PENDING_VISIBILITY
 #include "Render/Passes/Occlusion/HzbStage.h"
 #endif
-#include <rojoRHI/Metal4/Metal4ImGui.h>
+#include <rojoRHI/ImGuiAdapter.h>
 
 #include <imgui.h>
 
@@ -210,7 +210,7 @@ void drawOcclusionOverlay(const ViewportPanelContext& context, ImVec2 origin, Im
 } // namespace
 
 //======================================================================================================================
-uint32_t viewportHzbLevels(const render::Renderer& renderer) {
+uint32_t viewportHzbLevels([[maybe_unused]] const render::Renderer& renderer) {
 #ifndef LMX_PENDING_VISIBILITY
     if (renderer.width() == 0 || renderer.height() == 0)
         return 0;
@@ -248,7 +248,7 @@ ViewportPanelResult drawViewportPanel(bool& open, const ViewportPanelContext& co
                          imageSize);
 #else
             ImGui::PushStyleColor(ImGuiCol_Border, editor_style::color(ThemeRole::SurfaceViewport));
-            ImGui::Image(rojoRHI::metal4::imguiTextureID(context.renderer.colorTarget().rhi()),
+            ImGui::Image(rojoRHI::imgui::textureId(context.renderer.colorTarget().view()),
                          imageSize);
 #endif
             ImGui::PopStyleColor();
