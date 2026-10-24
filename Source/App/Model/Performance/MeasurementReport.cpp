@@ -46,7 +46,12 @@ std::string MeasurementRun::json() const {
         "\"lightingGpuMs\":\"sum of exact-frame lmx.pass.light.* timings; separate from scene\"},"
         "\"memoryScope\":{\"listBytes\":\"valid emitted row payload; GPU joined on retirement\","
         "\"reservedListBytes\":\"declaration row reservation; includes rejected GPU slots\","
-        "\"allocatedListBytes\":\"active list storage across three slots\"},";
+        "\"allocatedListBytes\":\"active GPU list destinations across three slots; excludes "
+        "retired allocations\","
+        "\"allocatedArgumentBytes\":\"active GPU argument destinations across three slots; "
+        "excludes retired allocations\","
+        "\"allocatedUploadBytes\":\"active draw Upload staging across three slots; excludes "
+        "retired allocations and scene tables\"},";
     out += "\"sceneDocument\":{\"path\":" + quote(m_plan.sceneDocumentPath) +
            ",\"sha256\":" + quote(m_plan.sceneDocumentHash) +
            ",\"dirty\":" + (m_plan.sceneDocumentDirty ? "true" : "false") + "},";
@@ -136,15 +141,16 @@ std::string MeasurementRun::json() const {
         }
         out += std::format(",\"hzbGpuMs\":{},\"sceneGpuMs\":{},\"shadowGpuMs\":{}", hzbGpuMs,
                            sceneGpuMs, shadowGpuMs);
-        out +=
-            std::format(",\"effectiveSubmission\":{},\"effectiveClassify\":{},\"visibilityGpuMs\":{"
-                        "},\"allocatedListBytes\":{},"
-                        "\"allocatedArgumentBytes\":{},\"candidateBytes\":{},\"runBytes\":{},"
-                        "\"chunkBytes\":{},\"stateBytes\":{},\"counterBytes\":{},\"visibility\":{}",
-                        quote(m_plan.submission), quote(classifyModeName(c.classifyMode)),
-                        visibilityGpuMs, c.allocatedListBytes, c.allocatedArgumentBytes,
-                        c.candidateBytes, c.runBytes, c.chunkBytes, c.stateBytes, c.counterBytes,
-                        sample.visibility ? visibilityDiagnosticsJson(*sample.visibility) : "null");
+        out += std::format(
+            ",\"effectiveSubmission\":{},\"effectiveClassify\":{},\"visibilityGpuMs\":{"
+            "},\"allocatedListBytes\":{},"
+            "\"allocatedArgumentBytes\":{},\"allocatedUploadBytes\":{},\"candidateBytes\":{},"
+            "\"runBytes\":{},"
+            "\"chunkBytes\":{},\"stateBytes\":{},\"counterBytes\":{},\"visibility\":{}",
+            quote(m_plan.submission), quote(classifyModeName(c.classifyMode)), visibilityGpuMs,
+            c.allocatedListBytes, c.allocatedArgumentBytes, c.allocatedUploadBytes,
+            c.candidateBytes, c.runBytes, c.chunkBytes, c.stateBytes, c.counterBytes,
+            sample.visibility ? visibilityDiagnosticsJson(*sample.visibility) : "null");
         out += std::format(
             ",\"localLightMode\":{},\"liveLightCount\":{},\"lightingGpuMs\":{},\"lighting\":{}",
             quote(localLightModeName(c.lighting.requested)), c.lighting.liveLightCount,

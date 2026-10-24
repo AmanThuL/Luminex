@@ -117,6 +117,12 @@ std::vector<VisibilityField> visibilityFields(const render::VisibilityStatus& st
     fields.push_back({"List / argument allocation",
                       std::format("{} / {} B", s.allocatedListBytes, s.allocatedArgumentBytes),
                       VisibilityFieldGroup::Submission});
+    fields.push_back({"Upload staging allocation", std::format("{} B", s.allocatedUploadBytes),
+                      VisibilityFieldGroup::Submission});
+    fields.push_back(
+        {"Pending destination / upload buffers",
+         std::format("{} / {}", s.pendingReleaseBuffers, s.pendingReleaseUploadBuffers),
+         VisibilityFieldGroup::Submission});
     fields.push_back({"CPU classify / prepare",
                       std::format("{:.3f} / {:.3f} ms", status.classifyMs, status.prepareMs),
                       VisibilityFieldGroup::Submission});

@@ -7,19 +7,18 @@ local pending_families = {
     {
         family = "SCENE",
         sources = {
-            "Source/Render/Passes/Scene/DrawSubmission.cpp",
             "Source/Render/Passes/Scene/SceneStage*.cpp",
             "Source/Render/Passes/Shadow/ShadowStage.cpp",
             "Source/Render/Renderer/RendererVisibility.cpp",
         },
         tests = {
-            "Tests/Render/Passes/Scene/Gpu*.cpp",
+            "Tests/Render/Passes/Scene/GpuAlphaMaskTests.cpp",
+            "Tests/Render/Passes/Scene/GpuRendererTests.cpp",
+            "Tests/Render/Passes/Scene/GpuSceneShadingTests.cpp",
             "Tests/Render/Passes/Shadow/GpuRendererShadowTests.cpp",
             "Tests/Render/Passes/Shadow/RenderShadowFitTests.cpp",
             "Tests/Engine/Scene/GpuSceneTableAbiTests.cpp",
             "Tests/Engine/Scene/GpuSceneTableTests.cpp",
-            "Tests/Render/Passes/Visibility/VisibilityTests.cpp",
-            "Tests/Render/Passes/Visibility/VisibilityTablesTests.cpp",
             "Tests/Scenes/EngineSceneTests.cpp",
             "Tests/Scenes/SceneMaterialLabTests.cpp",
         },

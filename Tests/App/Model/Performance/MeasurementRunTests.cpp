@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "App/Model/Options/AppOptions.h"
 #include "App/Model/Performance/MeasurementRun.h"
+#include "App/Model/Performance/MeasurementSample.h"
 #include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <limits>
@@ -34,7 +35,18 @@ TEST_CASE("Measurement plans drain only after every exact frame retires", "[app]
     REQUIRE_FALSE(run.nextFrame()->ordinal);
     REQUIRE(run.recordCpu({.frameId = 8, .sequenceFrame = 0, .lighting = {.frameNumber = 8}}));
     REQUIRE(run.nextFrame()->ordinal == 0);
-    REQUIRE(run.recordCpu({.frameId = 9, .sequenceFrame = 1, .lighting = {.frameNumber = 9}}));
+    lmx::render::VisibilityStatus visibility;
+    visibility.submission.allocatedListBytes = 96;
+    visibility.submission.allocatedArgumentBytes = 576;
+    visibility.submission.allocatedUploadBytes = 672;
+    lmx::render::CompiledFrameRecord record;
+    record.frameId = 9;
+    auto sample =
+        measurementCpuSample(1, 0, 0, visibility, {}, record, false, {}, {.frameNumber = 9});
+    REQUIRE(sample.allocatedListBytes == 96);
+    REQUIRE(sample.allocatedArgumentBytes == 576);
+    REQUIRE(sample.allocatedUploadBytes == 672);
+    REQUIRE(run.recordCpu(std::move(sample)));
     REQUIRE(run.recordCpu({.frameId = 10, .sequenceFrame = 2, .lighting = {.frameNumber = 10}}));
     REQUIRE(run.state() == MeasurementState::Draining);
     REQUIRE_FALSE(run.nextFrame());
@@ -54,6 +66,9 @@ TEST_CASE("Measurement plans drain only after every exact frame retires", "[app]
             std::string::npos);
     REQUIRE(run.json().find("\"scored\":true") != std::string::npos);
     REQUIRE(run.json().find("serialized-retirement") != std::string::npos);
+    REQUIRE(run.json().contains("\"allocatedUploadBytes\":672"));
+    REQUIRE(run.json().contains("active draw Upload staging across three slots; excludes retired "
+                                "allocations and scene tables"));
 }
 
 //======================================================================================================================

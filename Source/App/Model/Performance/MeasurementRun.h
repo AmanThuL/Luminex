@@ -116,6 +116,7 @@ struct MeasurementCpuSample {
     uint64_t argumentBytes = 0;      ///< Indirect-argument payload bytes for this frame.
     uint64_t allocatedListBytes = 0; ///< Active list allocation across slots.
     uint64_t allocatedArgumentBytes = 0; ///< Active argument allocation across slots.
+    uint64_t allocatedUploadBytes = 0;   ///< Active draw Upload staging across three slots.
     uint64_t candidateBytes = 0;         ///< Candidate preparation bytes.
     uint64_t runBytes = 0;               ///< Run preparation bytes.
     uint64_t chunkBytes = 0;             ///< Chunk preparation bytes.

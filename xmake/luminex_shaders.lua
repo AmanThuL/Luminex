@@ -73,13 +73,17 @@ function lmx_configure_shader_library(target)
         local layout_map = {
             "DisplayRoot=lmx::render::DisplayRoot",
             -- ---- scene ----
+            "ScenePassRoot=lmx::render::ScenePassRoot",
+            "SceneDrawRoot=lmx::render::SceneDrawRoot",
+            "SkyRoot=lmx::render::SkyRoot",
             -- ---- visibility ----
             -- ---- lights ----
             -- ---- post ----
             -- ---- temporal ----
         }
         target:values_set("slang.layout_map", table.unpack(layout_map))
-        target:values_set("slang.layout_include", "Render/Passes/Display/DisplayRoots.h")
+        target:values_set("slang.layout_include", "Render/Passes/Display/DisplayRoots.h",
+                          "Render/Passes/Scene/SceneRoots.h")
     elseif kind == "tests" then
         target:values_set("slang.layout_probe", path.join(repository_root, "Shaders/Layout/TestLayout.slang"))
         local layout_map = {

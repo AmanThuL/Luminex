@@ -20,8 +20,6 @@ counts use `[gpu]~[.]`. Hidden diagnostics are tracked separately.
 | `Tests/Render/Passes/Scene/GpuSceneShadingTests.cpp` | 0 | 3 | 0 |
 | `Tests/Render/Passes/Shadow/GpuRendererShadowTests.cpp` | 0 | 4 | 0 |
 | `Tests/Render/Passes/Shadow/RenderShadowFitTests.cpp` | 4 | 0 | 0 |
-| `Tests/Render/Passes/Visibility/VisibilityTablesTests.cpp` | 4 | 0 | 0 |
-| `Tests/Render/Passes/Visibility/VisibilityTests.cpp` | 3 | 0 | 0 |
 | `Tests/Scenes/EngineSceneTests.cpp` | 2 | 12 | 0 |
 | `Tests/Scenes/SceneMaterialLabTests.cpp` | 1 | 9 | 0 |
 
@@ -89,7 +87,8 @@ The excluded files also contain 1 hidden diagnostic case; it is outside the ordi
 
 All nine pure FrameData families/tests remain compiled, as do the three checkpoint cases and
 the direct graph dump goldens. HzbTests needs hzbLayout from excluded HzbStage; shadow-fit tests
-need excluded ShadowStage. VisibilityTablesTests needs buildDrawSubmission from excluded SCENE.
+need excluded ShadowStage. VisibilityTablesTests and VisibilityTests are active with the draw
+submission builder; their original seven names and tags remain.
 The mixed inspector file needs Native TAA history alternation and waits for TEMPORAL. The shared
 frame-declaration file requires bloom transients and waits for POST. Mixed scene pixel files wait
 for SCENE. Their complete registered file inventories are counted above; assertions are unchanged.
@@ -258,3 +257,22 @@ tolerance and remain unchanged. These focused selectors are subsets of the measu
 Two added cases use a validation-enabled Debug context: `the minimal frame runs four frames under the validation tracker` (empty and MaterialLab sections) and `the display read can be culled and restored under the tracker`. The latter omits the third frame's display read and draw, checks that Display is culled without changing its persistent state, and restores the real read on frame four. The shared helper keeps its offscreen output persistent and exports it rather than presenting it.
 
 The configured inventory is **1,258 unit / 58 ordinary GPU** cases, including three `[tracker]` cases. The two Renderer cases add two inventory entries; sections add none. All three tracker cases skip before device creation in Release, so the Release unit summary reports 1,255 passed and three skipped. Debug runs the three cases with validation enabled. The existing 53 device classifications, eight renames and pending-family inventory are unchanged.
+
+
+## Paced draw submission coverage
+
+`VisibilityTests.cpp` (three cases) and `VisibilityTablesTests.cpp` (four cases) return with the
+CPU draw builder. The sparse-row case now checks the 24-byte indirect ABI, drawId at offset zero,
+zero firstInstance/baseVertex, and every run's instance count. No case is renamed or retired.
+
+`Tests/Render/Passes/Scene/GpuDrawSubmissionTests.cpp` adds one ordinary GPU case,
+"draw submission copies paced rows and arguments across overlap and growth" (`[gpu][scene-submission]`).
+It records actual destination readbacks on the prepared frames in Direct, Indirect and Batched
+modes, including empty prefixes, all three paced slots, overlapping old-generation bytes, growth,
+and refusal against actual device limits when a threshold is representable. The original three
+Scene GPU files remain pending by exact paths; the new independent copy case is active.
+
+Source-derived discovery delta at this boundary is +7 unit and +1 ordinary GPU: expected configured
+inventory 1,265 unit / 59 ordinary GPU, including the same three tracker cases. Binary discovery
+and runtime results are recorded separately as validation evidence; this inventory makes no claim
+that the remaining Scene, Shadow, visibility classifier or temporal coverage has returned.
