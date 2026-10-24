@@ -251,3 +251,10 @@ four real frames. The six new readback GPU cases pass focused Debug Metal execut
 explicit Device validation and `MTL_DEBUG_LAYER=1`. All 58 ordinary GPU cases and all three
 checkpoint cases pass Metal with that native layer; the two display PNG goldens retain ±1
 tolerance and remain unchanged. These focused selectors are subsets of the measured inventory.
+
+
+## Renderer tracker coverage
+
+Two added cases use a validation-enabled Debug context: `the minimal frame runs four frames under the validation tracker` (empty and MaterialLab sections) and `the display read can be culled and restored under the tracker`. The latter omits the third frame's display read and draw, checks that Display is culled without changing its persistent state, and restores the real read on frame four. The shared helper keeps its offscreen output persistent and exports it rather than presenting it.
+
+The configured inventory is **1,258 unit / 58 ordinary GPU** cases, including three `[tracker]` cases. The two Renderer cases add two inventory entries; sections add none. All three tracker cases skip before device creation in Release, so the Release unit summary reports 1,255 passed and three skipped. Debug runs the three cases with validation enabled. The existing 53 device classifications, eight renames and pending-family inventory are unchanged.

@@ -240,6 +240,7 @@
         "Tests/Support/SceneTableTestSupport.h",
         "Tests/Support/SceneDocumentTestSupport.h",
         "Tests/Support/TestGpu.h",
+        "Tests/Support/TrackerFrameSupport.h",
         "Tests/Support/SceneDocumentFixtures.h",
         "Tests/Support/TransientBackendTestSupport.h"
       ]
