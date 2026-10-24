@@ -138,6 +138,12 @@ void EditorShell::retireMeasurement(uint64_t frameId, std::span<const engine::Pa
     finishMeasurementPlayback();
 }
 //======================================================================================================================
+void EditorShell::cancelMeasurementForSkippedDrawable() {
+    if (m_measurement.active())
+        m_measurement.cancel("Drawable acquisition skipped a measurement frame");
+    finishMeasurementPlayback();
+}
+//======================================================================================================================
 void EditorShell::recordMeasurementFrame(uint64_t frameId, double waitMs, double encodeMs,
                                          const render::CompiledFrameRecord& record) {
     const auto next = m_measurement.nextFrame();

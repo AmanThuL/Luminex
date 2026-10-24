@@ -41,7 +41,7 @@ struct RetainedFrame {
     render::CompiledFrameRecord record; ///< The frame as compilation described it.
     /// Per-pass GPU times, in the order the frame began its passes, or empty until they retire.
     /// Copied rather than borrowed: the rows engine::GpuContext::passTimings() returns are
-    /// invalidated by the next beginFrame(), and this outlives several of those.
+    /// invalidated by the next endFrame(), and this outlives several of those.
     std::vector<engine::PassTiming> timings;
     std::optional<FrameMetricsMetadata> metrics; ///< Declaration-time editor context, if supplied.
     bool timed = false; ///< Whether `timings` has been joined; distinguishes it from a timed frame

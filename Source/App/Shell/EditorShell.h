@@ -223,6 +223,8 @@ public:
 
     /// Joins exact retired GPU timings to a pending interactive measurement.
     void retireMeasurement(uint64_t frameId, std::span<const engine::PassTiming> timings);
+    /// Cancels an active measurement when a drawable gap breaks its contiguous frame sequence.
+    void cancelMeasurementForSkippedDrawable();
     /// Joins the exact retired local-light diagnostics to their declared measurement frame.
     void retireMeasurementLighting(const render::LightingStatus& status);
     /// Publishes queued GPU visibility using saved declaration identities and exact measurement

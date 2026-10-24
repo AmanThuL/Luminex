@@ -812,3 +812,27 @@ TEST_CASE("--open-window rejects unknown names and headless runs", "[app][option
               "--open-window is only available in the windowed editor");
     }
 }
+
+//======================================================================================================================
+TEST_CASE("--rhi-validation is refused in Release builds", "[app][options]") {
+    CHECK_FALSE(parseAppOptions({})->rhiValidation);
+    const auto enabled = parseAppOptions(std::array<std::string_view, 1>{"--rhi-validation"});
+#ifdef NDEBUG
+    REQUIRE_FALSE(enabled);
+    CHECK(enabled.error().message == "--rhi-validation needs a Debug build");
+#else
+    REQUIRE(enabled);
+    CHECK(enabled->rhiValidation);
+    const auto screenshot = parseAppOptions(
+        std::array<std::string_view, 3>{"--rhi-validation", "--screenshot", "out.png"});
+    REQUIRE(screenshot);
+    CHECK(screenshot->rhiValidation);
+    for (const auto arguments :
+         {std::array<std::string_view, 3>{"--rhi-validation", "--measure", "out.json"},
+          std::array<std::string_view, 3>{"--measure", "out.json", "--rhi-validation"}}) {
+        const auto measurement = parseAppOptions(arguments);
+        REQUIRE(measurement);
+        CHECK_FALSE(measurement->rhiValidation);
+    }
+#endif
+}
