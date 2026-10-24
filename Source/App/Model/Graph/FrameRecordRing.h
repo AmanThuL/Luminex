@@ -60,8 +60,8 @@ public:
     ///
     /// One more than the three that can be in flight, because a timing publication names a frame
     /// that has already *retired* -- the frame just past the in-flight window. Retaining exactly
-    /// three would evict each frame's record on the beginFrame() that publishes its timings, which
-    /// is the one moment the record is needed.
+    /// three would evict that record when retain() stores the new frame, before endFrame()
+    /// publishes the retired timings needed to join it.
     static constexpr size_t kCapacity = 4;
 
     /// Retains one compiled frame, evicting the oldest once kCapacity are held. Frames are expected

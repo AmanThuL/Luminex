@@ -98,8 +98,8 @@ copies with owned labels across moves. `TextureRef` borrows a texture/view and i
 mip/layer counts plus immutable creation layout: initial data means ShaderRead, otherwise Undefined.
 Current texture state belongs to Render, not these creation facts.
 
-Timings copy depth-one rows beneath the graphics `lmx.frame` scope and its duration, retaining the
-actual retired frame ID published at `beginFrame`. The owned span stays valid until the next
+`GpuContext::endFrame` copies and publishes depth-one rows beneath the graphics `lmx.frame` scope
+and its duration, retaining the actual retired frame ID. The owned span stays valid until the next
 `endFrame`; callers consume each publication before another frame or readback replaces it.
 Shader libraries load selected-backend bytes from `Shaders/<name><extension>`.
 
