@@ -88,10 +88,11 @@ Runtime entries and modules sit in `Common/`, `Tests/` or `Passes/<family>/`; th
 have the explicit `Layout/` role. Common modules import only Common and the public RojoRHI module;
 family-local modules are imported only by their own family, Tests or the leaf reflection probes. No import may
 reach a file that declares a shader entry point, and imports must be named module imports rather
-than textual includes. [Shader style](../conventions/shader-style.md) owns this rule; `slangc`
-enforces the family and `Common/` boundaries by refusing to resolve the import, and
-`Tools/check_shader_imports.py` checks those boundaries, the two explicit Layout roles,
-basenames, placement and no-entry-point imports. Run it directly from a worktree; CI runs it in policy.
+than textual includes. [Shader style](../conventions/shader-style.md) owns these rules. App and
+Tests pass Common and every pass-family directory to Slang; Tests also adds its oracle directory.
+Those search paths resolve imports without enforcing family isolation. `Tools/check_shader_imports.py`
+enforces the import boundaries, the two explicit Layout roles, basenames, placement and
+no-entry-point imports. Run it directly from a worktree; CI runs it in policy.
 
 ## Tests
 
