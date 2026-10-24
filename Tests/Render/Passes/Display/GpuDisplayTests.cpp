@@ -1,4 +1,5 @@
 #include "Engine/Asset/Image/PngImage.h"
+#include "Render/Passes/Display/DisplayRoots.h"
 #include "Render/Renderer/DisplayDomain.h"
 #include "Render/Renderer/Renderer.h"
 #include "Support/DisplayTransformOracle.h"
@@ -140,15 +141,16 @@ glm::vec3 bloomAt(const Fixture& fixture, uint32_t x, uint32_t y) {
 }
 
 //======================================================================================================================
-std::unique_ptr<rojoRHI::Texture> upload(rojoRHI::Device& device, uint32_t width, uint32_t height,
-                                         std::span<const uint16_t> pixels, const char* label) {
-    const rojoRHI::TextureMip mip{.data = pixels.data(), .bytesPerRow = uint64_t{width} * 8};
-    auto texture = device.createTexture({.width = width,
-                                         .height = height,
-                                         .format = render::kSceneColorFormat,
-                                         .sampled = true,
-                                         .label = label},
-                                        std::span{&mip, 1});
+engine::GpuTexture upload(rojoRHI::Device device, uint32_t width, uint32_t height,
+                          std::span<const uint16_t> pixels, const char* label) {
+    const rojoRHI::TextureData mip{.bytes = std::as_bytes(pixels),
+                                   .bytesPerRow = uint64_t{width} * 8};
+    auto texture = engine::GpuTexture::create(device,
+                                              {.format = render::kSceneColorFormat,
+                                               .extent = {width, height, 1},
+                                               .usage = rojoRHI::TextureUsage::Sampled,
+                                               .label = label},
+                                              std::span{&mip, 1});
     INFO((texture ? "" : texture.error().message));
     REQUIRE(texture.has_value());
     return std::move(*texture);
@@ -161,44 +163,80 @@ std::vector<uint8_t> renderFixture(const Fixture& fixture) {
     auto library = gpu->loadShaderLibrary("DisplayTransform");
     INFO((library ? "" : library.error().message));
     REQUIRE(library.has_value());
-    auto pipeline =
-        gpu->device().createGraphicsPipeline({.library = library->get(),
-                                              .vertexEntry = "vertexMain",
-                                              .fragmentEntry = "fragmentMain",
-                                              .colorFormat = render::kDisplayFormat,
-                                              .label = "lmx.test.displayGoldenPipeline"});
+    const rojoRHI::ColorTarget colorFormat{.format = render::kDisplayFormat};
+    auto pipeline = engine::adoptGpu(gpu->device(),
+                                     gpu->device().createPipeline(rojoRHI::GraphicsPipelineDesc{
+                                         .vertex = {library->get(), "vertexMain"},
+                                         .fragment = {library->get(), "fragmentMain"},
+                                         .raster = {.cull = rojoRHI::CullMode::Back},
+                                         .depthStencil = {.depthCompare = rojoRHI::CompareOp::Less},
+                                         .colors = std::span(&colorFormat, 1),
+                                         .label = "lmx.test.displayGoldenPipeline"}));
     INFO((pipeline ? "" : pipeline.error().message));
     REQUIRE(pipeline.has_value());
     auto scene = upload(gpu->device(), fixture.width, fixture.height, fixture.scene,
                         "lmx.test.displayGoldenScene");
     auto bloom = upload(gpu->device(), fixture.bloomWidth, fixture.bloomHeight, fixture.bloom,
                         "lmx.test.displayGoldenBloom");
-    auto target =
-        lmx::engine::GpuTexture::create(gpu->device(), {.width = fixture.width,
-                                                        .height = fixture.height,
-                                                        .format = render::kDisplayFormat,
-                                                        .renderTarget = true,
-                                                        .cpuReadback = true,
-                                                        .label = "lmx.test.displayGoldenTarget"});
+    auto target = lmx::engine::GpuTexture::create(gpu->device(),
+                                                  {.format = render::kDisplayFormat,
+                                                   .extent = {fixture.width, fixture.height, 1},
+                                                   .usage = rojoRHI::TextureUsage::RenderTarget,
+                                                   .label = "lmx.test.displayGoldenTarget"});
     INFO((target ? "" : target.error().message));
     REQUIRE(target.has_value());
     auto gpuFrame1 = gpu->beginFrame();
     auto& commands = gpuFrame1.commands;
-    commands.beginRenderPass(
-        {.colorTarget = &target->rhi(), .clear = true, .label = "lmx.test.displayGolden"});
-    commands.bindPipeline(**pipeline);
-    commands.bindTexture(0, *scene);
-    commands.bindTexture(1, *bloom);
-    commands.bindFrameData(0, fixture.bloomIntensity);
+    const std::array barriers{
+        rojoRHI::TextureBarrier{.texture = scene.rhi(),
+                                .dstStage = rojoRHI::Stage::FragmentShader,
+                                .dstAccess = rojoRHI::Access::ShaderRead,
+                                .oldLayout = rojoRHI::Layout::ShaderRead,
+                                .newLayout = rojoRHI::Layout::ShaderRead},
+        rojoRHI::TextureBarrier{.texture = bloom.rhi(),
+                                .dstStage = rojoRHI::Stage::FragmentShader,
+                                .dstAccess = rojoRHI::Access::ShaderRead,
+                                .oldLayout = rojoRHI::Layout::ShaderRead,
+                                .newLayout = rojoRHI::Layout::ShaderRead},
+        rojoRHI::TextureBarrier{.texture = target->rhi(),
+                                .dstStage = rojoRHI::Stage::ColorAttachment,
+                                .dstAccess = rojoRHI::Access::ColorAttachmentWrite,
+                                .newLayout = rojoRHI::Layout::ColorAttachment}};
+    commands.barrier({}, {}, barriers);
+    const rojoRHI::ColorAttachment color{.texture = target->rhi(), .load = rojoRHI::LoadOp::Clear};
+    commands.beginRenderPass({.colors = std::span(&color, 1),
+                              .area = {0, 0, fixture.width, fixture.height},
+                              .label = "lmx.test.displayGolden"});
+    commands.setPipeline(pipeline->get());
+    commands.setViewport(
+        {.width = static_cast<float>(fixture.width), .height = static_cast<float>(fixture.height)});
+    commands.setScissor({0, 0, fixture.width, fixture.height});
+    commands.pushRoot(render::DisplayRoot{.sceneColor = static_cast<uint32_t>(scene.view()),
+                                          .bloom = static_cast<uint32_t>(bloom.view()),
+                                          .bloomIntensity = fixture.bloomIntensity});
+#ifndef NDEBUG
+    const std::array accesses{rojoRHI::ResourceAccess{.texture = scene.rhi(),
+                                                      .stage = rojoRHI::Stage::FragmentShader,
+                                                      .access = rojoRHI::Access::ShaderRead},
+                              rojoRHI::ResourceAccess{.texture = bloom.rhi(),
+                                                      .stage = rojoRHI::Stage::FragmentShader,
+                                                      .access = rojoRHI::Access::ShaderRead}};
+    commands.declareAccess(std::span(accesses).first(fixture.bloomIntensity == 0.0f ? 1 : 2));
+#endif
     commands.draw(3);
     commands.endRenderPass();
     gpu->submitAndEndFrame(gpuFrame1);
     gpu->waitIdle();
     std::vector<uint8_t> rgba(size_t{fixture.width} * fixture.height * 4);
     {
-        const auto readbackBytes =
-            lmx::render::readbackNow(*gpu, *target, lmx::render::TextureUse::RenderTarget);
-        std::memcpy(rgba.data(), readbackBytes.data(), rgba.size());
+        const std::array current{render::TextureRangeState{
+            .range = {0, 1, 0, 1},
+            .state = {rojoRHI::Stage::ColorAttachment, rojoRHI::Access::ColorAttachmentWrite,
+                      rojoRHI::Layout::ColorAttachment}}};
+        const auto readbackBytes = lmx::render::readbackNow(*gpu, *target, current);
+        INFO(errorOf(readbackBytes));
+        REQUIRE(readbackBytes);
+        std::memcpy(rgba.data(), readbackBytes->data(), rgba.size());
     }
     for (size_t offset = 0; offset < rgba.size(); offset += 4) {
         std::swap(rgba[offset], rgba[offset + 2]);

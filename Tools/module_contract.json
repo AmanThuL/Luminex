@@ -235,9 +235,11 @@
         "Tests/Support/GpuTemporalTestSupport.h",
         "Tests/Support/GpuTestSupport.h",
         "Tests/Support/GraphTestSupport.h",
+        "Tests/Support/OracleRoots.h",
         "Tests/Support/RenderGraphTestSupport.h",
         "Tests/Support/SceneTableTestSupport.h",
         "Tests/Support/SceneDocumentTestSupport.h",
+        "Tests/Support/TestGpu.h",
         "Tests/Support/SceneDocumentFixtures.h",
         "Tests/Support/TransientBackendTestSupport.h"
       ]

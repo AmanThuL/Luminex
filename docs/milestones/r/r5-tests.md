@@ -222,3 +222,32 @@ Existing scene cases adding only `[device]` for genuine resource creation (all n
 The external case `external passes order inputs and outputs without opening an RHI scope` retains its name, tags and count. Its former fake temporal call count, inputContentWidth32 and reset=true were parameters authored by its mock callback; they are replaced by independent external Run/no-scope placement, exact input/output snapshot identities, logical hazards and physical masks. Wrong-version access still aborts with the complete pass/resource/version diagnostic. Actual upscale translation remains with the temporal family.
 
 The original `RenderReadbackTests.cpp` contains exactly four cases; all four remain. The earlier five-case inventory was inaccurate. Existing GPU tags in mixed scene suites remain unchanged; checked mapped Upload inspection consumes no additional frame and retains all row bytes, identities, capacities and retirement assertions.
+
+### Retained GPU oracles and scene fixtures
+
+`saved mesh mobility stays aligned with instantiated object order` retains its name and assertions
+and adds only `[device]`: genuine context-owned resources replace its fake device. This changes
+no case count. All existing GPU names/tags and all three graph checkpoint cases remain.
+
+Graph GPU cases retain every byte, gradient, alias, generation and image assertion. Resource
+resolution checks now assert non-null value identities instead of pointer-result success. Repeated
+byte fills preserve their uint32 patterns. The retained-timing case uses its owning context and
+joins every retired publication after endFrame, including a complete three-slot tail drain.
+Sampler mip comparisons keep both actual/reference draws and reuse one physical state table.
+Display's two PNG goldens and ±1 tolerance are unchanged; five real root layouts are checked
+against reflection, while the constant-output MRT oracle remains root-free.
+
+### Measured retained inventory before application-gate additions
+
+The retained-suite inventory is **1,256 unit / 58 ordinary GPU** cases, measured with
+`~[gpu]` and `[gpu]~[.]`. Against the retained baseline of 1,232/52, this adds 24 unit and
+six GPU cases. The eight recorded renames and 53 appended `[device]` classifications change no
+case count. This measurement precedes the application-gate cases.
+
+Release discovery finds 1,256 unit cases. The full Release unit runs pass 1,255 and skip the
+cached-alias tracker case because validation is Debug-only. Debug's 61 device cases pass on
+Null and Metal; the focused tracker is one of those cases, enables Device validation and checks
+four real frames. The six new readback GPU cases pass focused Debug Metal execution with
+explicit Device validation and `MTL_DEBUG_LAYER=1`. All 58 ordinary GPU cases and all three
+checkpoint cases pass Metal with that native layer; the two display PNG goldens retain ±1
+tolerance and remain unchanged. These focused selectors are subsets of the measured inventory.

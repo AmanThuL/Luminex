@@ -9,7 +9,6 @@
 #include "Scenes/SceneDocuments.h"
 #include "Support/EngineTestSupport.h"
 #include "Support/GpuTestSupport.h"
-#include "Support/GraphTestSupport.h"
 #include "Support/SceneDocumentFixtures.h"
 
 #include <rojoRHI/RHI.h>
@@ -598,8 +597,8 @@ TEST_CASE("document content channels do not contaminate the selected camera",
 //======================================================================================================================
 TEST_CASE("document meshes instantiate with shared resources and authored bounds",
           "[gpu][scene-doc][instantiate][ux6-content]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
+    auto& device = gpu->device();
     auto doc = test::contentDocument();
     doc.nodes[1].rotation = glm::quat(.5f, .5f, .5f, .5f);
     doc.nodes[1].translation = {-0.f, 2.f, 3.f};
@@ -608,7 +607,7 @@ TEST_CASE("document meshes instantiate with shared resources and authored bounds
     const auto saved = asset::saveSceneDocument(doc, path);
     INFO((saved ? "saved" : saved.error().message));
     REQUIRE(saved);
-    auto loaded = engine::instantiateSceneDocument(**device, doc, path, {});
+    auto loaded = engine::instantiateSceneDocument(device, doc, path, {});
     INFO((loaded ? "loaded" : loaded.error().message));
     REQUIRE(loaded);
     const auto& scene = *loaded->scene;
@@ -645,13 +644,13 @@ TEST_CASE("document meshes instantiate with shared resources and authored bounds
     REQUIRE(data.doubleSided);
     REQUIRE(sameContentBits(scene.objects[0].emissiveStrength, doc.materials[0].emissiveStrength));
     REQUIRE(color.diffuse == color.emissiveMap);
-    REQUIRE(scene.tryTexture(*color.diffuse)->desc().mipLevels == 3);
+    REQUIRE(scene.tryTexture(*color.diffuse)->desc().mips == 3);
     REQUIRE(scene.tryTexture(*color.diffuse)->desc().format == rojoRHI::Format::RGBA8Unorm_sRGB);
     REQUIRE(data.normalMap == data.metallicRoughness);
     REQUIRE(data.normalMap == data.occlusion);
-    REQUIRE(scene.tryTexture(*data.normalMap)->desc().mipLevels == 1);
+    REQUIRE(scene.tryTexture(*data.normalMap)->desc().mips == 1);
     REQUIRE(scene.tryTexture(*data.normalMap)->desc().format == rojoRHI::Format::RGBA8Unorm);
-    (*device)->waitIdle();
+    gpu->waitIdle();
 }
 
 //======================================================================================================================
@@ -709,8 +708,8 @@ TEST_CASE("document content preflight checks track representation and texture us
 //======================================================================================================================
 TEST_CASE("document content append copies rigid and emissive keys and expands authored bounds",
           "[gpu][scene-doc][instantiate][ux6-content]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
+    auto& device = gpu->device();
     auto doc = test::contentDocument();
     doc.nodes[1].rotation = glm::quat(0.99999f, -0.0f, 0.0f, 0.0f);
     doc.nodes[1].scale = {1.25f, 2.5f, 0.75f};
@@ -739,7 +738,7 @@ TEST_CASE("document content append copies rigid and emissive keys and expands au
     scene.authoredBounds = {glm::vec3(-20, -1, -1), glm::vec3(-10, 1, 1)};
     engine::DocumentContentBinding binding;
     const std::array<uint32_t, 3> nodes{1, 2, 3};
-    const auto appended = engine::appendDocumentContent(**device, scene, doc, nodes, binding);
+    const auto appended = engine::appendDocumentContent(device, scene, doc, nodes, binding);
     INFO((appended ? "ok" : appended.error().message));
     REQUIRE(appended);
     REQUIRE(binding.objectOfNode == std::vector<uint32_t>{engine::kGeneratedNode, 0, 1, 2});
@@ -774,19 +773,19 @@ TEST_CASE("document content append copies rigid and emissive keys and expands au
     REQUIRE(sameContentBits(scene.authoredBounds.minimum, glm::vec3(-20, -3, -4)));
     REQUIRE(sameContentBits(scene.authoredBounds.maximum, glm::vec3(5, 6, 7)));
     REQUIRE(sameContentBits(scene.boundingSphere, toVec4(boundingSphere(scene.authoredBounds))));
-    REQUIRE(scene.finalize(**device));
+    REQUIRE(scene.finalize(device));
     REQUIRE(scene.tableStats().meshCount == 1);
     REQUIRE(scene.tableStats().materialCount == 2);
     REQUIRE(scene.tableStats().vertexBytes == doc.content->geometries[0].vertices.size() * 48);
     REQUIRE(scene.tableStats().indexBytes == doc.content->geometries[0].indices.size() * 4);
-    (*device)->waitIdle();
+    gpu->waitIdle();
 }
 
 //======================================================================================================================
 TEST_CASE("document content preserves object and resource order across a generator",
           "[gpu][scene-doc][instantiate][ux6-content]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
+    auto& device = gpu->device();
     auto doc = test::contentDocument();
     doc.nodes.insert(doc.nodes.begin() + 2,
                      {.name = "Between", .generator = asset::DocGenerator{"test", {}}});
@@ -811,7 +810,7 @@ TEST_CASE("document content preserves object and resource order across a generat
         return {};
     };
     const auto loaded =
-        engine::instantiateSceneDocument(**device, doc, path, [&](std::string_view name) {
+        engine::instantiateSceneDocument(device, doc, path, [&](std::string_view name) {
             return name == "test" ? &generator : nullptr;
         });
     INFO((loaded ? "ok" : loaded.error().message));
@@ -826,14 +825,14 @@ TEST_CASE("document content preserves object and resource order across a generat
     REQUIRE(loaded->binding.objectNode == std::vector<uint32_t>{1, engine::kGeneratedNode, 3});
     REQUIRE(loaded->binding.objectGeneratorNode ==
             std::vector<uint32_t>{engine::kGeneratedNode, 2, engine::kGeneratedNode});
-    (*device)->waitIdle();
+    gpu->waitIdle();
 }
 
 //======================================================================================================================
 TEST_CASE("document content mip filtering follows each image color space",
           "[gpu][scene-doc][instantiate][ux6-content]") {
     auto gpu = createTestGpu();
-    auto* device = &gpu->device();
+    auto& device = gpu->device();
     REQUIRE(gpu);
     for (const bool srgb : {true, false}) {
         auto doc = test::contentDocument();
@@ -843,41 +842,47 @@ TEST_CASE("document content mip filtering follows each image color space",
         engine::Scene scene;
         engine::DocumentContentBinding binding;
         const std::array<uint32_t, 2> nodes{1, 2};
-        REQUIRE(engine::appendDocumentContent(*device, scene, doc, nodes, binding));
+        REQUIRE(engine::appendDocumentContent(device, scene, doc, nodes, binding));
         const auto& material = scene.material(scene.objects[srgb ? 0 : 1].material);
         const auto* texture = scene.tryTexture(*(srgb ? material.diffuse : material.normalMap));
-        REQUIRE(texture->desc().mipLevels == 3);
+        REQUIRE(texture->desc().mips == 3);
         const auto& pixels = content->images[0];
         const auto bytes =
             std::span(reinterpret_cast<const uint8_t*>(pixels.rgba8.data()), pixels.rgba8.size());
         const auto baked =
             asset::bakeMips(bytes, 4, 4, srgb ? asset::BakeMode::Srgb : asset::BakeMode::Linear);
         auto expected = engine::GpuTexture::create(
-            *device,
-            {.width = 4,
-             .height = 4,
-             .format = srgb ? rojoRHI::Format::RGBA8Unorm_sRGB : rojoRHI::Format::RGBA8Unorm,
-             .mipLevels = 3,
-             .sampled = true,
+            device,
+            {.format = srgb ? rojoRHI::Format::RGBA8Unorm_sRGB : rojoRHI::Format::RGBA8Unorm,
+             .extent = {4, 4, 1},
+             .mips = 3,
+             .usage = rojoRHI::TextureUsage::Sampled,
              .label = "expected document mips"},
-            engine::toTextureMips(baked));
+            engine::toTextureData(baked));
         REQUIRE(expected);
         auto destination = makeProbeTarget(*gpu, "document mip probe");
         auto library = gpu->loadShaderLibrary("SamplerSmoke");
         REQUIRE(destination);
         REQUIRE(library);
-        auto pipeline = device->createGraphicsPipeline({.library = library->get(),
-                                                        .vertexEntry = "vertexMain",
-                                                        .fragmentEntry = "fragmentMipLevel1",
-                                                        .colorFormat = rojoRHI::Format::BGRA8Unorm,
-                                                        .label = "document mip probe"});
-        auto sampler = device->createSampler({.addressMode = rojoRHI::AddressMode::Clamp});
+        const rojoRHI::ColorTarget color{.format = rojoRHI::Format::BGRA8Unorm};
+        auto pipeline =
+            engine::adoptGpu(device, device.createPipeline(rojoRHI::GraphicsPipelineDesc{
+                                         .vertex = {library->get(), "vertexMain"},
+                                         .fragment = {library->get(), "fragmentMipLevel1"},
+                                         .raster = {.cull = rojoRHI::CullMode::Back},
+                                         .depthStencil = {.depthCompare = rojoRHI::CompareOp::Less},
+                                         .colors = std::span(&color, 1),
+                                         .label = "document mip probe"}));
+        auto sampler = engine::adoptGpu(
+            device, device.createSampler({.address = rojoRHI::SamplerAddress::ClampToEdge,
+                                          .label = "document mip probe sampler"}));
         REQUIRE(pipeline);
         REQUIRE(sampler);
-        const auto actual =
-            renderSampledImage(*gpu, **pipeline, 0, *texture, **sampler, *destination);
-        const auto reference =
-            renderSampledImage(*gpu, **pipeline, 0, *expected, **sampler, *destination);
+        render::TextureStateTable states;
+        const auto actual = renderSampledImage(*gpu, pipeline->get(), *texture, sampler->get(),
+                                               *destination, states);
+        const auto reference = renderSampledImage(*gpu, pipeline->get(), *expected, sampler->get(),
+                                                  *destination, states);
         REQUIRE(actual == reference);
     }
 }
@@ -931,8 +936,8 @@ TEST_CASE("document content refuses repeated mesh and emissive targets across an
 //======================================================================================================================
 TEST_CASE("document mesh tracks merge distinct paths across arrays and retain STEP rest components",
           "[gpu][scene-doc][instantiate][ux6-content]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
+    auto& device = gpu->device();
     auto doc = test::contentDocument();
     doc.nodes[1].rotation = {.5f, .5f, .5f, .5f};
     doc.nodes[1].scale = {-2.f, 3.f, .125f};
@@ -958,7 +963,7 @@ TEST_CASE("document mesh tracks merge distinct paths across arrays and retain ST
     engine::Scene scene;
     engine::DocumentContentBinding binding;
     const std::array<uint32_t, 2> nodes{1, 2};
-    REQUIRE(engine::appendDocumentContent(**device, scene, doc, nodes, binding));
+    REQUIRE(engine::appendDocumentContent(device, scene, doc, nodes, binding));
     REQUIRE_FALSE(scene.objects[1].enabled);
     REQUIRE(doc.nodes[2].enabled);
     REQUIRE(scene.animation.tracks.size() == 1);
@@ -973,14 +978,14 @@ TEST_CASE("document mesh tracks merge distinct paths across arrays and retain ST
                                : glm::vec3(doc.animations[1].channels[0].values[k]);
         REQUIRE(sameContentBits(track.keys[k].scale, scale));
     }
-    (*device)->waitIdle();
+    gpu->waitIdle();
 }
 
 //======================================================================================================================
 TEST_CASE("document mesh resources stay shared across an imported asset",
           "[gpu][scene-doc][instantiate][ux6-content]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
+    auto& device = gpu->device();
     auto doc = test::contentDocument();
     const auto catalog = scenes::readCatalogDocument("material-lab");
     REQUIRE(catalog);
@@ -994,7 +999,7 @@ TEST_CASE("document mesh resources stay shared across an imported asset",
     const auto path =
         std::filesystem::current_path() / "SceneDocuments" / "ux6-asset-order.scene.gltf";
     REQUIRE(asset::saveSceneDocument(doc, path));
-    const auto loaded = engine::instantiateSceneDocument(**device, doc, path, {});
+    const auto loaded = engine::instantiateSceneDocument(device, doc, path, {});
     INFO((loaded ? "ok" : loaded.error().message));
     REQUIRE(loaded);
     const auto& scene = *loaded->scene;
@@ -1010,7 +1015,7 @@ TEST_CASE("document mesh resources stay shared across an imported asset",
     REQUIRE(loaded->binding.objectNode.back() == 3);
     REQUIRE(loaded->binding.assets.size() == 1);
     REQUIRE(loaded->binding.assets.front().objectBase == 1);
-    (*device)->waitIdle();
+    gpu->waitIdle();
 }
 
 //======================================================================================================================
@@ -1169,8 +1174,8 @@ TEST_CASE("document content domain refuses an interval failure despite factorabl
 //======================================================================================================================
 TEST_CASE("document content accepts signed scale boundaries and samples their rotation tracks",
           "[gpu][scene-doc][instantiate][ux6-content]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
+    auto& device = gpu->device();
     const glm::quat first{.60656774044036865f, .33893471956253052f, .46048766374588013f,
                           .55240392684936523f};
     const glm::quat last{-.54079592227935791f, .49777358770370483f, .42351913452148438f,
@@ -1197,7 +1202,7 @@ TEST_CASE("document content accepts signed scale boundaries and samples their ro
             engine::Scene scene;
             engine::DocumentContentBinding binding;
             const std::array<uint32_t, 1> meshNodes{1};
-            REQUIRE(engine::appendDocumentContent(**device, scene, doc, meshNodes, binding));
+            REQUIRE(engine::appendDocumentContent(device, scene, doc, meshNodes, binding));
             REQUIRE(scene.animation.tracks.size() == 1);
             const auto& track = scene.animation.tracks.front();
             REQUIRE(sameContentBits(scene.objects[0].scale, scale));
@@ -1208,7 +1213,7 @@ TEST_CASE("document content accepts signed scale boundaries and samples their ro
                 REQUIRE(decomposeTransform(asset::sampleRigidTrack(track, time)));
                 scene.animate(time);
             }
-            (*device)->waitIdle();
+            gpu->waitIdle();
         }
     }
 }
@@ -1245,8 +1250,9 @@ TEST_CASE("mobility preflight names unsupported document nodes and animated over
 
 //======================================================================================================================
 TEST_CASE("saved mesh mobility stays aligned with instantiated object order",
-          "[scene-doc][instantiate][ux6-mobility]") {
-    FakeDevice device;
+          "[scene-doc][instantiate][ux6-mobility][device]") {
+    auto gpu = createTestGpu();
+    auto& device = gpu->device();
     auto doc = test::contentDocument();
     doc.nodes[1].mobility = asset::DocMobility::Movable;
     const auto path =

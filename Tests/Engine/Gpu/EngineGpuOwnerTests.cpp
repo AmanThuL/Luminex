@@ -68,9 +68,11 @@ TEST_CASE("GpuTexture keeps a descriptor copy whose label outlives the caller's 
 //======================================================================================================================
 TEST_CASE("GpuTexture moves without dangling its label", "[engine][device]") {
     auto gpu = makeGpu();
-    auto texture = lmx::engine::GpuTexture::create(
-        gpu->device(),
-        {.format = rojoRHI::Format::RGBA8Unorm, .extent = {8, 8, 1}, .label = "short"});
+    auto texture =
+        lmx::engine::GpuTexture::create(gpu->device(), {.format = rojoRHI::Format::RGBA8Unorm,
+                                                        .extent = {8, 8, 1},
+                                                        .usage = rojoRHI::TextureUsage::Sampled,
+                                                        .label = "short"});
     REQUIRE(texture);
     auto source = std::move(*texture);
     const auto object = source.rhi();

@@ -61,6 +61,9 @@ function lmx_configure_shader_library(target)
         table.sort(passes)
         table.join2(includedirs, passes)
     end
+    if kind == "tests" then
+        table.insert(includedirs, path.join(repository_root, "Shaders/Tests"))
+    end
     target:values_set("slang.slangc", path.join(repository_root,
         os.host() == "windows" and "ThirdParty/slang/bin/slangc.exe" or "ThirdParty/slang/bin/slangc"))
     target:values_set("slang.moduledir", path.join(repository_root, "RojoRHI/Shaders/RojoRHI"))
@@ -77,6 +80,22 @@ function lmx_configure_shader_library(target)
         }
         target:values_set("slang.layout_map", table.unpack(layout_map))
         target:values_set("slang.layout_include", "Render/Passes/Display/DisplayRoots.h")
+    elseif kind == "tests" then
+        target:values_set("slang.layout_probe", path.join(repository_root, "Shaders/Layout/TestLayout.slang"))
+        local layout_map = {
+            "BufferHazardRoot=lmx::test::BufferHazardRoot",
+            "ComputeImageRoot=lmx::test::ComputeImageRoot",
+            "FullscreenSampleRoot=lmx::test::FullscreenSampleRoot",
+            "SamplerRoot=lmx::test::SamplerRoot",
+            "VisibilityDepthRoot=lmx::test::VisibilityDepthRoot",
+            -- ---- scene ----
+            -- ---- visibility ----
+            -- ---- lights ----
+            -- ---- post ----
+            -- ---- temporal ----
+        }
+        target:values_set("slang.layout_map", table.unpack(layout_map))
+        target:values_set("slang.layout_include", "Support/OracleRoots.h")
     end
     local entries = lmx_shader_entries(kind)
     target:values_set("lmx.shader.entries", table.unpack(entries))
@@ -85,7 +104,7 @@ end
 
 function lmx_apply_shader_rule(kind)
     add_rules("rojorhi.slang")
-    if kind == "app" then add_rules("rojorhi.shader_layout") end
+    if kind == "app" or kind == "tests" then add_rules("rojorhi.shader_layout") end
     set_values("lmx.shader.kind", kind)
     on_load(lmx_configure_shader_library)
 end

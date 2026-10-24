@@ -626,15 +626,17 @@ TEST_CASE("cached alias placements survive four tracked frames",
     auto out =
         createTestTexture(*gpu, rojoRHI::Format::BGRA8Unorm, rojoRHI::TextureUsage::RenderTarget);
     TransientPool pool{*gpu};
+    TextureStateTable states;
     std::vector<std::array<rojoRHI::Texture, 2>> identities;
     for (uint32_t index = 0; index < 4; ++index) {
         auto recording = gpu->beginFrame();
         pool.beginFrame();
         RenderGraph graph{pool};
+        graph.bindTextureStates(states);
         const auto first = graph.createTexture(kTransientColor, "lmx.transient.first");
         const auto second = graph.createTexture(kTransientColor, "lmx.transient.second");
-        const auto middle = graph.importTexture(mid.ref(), "mid");
-        const auto output = graph.importTexture(out.ref(), "out");
+        const auto middle = graph.importPersistentTexture(mid, "mid");
+        const auto output = graph.importPersistentTexture(out, "out");
         std::array<rojoRHI::Texture, 2> placed;
         graph.addPass(
             "writeFirst", {.color = ColorAttachment{.handle = first}},

@@ -9,6 +9,7 @@
 #include "Render/Graph/TransientPool.h"
 #include "Render/Passes/Temporal/Temporal.h"
 #include "Render/Passes/Temporal/TemporalHistory.h"
+#include "Render/Passes/Temporal/TemporalResolve.h"
 
 #include <catch2/catch_approx.hpp>
 
@@ -93,11 +94,13 @@ inline glm::vec2 motionAt(const std::vector<uint8_t>& bytes, uint32_t x, uint32_
 }
 
 //======================================================================================================================
-inline std::vector<uint8_t> readMotion(lmx::engine::GpuContext& gpu, Renderer& renderer,
-                                       lmx::render::TextureUse current) {
+inline std::vector<uint8_t> readMotion(lmx::engine::GpuContext& gpu, Renderer& renderer) {
     const auto* motion = renderer.motionTexture();
     REQUIRE(motion != nullptr);
-    return lmx::render::readbackNow(gpu, *motion, current);
+    auto bytes = lmx::render::readbackNow(gpu, *motion, renderer.textureStates());
+    INFO(errorOf(bytes));
+    REQUIRE(bytes);
+    return std::move(*bytes);
 }
 
 //======================================================================================================================
@@ -183,12 +186,14 @@ using lmx::render::TemporalDebugView;
 //======================================================================================================================
 inline std::vector<glm::vec4> readHalf4(lmx::engine::GpuContext& gpu,
                                         const lmx::engine::GpuTexture& texture,
-                                        lmx::render::TextureUse current) {
+                                        const lmx::render::TextureStateTable& current) {
     const auto bytes = lmx::render::readbackNow(gpu, texture, current);
+    INFO(errorOf(bytes));
+    REQUIRE(bytes);
     std::vector<glm::vec4> pixels(kScenarioPixels);
     for (size_t i = 0; i < pixels.size(); ++i) {
         uint16_t texel[4] = {0, 0, 0, 0};
-        std::memcpy(texel, bytes.data() + i * 8, sizeof(texel));
+        std::memcpy(texel, bytes->data() + i * 8, sizeof(texel));
         pixels[i] = {halfToFloat(texel[0]), halfToFloat(texel[1]), halfToFloat(texel[2]),
                      halfToFloat(texel[3])};
     }
@@ -283,19 +288,13 @@ renderSequence(lmx::engine::GpuContext& gpu, Renderer& renderer, uint32_t frames
 
         ScenarioFrame record;
         record.status = renderer.temporalStatus();
-        const bool rawCopy =
-            record.status.reconstruction == ReconstructionMode::Raw && !record.status.upscaled;
-        const auto rawUse = record.status.reconstruction == ReconstructionMode::VendorTemporal
-                                ? lmx::render::TextureUse::ExternalRead
-                            : rawCopy ? lmx::render::TextureUse::CopySource
-                                      : lmx::render::TextureUse::ShaderRead;
-        const auto historyUse = rawCopy && view.temporal.debugView != TemporalDebugView::HistoryAge
-                                    ? lmx::render::TextureUse::CopyDestination
-                                    : lmx::render::TextureUse::ShaderRead;
-        record.history = readHalf4(gpu, *renderer.historyTexture(), historyUse);
-        record.raw = readHalf4(gpu, renderer.hdrColorTexture(), rawUse);
-        record.display = lmx::render::readbackNow(gpu, renderer.colorTarget(),
-                                                  lmx::render::TextureUse::RenderTarget);
+        record.history = readHalf4(gpu, *renderer.historyTexture(), renderer.textureStates());
+        record.raw = readHalf4(gpu, renderer.hdrColorTexture(), renderer.textureStates());
+        auto display =
+            lmx::render::readbackNow(gpu, renderer.colorTarget(), renderer.textureStates());
+        INFO(errorOf(display));
+        REQUIRE(display);
+        record.display = std::move(*display);
         result.push_back(std::move(record));
     }
     return result;
