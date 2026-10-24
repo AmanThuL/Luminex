@@ -6,8 +6,8 @@
 #include "App/Model/Scene/SceneSession.h"
 #include "Scenes/LightLab.h"
 #include "Scenes/SceneLibrary.h"
-#include "Support/GpuTestSupport.h"
 #include "Support/SceneDocumentTestSupport.h"
+#include "Support/TestGpu.h"
 
 #include "Engine/Lights/LocalLightMath.h"
 

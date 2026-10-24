@@ -99,6 +99,7 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     std::string_view measurementPath;
     bool unscored = false;
     bool measurementTrack = true;
+    bool rhiValidation = false;
     bool measurementCameraSpecified = false;
     bool visibilityEnabled = true;
     render::SubmissionMode submission = render::SubmissionMode::Indirect;
@@ -141,7 +142,13 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
         if (argument == "--") {
             continue;
         }
-        if (argument == "--measure") {
+        if (argument == "--rhi-validation") {
+#ifdef NDEBUG
+            return fail("--rhi-validation needs a Debug build");
+#else
+            rhiValidation = true;
+#endif
+        } else if (argument == "--measure") {
             if (++i >= arguments.size() || arguments[i].empty() || !looksLikeValue(arguments[i])) {
                 return fail("--measure needs a non-empty output JSON path");
             }
@@ -523,6 +530,7 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     options.measurementPath = measurementPath;
     options.unscored = unscored;
     options.measurementTrack = measurementTrack;
+    options.rhiValidation = rhiValidation && measurementPath.empty();
     options.visibilityEnabled = visibilityEnabled;
     options.submission = submission;
     options.classifyMode = classifyMode;

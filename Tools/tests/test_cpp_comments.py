@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from Tools import check_cpp_comments as comments
 
@@ -141,7 +143,18 @@ class CppCommentTests(unittest.TestCase):
 
 
 class EntryForHeaderTests(unittest.TestCase):
-    """A header compiles with the flags of a translation unit in its own module directory."""
+    """Headers borrow actual commands from their declared contract owner."""
+
+    contract = {"units": {
+        "core": {"paths": ["Source/Core"]},
+        "engine": {"paths": ["Source/Engine"]},
+        "asset": {"paths": ["Source/Engine/Asset"]},
+        "app": {"paths": ["Source/App"]},
+        "model": {"paths": ["Source/App/Model"]},
+    }}
+
+    def entry(self, header: str, entries: list[dict], root: Path = Path("/repo")) -> dict:
+        return comments._entry_for_header(root / header, entries, root, self.contract)
 
     def test_a_component_unit_with_the_same_module_name_and_stem_is_not_chosen(self) -> None:
         root = Path("/repo")
@@ -149,14 +162,103 @@ class EntryForHeaderTests(unittest.TestCase):
             {"file": "RojoRHI/Source/Core/SlotAllocator.cpp"},
             {"file": "Source/Core/Containers/Handle.cpp"},
         ]
-        entry = comments._entry_for_header(root / "Source/Core/Containers/SlotAllocator.h", entries, root)
+        entry = self.entry("Source/Core/Containers/SlotAllocator.h", entries, root)
         self.assertEqual(entry["file"], "Source/Core/Containers/Handle.cpp")
 
     def test_an_absolute_unit_path_inside_the_module_matches(self) -> None:
         root = Path("/repo")
         entries = [{"file": "/repo/RojoRHI/Source/Core/Probe.cpp"}, {"file": "/repo/Source/Core/Probe.cpp"}]
-        entry = comments._entry_for_header(root / "Source/Core/Probe.h", entries, root)
+        entry = self.entry("Source/Core/Probe.h", entries, root)
         self.assertEqual(entry["file"], "/repo/Source/Core/Probe.cpp")
+
+    def test_nested_asset_command_does_not_supply_engine_header_context(self) -> None:
+        asset = {"file": "Source/Engine/Asset/RepositoryAsset.cpp", "arguments": ["clang++", "-DASSET"]}
+        engine = {"file": "Source/Engine/Gpu/GpuBuffer.cpp", "arguments": ["clang++", "-DENGINE"]}
+        for header in ("Gpu/GpuOwned.h", "Scene/DrawItem.h", "Scene/SceneTables.h"):
+            with self.subTest(header=header):
+                self.assertIs(self.entry("Source/Engine/" + header, [asset, engine]), engine)
+        self.assertIs(self.entry("Source/Engine/Asset/RepositoryAsset.h", [engine, asset]), asset)
+
+    def test_stem_match_is_considered_only_after_contract_ownership(self) -> None:
+        entries = [{"file": "Source/Engine/Asset/SceneTables.cpp"},
+                   {"file": "Source/Engine/Gpu/GpuBuffer.cpp"}]
+        self.assertIs(self.entry("Source/Engine/Scene/SceneTables.h", entries), entries[1])
+
+    def test_nested_app_model_borrows_model_command_not_app_command(self) -> None:
+        entries = [{"file": "Source/App/Shell/GraphInspectorModel.cpp"},
+                   {"file": "Source/App/Model/Graph/GraphNodeModel.cpp"}]
+        self.assertIs(self.entry("Source/App/Model/Graph/GraphInspectorModel.h", entries), entries[1])
+        self.assertIs(self.entry("Source/App/Shell/Tool.h", list(reversed(entries))), entries[0])
+
+    def test_same_owner_counterpart_precedes_lexical_fallback(self) -> None:
+        entries = [{"file": "Source/Engine/Alpha.cpp"}, {"file": "Source/Engine/Gpu/Owner.cpp"}]
+        self.assertIs(self.entry("Source/Engine/Gpu/Owner.h", entries), entries[1])
+
+    def test_fallback_and_duplicate_source_context_are_stable_under_db_order(self) -> None:
+        entries = [{"file": "Source/Engine/Zulu.cpp", "arguments": ["clang++", "-DZ"]},
+                   {"file": "Source/Engine/Alpha.cpp", "arguments": ["clang++", "-DB"]},
+                   {"file": "Source/Engine/Alpha.cpp", "arguments": ["clang++", "-DA"]}]
+        self.assertIs(self.entry("Source/Engine/Scene/Header.h", entries), entries[2])
+        self.assertIs(self.entry("Source/Engine/Scene/Header.h", list(reversed(entries))), entries[2])
+
+    def test_source_identity_uses_entry_directory_without_mutating_entry(self) -> None:
+        entry = {"file": "../Source/Engine/Gpu/Owner.cpp", "directory": "/repo/build",
+                 "arguments": ["clang++", "-g", "-O0", "-DLMX_PENDING_POST", "-I../Source"]}
+        original = json.loads(json.dumps(entry))
+        foreign = {"file": "../Source/Engine/Asset/Owner.cpp", "directory": "/repo/build"}
+        self.assertIs(self.entry("Source/Engine/Gpu/Owner.h", [foreign, entry]), entry)
+        self.assertEqual(entry, original)
+        relative_directory = dict(entry, directory="build")
+        self.assertIs(self.entry("Source/Engine/Gpu/Owner.h", [relative_directory]), relative_directory)
+
+    def test_source_traversal_is_normalized_before_ownership(self) -> None:
+        entries = [{"file": "Source/Engine/../../RojoRHI/Source/Engine/Probe.cpp"},
+                   {"file": "Source/Engine/Gpu/Real.cpp"}]
+        self.assertIs(self.entry("Source/Engine/Gpu/Probe.h", entries), entries[1])
+
+    def test_missing_owner_and_missing_owner_context_are_explicit(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "no unit owns Source/Unknown/Header.h"):
+            self.entry("Source/Unknown/Header.h", [{"file": "Source/Core/Probe.cpp"}])
+        for entries in ([], [{"file": "Source/Engine/Asset/Header.cpp"}]):
+            with self.subTest(entries=entries):
+                with self.assertRaisesRegex(RuntimeError, "no compiled source found for unit engine"):
+                    self.entry("Source/Engine/Gpu/Header.h", entries)
+
+    def test_ast_uses_selected_directory_and_retains_flags_and_real_findings(self) -> None:
+        root = Path("/repo")
+        entry = {"file": "../Source/Engine/Gpu/Probe.cpp", "directory": "/repo/build",
+                 "arguments": ["clang++", "-g", "-O0", "-DLMX_PENDING_POST", "-I../Source",
+                               "-c", "../Source/Engine/Gpu/Probe.cpp", "-o", "probe.o"]}
+        header = root / "Source/Engine/Gpu/Probe.h"
+        ast = {"kind": "FunctionDecl", "name": "undocumented",
+               "loc": {"file": str(header), "line": 5, "offset": 100}}
+        result = subprocess.CompletedProcess([], 0, json.dumps(ast), "")
+        original = json.loads(json.dumps(entry))
+        with patch.object(comments.subprocess, "run", return_value=result) as run:
+            objects, error = comments._ast_for_header(header, [entry], root, self.contract)
+        self.assertIsNone(error)
+        command = run.call_args.args[0]
+        self.assertEqual(command[:5], entry["arguments"][:5])
+        self.assertNotIn("../Source/Engine/Gpu/Probe.cpp", command)
+        self.assertNotIn("probe.o", command)
+        self.assertIn(str(header), command)
+        self.assertEqual(run.call_args.kwargs["cwd"], Path("/repo/build"))
+        self.assertEqual(entry, original)
+        self.assertEqual(comments.public_api_findings_from_ast(
+            Path("Source/Engine/Gpu/Probe.h"), source("Probe.h"), objects
+        ), ["Source/Engine/Gpu/Probe.h:5: public API declaration has no Doxygen comment"])
+
+    def test_root_cwd_keeps_root_relative_header_and_compiler_errors_visible(self) -> None:
+        root = Path("/repo")
+        entry = {"file": "Source/Engine/Gpu/Probe.cpp", "directory": "/repo",
+                 "arguments": ["clang++", "-DRETAIN", "-c", "Source/Engine/Gpu/Probe.cpp", "-o", "probe.o"]}
+        result = subprocess.CompletedProcess([], 1, "", "real source error")
+        with patch.object(comments.subprocess, "run", return_value=result) as run:
+            objects, error = comments._ast_for_header(root / "Source/Engine/Gpu/Probe.h", [entry], root, self.contract)
+        self.assertEqual(objects, [])
+        self.assertEqual(error, "real source error")
+        self.assertIn("Source/Engine/Gpu/Probe.h", run.call_args.args[0])
+        self.assertEqual(run.call_args.kwargs["cwd"], root)
 
 
 if __name__ == "__main__":

@@ -5,8 +5,8 @@
 #include "App/Model/Rendering/Temporal/TemporalEditorState.h"
 #include "App/Model/Scene/EditorSelection.h"
 #include "App/Model/Scene/SceneSession.h"
-#include "Support/GraphTestSupport.h"
 #include "Support/SceneDocumentTestSupport.h"
+#include "Support/TestGpu.h"
 #include <catch2/catch_test_macros.hpp>
 
 using namespace lmx;
@@ -290,7 +290,7 @@ TEST_CASE("Measurement refuses imported and generated edits without notification
 
 //======================================================================================================================
 TEST_CASE("Instantiation captures generated own flags before an off ancestor masks them",
-          "[app][scene-enabled]") {
+          "[app][scene-enabled][device]") {
     asset::SceneDocument document;
     document.name = "Generated own flags";
     document.cameras.emplace_back();
@@ -304,7 +304,8 @@ TEST_CASE("Instantiation captures generated own flags before an off ancestor mas
         std::filesystem::current_path() / "SceneDocuments" / "generated-own-flags.scene.gltf";
     std::filesystem::create_directories(path.parent_path());
     REQUIRE(asset::saveSceneDocument(document, path));
-    FakeDevice device;
+    auto gpu = createTestGpu();
+    auto device = gpu->device();
     const engine::SceneGenerator generator =
         [](engine::Scene& scene, const asset::DocGenerator&,
            const engine::EnvironmentHook&) -> asset::AssetResult<void> {

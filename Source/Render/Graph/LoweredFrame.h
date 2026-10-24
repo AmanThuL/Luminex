@@ -5,12 +5,15 @@
 
 #pragma once
 
+#include "Engine/Gpu/GpuTexture.h"
 #include "Render/Graph/AttachmentOps.h"
 #include "Render/Graph/CompiledFrameRecord.h"
+#include "Render/Graph/RenderGraphLowering.h"
 #include "Render/Graph/ResourceUse.h"
+#include "Render/Graph/TextureStateTable.h"
+#include "Render/Graph/TransientPool.h"
 
-#include <rojoRHI/Buffer.h>
-#include <rojoRHI/Texture.h>
+#include <rojoRHI/RHI.h>
 
 #include <array>
 #include <cstdint>
@@ -21,31 +24,26 @@
 
 namespace lmx::render {
 
-/// One texture transition at a transition point.
+/// One exact physical texture dependency, including layout transitions and alias discards.
 struct LoweredTextureBarrier {
-    uint32_t resource = 0;                      ///< Index into LoweredFrame::resources.
-    rojoRHI::TextureSubresourceRange range;     ///< Subresources the transition covers.
-    TextureUse from = TextureUse::RenderTarget; ///< Use that last accessed the subresources.
-    TextureUse to = TextureUse::ShaderRead;     ///< Use that accesses them next.
-    /// Set when the resource takes over bytes an earlier transient held, so the transition orders
-    /// that transient's last use against this resource's first.
-    bool alias = false;
+    uint32_t resource = 0;           ///< Index into the emitted resource snapshot.
+    rojoRHI::SubresourceRange range; ///< Exact cells sharing one source state.
+    TextureState from;               ///< Prior valid-layout frontier.
+    TextureState to;                 ///< Next access/layout.
+    bool alias = false;              ///< Discards an earlier transient occupant.
 };
-
-/// One buffer transition at a transition point; it always covers the whole buffer.
+/// A whole-buffer physical dependency.
 struct LoweredBufferBarrier {
-    uint32_t resource = 0;                    ///< Index into LoweredFrame::resources.
-    BufferUse from = BufferUse::StorageWrite; ///< Use that last accessed the buffer.
-    BufferUse to = BufferUse::StorageRead;    ///< Use that accesses it next.
-    bool alias = false; ///< Set on a transient reuse boundary, as for a texture.
+    uint32_t resource = 0; ///< Resource index.
+    SyncPoint from;        ///< Outstanding earlier accesses.
+    SyncPoint to;          ///< Next accesses.
+    bool alias = false;    ///< Alias dependencies are global rather than buffer scoped.
 };
-
-/// A texture or a buffer transition, kept in one list so a transition point keeps record order.
+/// A texture or buffer dependency; alias buffer entries emit a global barrier.
 using LoweredBarrier = std::variant<LoweredTextureBarrier, LoweredBufferBarrier>;
-
-/// Every transition one scheduled pass needs before it starts, in record order.
+/// One nonempty physical boundary batch, independent of diagnostic transitions.
 struct BarriersOp {
-    std::vector<LoweredBarrier> barriers; ///< Never empty: a pass with none gets no op.
+    std::vector<LoweredBarrier> barriers; ///< All dependencies before the following pass/export.
 };
 
 /// One colour attachment of a render pass.
@@ -96,11 +94,22 @@ struct RunOp {
 using LoweredOp =
     std::variant<BarriersOp, BeginRenderPassOp, EndRenderPassOp, BeginScopeOp, EndScopeOp, RunOp>;
 
-/// The device objects behind one declared resource. Lowering fills imports; a transient stays null
-/// until its frame is placed.
+/// Borrowed buffer identity and immutable resolver metadata; owns no GPU object.
+struct BufferRef {
+    rojoRHI::Buffer buffer;               ///< Native identity.
+    uint64_t size = 0;                    ///< Buffer size, in bytes.
+    std::optional<rojoRHI::Addr> address; ///< Cached address; absent for unaddressable memory.
+};
+/// One emitted resource snapshot; transients are populated after placement.
 struct LoweredResource {
-    rojoRHI::Texture* texture = nullptr; ///< The texture, for a texture resource.
-    rojoRHI::Buffer* buffer = nullptr;   ///< The buffer, for a buffer resource.
+    engine::TextureRef texture{}; ///< Texture identity, sampled view and creation metadata.
+    BufferRef buffer{};           ///< Buffer identity, bounds and address.
+    std::vector<rojoRHI::ViewIndex> storageViews; ///< Actual views, one per available mip.
+};
+/// Proposed physical writeback, committed only after emission.
+struct TexturePhysicalFinalState {
+    uint32_t resource = 0;   ///< Persistent resource index.
+    TextureRangeState state; ///< Exact terminal physical cell/range.
 };
 
 /// The use a persistent texture is left in once the frame's work completes.
@@ -117,10 +126,12 @@ struct TextureFinalState {
 /// compute or copy pass's BeginScopeOp, RunOp and EndScopeOp under its own label, or an external
 /// pass's RunOp alone. `resources` shares the record's resource index space.
 struct LoweredFrame {
-    CompiledFrameRecord record;                 ///< What compilation decided.
-    std::vector<LoweredOp> ops;                 ///< The frame's operations, in order.
-    std::vector<LoweredResource> resources;     ///< Device objects, by resource index.
-    std::vector<TextureFinalState> finalStates; ///< Uses persistent textures are left in.
+    CompiledFrameRecord record;                            ///< What compilation decided.
+    std::vector<LoweredOp> ops;                            ///< The frame's operations, in order.
+    std::vector<LoweredResource> resources;                ///< Device objects, by resource index.
+    std::vector<TextureFinalState> finalStates;            ///< Diagnostic final uses.
+    std::vector<TexturePhysicalFinalState> physicalStates; ///< Proposed physical writebacks.
+    TransientLayout transientLayout; ///< Exact effective placement/cache descriptors.
 };
 
 } // namespace lmx::render

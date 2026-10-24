@@ -7,17 +7,7 @@ local gltf_validator_archive_sha256 =
     "bce89ceea00b4d3191a8779018f41744b84a4539b127465d63ba83ad0f243fef"
 local gltf_validator_binary_sha256 =
     "4751098c84469231c4e06e2ba0f2fe472f3143a35725c7a168b595d2110d7eef"
--- The docking-branch pin is the first revision used here with the native Metal 4 backend.
--- Re-pinning requires rebasing the texture-removal patch and verifying ARC and ImTextureID
--- conventions; setup rejects a mismatched checkout before applying the patch.
--- That patch also carries a fix to the backend's platform-window pacing: upstream signals a single
--- monotonic counter onto a per-frame-slot shared event, so the next NewFrame -- which runs on a
--- different slot -- waits forever on a value that slot's event never received. It gives each slot
--- its own pending value, and is what makes the detached Render Graph window survive past its
--- second frame. Its third hunk drains an autorelease pool around the backend's platform-window
--- create/render path and releases what it owns: the file is compiled without ARC and the frame
--- loop drains no pool, so upstream's ARC-shaped code leaked one drawable -- one IOSurface -- per
--- frame of the detached window. Re-pinning must rebase all three.
+-- Dear ImGui core and the SDL3 platform backend use this docking-branch pin.
 local imgui_pin    = "83f668625ad45364de71d385aeb6a5dd04bee02e"
 -- thedmd/imgui-node-editor `master` at 2026-03-29 (unreleased; the repo has no tags past 0.9.1,
 -- which predates the docking-branch ImGui API this project pins). Patched against our imgui_pin
@@ -275,12 +265,6 @@ task("setup")
         local imgui_head = os.iorunv("git", {"-C", "ThirdParty/imgui", "rev-parse", "HEAD"}):trim()
         assert(imgui_head == imgui_pin,
                format("ThirdParty/imgui is at %s; expected pinned commit %s", imgui_head, imgui_pin))
-
-        local imgui_patch = path.join(os.projectdir(),
-                                      "RojoRHI/Tools/Patches/imgui-metal4-remove-texture.patch")
-        assert(os.isfile(imgui_patch),
-               "RojoRHI/ is empty: run `git submodule update --init`, then `xmake setup` again")
-        apply_maintained_patch("ThirdParty/imgui", imgui_patch)
 
         if not os.isdir("ThirdParty/imgui-node-editor") then
             -- Fetch the exact untagged commit without cloning the rest of the repo's history.

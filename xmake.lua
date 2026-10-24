@@ -9,7 +9,7 @@ set_policy("build.warning", true)
 add_requires("libsdl3", "glm", "spdlog", "catch2 3.x", "cgltf", "stb")
 
 -- Reusable rules/tasks and pinned third-party definitions are owned by these includes.
-includes("xmake/shaders.lua", "xmake/setup.lua", "xmake/tasks.lua", "xmake/dependencies.lua")
+includes("xmake/setup.lua", "xmake/tasks.lua", "xmake/dependencies.lua")
 
 -- The RHI component configures from its own root too, so it owns one includable targets file and
 -- reads where its vendored dependencies and the Dear ImGui target live from this root. Its own
@@ -26,6 +26,7 @@ end
 includes("RojoRHI/xmake/targets.lua")
 
 includes("xmake/port.lua")
+includes("xmake/luminex_shaders.lua")
 
 -- First-party targets keep source membership and dependency declarations beside their units.
 includes("Source/Core/xmake.lua", "Source/Render/xmake.lua",

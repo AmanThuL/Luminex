@@ -30,8 +30,8 @@ namespace {
 // is device-private by construction, since it can neither be uploaded to nor read back.
 struct AliasClass {
     bool isTexture = true;
-    rojoRHI::Format format = rojoRHI::Format::Unknown;
-    rojoRHI::TextureKind kind = rojoRHI::TextureKind::Tex2D;
+    rojoRHI::Format format = rojoRHI::Format::Undefined;
+    rojoRHI::TextureType kind = rojoRHI::TextureType::Tex2D;
     uint32_t width = 0;
     uint32_t height = 0;
     uint32_t mipLevels = 0;
@@ -39,6 +39,7 @@ struct AliasClass {
     bool sampled = false;
     bool storageRead = false;
     bool storageWrite = false;
+    bool indirectArgs = false;
     uint64_t bufferSize = 0;
     // The backend's own answer for the descriptor, which is what the packing is actually built on.
     uint64_t size = 0;
@@ -48,11 +49,13 @@ struct AliasClass {
 
 //======================================================================================================================
 AliasClass aliasClassOf(bool isTexture, rojoRHI::Format format, const TransientTextureDesc& texture,
-                        const TransientBufferDesc& buffer, const TransientFootprint& footprint) {
+                        const TransientBufferDesc& buffer, const TransientFootprint& footprint,
+                        bool indirectArgs) {
     if (!isTexture) {
         return {.isTexture = false,
                 .storageRead = buffer.storageRead,
                 .storageWrite = buffer.storageWrite,
+                .indirectArgs = indirectArgs,
                 .bufferSize = buffer.size,
                 .size = footprint.size,
                 .alignment = footprint.alignment};
@@ -320,16 +323,27 @@ RenderGraph::AliasPlan RenderGraph::planTransients(const Schedule& schedule) con
 
         AliasClass klass;
         if (entry.used) {
-            // The pool's backend is asked what the descriptor costs rather than the descriptor
-            // being measured here: only the backend knows the layout it will choose, and a plan
-            // built on a guess would place resources where they do not fit.
-            const TransientFootprint footprint = resource.kind == ResourceKind::Texture
-                                                     ? m_transients->footprint(resource.textureDesc)
-                                                     : m_transients->footprint(resource.bufferDesc);
+            // Declaration captured both exact effective descriptors before compilation.
+            // The selected schedule chooses a snapshot; compilation performs no device query.
+            entry.indirectArgs =
+                resource.kind == ResourceKind::Buffer &&
+                std::ranges::any_of(schedule.passes, [&](uint32_t pass) {
+                    return std::ranges::any_of(
+                        m_passes[pass].declarations, [&](const Declaration& declaration) {
+                            return declaration.resource == index &&
+                                   declaration.role == UseRole::IndirectArgument;
+                        });
+                });
+            const TransientFootprint footprint =
+                resource.kind == ResourceKind::Texture
+                    ? *resource.textureFootprint
+                    : (entry.indirectArgs ? resource.bufferFootprints->indirect
+                                          : resource.bufferFootprints->normal);
             entry.size = footprint.size;
             entry.alignment = footprint.alignment;
             klass = aliasClassOf(resource.kind == ResourceKind::Texture, resource.format,
-                                 resource.textureDesc, resource.bufferDesc, footprint);
+                                 resource.textureDesc, resource.bufferDesc, footprint,
+                                 entry.indirectArgs);
         }
         plan.transients.push_back(entry);
         classes.push_back(klass);

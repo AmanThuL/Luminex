@@ -2,7 +2,7 @@
 
 **Status**: Implemented
 
-Native TAA, CPU culling, indirect submission and Clustered local lighting are defaults; vendor reconstruction shares temporal inputs. The [local-light default decision](../milestones/m7/m7.5-validation.md#default-decision) follows the passed lossless-list and scoped exact-image gates; Direct remains the reference.
+This retained walkthrough covers the pending full-stage frame; the [active subset](rojorhi.md#component-boundary) is scene-clear → display → UI, with lighting measurement unavailable. Native TAA, CPU culling, indirect submission and Clustered local lighting are the retained defaults; vendor reconstruction shares temporal inputs. The [local-light default decision](../milestones/m7/m7.5-validation.md#default-decision) follows the passed lossless-list and scoped exact-image gates; Direct remains the reference.
 ## The frame at a glance
 
 A fresh `RenderGraph` imports targets, five geometry/material scene buffers (plus lights when live), two submission buffers, persistent histogram/exposure buffers and the drawable. Renderer composes the stages below; graph compilation
@@ -15,12 +15,12 @@ Invalid source/camera/coverage history or wireframe retains globally; shadows re
 Independent direct ID/depth checks copy into paced readback and join by frame and instance identity.
 
 `App/Model/Scene/SceneSession` owns shared playback, views and motion; `prepareFrame` updates the retired scene-table slot after `beginFrame`.
-`Render/Graph/FrameDeclaration` rotates the pool, declares/executes passes and returns App's retained record. Editor adds UI/present then platform windows; headless exports display and waits per frame.
+`Render/Graph/FrameDeclaration` rotates the pool, declares/executes passes and returns App's retained record. Editor builds UI outside the device frame, acquires inside it, then records graph/UI/platform work, submits, presents and ends the frame; headless exports display and waits per frame.
 Screenshots start at zero and sequences sample frame/60 with warmup. Editor loads Stopped; menu-row Play/Step advances fixed steps after drawable acquisition, Pause stops advancement.
 First Play captures camera/time and animation-owned object poses/emissive strength and tracked light positions; Stop or scene switch restores them and resets motion/temporal/exposure. Rendering settings and unrelated edits remain outside this shared-scene preview restoration.
 Performance > Measure > Start runs deterministic W/N; the menu-row transport shows progress with only Stop enabled. Closing Performance leaves the run active. Stop/completion restores preview state, retains results and does not reopen it. CLI scheduling is unchanged; see [playback](../guides/gpu-debugging.md#editor-playback).
 
-Below is the *default* frame — manual exposure, bloom on, temporal on with `NativeTaa` (`SceneView::temporal.enabled == true`, `reconstruction == NativeTaa`, the default since M6.2), at
+Below is the retained full-stage frame — manual exposure, bloom on, temporal on with `NativeTaa` (`SceneView::temporal.enabled == true`, `reconstruction == NativeTaa`, the default since M6.2), at
 `renderScale == 1.0` (below 1.0 the scene pass's render area shrinks; see Resources and lifetime). Auto-exposure, bloom, and temporal are ordinary
 declared passes either way; toggling one off removes only the declaration reaching a sink.
 
@@ -175,22 +175,19 @@ belong to one frame (ADR 0008). Each pass declares every read/write and its subr
 cycles, invalid attachments/formats, transient reads before writes and invalid sinks/exports. Resolved mip/layer bounds use Core `Interval`; transition derivation seeds earlier accesses, then emits alias, RAW and WAW/WAR dependencies before recording each pass's accesses.
 It returns a serial topological schedule containing only passes reachable from a declared sink:
 exports, presentation or readback destinations. Execution validates again, then runs each callback
-with `PassResources` restricted to that pass's declared handles. Raster, compute and copy callbacks
-run inside labelled RHI scopes; external callbacks open no scope and invoke a timed RHI operation.
+with `PassResources` restricted to that pass's declared handles. Raster callbacks run inside labeled render passes; compute/copy use explicit scopes. External callbacks open no graph scope and invoke a timed RHI operation.
 
 RAW, WAR and WAW barrier derivation includes subresources and `ExternalRead`/`ExternalWrite`.
-Persistent imports seed the prior frame's terminal access, ordering reuse across command buffers.
+Persistent imports retain independent logical uses and exact physical mip/layer frontiers, ordering reuse across command buffers; final-use and Present transitions emit before state writeback.
 `CompiledFrameRecord.h` owns the value-only record and debug vocabulary, separate from the builder.
 The `CompiledFrameRecord` retains schedule, culling, barriers, lifetimes and memory assignment;
 `GraphDump.h` prints it deterministically. Scheduling optimization remains limited to dead-pass culling and conservative transient pooling.
 
 `TransientPool` owns one placement heap per frame slot, recycled only after `beginFrame` proves
-that slot retired. Compilation places lifetime-disjoint compatible resources first-fit, emits a whole-resource barrier on alias reuse, and records high-water bytes and savings. Descriptor
-compatibility includes kind, format, extent, mips, usage, size and alignment. Footprint changes may
-create a new heap generation. Disabling pooling gives each transient separate bytes without changing the picture. Histogram and exposure buffers remain persistent imports across frames.
+that slot retired. Compilation places lifetime-disjoint compatible resources first-fit; physical lowering orders alias reuse and records retain high-water bytes and savings. Descriptor
+compatibility includes kind, format, extent, mips, usage, size and alignment. Complete structural layout equality reuses cached placements/views; changes may create a new heap generation. Disabling pooling gives each transient separate bytes without changing the picture. Histogram and exposure buffers remain persistent imports across frames.
 
-Every pass kind is timed. `Device::passTimings()` publishes the retired frame identified by
-`passTimingsFrame()`. App joins its declaration-time counts/extents/context with those timings.
+Render passes and compute/copy scopes provide timings. `GpuContext::endFrame` copies retired `scopeTimings`; App joins declaration-time counts/extents/context by the actual retired frame ID after every end, including private copy/skip frames.
 Performance shows a coherent 60-retired-frame rolling snapshot at 4 Hz; freeze/clear/resume are
 independent of playback. Timed-pass sum excludes presentation, driver and untimed GPU work. Render Graph publishes one owned record and exactly matched timings at 4 Hz; first data/Resume
 publish immediately, later topology changes wait. Freeze latches labels, details and Dump together.
@@ -208,21 +205,21 @@ It writes neither scene targets nor temporal histories. Ordinary Renderer and of
 Console shares the bottom dock with Performance summary/Session; Rendering tabs beside Inspector. Detailed Performance/Graph are detached, initially closed. Workspace schema 6 stores nine visibilities, scale, appearance/density and bounds; schema 5 restores with Session hidden, schema 4 with Auto/Comfortable, schema 3 keeps six visibilities/scale/detached bounds and rebuilds docks once.
 Window > Performance toggles the detailed window; summary Details opens/focuses Live, and its Measure tab owns runs. ImGui vertex/index uploads stay in per-slot used lists until the next paced visit, so native windows cannot overwrite main-frame GPU reads. Log ingestion remains independent of GPU/panel freeze; see the [guide](../guides/gpu-debugging.md).
 
-Neutral interfaces/capture schema live in `RojoRHI/Legacy/Include/rojoRHI/`, shared implementation in `RojoRHI/Legacy/Source/`,
-and the backend in `RojoRHI/Legacy/Backends/Metal4/Source/`; optional `RojoRHILegacyMetal4ImGui` contains UI dependencies.
+The core value API lives in `RojoRHI/Include/rojoRHI/RHI.h`; `RojoRHIImGui` owns the public adapter. Engine owns GPU lifetimes and capture metadata; [RojoRHI integration](rojorhi.md) details frame/surface teardown.
 
 ## Resources and lifetime
 
-- **3 frames in flight.** Each slot owns an argument table, command allocator and growable
-  frame-data arena. `bindFrameData` copies at 256-byte or wider alignment into 256 KiB pages
-  (oversize pages round up to that quantum), returning the GPU address and binding it. `beginFrame` proves retirement before cursor reuse; pages retain their high-water capacity.
-- **Scene tables.** Three `cpuWrite` slots per kind; changes mark all slots dirty, but only the retired slot uploads.
-  Static scenes converge to zero writes. Mesh rows initialize once; growing tables retain old buffers until the last
-  prepared frame + 3. Stable handles survive reorder and reject stale/foreign identities; new instances seed previous
-  pose, promoted by `commitFrame`. `Buffer::write` validates permission/source/range. Rendering > Scene tables > Diagnostics reports capacities,
-  bytes and writes; Scene tables and submission lists are CPU-written graph imports without GPU-write barriers.
+- **3 frames in flight.** `GpuContext::beginFrame` paces reuse before acquiring the graphics list.
+  `uploadFrameData` returns an `Addr` for transient constants and `pushRoot` supplies the root;
+  the component owns arena alignment, pages and residency. Owners outlive borrowed handles/refs.
+- **Scene tables.** Three mapped `Memory::Upload` slots per kind; only a retired slot receives dirty
+  rows through `cpuPointer()`. Mapping does not synchronize. Static scenes converge to zero writes;
+  growth retains old buffers through last prepared frame + 3. Stable IDs survive reorder and reject
+  stale/foreign identities; `commitFrame` promotes previous pose. Diagnostics retains byte/write counts.
+- **Readback.** Checked tickets/results use exact current texture ranges or an explicit buffer
+  frontier, restore states and de-pad rows. Mapped reads wait without opening a copy frame.
 - **RHI resources join one residency set** attached to the queue; MetalFX manages its own private resources.
-- **Renderer-owned targets**: scene color (`RGBA16Float`, scene-linear, cpu-readable on request),
+- **Renderer-owned targets**: scene color (`RGBA16Float`, scene-linear, readable through staging),
   display color (`BGRA8Unorm`, what the viewport and a screenshot read), `lmx.render.motion` (`RG16Float`), `lmx.render.reactive` (`R8Unorm`), and two ping-ponged pairs — colour history
   (`lmx.render.historyColor0/1`, `RGBA16Float`) and depth (`lmx.render.sceneDepth0/1`, `D32Float`)
   — all resize with the Viewport panel (debounced, GPU-drained); the shadow map is fixed at 2048².

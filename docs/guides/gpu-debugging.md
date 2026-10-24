@@ -74,38 +74,42 @@ MTL_CAPTURE_ENABLED=1 \
 LMX_CAPTURE_AT_FRAME=30 \
 LMX_MAX_FRAMES=40 \
 LMX_CAPTURE_PATH=/tmp/luminex-frame.gputrace \
-xmake run App
-
-python3 Tools/GpuDebug/gputrace_dump.py \
-  /tmp/luminex-frame.gputrace \
-  --out /tmp/luminex-frame-dump
+xmake run -P . App
 ```
 
-`LMX_CAPTURE_PATH` must be absolute. The capture covers one frame. To reproduce an upscaled frame,
-add `--render-scale <0.5..1.0>` (offscreen) or `LMX_DYNAMIC_RESOLUTION_BUDGET_MS=<ms>` (a windowed
-run, letting the controller pick the scale the captured frame lands at); the manifest and dumped
-images then show `lmx.pass.temporal.upscale`'s inputs and the scene pass's render area/scissor
-instead of the native resolve's. Inspect the generated manifest first, then decoded uniforms and resource images. The capture's schema sidecar records one
-`frameDataUploads` entry per `bindFrameData` call in the captured frame (page label, slot, offset,
-size, alignment, and GPU address), which is what to check when tracing an upload to its page; the
-dump tool's decoded output remains `uniforms.json`. Treat label joins and positional frame-data-page
-joins with the confidence recorded in the manifest; the Metal capture bundle is not a documented interchange format.
+`LMX_CAPTURE_PATH` must be absolute. Capture intent waits for a successful drawable acquire;
+only a successful capture is ended, after its submitted frame fence. Inspect the `.gputrace` in
+Xcode for command order, resource contents and bindings. The integration branch currently runs
+[scene-clear → display → UI](../architecture/rojorhi.md#component-boundary); pending-stage recipes
+below describe the retained full renderer, not this subset. Lighting measurements are unavailable.
+
+The adjacent `.schema.json` uses schema version 2: scene/camera context, genuine Luminex owner
+resource metadata, registered `uniformStructs`, and `frameRoots` containing a root name plus
+`Addr` lo/hi. It has no slot/page or `frameDataUploads` channel. Owner metadata describes creation;
+use actual command state when diagnosing synchronization. See the
+[GPU ownership layer](../architecture/engine.md) for registration and lifetimes.
+
+The current `gputrace_dump.py`/uniform decoder supports schema 1 only and explicitly rejects these
+new schema-2 sidecars. [The decoder migration](https://github.com/AmanThuL/rojo-rhi/issues/145)
+owns new-root decoding and evidence; native Xcode capture inspection remains available. For an
+archived schema-1 capture only, the historical command is:
+
+```bash
+python3 Tools/GpuDebug/gputrace_dump.py /tmp/archived-frame.gputrace --out /tmp/archived-frame-dump
+```
 
 Escalate in this order:
 
-1. Confirm the selected scene, camera, render settings, and capture frame.
-2. Check manifest anomalies and finiteness/range of decoded uniforms.
-3. Inspect pass inputs and outputs, beginning at the earliest incorrect resource.
-4. Reproduce with Metal validation enabled.
-5. Add a narrow engine-side diagnostic or inspect the capture in Xcode when the dump cannot establish
-   command order or binding state.
+1. Confirm scene, camera, settings and capture frame; distinguish pending stages from missing work.
+2. Inspect the schema's registered root layouts, addresses and owner metadata.
+3. Inspect inputs/outputs in Xcode, beginning at the earliest incorrect resource.
+4. Reproduce with Metal validation; Debug `--rhi-validation` enables the RHI tracker separately.
+5. Add a narrow diagnostic if the trace cannot establish command order or state.
 
-Metal4 argument tables clear texture slots at each render/compute pass before binding the resources that pass uses. This prevents unused slots from naming retired transient textures
-when Xcode enumerates bindings. Draw/dispatch snapshots preserve earlier work. On Xcode 26.6,
-use **Bound** resources for inspection; **Accessed** mode is unavailable for Metal4. Scene draws
-show vertices at b0, the 16-byte firstEntry selector at b1, visible instance-row indices at b4,
-240-byte instances at b5 and 112-byte materials at b6; local lights/grid/indices at b8/b9/b10 and the 136-byte LocalLightParams frame-data block at b11. Indirect commands use firstInstance as the
-absolute list offset; batched argument indices differ from list offsets. Mesh rows are 48 bytes.
+Ported shaders use module-owned bindings, roots/Addr and view indices rather than the retained
+scene shader's buffer slots. Graph reads alone do not register shader accesses with the tracker;
+nested arena data without exposed handles and opaque adapter texture-ID reads are not fully
+tracked. A clean tracker run complements physical-state tests and native inspection.
 
 Keep captures and dump directories outside the repository. A postmortem records only the durable symptom, evidence, root cause, correction, and prevention.
 

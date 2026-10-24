@@ -2,117 +2,136 @@
 
 **Status**: Implemented
 
-RojoRHI is Luminex's rendering hardware interface: a dependency-free API over Metal 4, with D3D12
-as a design target. It is a repository-root component rather than a `Source/` unit. Engine,
-Scenes, Render and the layers above them link it directly, outside the Core-based stack; which
-Luminex units may include which RojoRHI headers is the `externals` contract in
-[modules](../conventions/modules.md) (Asset and TextureBake see only `Format.h`). RojoRHI's own
-[architecture page](../../RojoRHI/docs/architecture/overview.md) owns its directory layout, its
-standalone `xmake -P RojoRHI` build, and its private base that replaces a Core dependency. This
-page covers the Luminex side of the boundary, and the parts of the public interface and Metal 4
-backend that RojoRHI's page leaves out.
+RojoRHI is Luminex's dependency-free rendering hardware interface, mounted at the repository
+root rather than under `Source/`. Engine, Scenes, Render and App consume its public value API;
+Core and Asset remain independent. The [module contract](../conventions/modules.md) owns which
+units may include its headers. This page describes the consumer boundary; the component's
+[architecture](../../RojoRHI/docs/architecture/overview.md) owns backend implementation details.
 
 ## Component boundary
 
-`RojoRHI/` mounts the separately published, Apache-2.0 `rojo-rhi` repository as a git submodule,
-pinned to a commit reachable from that repository's `main`; `Tools/check_submodule_pin.py` fails
-the policy check otherwise. Under the two-repository rule, a Luminex commit never edits a file
-under `RojoRHI/`; an RHI change is a `rojo-rhi` commit that reaches Luminex as a pin bump
-([ADR 0024](../decisions/0024-rhi-relocation-to-rojorhi.md)). The repository root includes only
-`RojoRHI/xmake/targets.lua` from the component. RojoRHI's own `xmake.lua`, which the root never
-includes, carries the standalone root settings and includes `xmake/setup.lua`, `xmake/tasks.lua`
-and `xmake/targets.lua`; `targets.lua` itself includes the component's `shaders.lua` rule, so a
-host that includes it gets the rule with the targets. Through `targets.lua` the root build compiles
-the frozen v1 targets `RojoRHILegacy`, `RojoRHILegacyMetal4ImGui` and `RojoRHIMetalCpp`, which
-Luminex links, and the v2 `RojoRHI` target, which no Luminex target links. Luminex's tests run as
-`xmake test Tests/unit Tests/gpu RojoRHILegacyTests/unit RojoRHILegacyTests/gpu`;
-a plain `xmake test` also runs the component's v2 groups, so the groups are named. Hosted CI
-configures `--rojorhi_backend=null` (the default on macOS is `metal4`), and Metal 4 runs are local.
-The root `policy` task checks only the pin; RojoRHI's own checkers and
-format task run from inside the mount (`-P .`) and in `rojo-rhi`'s CI.
+`RojoRHI/` mounts the Apache-2.0 `rojo-rhi` repository as a git submodule. Its pin must be reachable
+from that repository's `main`; `Tools/check_submodule_pin.py` enforces this. A Luminex commit never
+edits files inside the mount: changes land upstream first, then arrive through a pin bump
+([ADR 0024](../decisions/0024-rhi-relocation-to-rojorhi.md)).
 
-RojoRHI grows only when a rendering feature supplies a real portability requirement. Metal 4 is the
-first implementation, and no accepted contract exposes a native handle to callers
-([RojoRHI ADR 0003](../../RojoRHI/docs/decisions/0003-thin-rhi.md)). D3D12 is the intended second
-production backend; Vulkan remains research evidence rather than a planned target
-([RojoRHI ADR 0004](../../RojoRHI/docs/decisions/0004-second-backend-target.md)).
+The root includes `RojoRHI/xmake/targets.lua`, linking `RojoRHI` for the core API and
+`RojoRHIImGui` for the app-shell adapter. The component still declares its frozen Legacy targets,
+but no Luminex target links them. Asset and TextureBake have no RHI include permission or
+dependency. Hosted CI selects `--rojorhi_backend=null`; Metal 4 builds and GPU execution use the
+local device. The component's own checkers run in its repository and CI, separately from Luminex
+policy. See the [component build](../../RojoRHI/AGENTS.md) for standalone commands.
+
+On this integration branch, `xmake/port.lua` selects a scene-clear → display → UI frame.
+SCENE, VISIBILITY, LIGHTS, POST and TEMPORAL remain pending, and BENCH keeps FrameDataBench
+dormant. The retained stage algorithms in the [frame walkthrough](frame-pipeline.md) describe
+those families, not the active subset. Screenshots retain neutral lighting metadata; headless
+and editor measurement report lighting diagnostics unavailable while LIGHTS is pending.
+Minimal-frame timings do not establish full-renderer parity or cost acceptance.
 
 ## Public interface
 
-RojoRHI's v1 public headers live under `RojoRHI/Legacy/Include/rojoRHI/`; each leaf compiles alone,
-split by owner concept: `GpuAddress.h`, `Format.h`, `Buffer.h`, `Texture.h`, `Heap.h`, `Sampler.h`,
-`ShaderLibrary.h`, `GraphicsPipeline.h`, `ComputePipeline.h`, `Indirect.h`, `RenderPass.h`,
-`CommandList.h`, `TemporalScaler.h`, `Swapchain.h`, and `Device.h`, plus `Result.h` and
-`Message.h`, behind an includes-only `RHI.h` umbrella that declares no parallel surface.
-`TextureDesc.h` is reached through `Texture.h`; `Validate.h` and `CaptureSchema.h` stand outside
-the umbrella, and `rojoRHI/Metal4/` holds two backend-scoped headers (`Metal4Capture.h`,
-`Metal4FrameData.h`) that carry plain diagnostic values. Together the public headers expose
-API-neutral resource, pipeline, command, synchronization, capture, and domain-owned error
-contracts, with no Metal or ImGui type reachable from any of them.
+`RojoRHI/Include/rojoRHI/RHI.h` is the dependency-free public core header. Handles such as
+`Texture`, `Buffer`, `Pipeline`, `Queue` and `Fence` are values; they do not own objects or expose
+backend types. Creation returns a checked result. Debug valid-usage checks diagnose misuse;
+Release callers must still satisfy the same interface contracts.
 
-Transient per-frame parameter delivery is one typed operation, `CommandList::bindFrameData(slot,
-value)`: it allocates, copies, and binds the caller's block in one call and returns a `GpuAddress`,
-a standard-layout, arithmetic-free value naming the block's GPU location for the open frame. Data
-that survives the frame is bound as a buffer through `bindBuffer`, not copied through the
-frame-data arena. [ADR 0010](../decisions/0010-execution-model-partial-reshape.md) chose this
-address-first path while keeping the object-shaped resource, pass, pipeline, residency, and barrier
-model, and the render graph's logical ownership, restated for the component as
-[RojoRHI ADR 0006](../../RojoRHI/docs/decisions/0006-execution-model.md).
+`Engine/Gpu/GpuContext` owns the device, graphics queue, frame and idle fences, shader loading and
+copied retired timings. It outlives every GPU owner. `GpuOwned<T>` destroys a handle through its
+device; native release is deferred. `GpuTexture` retains its descriptor and sampled/per-mip
+storage views, releasing views before the texture. `TextureRef` borrows the handle, sampled view,
+extent, format, mip/layer counts and immutable creation layout. Creation with initial data means
+ShaderRead; otherwise it means Undefined. Neither fact substitutes for current physical state.
 
-`BufferDesc::cpuWrite` enables a checked `Buffer::write(offset, data, size)` host upload into
-host-visible memory: the call requires non-null data and a nonempty in-bounds range, and the caller
-must prove every GPU reader and writer of that range has already retired. The Metal 4 backend
-copies into shared storage; a device-private placed buffer rejects the flag. Paced scene tables are
-the first consumer.
+`GpuBuffer` retains its descriptor, mapped pointer and GPU `Addr` where its memory class permits
+one. Three paced `Memory::Upload` buffers per scene-table kind receive CPU writes through
+`cpuPointer()` only after their slot retires. Mapping performs no synchronization. Persistent
+shader data is addressed through `Addr`; transient constants use `uploadFrameData` and
+`pushRoot`, with module-owned bindings and view/sampler indices described in [shaders](shaders.md).
 
-`RenderPassDesc` and `GraphicsPipelineDesc` support up to `kMaxExtraColorTargets` (3) additional
-colour attachments beyond the primary, validated for colour-renderable formats and a matching
-extent; `RG16Float` and `R8Unorm` are colour-renderable and CPU-readable, which is what
-motion-vector and reactive-weight targets need. `RenderPassDesc` also carries an origin-anchored
-`renderAreaWidth`/`Height` (default 0/0, meaning the whole attachment), validated against every
-attachment and encoded as an explicit Metal 4 viewport and scissor when non-zero.
-
-`DeviceCapabilities::temporalScaler` reports an optional reconstruction algorithm and its
-input/output scale interval; `TemporalScaler` owns private reconstruction history, and the
-between-pass `CommandList::temporalScale` consumes neutral frame parameters. `R16Float` is sampled
-and storage-writable for the exposure texel; no MetalFX type enters a public header.
+Readback uses `Render/Gpu/Readback`: recorded tickets preserve causal failures, `resolve` returns
+`Result<void>`, and `readbackNow` returns checked bytes. Textures supply exact current table/range
+states; copies restore those frontiers and de-pad rows. Buffers supply an explicit `SyncPoint`.
+Mapped Upload/Readback reads wait without consuming a copy frame; staged GPU reads require source
+lifetime until retirement. A Readback buffer is never used as a copy source.
 
 ## Metal 4 backend
 
-`RojoRHI/Legacy/Backends/Metal4` implements the current backend with private metal-cpp headers,
-keeping three frames in flight ([RojoRHI ADR 0002](../../RojoRHI/docs/decisions/0002-metal4-first.md)) over
-argument tables whose texture slots clear before each render or compute pass. A per-frame-slot
-growable frame-data page arena backs `bindFrameData`: normal pages are 256 KiB, an oversize request
-rounds up to that page quantum, and pages stay mapped and resident until device destruction, so a
-slot's high-water mark becomes its reused capacity instead of being released. The backend also owns
-residency tracking, shared-event pacing, render, compute and copy pass encoders, indirect draws and
-dispatches, untracked placement heaps whose resources are created at explicit offsets, per-pass GPU
-timing, and capture support.
+Luminex selects Metal 4 on macOS and requires the offline Metal toolchain. The mounted component
+owns native translation, frame arenas, residency, deferred destruction, scope timestamps and
+capture. Its [Metal backend](../../RojoRHI/docs/architecture/metal4-backend.md) and
+[recording contract](../../RojoRHI/docs/architecture/metal4-recording.md) describe those mechanisms.
+No backend handle enters Luminex's core or engine interfaces.
 
-Its MetalFX temporal scaler translates reciprocal scale units, hands work across opaque encoders
-through a public fence, and retains state in every encoded frame slot until retirement;
-CPU-readable outputs use a creation-time private scratch buffer copied inside the same timed call.
-
-The optional `RojoRHILegacyMetal4ImGui` target owns the ImGui adapter, with sources under
-`RojoRHI/Legacy/Backends/Metal4/ImGui/Source/`, its ImGui-dependent public extension header,
-and the dependency on Dear ImGui; the core RHI does not inherit any of them
-([RojoRHI ADR 0003](../../RojoRHI/docs/decisions/0003-thin-rhi.md)).
+`RojoRHIImGui` exposes `<rojoRHI/ImGuiAdapter.h>` only to app-shell. `EditorSurfaces.mm` supplies
+`SurfaceCallbacks`: `createSurface` resolves SDL's window ID, creates an `SDL_MetalView`, and
+returns its layer; `destroySurface` releases the matching view. The adapter owns detached-window
+swapchains and synchronization, while SDL owns the native windows. UI texture IDs come from
+`imgui::textureId` using the owner's sampled view.
 
 ## Luminex-side integration
 
-RojoRHI has no dependency on Core, and Core has none on RojoRHI (its private base is on RojoRHI's
-page). Diagnostics leave through `rojoRHI/Message.h`'s severity/text callback, which writes to
-stderr when unset ([RojoRHI ADR 0003](../../RojoRHI/docs/decisions/0003-thin-rhi.md)).
-`Render/Common/RhiLog` installs the process-wide sink and forwards each message into spdlog and the
-Console, mapping Info, Warning, and Error onto the matching project log level, for App and
-Luminex's `Tests` binary.
+`Render/Common/RhiLog` installs `setMessageCallback` and forwards severity/text messages into
+spdlog and Console. Core has no dependency on RojoRHI, and RojoRHI has none on Core.
+
+The windowed loop keeps surface creation, resizing and platform-window lifecycle outside device
+frames. Its order is:
+
+1. Poll SDL events, applying every positive main pixel-size event to `Swapchain::resize`, including
+   same-size events. Query the current pixel extent again and resize if it differs from the last
+   resized extent. Apply pending scene-target resize before building UI.
+2. Call `imgui::newFrame`, `ImGui_ImplSDL3_NewFrame`, `ImGui::NewFrame`, build UI and `ImGui::Render`.
+3. Call `GpuContext::beginFrame`, which opens the device frame and acquires a graphics list, then
+   acquire the main drawable. A zero extent or null image still submits the list and ends the
+   frame, joins retired timings, cancels a contiguous interactive measurement and retains capture
+   intent. The attempt consumes a real frame number and counts as skipped; nothing is presented.
+4. After successful acquire, start a requested capture, prepare scene data and declare the graph.
+   Import the drawable as a value ref in Undefined and sink it as Present. Call `imgui::prepare`
+   before graph execution; the graph's UI pass calls `imgui::render` inside its render pass.
+5. Record `imgui::renderPlatformWindows` on the same list, call `gpu.submit`, `gpu.present(main)`,
+   `imgui::presentPlatformWindows(gpu.graphicsQueue())`, then `gpu.endFrame` and join timings.
+6. For a successful capture, wait for its submitted frame and end it exactly once. Call
+   `ImGui::UpdatePlatformWindows` outside the frame, on normal and skipped paths alike.
+
+SDL can change the Metal layer's `drawableSize` synchronously inside `SDL_SetWindowSize`, before
+the pixel-size event arrives. The per-attempt extent comparison closes that gap. Luminex never
+writes `drawableSize` directly. The adapter sizes detached swapchains from the actual platform
+window size; the host needs no workaround on ImGui viewport fields.
+
+Every acquired list is submitted and every opened frame ends, including preparation failures.
+Shutdown waits for GPU work, destroys detached windows and shuts down the adapter before its
+ImGui context, then releases renderer/pool owners and the main swapchain before the GPU context.
+The main SDL Metal view and native window outlive context teardown.
+
+`GpuContext::submit` signals the frame fence with its frame number. Present occurs after submit
+and before `endFrame`; `submitAndEndFrame` combines those operations for headless or skipped
+frames. `waitIdle` uses a separate empty submission and idle fence outside a frame. `endFrame`
+copies retired scope timings; App joins them immediately by their actual retired ID after every
+frame end, including private readback-copy frames. Render-owned sequence/temporal ordinals remain
+separate from these pacing IDs. Measurement drains submitted tails before validating complete
+joins; schema 5 continues to report the timed-pass sum.
 
 ## Tests
 
-- `RojoRHI/Legacy/Tests` (`RojoRHILegacyTests`) holds RojoRHI's own contract and GPU conformance
-  suite; it links only the `RojoRHILegacy` and `RojoRHIMetalCpp` targets and no other project
-  library.
-- `Tests/Render/Renderer/CaptureSchemaTests` also holds four cases asserting RojoRHI's
-  `CaptureSchema` contract from the Luminex side.
-- `Tests/Engine/Scene/GpuSceneTableAbiTests` also holds two cases asserting the scene-table upload
-  contract at the RojoRHI boundary.
+Pure graph tests inspect values and lowered commands; device cases use real owning contexts.
+Named `Tests/unit` and `Tests/gpu` groups separate hosted Null checks from hardware execution;
+Metal `Tests/unit` also contains device cases. Hosted `build-test` uses Release Null; the `tracker`
+job configures Debug Null and builds Tests, then requires each of the two Renderer tracker names
+exactly once in Catch JSON discovery before executing `[tracker]`. The alias case alone cannot
+satisfy discovery. Release tracker cases skip before device creation and are not passing executions.
+
+For local tracker execution, configure `xmake f -m debug -y -P . --rojorhi_backend=null`, build
+`xmake build -P . Tests`, then run `./Tests "[tracker]"` from
+`build/macosx/arm64/debug/test`. The minimal-frame case covers empty and material-lab scenes; the
+cull/restore case omits the display read on the third of four real frames and checks that both
+logical and physical state persist before the read returns. Its UI-shaped draw reads display
+through FullscreenSample into a persistent exported offscreen target, without presentation.
+
+The retained frozen component suite uses `RojoRHILegacyTests`, separately from current consumer
+acceptance. The [test ledger](../milestones/r/r5-tests.md) records pending families, explicit
+replacements and measured acceptance limits.
+
+Tracker observations come from RHI commands and truthful per-command shader resource declarations,
+not graph read declarations alone. Nested frame-arena data without exposed handles and opaque
+adapter texture-ID shader reads are not fully declared; a clean tracker run alone cannot prove
+complete shader coverage. Physical-state tests and native GPU evidence cover complementary risks.

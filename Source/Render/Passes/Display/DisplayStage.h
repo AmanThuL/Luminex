@@ -34,7 +34,7 @@ private:
     DisplayStage() = default;
 
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_displayLibrary;
-    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_displayPipeline;
+    engine::GpuOwned<rojoRHI::Pipeline> m_displayPipeline;
     engine::GpuTexture m_blackBloomFallback;
 };
 

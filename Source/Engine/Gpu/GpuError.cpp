@@ -1,35 +1,31 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file GpuError.cpp
-/// @brief Implements the translation from a RojoRHI error to the project error.
+/// @brief Translates GPU creation error categories without changing their messages.
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Gpu/GpuError.h"
 
 namespace lmx::engine {
-
 namespace {
 
 //======================================================================================================================
-ErrorCode gpuErrorCode(rojoRHI::ErrorCode code) {
-    switch (code) {
-    case rojoRHI::ErrorCode::InvalidDesc:
-        return ErrorCode::InvalidArgument;
-    case rojoRHI::ErrorCode::DeviceUnsupported:
+ErrorCode gpuErrorCode(rojoRHI::ErrorCategory category) {
+    switch (category) {
+    case rojoRHI::ErrorCategory::Unsupported:
         return ErrorCode::Unsupported;
-    case rojoRHI::ErrorCode::ShaderLoadFailed:
-    case rojoRHI::ErrorCode::PipelineCreationFailed:
-    case rojoRHI::ErrorCode::ResourceCreationFailed:
-    case rojoRHI::ErrorCode::SwapchainFailed:
+    case rojoRHI::ErrorCategory::OutOfMemory:
+    case rojoRHI::ErrorCategory::DriverFailure:
+    case rojoRHI::ErrorCategory::ShaderAbiMismatch:
         return ErrorCode::Gpu;
     }
-    return ErrorCode::Gpu; // unreachable; keeps the switch free of default
+    return ErrorCode::Gpu;
 }
 
 } // namespace
 
 //======================================================================================================================
 Error gpuError(const rojoRHI::Error& error) {
-    return Error{gpuErrorCode(error.code), error.message};
+    return Error{gpuErrorCode(error.category), error.message};
 }
 
 } // namespace lmx::engine

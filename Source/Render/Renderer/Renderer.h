@@ -70,7 +70,7 @@ struct RendererFrameState;
 struct RendererFrameImports;
 
 /// Capture tooling, not part of rendering: publishes the draw stages' uniform-block layouts
-/// (including masked variants) (name, slot, size, every field's offset and type) through
+/// (including masked variants) (name, size, every field's offset and type) through
 /// engine::registerUniformStruct, so the capture sidecar can name the bytes a .gputrace holds
 /// instead of leaving them a hex dump.
 ///
@@ -101,8 +101,8 @@ public:
     /// Releases the frame-owned stages after the caller has completed GPU work.
     ~Renderer();
 
-    /// cpuReadback puts the color target in shared storage so Texture::readback() works. It exists
-    /// for the GPU tests and the --screenshot path; the windowed App leaves it false.
+    /// cpuReadback enables diagnostic results for GPU tests and the screenshot path.
+    /// Target storage stays in GPU memory; readback uses explicit staging copies.
     static lmx::Result<std::unique_ptr<Renderer>> create(engine::GpuContext& gpu, uint32_t width,
                                                          uint32_t height, bool cpuReadback = false);
 
@@ -149,10 +149,11 @@ public:
     const engine::GpuTexture& hdrColorTexture();
 
     /// The last declared frame's depth buffer, D32Float and reversed (near = 1, falling toward 0
-    /// with distance). Held past the scene pass and sampled rather than discarded, so a caller can
-    /// invert a texel back to a view-space distance as z_view = -nearZ / d -- which is what pins
-    /// the projection's convention against real geometry. Barrier it to ShaderRead before sampling:
-    /// render() declares no read of it, so the graph has emitted no transition.
+    /// with distance). After a producing pass, a caller can invert a texel back to a view-space
+    /// distance as z_view = -nearZ / d, pinning the projection's convention against real geometry.
+    /// Consult textureStates() for each cell's actual layout and frontier before reading it.
+    /// Graph-declared depth shader reads use DepthStencilRead; an unused stand-in may still be
+    /// Undefined and cannot be read back preserving contents.
     ///
     /// Depth ping-pongs by declared temporal frame parity, so this is the slot the frame just
     /// declared rendered into; a frame with temporal off renders into slot 0. Like the scene

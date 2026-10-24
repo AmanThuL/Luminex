@@ -11,10 +11,6 @@
 
 #include <cstdint>
 
-namespace rojoRHI {
-class Texture;
-}
-
 namespace lmx::engine {
 
 /// Frame-local draw order and texture bindings; all borrowed buffers and textures outlive

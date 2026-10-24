@@ -1638,7 +1638,7 @@ class RepositoryContractTests(unittest.TestCase):
                 "RojoRHITests",
             ],
         )
-        self.assertEqual(entry["includeRoots"], ["RojoRHI/Legacy/Include"])
+        self.assertEqual(entry["includeRoots"], ["RojoRHI/Include"])
         self.assertNotIn("rhi-public", self.contract["units"])
 
     def test_engine_owns_its_folder_and_depends_only_on_core_and_asset(self) -> None:
@@ -1670,10 +1670,19 @@ class RepositoryContractTests(unittest.TestCase):
     def test_engine_consumes_every_public_rhi_header(self) -> None:
         self.assertEqual(self.contract["externals"]["rhi"]["consumers"]["engine"], ["*"])
 
-    def test_asset_and_texture_bake_consume_only_the_format_header(self) -> None:
+    def test_asset_and_texture_bake_have_no_rhi_header_or_target_dependency(self) -> None:
         consumers = self.contract["externals"]["rhi"]["consumers"]
-        self.assertEqual(consumers["asset"], ["rojoRHI/Format.h"])
-        self.assertEqual(consumers["texture-bake"], ["rojoRHI/Format.h"])
+        for unit, target in (("asset", "Asset"), ("texture-bake", "TextureBake")):
+            with self.subTest(unit=unit):
+                self.assertNotIn(unit, consumers)
+                self.assertFalse(any(dep.startswith("RojoRHI") for dep in self.contract["targets"][target]["deps"]))
+
+    def test_only_the_app_shell_can_include_the_imgui_adapter(self) -> None:
+        entry = self.contract["externals"]["rhi"]
+        header = "RojoRHI/Adapters/ImGui/Include/rojoRHI/ImGuiAdapter.h"
+        for consumer, allowed in entry["consumers"].items():
+            with self.subTest(consumer=consumer):
+                self.assertEqual(modules.external_header_allowed(entry, allowed, header), consumer == "app-shell")
 
     def test_the_old_asset_and_scene_folders_belong_to_no_unit(self) -> None:
         for path in ("Source/Scene/Scene.h", "Source/Asset/Asset.h"):
@@ -1732,16 +1741,21 @@ class RepositoryContractTests(unittest.TestCase):
 
     def test_the_scenes_target_builds_on_core_rhi_asset_and_engine(self) -> None:
         self.assertEqual(
-            self.contract["targets"]["Scenes"]["deps"], ["Core", "RojoRHILegacy", "RojoRHIMetalCpp", "Asset", "Engine"]
+            self.contract["targets"]["Scenes"]["deps"], ["Core", "RojoRHI", "RojoRHIMetalCpp", "Asset", "Engine"]
         )
 
-    def test_no_luminex_target_depends_on_the_v2_rhi(self) -> None:
+    def test_no_luminex_target_depends_on_a_legacy_rhi_target(self) -> None:
         component = set(self.contract["externals"]["rhi"]["targets"])
-        legacy = {"RojoRHILegacy", "RojoRHILegacyMetal4ImGui", "RojoRHIMetalCpp"}
         for name, target in self.contract["targets"].items():
             if name not in component:
                 with self.subTest(target=name):
-                    self.assertEqual(set(target.get("deps", [])) & (component - legacy), set())
+                    self.assertFalse(any(dep.startswith("RojoRHILegacy") for dep in target.get("deps", [])))
+
+    def test_rhi_consumers_link_the_current_interface_including_the_inactive_benchmark(self) -> None:
+        for name in ("Engine", "Render", "Scenes", "AppModel", "App", "Tests", "FrameDataBench"):
+            with self.subTest(target=name):
+                self.assertIn("RojoRHI", self.contract["targets"][name]["deps"])
+        self.assertIn("RojoRHIImGui", self.contract["targets"]["App"]["deps"])
 
     def test_core_depends_on_no_unit_and_every_other_unit_depends_on_core(self) -> None:
         units = self.contract["units"]

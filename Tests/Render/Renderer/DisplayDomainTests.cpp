@@ -1,7 +1,7 @@
 #include "Engine/Asset/Image/PngImage.h"
+#include "Engine/Gpu/FormatInfo.h"
 #include "Render/Renderer/DisplayDomain.h"
 #include "Render/Renderer/Renderer.h"
-#include <rojoRHI/Validate.h>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -24,7 +24,7 @@ TEST_CASE("the SDR display domain has stable names and serialization", "[render]
         toJson(kSdrDisplayDomain) ==
         R"({"view":"sdr","transfer":"srgb","primaries":"bt709","toneMap":"pbr-neutral","referenceWhite":1,"peakWhite":1,"bitsPerChannel":8,"opaque":true})");
     REQUIRE(kDisplayFormat == rojoRHI::Format::BGRA8Unorm);
-    REQUIRE(rojoRHI::bytesPerPixel(kDisplayFormat) * 8 / 4 == kSdrDisplayDomain.bitsPerChannel);
+    REQUIRE(lmx::engine::bytesPerTexel(kDisplayFormat) * 8 / 4 == kSdrDisplayDomain.bitsPerChannel);
 }
 
 //======================================================================================================================

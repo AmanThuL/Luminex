@@ -4,9 +4,11 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Render/Passes/Display/DisplayStage.h"
+#include "Engine/Gpu/CaptureSchema.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Common/StageSetup.h"
 #include "Render/Passes/Display/DisplayFrameData.h"
+#include "Render/Passes/Display/DisplayRoots.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Engine/Gpu/GpuOwned.h"
@@ -17,15 +19,6 @@
 #include <utility>
 
 namespace lmx::render {
-namespace {
-
-// DisplayTransform.slang's own resource set: unrelated to the scene pass's slots above.
-constexpr uint32_t kSceneColorTextureSlot = 0;
-constexpr uint32_t kDisplayBloomTextureSlot = 1;
-constexpr uint32_t kDisplayParamsSlot = 0;
-
-} // namespace
-
 //======================================================================================================================
 lmx::Result<std::unique_ptr<DisplayStage>> DisplayStage::create(engine::GpuContext& gpu) {
     rojoRHI::Device& device = gpu.device();
@@ -42,22 +35,21 @@ lmx::Result<std::unique_ptr<DisplayStage>> DisplayStage::create(engine::GpuConte
     // A fullscreen triangle over an already-rasterised image: no depth to test against and no
     // face to cull, since the one primitive covers the target by construction.
     {
-        auto pipeline = engine::adoptGpu(device.createGraphicsPipeline(
-            fullscreenPipelineDesc(self->m_displayLibrary.get(), "fragmentMain", kDisplayFormat,
-                                   "lmx.render.displayPipeline")));
+        auto pipeline =
+            createFullscreenPipeline(device, self->m_displayLibrary.get(), "fragmentMain",
+                                     kDisplayFormat, "lmx.render.displayPipeline");
         if (!pipeline) {
             return std::unexpected(pipeline.error());
         }
         self->m_displayPipeline = std::move(*pipeline);
     }
 
-    // A valid resource for DisplayTransform's bloom slot when bloom is off. The shader skips the
-    // texture load in that mode, but the argument table must still contain a bound texture.
+    // Keep a real sampled view in the root when bloom is disabled; the shader skips its load.
     {
         const std::array<uint16_t, 4> kZeroHalf4 = {0, 0, 0, 0};
         {
             auto texture =
-                createTexel(device, kSceneColorFormat, rojoRHI::TextureKind::Tex2D,
+                createTexel(device, kSceneColorFormat, rojoRHI::TextureType::Tex2D,
                             std::as_bytes(std::span{kZeroHalf4}), "lmx.render.blackBloomFallback");
             if (!texture) {
                 return std::unexpected(texture.error());
@@ -66,6 +58,13 @@ lmx::Result<std::unique_ptr<DisplayStage>> DisplayStage::create(engine::GpuConte
         }
     }
 
+    engine::registerUniformStruct(
+        {"DisplayRoot",
+         sizeof(DisplayRoot),
+         {{"sceneColor", offsetof(DisplayRoot, sceneColor), "uint"},
+          {"bloom", offsetof(DisplayRoot, bloom), "uint"},
+          {"padding", offsetof(DisplayRoot, padding), "uint"},
+          {"bloomIntensity", offsetof(DisplayRoot, bloomIntensity), "float"}}});
     return self;
 }
 
@@ -86,33 +85,45 @@ void DisplayStage::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
     // when it is off (spec 10) -- the same pattern the exposure passes above use.
     if (bloomEnabled) {
         displayDesc.textureReads.push_back(TextureUseDesc(
-            bloomResult, rojoRHI::TextureSubresourceRange{.baseMipLevel = 0, .mipLevelCount = 1}));
+            bloomResult, rojoRHI::SubresourceRange{
+                             .baseMip = 0, .mipCount = 1, .baseLayer = 0, .layerCount = 1}));
     }
     // The fullscreen triangle covers every pixel, so the clear only states an attachment load
     // action the RHI requires; no fragment reads what it wrote.
     displayDesc.color = ColorAttachment{
         .handle = displayColor, .load = LoadOp::Clear, .store = StoreOp::Store, .clearColor = {}};
-    graph.addPass("lmx.pass.display", std::move(displayDesc),
-                  [this, &commands, displayInput, bloomResult, bloomEnabled,
-                   bloomIntensity](const PassResources& resources) {
-                      auto& hdrTexture = lmx::render::texture(resources, displayInput);
-
-                      commands.bindPipeline(*m_displayPipeline);
-                      commands.bindTexture(kSceneColorTextureSlot, hdrTexture);
-                      // Disabled bloom binds a valid 1x1 resource and sets the exact zero that
-                      // makes the shader skip its texture load: scene color + 0 stays bit-identical
-                      // to scene color alone without addressing outside the fallback texture.
-                      if (bloomEnabled) {
-                          auto& bloomTexture = lmx::render::texture(resources, bloomResult);
-                          commands.bindTexture(kDisplayBloomTextureSlot, bloomTexture);
-                      } else {
-                          commands.bindTexture(kDisplayBloomTextureSlot,
-                                               m_blackBloomFallback.rhi());
-                      }
-                      const DisplayParams params = buildDisplayParams(bloomEnabled, bloomIntensity);
-                      commands.bindFrameData(kDisplayParamsSlot, params);
-                      commands.draw(3);
-                  });
+    graph.addPass(
+        "lmx.pass.display", std::move(displayDesc),
+        [this, &commands, displayInput, bloomResult, bloomEnabled,
+         bloomIntensity](const PassResources& resources) {
+#ifndef NDEBUG
+            const auto hdrTexture = lmx::render::texture(resources, displayInput);
+            const auto bloomTexture = bloomEnabled ? lmx::render::texture(resources, bloomResult)
+                                                   : m_blackBloomFallback.ref();
+#endif
+            const DisplayParams params = buildDisplayParams(bloomEnabled, bloomIntensity);
+            const DisplayRoot root{
+                .sceneColor = static_cast<uint32_t>(resources.view(displayInput)),
+                .bloom = static_cast<uint32_t>(bloomEnabled ? resources.view(bloomResult)
+                                                            : m_blackBloomFallback.view()),
+                .bloomIntensity = params.bloomIntensity};
+            commands.setPipeline(m_displayPipeline.get());
+            engine::registerFrameRoot("DisplayRoot", commands.pushRoot(root));
+#ifndef NDEBUG
+            const std::array<rojoRHI::ResourceAccess, 2> accesses{
+                {{.texture = hdrTexture.texture,
+                  .range = {0, 1, 0, 1},
+                  .stage = rojoRHI::Stage::FragmentShader,
+                  .access = rojoRHI::Access::ShaderRead},
+                 {.texture = bloomTexture.texture,
+                  .range = {0, 1, 0, 1},
+                  .stage = rojoRHI::Stage::FragmentShader,
+                  .access = rojoRHI::Access::ShaderRead}}};
+            commands.declareAccess(
+                std::span{accesses}.first(params.bloomIntensity != 0.0f ? 2u : 1u));
+#endif
+            commands.draw(3);
+        });
 }
 
 } // namespace lmx::render

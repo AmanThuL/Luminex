@@ -109,6 +109,7 @@ struct AppOptions {
     std::filesystem::path measurementPath; ///< New JSON report destination for --measure.
     bool unscored = false;        ///< Explicitly permits instrumentation in a headless measurement.
     bool measurementTrack = true; ///< Follow the camera rail; --measure-camera initial freezes it.
+    bool rhiValidation = false;   ///< Enables the Debug-only resource validation tracker.
 };
 
 /// Reports an invalid command-line option with user-facing context.

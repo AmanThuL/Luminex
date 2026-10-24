@@ -5,8 +5,8 @@
 #include "App/Model/Scene/SceneTree.h"
 #include "App/Model/Scene/SceneTreeState.h"
 #include "Scenes/SceneDocumentExport.h"
-#include "Support/GraphTestSupport.h"
 #include "Support/SceneDocumentFixtures.h"
+#include "Support/TestGpu.h"
 
 #include <algorithm>
 #include <set>
@@ -513,8 +513,9 @@ TEST_CASE("An explicit generator expansion before first view survives default in
 
 //======================================================================================================================
 TEST_CASE("Saved mesh rows select the bound object and retain exported pose edits",
-          "[app][scene-tree]") {
-    FakeDevice device;
+          "[app][scene-tree][device]") {
+    auto gpu = createTestGpu();
+    auto device = gpu->device();
     auto doc = test::contentDocument();
     doc.nodes[2].enabled = true;
     doc.nodes[2].mobility = asset::DocMobility::Movable;

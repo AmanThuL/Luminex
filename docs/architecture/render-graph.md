@@ -40,16 +40,19 @@ reused. Offsets are assigned first-fit in lifetime order, tie-broken by declarat
 layout depends only on the declarations. The pool holds one placement heap per frame-in-flight
 slot.
 
-The pool keeps that policy (slots, heap generations and their retirement, one reservation per
-frame, heap labels) and reaches the device only through `TransientBackend`
-(`TransientBackend.h`): footprints for a `TransientTextureDesc` or `TransientBufferDesc`
-(`TransientResourceDesc.h`), heap creation and destruction, placement, and releasing a heap's
-placements when its slot comes round. The backend owns the heaps and placed resources, named to
-the pool by `TransientHeapId`. `RhiTransientBackend` is the implementation over a `rojoRHI::Device`
-and the one a pool constructed from a device owns; it converts each descriptor to the RHI's with
-the graph resource's name as its label and no CPU readback. Graph and pool unit tests construct
-the pool over the device-free `FakeTransientBackend`
-(`Tests/Support/TransientBackendTestSupport.h`).
+The pool retains three paced slots, heap generations and one reservation per frame, reaching the
+device through `TransientBackend` (`TransientBackend.h`). `RhiTransientBackend` borrows
+`GpuContext` for its real frame counter; tests can supply the device-free fake backend.
+Footprints are queried and snapshotted during declaration, including both effective indirect-buffer
+variants. Compile and lower use those snapshots without querying a device.
+
+Each reservation carries a canonical `TransientLayout`: heap bytes and every used resource's
+identity, offset, effective descriptor, footprint and label in deterministic placement order. A
+cache hit requires complete structural equality and a previously completed placement, not matching
+bytes or a hash alone. The same slot/layout reuses actual placed textures, buffers and their views.
+Changed layouts replace the set; outgoing generations retire on paced boundaries. Sampled and
+per-mip storage views and buffer addresses are retained alongside placements. Every transient
+still takes first-use discard/dependency handling each frame, including cached alias reuse.
 [ADR 0008](../decisions/0008-transient-graph-resources.md) owns the transient-ownership
 and aliasing rules; ADR 0005's import-only model still governs resources a caller brings in.
 
@@ -67,63 +70,73 @@ detached Render Graph window live in [GPU debugging](../guides/gpu-debugging.md)
 
 ## Lowering and emission
 
-`RenderGraph::lower` turns a compiled frame into a `LoweredFrame` (`LoweredFrame.h`) without a
-device: the record, an ordered list of ops, and the device objects behind each resource index, with
-transients left unplaced. `BeginScopeOp{"lmx.frame"}` and its `EndScopeOp` enclose every frame, an
-empty schedule included. Each scheduled pass then contributes one `BarriersOp` holding its texture
-and buffer transitions in record order (none when it needs none), followed by a raster pass's
-`BeginRenderPassOp`, `RunOp` and `EndRenderPassOp`, a compute or copy pass's `BeginScopeOp`, `RunOp`
-and `EndScopeOp` under its own label, or an external pass's `RunOp` alone. Attachment load and store
-actions live in `AttachmentOps.h`. `execute()` lowers, places the frame's transients, fills their
-objects in, dumps the record and hands the frame to `emit()` (`FrameEmitter.h`), the one piece of
-graph code that records commands. The v1 emitter records each barrier in order, builds each render
-pass from its op and asserts the command list's attachment limits there, opens compute and copy
-passes around their bodies from the `RunOp`'s kind and label, and records nothing for scopes, since
-that command list times passes itself. Raster passes carry no scope of their own; a backend that
-times passes times a raster pass from its `BeginRenderPassOp`/`EndRenderPassOp` pair.
+`RenderGraph::lower` produces a `LoweredFrame` (`LoweredFrame.h`) without a device: the logical
+record, ordered ops, resource/view/address snapshots and proposed state writebacks. Imported
+resources are value refs; transients remain unplaced until execution. `passResources(frame, pass)`
+is a pure resolver over that frame's snapshot and the pass's declared handles. `execute()` lowers,
+reserves/places transients, fills their cached refs, emits commands, then publishes both state
+channels. No table writeback precedes emission.
+
+`RenderGraphLowering.cpp` maps uses to physical endpoints independently of logical transition rows:
+
+| Use | Stage | Access | Texture layout |
+| --- | --- | --- | --- |
+| Color attachment | ColorAttachment | ColorAttachmentRead \| ColorAttachmentWrite | ColorAttachment |
+| Depth attachment | DepthStencil | DepthStencilRead \| DepthStencilWrite | DepthStencilWrite |
+| ShaderRead | VertexShader \| FragmentShader for raster; ComputeShader otherwise | ShaderRead | ShaderRead; DepthStencilRead for depth |
+| StorageRead / StorageWrite | Same shader stages | ShaderRead / ShaderWrite | ShaderWrite |
+| CopySource / CopyDestination | Copy | CopyRead / CopyWrite | CopySrc / CopyDst |
+| ExternalRead / ExternalWrite | ComputeShader | ShaderRead / ShaderWrite | ShaderRead / ShaderWrite |
+| Buffer IndirectArgument | IndirectArgs | IndirectArgs | — |
+
+Raster shader stages remain conservative. Each physical barrier batch becomes one `barrier` call
+with global, buffer and texture arrays. Buffer alias dependencies use global barriers; aliased
+textures discard from Undefined with the prior occupant's frontier stages (All fallback) and None
+source access. The prior buffer-write dependency remains effective.
+
+A `lmx.frame` scope encloses every frame, including an empty schedule. Raster ops open a labeled
+render pass, set viewport/scissor from the render area, invoke the body and end the pass; that
+pass owns its automatic timing scope. Compute/copy ops wrap the body in explicit labeled scopes.
+External bodies open no graph scope and use their operation's timing. `FrameEmitter.cpp` only
+translates ops and invokes the supplied pass runner. Attachment load/store actions remain per
+attachment. The existing no-attachment raster lower assertion is a bounded limitation; malformed
+graphs are not universally reported as `GraphError`.
+
+Graph declarations do not themselves register shader accesses with the RHI tracker. Kept shader
+bodies declare real resources immediately before actual draws/dispatches. Nested frame-arena data
+without public handles and opaque adapter texture-ID reads remain outside full declared coverage.
 
 ## Persistent texture state
 
-A fresh graph cannot see the passes of an earlier frame, so a texture that outlives a frame carries
-the use it was left in through a `TextureStateTable` (`TextureStateTable.h`): one whole-resource
-`TextureUse` per texture, keyed by the texture's address, with an absent entry meaning no earlier
-access. The table holds no GPU object and is not thread-safe. `Renderer` owns it and binds it to
-each frame's graph with `bindTextureStates`; binding the same table again is allowed, a different
-one asserts, and stages reach it through `textureStates()`.
+`Renderer` owns a recording-thread-only `TextureStateTable`, keyed by texture handle identity,
+and binds it to each graph. It owns no GPU objects and has two independent channels:
 
-`importPersistentTexture` imports a texture with the table's entry as its earlier-frame access, so
-the first conflicting access of the frame is barriered like any other; with no entry it is exactly a
-plain `importTexture`, which stays the import for a texture with no history, such as the drawable.
-Lowering fills `LoweredFrame::finalStates` for the table imports a scheduled pass names or a
-`setFinalUse` call states, and `execute()` writes them back to the table after `emit()`. The use
-written back is the one the last scheduled pass naming the texture left it in, a write winning over
-a read within that pass, mapped by the same role and kind table the transitions use. A texture no
-scheduled pass names, its passes culled, keeps its entry, because the frame did nothing to it on the
-GPU.
+- Whole-resource `logicalUse/setLogicalUse` retains the graph's diagnostic vocabulary and unchanged
+  `CompiledFrameRecord`/dump hazards.
+- Physical mip/layer cells retain exact `{stage, access, layout}` frontiers. `physicalRanges`
+  partitions disjoint known cells; `find` succeeds only for complete coverage in one layout,
+  combining stage/access masks. A mixed or missing range returns nullopt, never Undefined.
 
-`setFinalUse(handle, use)` states the use when something outside the graph accesses the texture
-afterwards (a caller or the UI sampling it), and overrides the derived use; the last call wins. It
-adds no barrier and no record entry, so dumps are unchanged: the access it states is the caller's
-to order. An owner calls `set` directly only to seed a texture at creation or recreation, which
-also keeps a destroyed texture's reused address from handing its use to the new one, or to state
-a texture the current graph does not import; `forget` drops an entry. Every texture imported from
-the table is seeded (`set`) or forgotten before its first import, and owners call `forget` when
-they destroy a texture.
+Persistent owner/ref imports snapshot known cells. Missing cells seed from immutable creation
+facts, even when a logical-only entry already exists: initial data means ShaderRead, otherwise
+Undefined. Existing cells retain their current state. Lowering walks every scheduled access,
+including those without a logical transition row, tracks outstanding readers and orders later
+writes/layout changes from the complete frontier. A fully culled import without an explicit final
+use preserves both channels because no GPU access occurred.
 
-Every persistent texture in production is imported this way; only the drawable stays a plain
-import. `Renderer` seeds its targets in `create()` and `resize()` (a replaced target takes its
-predecessor's entry, the temporal slots restart as `CopyDestination` colour and `ShaderRead`
-depth), the HZB stage forgets the pyramids a resize replaces and an unbuilt pyramid's entry before
-importing it, and the selection outline forgets the target a resize replaces and seeds the new one
-at its next import. The deliberate `setFinalUse` states are the
-display target, the frame's depth slot outside vendor frames and the outline target (all
-`ShaderRead`, sampled after the graph), a vendor frame's colour slot (`ExternalWrite`), every HZB
-pyramid (`ShaderRead`), and the scene colour on a Raw temporal frame at the output extent
-(`CopySource`). That last one is the only override that states no access after the graph: it keeps
-the earlier hand-tracked `CopySource` state solely so the gpu golden dump stays unchanged. The state
-is likely under-synchronised, because the derived last use is `ShaderRead` (the commit copy is
-scheduled before the bloom and display reads), so the next frame's first barrier does not wait on
-those reads. Correcting it changes that golden, so it stays a deliberate, open decision.
+`setFinalUse` keeps its logical override and emits real terminal transitions from exact current
+cells, including outstanding readers. This also applies to an otherwise unused import. A Present
+sink transitions the acquired drawable from its actual graph frontier to Present; combining
+presentation with `setFinalUse` is rejected before emission. These physical ops add no logical dump
+rows. The retained Raw temporal `sceneColor → CopySource` override therefore remains in logical
+records without discarding the display/bloom reader dependencies.
+
+On successful target replacement, only the deliberate logical use carries forward; the new
+identity's physical cells come from its own creation fact. Equal-identity resize retains its full
+entry, and failed resize preserves the old targets and all states. Owners forget released
+identities. Pending stages retain their conceptual final-use policy until their ports resume.
+Readback consumes and restores exact current physical ranges rather than treating creation layout
+or a nominal logical use as the current state.
 
 ## Implementation units
 
@@ -152,9 +165,9 @@ accepted `CompiledFrameRecord`, which the caller retains for its own frame-recor
   across `GpuAppFrameDeclaration`, `GpuRenderGraph`, `GpuTransient`, `GraphDump`, `RenderGraph`,
   `RenderGraphAttachment`, `RenderGraphExecution`, `RenderGraphExternal`, `RenderGraphLowering`,
   `RenderGraphRecord`, `RenderGraphTransient`, `RenderGraphTransition`, `RenderTransientPool` and
-  `TextureStateTable`. Graph cases run on the transient backend fake and assert ordering on the
-  lowered frame; only the emitter cases record on a command list, and imports borrow
-  `FakeTexture` and `FakeBuffer`.
+  `TextureStateTable`. Pure graph cases use synthetic value imports and the transient backend fake, asserting logical
+  records separately from physical masks. Device cases use genuine owners and command lists;
+  unchanged dump goldens cover the observer contract.
 - `Tests/App/Model/Graph/` covers the editor's graph models built on this contract (frame-record
   retention, node model and layout, snapshots and the graph inspector), described in
   [App](app.md).

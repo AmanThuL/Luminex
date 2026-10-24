@@ -52,26 +52,26 @@ contract. `externals` in `Tools/module_contract.json` holds one entry per compon
 | `consumers` | unit → the headers it may include, spelled as an `#include` writes them, or `"*"` |
 
 Today there is one entry, `rhi`: paths `RojoRHI`, its nine targets (the v1 `RojoRHILegacy*`, `RojoRHIMetalCpp`
-and the v2 `RojoRHI`, `RojoRHIImGui`, `RojoRHITests`, `RojoRHILtoProbe`, `RojoRHIBench`), include root `RojoRHI/Legacy/Include`.
+and the current `RojoRHI`, `RojoRHIImGui`, `RojoRHITests`, `RojoRHILtoProbe`, `RojoRHIBench`), include root `RojoRHI/Include`.
 
 | Consumer | May include |
 |---|---|
 | `render`, `engine`, `app-model`, `scenes`, `benchmarks` | `"*"` |
-| `app-shell` | `"*"`, and `rojoRHI/Metal4/Metal4ImGui.h` |
+| `app-shell` | `"*"`, and `rojoRHI/ImGuiAdapter.h` |
 | `tests` | `"*"` |
-| `asset`, `texture-bake` | `rojoRHI/Format.h`, and nothing else |
+| `asset`, `texture-bake` | no RHI headers |
 
 [ADR 0024](../decisions/0024-rhi-relocation-to-rojorhi.md) supersedes in part the four `rhi-*`
 units of [ADR 0020](../decisions/0020-module-layering-and-units.md), every other unit's dependency
-on them, and the spelling of the Asset allowance; the allowance itself stands. ADR 0020 stays
-accepted and unedited as the record of how the layering was decided.
+on them, and the spelling of the former Asset allowance. Asset now has no RHI vocabulary or
+allowance. ADR 0020 stays accepted and unedited as the record of how the layering was decided.
 
 Rules the entry carries:
 
 - A resolved include inside `paths` is an external edge, charged to the unit of the file the check
   started from. A unit absent from `consumers` may not include the component at all.
-- `"*"` covers every header under `includeRoots` and nothing else, so `RojoRHI/Legacy/Source`,
-  `RojoRHI/Legacy/Backends/.../Source` and every other component-private file stay unreachable through it. The
+- `"*"` covers every header under `includeRoots` and nothing else, so `RojoRHI/Source`,
+  `RojoRHI/Backends/.../Source`, Legacy headers and every other component-private file stay unreachable through it. The
   optional ImGui adapter ships a second public include root; `app-shell` names its single header
   explicitly rather than widening `includeRoots`, so the wildcard does not hand the editor's ImGui
   bridge to every consumer.
@@ -82,13 +82,13 @@ Rules the entry carries:
 - The component's targets are still reconciled (`RojoRHILegacy` declares `RojoRHIMetalCpp`;
   `RojoRHILegacyMetal4ImGui` adds `RojoRHILegacy` and `ImGui`; `RojoRHILegacyTests` adds `RojoRHILegacy`;
   `RojoRHI` declares `RojoRHIMetalCpp` on metal4 only; `RojoRHIImGui` adds `RojoRHI` and `ImGui`;
-  `RojoRHITests` adds `RojoRHI` and the adapter when declared; the other v2 targets add `RojoRHI`), and no Luminex target depends on a v2 one.
+  `RojoRHITests` adds `RojoRHI` and the adapter when declared; the other v2 targets add `RojoRHI`), and no Luminex target depends on a `RojoRHILegacy*` target, including inactive FrameDataBench. RHI consumers link `RojoRHI`; App also links `RojoRHIImGui`.
   No component target can link a Luminex target without failing the closure check. `Asset`'s `forbidUndefined: rojoRHI::` still runs under `--link`.
 
-`tests` takes no header out of the component's own suite: the repository suite keeps its own copy of
-the GPU bootstrap, merged into `Tests/Support/GpuTestSupport.h` alongside its Asset, Render and
-Engine helpers, so no edge reaches `RojoRHI/Legacy/Tests`. The two test binaries partition the suite: a
-case lives in exactly one of them, and `RojoRHILegacyTests` links `RojoRHILegacy` and `RojoRHIMetalCpp` only.
+`tests` takes no header from either component suite, `RojoRHI/Tests` or `RojoRHI/Legacy/Tests`.
+Its GPU bootstrap lives in `Tests/Support/GpuTestSupport.h` alongside its Asset, Render and Engine
+helpers. Luminex `Tests` owns consumer cases; `RojoRHITests` owns current component cases, and
+retained `RojoRHILegacyTests` owns the frozen suite. Component suites link no Luminex unit.
 
 ### Directory ownership
 Asset, Engine and AppModel own their directories and static targets.
@@ -200,10 +200,9 @@ The rules above are checked as include edges:
 - Third-party reach is direct. A package is charged to the unit whose own file names it, not to
   that file's includers, so `core` including spdlog does not spend spdlog everywhere.
 - External reach is neither transitive nor an exception to the unit table: it is the separate
-  `externals` contract above, matched per header. `asset` and its `texture-bake` consumer may
-  include `rojoRHI/Format.h` and nothing else — not the target, not the umbrella `rojoRHI/RHI.h`.
-  Asset describes images as `asset::ImageData`; Engine converts them to RHI views at upload.
-  TextureBake still links Core and Asset only.
+  `externals` contract above, matched per header. Asset and TextureBake have no RHI header or
+  target dependency. Asset describes images as `asset::ImageData`; Engine converts them to RHI
+  views at upload. TextureBake still links Core and Asset only.
 - `headers` remains a per-unit, per-header allowance against another unit, and is the only
   exception to the unit table. No unit needs one today, so no unit carries the field.
 
@@ -223,8 +222,9 @@ and maintenance tasks live under `xmake/`. The RHI component keeps the same shap
 `RojoRHI/xmake.lua` carries root settings for a standalone configure, `RojoRHI/xmake/targets.lua` is the
 one file the repository root includes, and `RojoRHI/xmake/` owns the component's own shader rule and
 dependency setup. Slang entry points stay at `Shaders/Passes/<family>/`, common modules
-at `Shaders/Common/` and oracles at `Shaders/Tests/`; the RHI component owns a second tree of its
-own smoke shaders at `RojoRHI/Legacy/Shaders/Tests/`. `check_shader_imports.py` enforces each tree's import
+at `Shaders/Common/` and oracles at `Shaders/Tests/`; the RHI component owns its current smoke
+shaders at `RojoRHI/Shaders/Tests/` and frozen smoke shaders at `RojoRHI/Legacy/Shaders/Tests/`.
+`check_shader_imports.py` enforces each tree's import
 boundary and basename uniqueness. These paths do not change runtime shader basenames.
 
 ## Asset independence
@@ -232,9 +232,9 @@ boundary and basename uniqueness. These paths do not change runtime shader basen
 `asset` is CPU-only content and must stay linkable without a GPU. Three layers prove it, and the
 weakest one is deliberately last:
 
-1. **Include layer.** Its consumer entry admits the format and descriptor headers only, so
-   `rojoRHI::Device`, `rojoRHI::Texture` and `rojoRHI::Buffer` are not nameable from `asset`. This is the
-   layer that actually holds the boundary.
+1. **Include layer.** `asset` has no RHI consumer entry, so direct or transitive reach into the
+   component fails. ImageData carries CPU content; Engine creates RHI resources. This layer
+   holds the header boundary.
 2. **Framework layer.** `check_link`'s `frameworks` entry checks a target's own linked frameworks
    (`otool -L`) against its allowed set — today only `TextureBake`'s empty set, so it may link
    neither the RHI target's frameworks nor Metal. This check is vacuous for a static-library
@@ -244,9 +244,9 @@ weakest one is deliberately last:
 3. **Archive layer.** A `forbidUndefined` entry checks a target's built archive or binary for
    undefined symbols (`nm -u`) starting with a forbidden prefix — the layer a static library like
    `asset` needs, since the framework layer cannot see it. `Asset` declares
-   `forbidUndefined: rojoRHI::`. On its own this proves little: the RHI's API is virtual interfaces,
-   so a caller reaches it through a vtable without leaving an undefined symbol behind. It would see
-   non-virtual RHI symbols only and be a backstop under the include and framework layers, never a
+   `forbidUndefined: rojoRHI::`. The current RHI is a value interface; emitted references to its
+   implementation symbols are caught, but types and inlined code can leave no matching undefined
+   symbol. The archive check remains a backstop under the include and framework layers, never a
    substitute for them.
 
 ## Core's archive check

@@ -1,6 +1,6 @@
 // Test-only: fullscreen triangle that copies a texture via Load — no sampler state needed.
-[[vk::binding(0, 0)]]
-Texture2D<float4> gSource : register(t0);  // → MSL [[texture(0)]]
+import RojoRHI;
+import OracleRoots;
 
 struct VSOutput
 {
@@ -8,8 +8,9 @@ struct VSOutput
 };
 
 [shader("vertex")]
-VSOutput vertexMain(uint vid: SV_VertexID)
+VSOutput vertexMain(rojoRHI::VertexIds ids)
 {
+    uint vid = rojoRHI::vertexIndex(ids);
     // Three-vertex fullscreen triangle.
     float2 uv = float2((vid << 1) & 2, vid & 2);
     VSOutput o;
@@ -20,5 +21,6 @@ VSOutput vertexMain(uint vid: SV_VertexID)
 [shader("fragment")]
 float4 fragmentMain(VSOutput in): SV_Target
 {
-    return gSource.Load(int3(int2(in.position.xy), 0));
+    let params = rojoRHI::root<FullscreenSampleRoot>();
+    return rojoRHI::texture2D<float4>(params.source).Load(int3(int2(in.position.xy), 0));
 }

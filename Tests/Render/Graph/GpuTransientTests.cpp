@@ -9,24 +9,8 @@
 
 namespace {
 
-// Mirrors ComputeImageSmoke.slang's ImageParams and BufferHazardSmoke.slang's HazardParams.
-struct ImageParams {
-    uint32_t extent = 0;
-};
-struct HazardParams {
-    uint32_t bias = 0;
-};
-
 constexpr uint32_t kImageThreadsPerGroup = 8;
 constexpr uint32_t kHazardThreadsPerGroup = 64;
-
-// The argument-table slots the two smoke modules' globals compile to.
-constexpr uint32_t kImageSlot = 0;
-constexpr uint32_t kImageSourceSlot = 1;
-constexpr uint32_t kImageParamsSlot = 1;
-constexpr uint32_t kHazardOutputSlot = 0;
-constexpr uint32_t kHazardSourceSlot = 1;
-constexpr uint32_t kHazardParamsSlot = 2;
 
 // Storage-capable and identical for every transient here, so lifetime is the only thing that
 // decides whether two of them share bytes.
@@ -64,19 +48,17 @@ TEST_CASE("a pooled frame and an unpooled frame render the same image", "[gpu]")
     INFO(errorOf(computeLibrary));
     REQUIRE(computeLibrary.has_value());
 
-    auto writePipeline = gpu->device().createComputePipeline(
-        {.library = computeLibrary->get(),
-         .computeEntry = "computeWriteImage",
-         .threadsPerThreadgroup = {kImageThreadsPerGroup, kImageThreadsPerGroup, 1},
-         .label = "lmx.test.transient.writePipeline"});
+    auto writePipeline = lmx::engine::adoptGpu(
+        gpu->device(), gpu->device().createPipeline(ComputePipelineDesc{
+                           .compute = {computeLibrary->get(), "computeWriteImage"},
+                           .label = "lmx.test.transient.writePipeline"}));
     INFO(errorOf(writePipeline));
     REQUIRE(writePipeline.has_value());
 
-    auto invertPipeline = gpu->device().createComputePipeline(
-        {.library = computeLibrary->get(),
-         .computeEntry = "computeInvertImage",
-         .threadsPerThreadgroup = {kImageThreadsPerGroup, kImageThreadsPerGroup, 1},
-         .label = "lmx.test.transient.invertPipeline"});
+    auto invertPipeline = lmx::engine::adoptGpu(
+        gpu->device(), gpu->device().createPipeline(ComputePipelineDesc{
+                           .compute = {computeLibrary->get(), "computeInvertImage"},
+                           .label = "lmx.test.transient.invertPipeline"}));
     INFO(errorOf(invertPipeline));
     REQUIRE(invertPipeline.has_value());
 
@@ -84,12 +66,15 @@ TEST_CASE("a pooled frame and an unpooled frame render the same image", "[gpu]")
     INFO(errorOf(sampleLibrary));
     REQUIRE(sampleLibrary.has_value());
 
+    const ColorTarget samplePipelineColor{.format = Format::BGRA8Unorm};
     auto samplePipeline =
-        gpu->device().createGraphicsPipeline({.library = sampleLibrary->get(),
-                                              .vertexEntry = "vertexMain",
-                                              .fragmentEntry = "fragmentMain",
-                                              .colorFormat = Format::BGRA8Unorm,
-                                              .label = "lmx.test.transient.samplePipeline"});
+        lmx::engine::adoptGpu(gpu->device(), gpu->device().createPipeline(GraphicsPipelineDesc{
+                                                 .vertex = {sampleLibrary->get(), "vertexMain"},
+                                                 .fragment = {sampleLibrary->get(), "fragmentMain"},
+                                                 .raster = {.cull = CullMode::Back},
+                                                 .depthStencil = {.depthCompare = CompareOp::Less},
+                                                 .colors = std::span(&samplePipelineColor, 1),
+                                                 .label = "lmx.test.transient.samplePipeline"}));
     INFO(errorOf(samplePipeline));
     REQUIRE(samplePipeline.has_value());
 
@@ -97,10 +82,10 @@ TEST_CASE("a pooled frame and an unpooled frame render the same image", "[gpu]")
     INFO(errorOf(target));
     REQUIRE(target.has_value());
 
-    const ImageParams params{.extent = kSize};
     const uint32_t groups = kSize / kImageThreadsPerGroup;
 
-    TransientPool pool(gpu->device());
+    TransientPool pool(*gpu);
+    TextureStateTable states;
 
     // One frame, declared the same way both times; only the pooling switch differs.
     const auto renderOnce = [&](bool pooling) {
@@ -109,22 +94,31 @@ TEST_CASE("a pooled frame and an unpooled frame render the same image", "[gpu]")
         pool.beginFrame();
 
         RenderGraph graph(pool);
+        graph.bindTextureStates(states);
         graph.setPoolingEnabled(pooling);
         const GraphTexture first = graph.createTexture(kStorageImage, "lmx.test.transient.first");
         const GraphTexture second = graph.createTexture(kStorageImage, "lmx.test.transient.second");
         const GraphTexture third = graph.createTexture(kStorageImage, "lmx.test.transient.third");
         const GraphTexture color =
-            graph.importTexture(target->rhi(), Format::BGRA8Unorm, "lmx.test.transient.target");
+            graph.importPersistentTexture(*target, "lmx.test.transient.target");
 
         ComputePassDesc write;
         write.textureWrites.push_back(first);
         graph.addComputePass(
             "lmx.test.transient.write", write, [&](const PassResources& resources) {
-                const GraphResult<Texture*> texture = resources.texture(first);
-                REQUIRE(texture.has_value());
-                commands.bindComputePipeline(**writePipeline);
-                commands.bindStorageTexture(kImageSlot, **texture, {}, StorageAccess::Write);
-                commands.bindFrameData(kImageParamsSlot, params);
+                const auto texture = resources.texture(first);
+                REQUIRE(texture.texture.bits != 0);
+                commands.setPipeline(writePipeline->get());
+                commands.pushRoot(lmx::test::ComputeImageRoot{
+                    .image = static_cast<uint32_t>(resources.storageView(first, 0)),
+                    .extent = kSize});
+#ifndef NDEBUG
+                const ResourceAccess access{.texture = texture.texture,
+                                            .range = {0, 1, 0, 1},
+                                            .stage = Stage::ComputeShader,
+                                            .access = Access::ShaderWrite};
+                commands.declareAccess(std::span(&access, 1));
+#endif
                 commands.dispatch(groups, groups, 1);
             });
 
@@ -135,14 +129,26 @@ TEST_CASE("a pooled frame and an unpooled frame render the same image", "[gpu]")
         invertFirst.textureWrites.push_back(second);
         graph.addComputePass(
             "lmx.test.transient.invertFirst", invertFirst, [&](const PassResources& resources) {
-                const GraphResult<Texture*> source = resources.texture(nextVersion(first));
-                const GraphResult<Texture*> destination = resources.texture(second);
-                REQUIRE(source.has_value());
-                REQUIRE(destination.has_value());
-                commands.bindComputePipeline(**invertPipeline);
-                commands.bindStorageTexture(kImageSlot, **destination, {}, StorageAccess::Write);
-                commands.bindStorageTexture(kImageSourceSlot, **source, {}, StorageAccess::Read);
-                commands.bindFrameData(kImageParamsSlot, params);
+                const auto source = resources.texture(nextVersion(first));
+                const auto destination = resources.texture(second);
+                REQUIRE(source.texture.bits != 0);
+                REQUIRE(destination.texture.bits != 0);
+                commands.setPipeline(invertPipeline->get());
+                commands.pushRoot(lmx::test::ComputeImageRoot{
+                    .image = static_cast<uint32_t>(resources.storageView(second, 0)),
+                    .source = static_cast<uint32_t>(resources.storageView(nextVersion(first), 0)),
+                    .extent = kSize});
+#ifndef NDEBUG
+                const std::array accesses{ResourceAccess{.texture = source.texture,
+                                                         .range = {0, 1, 0, 1},
+                                                         .stage = Stage::ComputeShader,
+                                                         .access = Access::ShaderRead},
+                                          ResourceAccess{.texture = destination.texture,
+                                                         .range = {0, 1, 0, 1},
+                                                         .stage = Stage::ComputeShader,
+                                                         .access = Access::ShaderWrite}};
+                commands.declareAccess(accesses);
+#endif
                 commands.dispatch(groups, groups, 1);
             });
 
@@ -152,25 +158,46 @@ TEST_CASE("a pooled frame and an unpooled frame render the same image", "[gpu]")
         invertSecond.textureWrites.push_back(third);
         graph.addComputePass(
             "lmx.test.transient.invertSecond", invertSecond, [&](const PassResources& resources) {
-                const GraphResult<Texture*> source = resources.texture(nextVersion(second));
-                const GraphResult<Texture*> destination = resources.texture(third);
-                REQUIRE(source.has_value());
-                REQUIRE(destination.has_value());
-                commands.bindComputePipeline(**invertPipeline);
-                commands.bindStorageTexture(kImageSlot, **destination, {}, StorageAccess::Write);
-                commands.bindStorageTexture(kImageSourceSlot, **source, {}, StorageAccess::Read);
-                commands.bindFrameData(kImageParamsSlot, params);
+                const auto source = resources.texture(nextVersion(second));
+                const auto destination = resources.texture(third);
+                REQUIRE(source.texture.bits != 0);
+                REQUIRE(destination.texture.bits != 0);
+                commands.setPipeline(invertPipeline->get());
+                commands.pushRoot(lmx::test::ComputeImageRoot{
+                    .image = static_cast<uint32_t>(resources.storageView(third, 0)),
+                    .source = static_cast<uint32_t>(resources.storageView(nextVersion(second), 0)),
+                    .extent = kSize});
+#ifndef NDEBUG
+                const std::array accesses{ResourceAccess{.texture = source.texture,
+                                                         .range = {0, 1, 0, 1},
+                                                         .stage = Stage::ComputeShader,
+                                                         .access = Access::ShaderRead},
+                                          ResourceAccess{.texture = destination.texture,
+                                                         .range = {0, 1, 0, 1},
+                                                         .stage = Stage::ComputeShader,
+                                                         .access = Access::ShaderWrite}};
+                commands.declareAccess(accesses);
+#endif
                 commands.dispatch(groups, groups, 1);
             });
 
         PassDesc resolve;
         resolve.textureReads.push_back(nextVersion(third));
-        resolve.color = ColorAttachment{.handle = color, .clearColor = {1.0f, 0.0f, 1.0f, 1.0f}};
+        resolve.color =
+            lmx::render::ColorAttachment{.handle = color, .clearColor = {1.0f, 0.0f, 1.0f, 1.0f}};
         graph.addPass("lmx.test.transient.resolve", resolve, [&](const PassResources& resources) {
-            const GraphResult<Texture*> texture = resources.texture(nextVersion(third));
-            REQUIRE(texture.has_value());
-            commands.bindPipeline(**samplePipeline);
-            commands.bindTexture(0, **texture);
+            const auto texture = resources.texture(nextVersion(third));
+            REQUIRE(texture.texture.bits != 0);
+            commands.setPipeline(samplePipeline->get());
+            commands.pushRoot(lmx::test::FullscreenSampleRoot{
+                .source = static_cast<uint32_t>(resources.view(nextVersion(third)))});
+#ifndef NDEBUG
+            const ResourceAccess access{.texture = texture.texture,
+                                        .range = {0, 1, 0, 1},
+                                        .stage = Stage::FragmentShader,
+                                        .access = Access::ShaderRead};
+            commands.declareAccess(std::span(&access, 1));
+#endif
             commands.draw(3);
         });
 
@@ -182,9 +209,10 @@ TEST_CASE("a pooled frame and an unpooled frame render the same image", "[gpu]")
 
         std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
         {
-            const auto readbackBytes =
-                lmx::render::readbackNow(*gpu, *target, lmx::render::TextureUse::RenderTarget);
-            std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
+            const auto readbackBytes = lmx::render::readbackNow(*gpu, *target, states);
+            INFO(errorOf(readbackBytes));
+            REQUIRE(readbackBytes);
+            std::memcpy(pixels.data(), readbackBytes->data(), pixels.size());
         }
         return std::pair{record, pixels};
     };
@@ -230,7 +258,7 @@ TEST_CASE("a transient cannot read what the transient it replaced left behind",
     constexpr uint8_t kFirstFill = 0xAA;
     constexpr uint8_t kSecondFill = 0x11;
     constexpr uint64_t kBytes = sizeof(uint32_t) * kElements;
-    constexpr TransientBufferDesc kBins{.size = kBytes, .storageRead = true};
+    constexpr TransientBufferDesc kBins{.size = kBytes, .storageRead = true, .storageWrite = true};
 
     auto gpu = createTestGpu();
     REQUIRE(gpu != nullptr);
@@ -239,18 +267,16 @@ TEST_CASE("a transient cannot read what the transient it replaced left behind",
     INFO(errorOf(library));
     REQUIRE(library.has_value());
 
-    auto pipeline = gpu->device().createComputePipeline(
-        {.library = library->get(),
-         .computeEntry = "computeAddFromBuffer",
-         .threadsPerThreadgroup = {kHazardThreadsPerGroup, 1, 1},
-         .label = "lmx.test.transient.hazardPipeline"});
+    auto pipeline = lmx::engine::adoptGpu(
+        gpu->device(), gpu->device().createPipeline(
+                           ComputePipelineDesc{.compute = {library->get(), "computeAddFromBuffer"},
+                                               .label = "lmx.test.transient.hazardPipeline"}));
     INFO(errorOf(pipeline));
     REQUIRE(pipeline.has_value());
 
     const auto makeOutput = [&](const char* label) {
         return lmx::engine::GpuBuffer::create(
-            gpu->device(),
-            {.size = kBytes, .storageWrite = true, .cpuReadback = true, .label = label}, nullptr);
+            gpu->device(), {.size = kBytes, .usage = BufferUsage::ShaderWrite, .label = label});
     };
     auto firstOut = makeOutput("lmx.test.transient.firstOut");
     auto secondOut = makeOutput("lmx.test.transient.secondOut");
@@ -259,8 +285,7 @@ TEST_CASE("a transient cannot read what the transient it replaced left behind",
     INFO(errorOf(secondOut));
     REQUIRE(secondOut.has_value());
 
-    const HazardParams params{.bias = kBias};
-    TransientPool pool(gpu->device());
+    TransientPool pool(*gpu);
 
     auto commandsFrame = gpu->beginFrame();
     auto& commands = commandsFrame.commands;
@@ -269,18 +294,16 @@ TEST_CASE("a transient cannot read what the transient it replaced left behind",
     RenderGraph graph(pool);
     const GraphBuffer first = graph.createBuffer(kBins, "lmx.test.transient.firstBins");
     const GraphBuffer second = graph.createBuffer(kBins, "lmx.test.transient.secondBins");
-    const GraphBuffer firstResult =
-        graph.importBuffer(firstOut->rhi(), "lmx.test.transient.firstOut");
-    const GraphBuffer secondResult =
-        graph.importBuffer(secondOut->rhi(), "lmx.test.transient.secondOut");
+    const GraphBuffer firstResult = graph.importBuffer(*firstOut, "lmx.test.transient.firstOut");
+    const GraphBuffer secondResult = graph.importBuffer(*secondOut, "lmx.test.transient.secondOut");
 
     const auto declareFill = [&](std::string_view label, GraphBuffer bins, uint8_t value) {
         CopyPassDesc fill;
         fill.bufferDestinations.push_back(bins);
         graph.addCopyPass(label, fill, [&, bins, value](const PassResources& resources) {
-            const GraphResult<Buffer*> buffer = resources.buffer(bins);
-            REQUIRE(buffer.has_value());
-            commands.fillBuffer(**buffer, 0, kBytes, value);
+            const Buffer buffer = resources.buffer(bins);
+            REQUIRE(buffer.bits != 0);
+            commands.fillBuffer(buffer, 0, kBytes, uint32_t{value} * 0x01010101u);
         });
     };
     const auto declareAdd = [&](std::string_view label, GraphBuffer bins, GraphBuffer out) {
@@ -288,14 +311,26 @@ TEST_CASE("a transient cannot read what the transient it replaced left behind",
         add.bufferReads.push_back(nextVersion(bins));
         add.bufferWrites.push_back(out);
         graph.addComputePass(label, add, [&, bins, out](const PassResources& resources) {
-            const GraphResult<Buffer*> source = resources.buffer(nextVersion(bins));
-            const GraphResult<Buffer*> destination = resources.buffer(out);
-            REQUIRE(source.has_value());
-            REQUIRE(destination.has_value());
-            commands.bindComputePipeline(**pipeline);
-            commands.bindStorageBuffer(kHazardOutputSlot, **destination, StorageAccess::Write);
-            commands.bindStorageBuffer(kHazardSourceSlot, **source, StorageAccess::Read);
-            commands.bindFrameData(kHazardParamsSlot, params);
+            const Buffer source = resources.buffer(nextVersion(bins));
+            const Buffer destination = resources.buffer(out);
+            REQUIRE(source.bits != 0);
+            REQUIRE(destination.bits != 0);
+            commands.setPipeline(pipeline->get());
+            commands.pushRoot(
+                lmx::test::BufferHazardRoot{.output = resources.address(out),
+                                            .source = resources.address(nextVersion(bins)),
+                                            .bias = kBias});
+#ifndef NDEBUG
+            const std::array accesses{ResourceAccess{.buffer = source,
+                                                     .size = kBytes,
+                                                     .stage = Stage::ComputeShader,
+                                                     .access = Access::ShaderRead},
+                                      ResourceAccess{.buffer = destination,
+                                                     .size = kBytes,
+                                                     .stage = Stage::ComputeShader,
+                                                     .access = Access::ShaderWrite}};
+            commands.declareAccess(accesses);
+#endif
             commands.dispatch(kElements / kHazardThreadsPerGroup, 1, 1);
         });
     };
@@ -325,10 +360,12 @@ TEST_CASE("a transient cannot read what the transient it replaced left behind",
     const auto readValues = [&](const lmx::engine::GpuBuffer& buffer) {
         std::vector<uint32_t> values(kElements, 0);
         {
-            const auto readbackBytes =
-                lmx::render::readbackNow(*gpu, buffer, lmx::render::BufferUse::StorageWrite,
-                                         {0, values.size() * sizeof(uint32_t)});
-            std::memcpy(values.data(), readbackBytes.data(), values.size() * sizeof(uint32_t));
+            const auto readbackBytes = lmx::render::readbackNow(
+                *gpu, buffer, {Stage::ComputeShader, Access::ShaderWrite, Layout::Undefined},
+                {0, values.size() * sizeof(uint32_t)});
+            INFO(errorOf(readbackBytes));
+            REQUIRE(readbackBytes);
+            std::memcpy(values.data(), readbackBytes->data(), values.size() * sizeof(uint32_t));
         }
         return values;
     };
@@ -367,11 +404,10 @@ TEST_CASE("resizing and toggling transients leaks no heap generation", "[gpu][ch
     INFO(errorOf(computeLibrary));
     REQUIRE(computeLibrary.has_value());
 
-    auto writePipeline = gpu->device().createComputePipeline(
-        {.library = computeLibrary->get(),
-         .computeEntry = "computeWriteImage",
-         .threadsPerThreadgroup = {kImageThreadsPerGroup, kImageThreadsPerGroup, 1},
-         .label = "lmx.test.transient.stressPipeline"});
+    auto writePipeline = lmx::engine::adoptGpu(
+        gpu->device(), gpu->device().createPipeline(ComputePipelineDesc{
+                           .compute = {computeLibrary->get(), "computeWriteImage"},
+                           .label = "lmx.test.transient.stressPipeline"}));
     INFO(errorOf(writePipeline));
     REQUIRE(writePipeline.has_value());
 
@@ -379,12 +415,15 @@ TEST_CASE("resizing and toggling transients leaks no heap generation", "[gpu][ch
     INFO(errorOf(sampleLibrary));
     REQUIRE(sampleLibrary.has_value());
 
-    auto samplePipeline =
-        gpu->device().createGraphicsPipeline({.library = sampleLibrary->get(),
-                                              .vertexEntry = "vertexMain",
-                                              .fragmentEntry = "fragmentMain",
-                                              .colorFormat = Format::BGRA8Unorm,
-                                              .label = "lmx.test.transient.stressSamplePipeline"});
+    const ColorTarget samplePipelineColor{.format = Format::BGRA8Unorm};
+    auto samplePipeline = lmx::engine::adoptGpu(
+        gpu->device(), gpu->device().createPipeline(GraphicsPipelineDesc{
+                           .vertex = {sampleLibrary->get(), "vertexMain"},
+                           .fragment = {sampleLibrary->get(), "fragmentMain"},
+                           .raster = {.cull = CullMode::Back},
+                           .depthStencil = {.depthCompare = CompareOp::Less},
+                           .colors = std::span(&samplePipelineColor, 1),
+                           .label = "lmx.test.transient.stressSamplePipeline"}));
     INFO(errorOf(samplePipeline));
     REQUIRE(samplePipeline.has_value());
 
@@ -395,11 +434,11 @@ TEST_CASE("resizing and toggling transients leaks no heap generation", "[gpu][ch
     INFO(errorOf(secondTarget));
     REQUIRE(secondTarget.has_value());
 
-    TransientPool pool(gpu->device());
+    TransientPool pool(*gpu);
+    TextureStateTable states;
 
     // Two transients whose lifetimes do not overlap, at whatever extent this cycle asked for.
     const auto renderFrame = [&](uint32_t extent, bool pooling) {
-        const ImageParams params{.extent = extent};
         const uint32_t groups = extent / kImageThreadsPerGroup;
         const TransientTextureDesc desc{.width = extent,
                                         .height = extent,
@@ -412,35 +451,52 @@ TEST_CASE("resizing and toggling transients leaks no heap generation", "[gpu][ch
         pool.beginFrame();
 
         RenderGraph graph(pool);
+        graph.bindTextureStates(states);
         graph.setPoolingEnabled(pooling);
         const GraphTexture first = graph.createTexture(desc, "lmx.test.transient.stressFirst");
         const GraphTexture second = graph.createTexture(desc, "lmx.test.transient.stressSecond");
-        const GraphTexture firstColor = graph.importTexture(firstTarget->rhi(), Format::BGRA8Unorm,
-                                                            "lmx.test.transient.firstColor");
-        const GraphTexture secondColor = graph.importTexture(
-            secondTarget->rhi(), Format::BGRA8Unorm, "lmx.test.transient.secondColor");
+        const GraphTexture firstColor =
+            graph.importPersistentTexture(*firstTarget, "lmx.test.transient.firstColor");
+        const GraphTexture secondColor =
+            graph.importPersistentTexture(*secondTarget, "lmx.test.transient.secondColor");
 
         const auto declarePair = [&](std::string_view writeLabel, std::string_view resolveLabel,
                                      GraphTexture storage, GraphTexture color) {
             ComputePassDesc write;
             write.textureWrites.push_back(storage);
             graph.addComputePass(writeLabel, write, [&, storage](const PassResources& resources) {
-                const GraphResult<Texture*> texture = resources.texture(storage);
-                REQUIRE(texture.has_value());
-                commands.bindComputePipeline(**writePipeline);
-                commands.bindStorageTexture(kImageSlot, **texture, {}, StorageAccess::Write);
-                commands.bindFrameData(kImageParamsSlot, params);
+                const auto texture = resources.texture(storage);
+                REQUIRE(texture.texture.bits != 0);
+                commands.setPipeline(writePipeline->get());
+                commands.pushRoot(lmx::test::ComputeImageRoot{
+                    .image = static_cast<uint32_t>(resources.storageView(storage, 0)),
+                    .extent = extent});
+#ifndef NDEBUG
+                const ResourceAccess access{.texture = texture.texture,
+                                            .range = {0, 1, 0, 1},
+                                            .stage = Stage::ComputeShader,
+                                            .access = Access::ShaderWrite};
+                commands.declareAccess(std::span(&access, 1));
+#endif
                 commands.dispatch(groups, groups, 1);
             });
 
             PassDesc resolve;
             resolve.textureReads.push_back(nextVersion(storage));
-            resolve.color = ColorAttachment{.handle = color};
+            resolve.color = lmx::render::ColorAttachment{.handle = color};
             graph.addPass(resolveLabel, resolve, [&, storage](const PassResources& resources) {
-                const GraphResult<Texture*> texture = resources.texture(nextVersion(storage));
-                REQUIRE(texture.has_value());
-                commands.bindPipeline(**samplePipeline);
-                commands.bindTexture(0, **texture);
+                const auto texture = resources.texture(nextVersion(storage));
+                REQUIRE(texture.texture.bits != 0);
+                commands.setPipeline(samplePipeline->get());
+                commands.pushRoot(lmx::test::FullscreenSampleRoot{
+                    .source = static_cast<uint32_t>(resources.view(nextVersion(storage)))});
+#ifndef NDEBUG
+                const ResourceAccess access{.texture = texture.texture,
+                                            .range = {0, 1, 0, 1},
+                                            .stage = Stage::FragmentShader,
+                                            .access = Access::ShaderRead};
+                commands.declareAccess(std::span(&access, 1));
+#endif
                 commands.draw(3);
             });
             graph.exportTexture(nextVersion(color));

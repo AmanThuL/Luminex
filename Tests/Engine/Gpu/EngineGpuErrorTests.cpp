@@ -2,24 +2,25 @@
 
 #include "Engine/Gpu/GpuError.h"
 
+#include <array>
+
 //======================================================================================================================
-TEST_CASE("gpuError maps InvalidDesc to InvalidArgument and keeps the message", "[engine]") {
-    const lmx::Error error = lmx::engine::gpuError({rojoRHI::ErrorCode::InvalidDesc, "bad desc"});
-    CHECK(error.code == lmx::ErrorCode::InvalidArgument);
-    CHECK(error.message == "bad desc");
+TEST_CASE("gpuError keeps v2 error messages", "[engine]") {
+    for (const auto category : std::array{
+             rojoRHI::ErrorCategory::Unsupported, rojoRHI::ErrorCategory::OutOfMemory,
+             rojoRHI::ErrorCategory::DriverFailure, rojoRHI::ErrorCategory::ShaderAbiMismatch}) {
+        const auto error = lmx::engine::gpuError({category, "bad desc"});
+        CHECK(error.message == "bad desc");
+    }
 }
 
 //======================================================================================================================
-TEST_CASE("gpuError maps creation failures to Gpu and DeviceUnsupported to Unsupported",
-          "[engine]") {
-    CHECK(lmx::engine::gpuError({rojoRHI::ErrorCode::ShaderLoadFailed, "a"}).code ==
-          lmx::ErrorCode::Gpu);
-    CHECK(lmx::engine::gpuError({rojoRHI::ErrorCode::PipelineCreationFailed, "b"}).code ==
-          lmx::ErrorCode::Gpu);
-    CHECK(lmx::engine::gpuError({rojoRHI::ErrorCode::ResourceCreationFailed, "c"}).code ==
-          lmx::ErrorCode::Gpu);
-    CHECK(lmx::engine::gpuError({rojoRHI::ErrorCode::SwapchainFailed, "d"}).code ==
-          lmx::ErrorCode::Gpu);
-    CHECK(lmx::engine::gpuError({rojoRHI::ErrorCode::DeviceUnsupported, "e"}).code ==
+TEST_CASE("gpuError maps driver failures to Gpu and Unsupported to Unsupported", "[engine]") {
+    CHECK(lmx::engine::gpuError({rojoRHI::ErrorCategory::Unsupported, "unsupported"}).code ==
           lmx::ErrorCode::Unsupported);
+    for (const auto category :
+         std::array{rojoRHI::ErrorCategory::OutOfMemory, rojoRHI::ErrorCategory::DriverFailure,
+                    rojoRHI::ErrorCategory::ShaderAbiMismatch}) {
+        CHECK(lmx::engine::gpuError({category, "failure"}).code == lmx::ErrorCode::Gpu);
+    }
 }

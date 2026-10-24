@@ -90,7 +90,7 @@ struct WorkspaceSettings {
 
 /// The editor shell: the Dear ImGui context, the dockspace and its four docked panels, the detached
 /// Performance and Render Graph windows, the fly camera, and the active engine::Scene the Inspector
-/// edits. One per process -- ImGui's context, and the Metal 4 renderer glue behind it, are both
+/// edits. One per process -- ImGui's context and its renderer adapter are both
 /// process-global -- which is why this is created through a factory and is neither copyable nor
 /// movable.
 ///
@@ -98,11 +98,11 @@ struct WorkspaceSettings {
 /// it has built, for the device's lifetime) is passed in and outlives the shell; everything else
 /// the shell touches (the scene target it displays, the GPU context it resizes against) is passed
 /// in per call, which keeps the destruction order the RHI requires visible in run(): the shell is
-/// declared last and so torn down first, while the device is still alive for imguiShutdown() to
+/// declared last and so torn down first, while the device is still alive for imgui::shutdown() to
 /// drain against.
 class EditorShell {
 public:
-    /// Creates the ImGui context and both backends (order per Metal4ImGui.h), then loads the
+    /// Creates the ImGui context, SDL platform backend and renderer adapter, then loads the
     /// requested initial scene and points the camera at its initial pose. Returns nullptr after
     /// logging, with nothing left initialised, if either ImGui backend refuses or the initial scene
     /// fails to load --
@@ -142,6 +142,8 @@ public:
     void primeAppearance(std::optional<Appearance> appearance);
     /// Opens requested tools after workspace loading and before the first UI frame.
     void primeWindows(std::span<const DetachedWindow> windows);
+    /// Closes the detached tool windows through their existing visibility state.
+    void closeDetachedWindows();
     /// Returns the current preference, including a session override, for native window themes.
     Appearance effectiveAppearance() const { return m_workspace.appearance.effective(); }
     /// Returns the current UI canvas clear in encoded SDR sRGB, with straight alpha.
@@ -221,6 +223,8 @@ public:
 
     /// Joins exact retired GPU timings to a pending interactive measurement.
     void retireMeasurement(uint64_t frameId, std::span<const engine::PassTiming> timings);
+    /// Cancels an active measurement when a drawable gap breaks its contiguous frame sequence.
+    void cancelMeasurementForSkippedDrawable();
     /// Joins the exact retired local-light diagnostics to their declared measurement frame.
     void retireMeasurementLighting(const render::LightingStatus& status);
     /// Publishes queued GPU visibility using saved declaration identities and exact measurement

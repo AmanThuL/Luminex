@@ -28,6 +28,8 @@
 
 namespace lmx::app {
 namespace {
+constexpr uint32_t kFramesInFlight = 3;
+
 //======================================================================================================================
 std::string hashFile(const std::filesystem::path& path) {
     const auto bytes = readWholeFile(path);
@@ -45,7 +47,7 @@ bool writeReport(const std::filesystem::path& path, const MeasurementRun& run) {
 //======================================================================================================================
 MeasurementProvenance collectMeasurementProvenance(const rojoRHI::Device& device) {
     MeasurementProvenance result;
-    result.device = device.deviceName();
+    result.device = device.capabilities().adapterName;
     utsname info{};
     if (uname(&info) == 0)
         result.os =
@@ -63,8 +65,7 @@ MeasurementProvenance collectMeasurementProvenance(const rojoRHI::Device& device
     std::error_code error;
     const std::filesystem::path shaderRoot = "Shaders";
     for (const auto& file : std::filesystem::recursive_directory_iterator(shaderRoot, error)) {
-        if (file.is_regular_file() &&
-            (file.path().extension() == ".metal" || file.path().extension() == ".metallib")) {
+        if (file.is_regular_file() && file.path().extension() == LMX_SHADER_LIBRARY_EXTENSION) {
             result.shaderHashes.emplace_back(file.path().generic_string(), hashFile(file.path()));
         }
     }
@@ -100,7 +101,8 @@ int runMeasurement(const AppOptions& options) {
     LMX_LOG_ERROR("Measurement requires lighting diagnostics, which are unavailable.");
     return 1;
 #endif
-    auto context = engine::GpuContext::create({.validation = false});
+    auto context =
+        engine::GpuContext::create({.validation = false, .framesInFlight = kFramesInFlight});
     if (!context) {
         LMX_LOG_ERROR("measurement device: {}", context.error().message);
         return 1;
@@ -175,7 +177,7 @@ int runMeasurement(const AppOptions& options) {
         LMX_LOG_ERROR("{}", run.failure());
         return 1;
     }
-    render::TransientPool pool(gpu.device());
+    render::TransientPool pool(gpu);
     auto renderer = render::Renderer::create(gpu, plan.width, plan.height);
     if (!renderer) {
         run.cancel(renderer.error().message);
@@ -193,14 +195,11 @@ int runMeasurement(const AppOptions& options) {
         engine::Frame gpuFrame = gpu.beginFrame();
         auto& commands = gpuFrame.commands;
         const Stopwatch encode;
-        const engine::PassTimingFrame timings = gpu.passTimings();
-        if (!run.retire(timings.frame, timings.passes)) {
-            gpu.submitAndEndFrame(gpuFrame);
-            break;
-        }
         if (auto prepared = session.prepareFrame(gpu.frameNumber()); !prepared) {
             run.cancel(prepared.error().message);
             gpu.submitAndEndFrame(gpuFrame);
+            const engine::PassTimingFrame timings = gpu.passTimings();
+            run.retire(timings.frame, timings.passes);
             break;
         }
         std::vector<engine::DrawItem> items;
@@ -235,6 +234,8 @@ int runMeasurement(const AppOptions& options) {
                                  encodeMs, (*renderer)->visibilityStatus(), session.tableStats(),
                                  record, view.skySphere.has_value(), (*renderer)->temporalStatus(),
                                  (*renderer)->lightingStatus()));
+        const engine::PassTimingFrame timings = gpu.passTimings();
+        run.retire(timings.frame, timings.passes);
         if (options.temporal == TemporalMode::Vendor &&
             (*renderer)->temporalStatus().vendorFallback != render::VendorFallback::None) {
             run.cancel("Requested vendor reconstruction fell back during measurement");
@@ -252,10 +253,13 @@ int runMeasurement(const AppOptions& options) {
                 run.retireVisibility(status);
     }
     if (run.state() == MeasurementState::Draining) {
-        engine::Frame drainFrame = gpu.beginFrame();
-        const engine::PassTimingFrame timings = gpu.passTimings();
-        run.retire(timings.frame, timings.passes);
-        gpu.submitAndEndFrame(drainFrame);
+        for (uint32_t remaining = kFramesInFlight;
+             remaining > 0 && run.state() == MeasurementState::Draining; --remaining) {
+            engine::Frame drainFrame = gpu.beginFrame();
+            gpu.submitAndEndFrame(drainFrame);
+            const engine::PassTimingFrame timings = gpu.passTimings();
+            run.retire(timings.frame, timings.passes);
+        }
         run.finishDrain();
     }
     gpu.waitIdle();

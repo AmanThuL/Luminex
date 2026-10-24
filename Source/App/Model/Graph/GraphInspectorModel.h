@@ -20,8 +20,9 @@ namespace lmx::app {
 struct GraphInspectorResourceRow {
     uint32_t index = 0; ///< Index into CompiledFrameDebug::resources.
     render::GraphResourceKind kind = render::GraphResourceKind::Texture; ///< Texture or buffer.
-    std::string name;                                  ///< The name it was declared under.
-    rojoRHI::Format format = rojoRHI::Format::Unknown; ///< Declared format; Unknown for a buffer.
+    std::string name; ///< The name it was declared under.
+    /// Declared format; Undefined for a buffer.
+    rojoRHI::Format format = rojoRHI::Format::Undefined;
 };
 
 /// One declared use of one resource version by one pass, with the resource's name resolved so the

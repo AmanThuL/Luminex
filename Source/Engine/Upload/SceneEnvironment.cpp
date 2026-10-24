@@ -15,6 +15,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <span>
 #include <string>
 #include <utility>
 
@@ -46,17 +47,18 @@ asset::AssetResult<void> attachEnvironment(rojoRHI::Device& device, Scene& scene
 asset::AssetResult<void> attachNeutralEnvironment(rojoRHI::Device& device, Scene& scene,
                                                   std::string_view label) {
     constexpr std::array<uint8_t, 4> kNeutralSky = {149, 170, 196, 255};
-    const rojoRHI::TextureMip face{.data = kNeutralSky.data(), .bytesPerRow = 4};
-    const std::array<rojoRHI::TextureMip, 6> faces = {face, face, face, face, face, face};
+    const rojoRHI::TextureData face{.bytes = std::as_bytes(std::span(kNeutralSky)),
+                                    .bytesPerRow = 4};
+    const std::array<rojoRHI::TextureData, 6> faces = {face, face, face, face, face, face};
     // The sRGB view decodes this authored display colour before lighting consumes it.
     const std::string skyLabel = std::string(label) + ".sky";
     auto cubemap = GpuTexture::create(device,
-                                      {.width = 1,
-                                       .height = 1,
+                                      {.type = rojoRHI::TextureType::Cube,
                                        .format = rojoRHI::Format::RGBA8Unorm_sRGB,
-                                       .kind = rojoRHI::TextureKind::Cube,
-                                       .mipLevels = 1,
-                                       .sampled = true,
+                                       .extent = {1, 1, 1},
+                                       .mips = 1,
+                                       .layers = 6,
+                                       .usage = rojoRHI::TextureUsage::Sampled,
                                        .label = skyLabel},
                                       faces);
     if (!cubemap) {

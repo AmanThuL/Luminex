@@ -1,7 +1,7 @@
 #include "App/Model/Scene/SceneSession.h"
 #include "Support/EngineSceneTestSupport.h"
-#include "Support/GpuTestSupport.h"
 #include "Support/SceneDocumentTestSupport.h"
+#include "Support/TestGpu.h"
 
 //======================================================================================================================
 TEST_CASE("TemporalLab document places its diagnostics at the documented world positions",

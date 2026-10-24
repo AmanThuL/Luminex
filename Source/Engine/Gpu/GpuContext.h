@@ -1,6 +1,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file GpuContext.h
-/// @brief Declares the owner of the frame loop, idle waits, pass timings and shader loading.
+/// @brief Declares device ownership, queue pacing, retired timings and capture.
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
@@ -20,77 +20,100 @@
 
 namespace lmx::engine {
 
-/// Selects optional behavior when creating a GPU context.
+/// Selects fixed device behavior; Release builds refuse validation with Unsupported.
 struct GpuContextDesc {
-    bool validation = true; ///< Enables backend validation diagnostics.
+    bool validation = false;     ///< Enables the validation tracker in Debug builds only.
+    bool scopeTimings = true;    ///< Collects retired scope timestamps without timing stalls.
+    uint32_t framesInFlight = 3; ///< Frame-slot count, either two or three.
+    bool enableCapture = true;   ///< Requests platform capture support at device creation.
 };
 
-/// One open frame: its number and the command list everything in it records into.
+/// One open frame; commands borrows the context's list and expires on the next beginFrame.
 struct Frame {
-    uint64_t number;                ///< Frame number, counted from one in beginFrame order.
-    rojoRHI::CommandList& commands; ///< Command list of the open frame.
+    uint64_t number; ///< Frame number counted from one, including frames without presentation.
+    rojoRHI::CommandList& commands; ///< The open graphics command list.
 };
 
-/// Owns the device's frame loop, idle waits, frame number, pass timings, upscaler support and
-/// shader loading, so Luminex reaches those concerns in one place.
-///
-/// On RojoRHI v1 every body forwards to the one device call it replaces, in the same order the
-/// callers issued it. The frame number is the device's own (no second counter); the switch to v2
-/// adds a counter here when queues and fences replace the device's frame loop. Code that only
-/// creates resources keeps a `rojoRHI::Device&`, which `device()` returns.
+/// Owns a device, graphics queue, pacing fences, shader loading and copied retired timings.
+/// The context must outlive every GPU owner. Each acquired list must be submitted before endFrame;
+/// all frame and capture operations occur on the renderer-owning thread.
 class GpuContext {
 public:
-    /// Creates a device and a context that owns it.
+    /// Creates a device and both fences, preserving a causal creation failure.
     static Result<std::unique_ptr<GpuContext>> create(const GpuContextDesc& desc);
-
-    /// Wraps a device the caller owns; the device must outlive the context.
-    explicit GpuContext(rojoRHI::Device& borrowed);
-
-    /// Non-copyable: the context owns per-device state and possibly the device.
+    /// Waits and destroys fences and device; callers must have closed the frame and released
+    /// owners.
+    ~GpuContext();
+    /// Device ownership cannot be copied.
     GpuContext(const GpuContext&) = delete;
-    /// Non-assignable, for the reason the copy constructor is deleted.
+    /// Device ownership cannot be copied by assignment.
     GpuContext& operator=(const GpuContext&) = delete;
-
-    /// Returns the device every resource is created on.
-    rojoRHI::Device& device() const;
-
-    /// Begins a paced frame and returns its number and command list.
+    /// Returns the resource-creation device, which lives as long as this context.
+    rojoRHI::Device& device() const { return m_device; }
+    /// Returns the context's graphics queue; callers serialize queue operations.
+    rojoRHI::Queue graphicsQueue() const { return m_queue; }
+    /// Opens one paced frame and acquires its graphics list, without opening a timing scope.
     Frame beginFrame();
-    /// Commits `frame` and presents the acquired texture of each swapchain in `present`.
-    ///
-    /// On RojoRHI v1 the device presents at most one swapchain per frame, so `present` holds zero
-    /// or one; Debug builds check that, and that `frame` is the frame beginFrame opened last.
-    void submitAndEndFrame(Frame& frame, std::span<rojoRHI::Swapchain* const> present = {});
-    /// Blocks until all submitted work completes.
+    /// Ends/submits the current list once and signals its numbered frame fence.
+    void submit(Frame& frame);
+    /// Presents a prepared swapchain image after submission, while the frame remains open.
+    void present(rojoRHI::Swapchain swapchain);
+    /// Closes a submitted frame and copies the timing publication retired by its beginFrame.
+    void endFrame(Frame& frame);
+    /// Submits, presents each image and closes the frame; an empty image list is valid.
+    void submitAndEndFrame(Frame& frame, std::span<const rojoRHI::Swapchain> present = {});
+    /// Returns whether beginFrame has an unmatched endFrame.
+    bool inFrame() const { return m_inFrame; }
+    /// Waits for all prior graphics work using an empty submission; requires no open frame.
     void waitIdle();
-    /// Returns the number of the newest frame beginFrame has opened; zero before the first.
-    uint64_t frameNumber() const;
-
-    /// Returns the pass timings of the newest retired frame; valid until the next passTimings or
-    /// beginFrame.
-    PassTimingFrame passTimings();
-    /// Returns the device's temporal upscaler support.
+    /// Waits for an already-submitted frame number, or zero for the initial fence value.
+    void waitForFrame(uint64_t number);
+    /// Returns the newest completed submitted frame without waiting.
+    uint64_t completedFrame();
+    /// Returns the last opened frame number, initially zero.
+    uint64_t frameNumber() const { return m_frame; }
+    /// Returns copied timing rows and their actual retired ID, valid until the next endFrame.
+    PassTimingFrame passTimings() const;
+    /// Returns the first advertised MetalFX scale range and its Luminex display name.
     UpscalerSupportInfo upscalerSupport() const;
-
-    /// Loads the shader library `name` (a bare name such as `"Bloom"`) from the shader directory.
+    /// Returns whether this process/device can begin a capture.
+    bool captureAvailable() const;
+    /// Starts a capture and its schema record window, or returns the unchanged causal error.
+    Result<void> beginCapture(std::string_view path);
+    /// Ends this context's successful capture and writes its schema sidecar; logs sidecar I/O
+    /// failure.
+    void endCapture();
+    /// Loads Shaders/name plus the selected backend extension as bytes; preserves load failures.
     Result<GpuOwned<rojoRHI::ShaderLibrary>> loadShaderLibrary(std::string_view name);
 
 private:
-    explicit GpuContext(std::unique_ptr<rojoRHI::Device> owned);
+    GpuContext(rojoRHI::Device device, rojoRHI::Fence frameFence, rojoRHI::Fence idleFence);
+    void checkFrame(const Frame& frame) const;
 
-    std::unique_ptr<rojoRHI::Device> m_owned;
-    rojoRHI::Device* m_device = nullptr;
+    mutable rojoRHI::Device m_device;
+    rojoRHI::Queue m_queue;
+    rojoRHI::Fence m_frameFence;
+    rojoRHI::Fence m_idleFence;
+    rojoRHI::CommandList m_list;
+    uint64_t m_frame = 0;
+    uint64_t m_submittedFrame = 0;
+    uint64_t m_idleValue = 0;
+    bool m_inFrame = false;
+    bool m_submitted = false;
     std::vector<PassTiming> m_timings;
+    double m_frameGpuMs = 0.0;
+    uint64_t m_timingFrame = 0;
+    std::string m_capturePath;
+    bool m_capturing = false;
 };
 
-/// Returns the path, relative to the working directory, the library `name` is loaded from.
+/// Returns the shader-directory path with the backend-selected library extension.
 std::string shaderLibraryPath(std::string_view name);
-
-/// Replaces the rows of `destination` with copies of `source`, keeping its capacity.
-void copyPassTimings(std::span<const rojoRHI::PassTiming> source,
-                     std::vector<PassTiming>& destination);
-
-/// Converts the device's temporal scaler support to the Luminex value.
-UpscalerSupportInfo toUpscalerSupport(const rojoRHI::TemporalScalerSupport& support);
+/// Copies depth-one rows beneath the graphics lmx.frame scope and its actual retired frame ID.
+/// Clears outputs on absent frame scope, reuses destination capacity, and owns every copied label.
+void collectPassTimings(std::span<const rojoRHI::ScopeTiming> source,
+                        std::vector<PassTiming>& destination, double& frameGpuMs, uint64_t& frame);
+/// Returns the first MetalFX range or an unavailable value; the name is static Luminex storage.
+UpscalerSupportInfo toUpscalerSupport(std::span<const rojoRHI::UpscalerSupport> support);
 
 } // namespace lmx::engine

@@ -184,6 +184,7 @@
       ],
       "privateHeaders": [
         "Source/App/Shell/EditorShell.h",
+        "Source/App/Shell/EditorSurfaces.h",
         "Source/App/Shell/ChildRun.h",
         "Source/App/Shell/ConsoleLogSink.h",
         "Source/App/Panels/Console/ConsolePanel.h",
@@ -234,9 +235,12 @@
         "Tests/Support/GpuTemporalTestSupport.h",
         "Tests/Support/GpuTestSupport.h",
         "Tests/Support/GraphTestSupport.h",
+        "Tests/Support/OracleRoots.h",
         "Tests/Support/RenderGraphTestSupport.h",
         "Tests/Support/SceneTableTestSupport.h",
         "Tests/Support/SceneDocumentTestSupport.h",
+        "Tests/Support/TestGpu.h",
+        "Tests/Support/TrackerFrameSupport.h",
         "Tests/Support/SceneDocumentFixtures.h",
         "Tests/Support/TransientBackendTestSupport.h"
       ]
@@ -297,12 +301,9 @@
         "RojoRHITests"
       ],
       "includeRoots": [
-        "RojoRHI/Legacy/Include"
+        "RojoRHI/Include"
       ],
       "consumers": {
-        "asset": [
-          "rojoRHI/Format.h"
-        ],
         "engine": [
           "*"
         ],
@@ -317,13 +318,10 @@
         ],
         "app-shell": [
           "*",
-          "rojoRHI/Metal4/Metal4ImGui.h"
+          "rojoRHI/ImGuiAdapter.h"
         ],
         "tests": [
           "*"
-        ],
-        "texture-bake": [
-          "rojoRHI/Format.h"
         ],
         "benchmarks": [
           "*"
@@ -361,7 +359,7 @@
     "Render": {
       "deps": [
         "Core",
-        "RojoRHILegacy",
+        "RojoRHI",
         "RojoRHIMetalCpp",
         "Engine",
         "Asset"
@@ -370,9 +368,9 @@
     "App": {
       "deps": [
         "Core",
-        "RojoRHILegacy",
+        "RojoRHI",
         "RojoRHIMetalCpp",
-        "RojoRHILegacyMetal4ImGui",
+        "RojoRHIImGui",
         "Render",
         "ImGui",
         "ImGuiNodeEditor",
@@ -386,7 +384,7 @@
     "Tests": {
       "deps": [
         "Core",
-        "RojoRHILegacy",
+        "RojoRHI",
         "RojoRHIMetalCpp",
         "Render",
         "Asset",
@@ -443,7 +441,7 @@
     "FrameDataBench": {
       "deps": [
         "Core",
-        "RojoRHILegacy",
+        "RojoRHI",
         "RojoRHIMetalCpp"
       ]
     },
@@ -456,7 +454,7 @@
     "Engine": {
       "deps": [
         "Core",
-        "RojoRHILegacy",
+        "RojoRHI",
         "RojoRHIMetalCpp",
         "Asset"
       ],
@@ -468,7 +466,7 @@
     "Scenes": {
       "deps": [
         "Core",
-        "RojoRHILegacy",
+        "RojoRHI",
         "RojoRHIMetalCpp",
         "Asset",
         "Engine"
@@ -477,7 +475,7 @@
     "AppModel": {
       "deps": [
         "Core",
-        "RojoRHILegacy",
+        "RojoRHI",
         "RojoRHIMetalCpp",
         "Render",
         "Asset",

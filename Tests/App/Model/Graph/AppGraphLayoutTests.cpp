@@ -4,7 +4,7 @@
 #include "App/Model/Graph/GraphNodeModel.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Graph/TransientPool.h"
-#include "Support/GraphTestSupport.h"
+#include "Support/TransientBackendTestSupport.h"
 
 #include <algorithm>
 #include <array>
@@ -21,43 +21,17 @@ namespace {
 
 // The layout reads nothing but the compiled record, so a fake needs to be real enough for
 // RenderGraph::compile() to accept and nothing more.
-struct FakeTexture final : rojoRHI::Texture {
-
-    //==================================================================================================================
-    explicit FakeTexture(uint32_t extent) : m_extent(extent) {}
-
-    //==================================================================================================================
-    uint32_t width() const override { return m_extent; }
-
-    //==================================================================================================================
-    uint32_t height() const override { return m_extent; }
-
-    //==================================================================================================================
-    rojoRHI::Format format() const override { return rojoRHI::Format::Unknown; }
-
-    //==================================================================================================================
-    uint32_t mipLevels() const override { return 1; }
-
-    //==================================================================================================================
-    uint32_t arrayLayers() const override { return 1; }
-
-    //==================================================================================================================
-    void readback(void*, uint64_t) override {}
-
-private:
-    uint32_t m_extent = 0;
-};
 
 const ExecuteFn kNoWork = [](const PassResources&) {};
 
 // A scene pass, a three-step bloom stage, and a tonemap: the four-segment labels that group, the
 // three-segment label that cannot, and a four-segment label with nobody to group with.
 struct BloomFrame {
-    FakeTexture sceneColor{64};
-    FakeTexture bloomA{64};
-    FakeTexture bloomB{64};
-    FakeTexture bloomC{64};
-    FakeTexture displayColor{64};
+    engine::TextureRef sceneColor = textureFixture(64);
+    engine::TextureRef bloomA = textureFixture(64);
+    engine::TextureRef bloomB = textureFixture(64);
+    engine::TextureRef bloomC = textureFixture(64);
+    engine::TextureRef displayColor = textureFixture(64);
     RenderGraph graph;
     GraphTexture scene;
     GraphTexture first;
@@ -69,15 +43,15 @@ struct BloomFrame {
 //======================================================================================================================
 void declareBloomFrame(BloomFrame& frame) {
     RenderGraph& graph = frame.graph;
-    frame.scene = graph.importTexture(frame.sceneColor, rojoRHI::Format::RGBA16Float,
+    frame.scene = graph.importTexture(formatted(frame.sceneColor, rojoRHI::Format::RGBA16Float),
                                       "lmx.render.sceneColorHdr");
-    frame.first =
-        graph.importTexture(frame.bloomA, rojoRHI::Format::RGBA16Float, "lmx.render.bloomA");
-    frame.second =
-        graph.importTexture(frame.bloomB, rojoRHI::Format::RGBA16Float, "lmx.render.bloomB");
-    frame.third =
-        graph.importTexture(frame.bloomC, rojoRHI::Format::RGBA16Float, "lmx.render.bloomC");
-    frame.display = graph.importTexture(frame.displayColor, rojoRHI::Format::BGRA8Unorm,
+    frame.first = graph.importTexture(formatted(frame.bloomA, rojoRHI::Format::RGBA16Float),
+                                      "lmx.render.bloomA");
+    frame.second = graph.importTexture(formatted(frame.bloomB, rojoRHI::Format::RGBA16Float),
+                                       "lmx.render.bloomB");
+    frame.third = graph.importTexture(formatted(frame.bloomC, rojoRHI::Format::RGBA16Float),
+                                      "lmx.render.bloomC");
+    frame.display = graph.importTexture(formatted(frame.displayColor, rojoRHI::Format::BGRA8Unorm),
                                         "lmx.render.displayColor");
 
     PassDesc scenePass;
@@ -113,12 +87,12 @@ void declareBloomFrame(BloomFrame& frame) {
 // One key whose passes disagree about being culled, and one whose two halves are a single pass
 // each -- the split that must happen and the two groups that must not survive it.
 struct SplitFrame {
-    FakeTexture mid{64};
-    FakeTexture displayColor{64};
-    FakeTexture finalColor{64};
-    FakeTexture orphanA{64};
-    FakeTexture orphanB{64};
-    FakeTexture orphanC{64};
+    engine::TextureRef mid = textureFixture(64);
+    engine::TextureRef displayColor = textureFixture(64);
+    engine::TextureRef finalColor = textureFixture(64);
+    engine::TextureRef orphanA = textureFixture(64);
+    engine::TextureRef orphanB = textureFixture(64);
+    engine::TextureRef orphanC = textureFixture(64);
     RenderGraph graph;
 };
 
@@ -126,17 +100,17 @@ struct SplitFrame {
 void declareSplitFrame(SplitFrame& frame) {
     RenderGraph& graph = frame.graph;
     const GraphTexture mid =
-        graph.importTexture(frame.mid, rojoRHI::Format::RGBA16Float, "lmx.mid");
-    const GraphTexture display =
-        graph.importTexture(frame.displayColor, rojoRHI::Format::RGBA16Float, "lmx.displayColor");
-    const GraphTexture out =
-        graph.importTexture(frame.finalColor, rojoRHI::Format::BGRA8Unorm, "lmx.finalColor");
+        graph.importTexture(formatted(frame.mid, rojoRHI::Format::RGBA16Float), "lmx.mid");
+    const GraphTexture display = graph.importTexture(
+        formatted(frame.displayColor, rojoRHI::Format::RGBA16Float), "lmx.displayColor");
+    const GraphTexture out = graph.importTexture(
+        formatted(frame.finalColor, rojoRHI::Format::BGRA8Unorm), "lmx.finalColor");
     const GraphTexture spareA =
-        graph.importTexture(frame.orphanA, rojoRHI::Format::BGRA8Unorm, "lmx.orphanA");
+        graph.importTexture(formatted(frame.orphanA, rojoRHI::Format::BGRA8Unorm), "lmx.orphanA");
     const GraphTexture spareB =
-        graph.importTexture(frame.orphanB, rojoRHI::Format::BGRA8Unorm, "lmx.orphanB");
+        graph.importTexture(formatted(frame.orphanB, rojoRHI::Format::BGRA8Unorm), "lmx.orphanB");
     const GraphTexture spareC =
-        graph.importTexture(frame.orphanC, rojoRHI::Format::BGRA8Unorm, "lmx.orphanC");
+        graph.importTexture(formatted(frame.orphanC, rojoRHI::Format::BGRA8Unorm), "lmx.orphanC");
 
     PassDesc wide;
     wide.color = ColorAttachment{.handle = mid};
@@ -170,8 +144,8 @@ void declareSplitFrame(SplitFrame& frame) {
 // A four-pass chain plus a sink rooting its first result: five layers, one of which holds two
 // items, which is what makes a row's height depend on more than its layer count.
 struct ChainFrame {
-    std::array<FakeTexture, 4> targets{FakeTexture{64}, FakeTexture{64}, FakeTexture{64},
-                                       FakeTexture{64}};
+    std::array<engine::TextureRef, 4> targets{textureFixture(64), textureFixture(64),
+                                              textureFixture(64), textureFixture(64)};
     RenderGraph graph;
 };
 
@@ -179,13 +153,13 @@ struct ChainFrame {
 void declareChainFrame(ChainFrame& frame) {
     RenderGraph& graph = frame.graph;
     const GraphTexture zero =
-        graph.importTexture(frame.targets[0], rojoRHI::Format::BGRA8Unorm, "lmx.chain0");
+        graph.importTexture(formatted(frame.targets[0], rojoRHI::Format::BGRA8Unorm), "lmx.chain0");
     const GraphTexture one =
-        graph.importTexture(frame.targets[1], rojoRHI::Format::BGRA8Unorm, "lmx.chain1");
+        graph.importTexture(formatted(frame.targets[1], rojoRHI::Format::BGRA8Unorm), "lmx.chain1");
     const GraphTexture two =
-        graph.importTexture(frame.targets[2], rojoRHI::Format::BGRA8Unorm, "lmx.chain2");
+        graph.importTexture(formatted(frame.targets[2], rojoRHI::Format::BGRA8Unorm), "lmx.chain2");
     const GraphTexture three =
-        graph.importTexture(frame.targets[3], rojoRHI::Format::BGRA8Unorm, "lmx.chain3");
+        graph.importTexture(formatted(frame.targets[3], rojoRHI::Format::BGRA8Unorm), "lmx.chain3");
 
     PassDesc a;
     a.color = ColorAttachment{.handle = zero};
@@ -213,9 +187,9 @@ void declareChainFrame(ChainFrame& frame) {
 // The frame the M5.4 model tests used for the culled band: a scheduled chain plus two passes
 // nothing roots, whose labels are three-segment and therefore never group.
 struct CulledFrame {
-    FakeTexture sceneColor{64};
-    FakeTexture displayColor{64};
-    FakeTexture unusedColor{64};
+    engine::TextureRef sceneColor = textureFixture(64);
+    engine::TextureRef displayColor = textureFixture(64);
+    engine::TextureRef unusedColor = textureFixture(64);
     RenderGraph graph;
 };
 
@@ -223,11 +197,11 @@ struct CulledFrame {
 void declareCulledFrame(CulledFrame& frame) {
     RenderGraph& graph = frame.graph;
     const GraphTexture scene =
-        graph.importTexture(frame.sceneColor, rojoRHI::Format::BGRA8Unorm, "sceneColor");
-    const GraphTexture display =
-        graph.importTexture(frame.displayColor, rojoRHI::Format::BGRA8Unorm, "displayColor");
-    const GraphTexture orphan =
-        graph.importTexture(frame.unusedColor, rojoRHI::Format::BGRA8Unorm, "unusedTarget");
+        graph.importTexture(formatted(frame.sceneColor, rojoRHI::Format::BGRA8Unorm), "sceneColor");
+    const GraphTexture display = graph.importTexture(
+        formatted(frame.displayColor, rojoRHI::Format::BGRA8Unorm), "displayColor");
+    const GraphTexture orphan = graph.importTexture(
+        formatted(frame.unusedColor, rojoRHI::Format::BGRA8Unorm), "unusedTarget");
 
     PassDesc scenePass;
     scenePass.color = ColorAttachment{.handle = scene};
@@ -253,10 +227,10 @@ void declareCulledFrame(CulledFrame& frame) {
 // bytes and compilation emits the reuse boundary an alias link is drawn from. The two passes on
 // either side of that boundary share a stage, so collapsing it hides the handover entirely.
 struct AliasFrame {
-    FakeDevice device;
+    FakeTransientBackend device;
     TransientPool pool{device};
-    FakeTexture midTarget{64};
-    FakeTexture displayColor{64};
+    engine::TextureRef midTarget = textureFixture(64);
+    engine::TextureRef displayColor = textureFixture(64);
     RenderGraph graph{pool};
 };
 
@@ -276,9 +250,9 @@ void declareAliasFrame(AliasFrame& frame) {
                                                     .sampled = true},
                                                    "lmx.transient.bloom");
     const GraphTexture mid =
-        graph.importTexture(frame.midTarget, rojoRHI::Format::BGRA8Unorm, "lmx.mid");
-    const GraphTexture display =
-        graph.importTexture(frame.displayColor, rojoRHI::Format::BGRA8Unorm, "lmx.displayColor");
+        graph.importTexture(formatted(frame.midTarget, rojoRHI::Format::BGRA8Unorm), "lmx.mid");
+    const GraphTexture display = graph.importTexture(
+        formatted(frame.displayColor, rojoRHI::Format::BGRA8Unorm), "lmx.displayColor");
 
     PassDesc writeScene;
     writeScene.color = ColorAttachment{.handle = scene};
@@ -306,8 +280,8 @@ void declareAliasFrame(AliasFrame& frame) {
 // proved DAG is empty and the whole picture is the culled band. The three-segment labels never
 // group, which leaves the band holding one box per pass.
 struct DeadFrame {
-    FakeTexture orphanA{64};
-    FakeTexture orphanB{64};
+    engine::TextureRef orphanA = textureFixture(64);
+    engine::TextureRef orphanB = textureFixture(64);
     RenderGraph graph;
 };
 
@@ -315,9 +289,9 @@ struct DeadFrame {
 void declareDeadFrame(DeadFrame& frame) {
     RenderGraph& graph = frame.graph;
     const GraphTexture spareA =
-        graph.importTexture(frame.orphanA, rojoRHI::Format::BGRA8Unorm, "lmx.orphanA");
+        graph.importTexture(formatted(frame.orphanA, rojoRHI::Format::BGRA8Unorm), "lmx.orphanA");
     const GraphTexture spareB =
-        graph.importTexture(frame.orphanB, rojoRHI::Format::BGRA8Unorm, "lmx.orphanB");
+        graph.importTexture(formatted(frame.orphanB, rojoRHI::Format::BGRA8Unorm), "lmx.orphanB");
 
     PassDesc first;
     first.color = ColorAttachment{.handle = spareA};
@@ -331,8 +305,8 @@ void declareDeadFrame(DeadFrame& frame) {
 // The same empty DAG, with two four-segment labels that do share a stage: the group they form is
 // culled, so the band holds one box standing for both.
 struct DeadStageFrame {
-    FakeTexture orphanA{64};
-    FakeTexture orphanB{64};
+    engine::TextureRef orphanA = textureFixture(64);
+    engine::TextureRef orphanB = textureFixture(64);
     RenderGraph graph;
 };
 
@@ -340,9 +314,9 @@ struct DeadStageFrame {
 void declareDeadStageFrame(DeadStageFrame& frame) {
     RenderGraph& graph = frame.graph;
     const GraphTexture spareA =
-        graph.importTexture(frame.orphanA, rojoRHI::Format::BGRA8Unorm, "lmx.orphanA");
+        graph.importTexture(formatted(frame.orphanA, rojoRHI::Format::BGRA8Unorm), "lmx.orphanA");
     const GraphTexture spareB =
-        graph.importTexture(frame.orphanB, rojoRHI::Format::BGRA8Unorm, "lmx.orphanB");
+        graph.importTexture(formatted(frame.orphanB, rojoRHI::Format::BGRA8Unorm), "lmx.orphanB");
 
     PassDesc first;
     first.color = ColorAttachment{.handle = spareA};
@@ -924,19 +898,20 @@ TEST_CASE("scene bundle expansion is keyed to one logical node and ignores key o
 TEST_CASE("scene bundles keep logical layout and selection through temporal slot alternation",
           "[app][graph-layout]") {
     const auto makeModel = [](uint32_t slot) {
-        std::array<FakeTexture, 8> textures{FakeTexture{64}, FakeTexture{64}, FakeTexture{64},
-                                            FakeTexture{64}, FakeTexture{64}, FakeTexture{64},
-                                            FakeTexture{64}, FakeTexture{64}};
+        std::array<engine::TextureRef, 8> textures{
+            textureFixture(64), textureFixture(64), textureFixture(64), textureFixture(64),
+            textureFixture(64), textureFixture(64), textureFixture(64), textureFixture(64)};
         RenderGraph graph;
         PassDesc pass;
         for (uint32_t i = 0; i < 6; ++i)
-            pass.textureReads.push_back(graph.importTexture(
-                textures[i], rojoRHI::Format::RGBA16Float, "lmx.scene.table" + std::to_string(i)));
+            pass.textureReads.push_back(
+                graph.importTexture(formatted(textures[i], rojoRHI::Format::RGBA16Float),
+                                    "lmx.scene.table" + std::to_string(i)));
         pass.textureReads.push_back(
-            graph.importTexture(textures[6], rojoRHI::Format::RGBA16Float,
+            graph.importTexture(formatted(textures[6], rojoRHI::Format::RGBA16Float),
                                 "lmx.render.historyColor" + std::to_string(slot)));
-        const auto color =
-            graph.importTexture(textures[7], rojoRHI::Format::RGBA16Float, "lmx.render.color");
+        const auto color = graph.importTexture(formatted(textures[7], rojoRHI::Format::RGBA16Float),
+                                               "lmx.render.color");
         pass.color = ColorAttachment{.handle = color};
         graph.addPass("lmx.pass.scene", pass, kNoWork);
         graph.presentTexture(nextVersion(color));

@@ -1,4 +1,4 @@
--- CPU decoding and generation share descriptor vocabulary without linking GPU interfaces.
+-- CPU decoding and generation have no GPU interface dependency.
 target("Asset")
     set_kind("static")
     add_files("*.cpp", "Image/*.cpp", "Model/*.cpp", "Texture/*.cpp")
@@ -8,5 +8,4 @@ target("Asset")
     add_files("Document/DocumentUri.cpp")
     add_files("Document/Orientation.cpp", {cxxflags = "-ffp-contract=off"})
     add_deps("Core")
-    add_includedirs("../../../RojoRHI/Legacy/Include", {public = true})
     add_packages("cgltf", "stb")

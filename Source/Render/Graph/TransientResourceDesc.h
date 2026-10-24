@@ -19,13 +19,15 @@ namespace lmx::render {
 struct TransientTextureDesc {
     uint32_t width = 0;                                      ///< Extent in texels.
     uint32_t height = 0;                                     ///< Extent in texels.
-    rojoRHI::Format format = rojoRHI::Format::Unknown;       ///< Pixel format.
-    rojoRHI::TextureKind kind = rojoRHI::TextureKind::Tex2D; ///< Two-dimensional or cubemap.
+    rojoRHI::Format format = rojoRHI::Format::Undefined;     ///< Pixel format.
+    rojoRHI::TextureType kind = rojoRHI::TextureType::Tex2D; ///< Two-dimensional or cubemap.
     uint32_t mipLevels = 1;    ///< Mip levels allocated for each face.
     bool renderTarget = false; ///< Enables render-target use.
     bool sampled = false;      ///< Enables shader reads.
     bool storageRead = false;  ///< Enables storage-binding reads.
     bool storageWrite = false; ///< Enables storage-binding writes.
+    /// Compares every creation field.
+    bool operator==(const TransientTextureDesc&) const = default;
 };
 
 /// The buffer counterpart of TransientTextureDesc, on the same terms.
@@ -33,6 +35,8 @@ struct TransientBufferDesc {
     uint64_t size = 0;         ///< Allocation size in bytes.
     bool storageRead = false;  ///< Enables storage-binding reads.
     bool storageWrite = false; ///< Enables storage-binding writes.
+    /// Compares every creation field.
+    bool operator==(const TransientBufferDesc&) const = default;
 };
 
 } // namespace lmx::render

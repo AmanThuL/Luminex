@@ -105,8 +105,8 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& c
     const GraphTexture sceneColorRead =
         declareSceneClear(graph, imports.sceneColor, imports.sceneDepth, clearColor);
 #endif
-    const uint32_t sceneWidth = m_width;
-    const uint32_t sceneHeight = m_height;
+    [[maybe_unused]] const uint32_t sceneWidth = m_width;
+    [[maybe_unused]] const uint32_t sceneHeight = m_height;
 #ifndef LMX_PENDING_TEMPORAL
     const GraphTexture motionRead =
         state.temporalEnabled ? nextVersion(imports.motionTargetHandle) : GraphTexture{};
@@ -247,8 +247,8 @@ void Renderer::render(rojoRHI::CommandList& commands, const engine::Camera& came
                       const SceneView& view) {
     // declarePasses() always declares bloom's transients (spec 10: it is an ordinary graph pass
     // whether or not a caller's own graph has a pool), so this convenience path needs one of its
-    // own -- the caller already opened this frame with Device::beginFrame() before calling here,
-    // which is what m_transientPool.beginFrame() requires.
+    // own -- the caller already opened this frame with GpuContext::beginFrame() before calling
+    // here, which is what m_transientPool.beginFrame() requires.
     m_transientPool.beginFrame();
     RenderGraph graph(m_transientPool);
     const GraphTexture displayColor = declarePasses(graph, commands, camera, view);

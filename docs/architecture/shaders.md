@@ -2,34 +2,56 @@
 
 **Status**: Implemented
 
-Shaders are authored in Slang and compiled offline into readable MSL and, when the toolchain is
-present, a metallib; App, Tests and FrameDataBench each compile the whole Slang tree into their own
-target directory and load the result at runtime.
+Shaders are authored in Slang and compiled offline with the mounted component's `rojorhi.slang`
+rule. Each target selects runtime entry files and writes its own backend-specific libraries;
+modules are dependencies, not standalone runtime libraries.
 
 ## Compilation
 
-Each shader compiles in two steps, per [ADR 0003](../decisions/0003-slang-shaders.md): `slangc`
-emits MSL source, then `xcrun metal -std=metal4.0` turns that MSL into a `.metallib`. The metallib
-step needs the offline Metal toolchain (`xcodebuild -downloadComponent MetalToolchain`); when it is
-absent, only the MSL is written, and RojoRHI's Metal backend compiles that MSL when a shader
-library is loaded, preferring the metallib when one exists. [The frame pipeline](frame-pipeline.md)
-walks the frame's live resource sequence. Both artifacts land under the compiling target's own
-`<targetdir>/Shaders/`, as `<basename>.metal` and `<basename>.metallib`, and the generated `.metal`
-stays there for inspection when a shader misbehaves. Visibility, occlusion, HZB and light-cluster
-shaders compile with precise floating point (`-fp-mode precise`, `-fno-fast-math
--ffp-contract=off`).
+`xmake/luminex_shaders.lua` shares entry selection and settings across App, Tests and the dormant
+FrameDataBench target. It subtracts the pending source/test-shader patterns in `xmake/port.lua`,
+then selects files containing shader attributes. App currently selects DisplayTransform alone;
+Tests additionally selects BufferHazardSmoke, ComputeImageSmoke, FullscreenSample, MrtSmoke,
+SamplerSmoke and VisibilityDepthReadback. BENCH remains skipped; its declared entry is FrameDataQuad
+only. SCENE, VISIBILITY, LIGHTS, POST and TEMPORAL stay out of the active entry list.
 
-`xmake/shaders.lua` defines the `slang2metallib` build rule that runs these steps for every target
-that opts in. Slang resolves `import X;` against the importing file's own directory before any
-`-I` directory, so a pass family's entries find the modules that sit beside them with no search
-path at all; the rule therefore passes `-I` for `Shaders/Common/` only, plus, for a source under
-`Shaders/Tests/`, every `Shaders/Passes/<family>/` directory, since an oracle may test a
-family-local module. The rule treats every `.slang` file reachable through those directories as a
-dependency of every source it compiles, so editing any module rebuilds the target's shaders. Output
-basenames are a flat, case-insensitive namespace: the rule rejects two sources in the same target
-that would emit the same basename, and the tree-wide import checker (below) rejects the same
-collision across the whole `Shaders/` tree. Runtime code loads a shader by basename alone, so a
-file's folder never appears in its runtime name.
+`RojoRHI/xmake/slang.lua` owns `rojorhi.slang` and the backend compilation/package contract.
+A Metal 4 configure requires `xcodebuild -downloadComponent MetalToolchain`: Slang emits MSL,
+then the offline compiler builds the packaged `.metal4lib`. Generated MSL remains available for
+inspection. There is no runtime source compilation fallback. Null emits `.nulllib`; the D3D12
+package extension is `.d3d12lib`, without implying consumer hardware acceptance on that backend.
+`LMX_SHADER_LIBRARY_EXTENSION` selects the suffix used by
+`GpuContext::loadShaderLibrary` for `Shaders/<basename><extension>`.
+
+Targets retain separate shader directories; the adapter keeps its embedded shader and
+`rojorhi-imgui` directory. Runtime basenames stay flat and case-insensitively unique. The shared
+rule receives the public `RojoRHI/Shaders/RojoRHI` module and Common/family search paths; test
+entries additionally see their oracle-root modules. Module edits participate in rebuild dependencies.
+
+## Roots and reflection
+
+Ported entries `import RojoRHI;` and read typed roots with `rojoRHI::root<T>()`. The module owns
+all backend bindings; consumer entries declare no binding/register numbers. Buffers use `Addr`
+with `load/store`, and textures/samplers use view/sampler indices through the module helpers.
+`uploadFrameData` returns an Addr for nested constants; `pushRoot` supplies the draw/dispatch root.
+Roots are flat mirrored structs with explicit padding and checked sizes/offsets.
+
+DisplayRoot is 16 bytes: sceneColor and bloom view indices at 0/4, zero padding at 8 and
+bloomIntensity at 12. Display retains integer texel loads and manual interpolation, without a
+sampler. The [shader convention](../conventions/shader-style.md) owns the retained exposure twins.
+
+Two leaf `rojorhi.shader_layout` probes have separate ownership roles:
+
+- `Shaders/Layout/LuminexLayout.slang` reflects Source roots for App, currently DisplayRoot.
+- `Shaders/Layout/TestLayout.slang` reflects test-only oracle roots for Tests. Its five flat
+  layouts cover BufferHazard, ComputeImage, FullscreenSample, SamplerSmoke and VisibilityDepth;
+  MrtSmoke remains root-free.
+
+The rule reflects Metal, SPIR-V scalar layout and HLSL, maps probe names to C++ types, and generates
+`ShaderLayout.h` for the target's real assertion TU. This is layout validation; HLSL reflection
+alone does not establish DXIL execution. Layout probes have an ordinary probe function and no
+shader attribute, are not runtime entries, and cannot be imported. Production/Common modules
+cannot import Tests roots. Pending families keep their probe sections until their roots are ported.
 
 ## Shaders/Common/
 
@@ -42,7 +64,7 @@ no shader entry point.
 Ten folders under `Shaders/Passes/` hold each pass family's entry files and any module local to
 that family, one folder per family in Render's pass vocabulary: `Bloom`, `Display`, `Exposure`,
 `LocalLights`, `Occlusion`, `Scene`, `SelectionOutline`, `Shadow`, `Temporal` and `Visibility`. Each
-entry function is marked with a `[shader("...")]` attribute, so the build passes no `-entry` flag;
+entry function is marked with a `[shader("...")]` attribute, which the shared rule discovers;
 names follow `vertexMain`, `fragmentMain` and `computeMain`, or a stage prefix plus the pass
 (`vertexMainMotion`, `computeBloomThreshold`).
 
@@ -57,22 +79,24 @@ readback. An oracle belongs to no family, so it alone may import a module local 
 `RojoRHI/Legacy/Shaders/Tests/` is a separate tree, owned by the RojoRHI component. It compiles into its
 own target directory, so it may reuse a basename this tree also uses, and it may not import this
 tree's modules. It holds its own `Modules/Shadow.slang`, the `Triangle` shader, the cube,
-render-area, compute, indirect, instance-index and binding-limit smoke shaders, and byte-identical
-copies of the six oracles both test binaries need.
+render-area, compute, indirect, instance-index and binding-limit smoke shaders, and frozen oracle
+copies independent of the consumer root ABI.
 
 ## Placement and import rules
 
-Every Slang source must sit in `Common/`, `Tests/` or `Passes/<family>/`; a `Common/` module may
-import only `Common/` modules, and a family-local module may be imported only from its own family
-folder, with `Tests/` exempted as the one place that may cross a family boundary. No import may
+Runtime entries and modules sit in `Common/`, `Tests/` or `Passes/<family>/`; the two leaf probes
+have the explicit `Layout/` role. Common modules import only Common and the public RojoRHI module;
+family-local modules are imported only by their own family, Tests or the leaf reflection probes. No import may
 reach a file that declares a shader entry point, and imports must be named module imports rather
-than textual includes. [Shader style](../conventions/shader-style.md) owns this rule; `slangc`
-enforces the family and `Common/` boundaries by refusing to resolve the import, and
-`Tools/check_shader_imports.py` checks all of it, including the basename, folder-placement and
-no-entry-point-import rules that `slangc` does not check. `xmake policy` runs the checker, locally
-and in CI.
+than textual includes. [Shader style](../conventions/shader-style.md) owns these rules. App and
+Tests pass Common and every pass-family directory to Slang; Tests also adds its oracle directory.
+Those search paths resolve imports without enforcing family isolation. `Tools/check_shader_imports.py`
+enforces the import boundaries, the two explicit Layout roles, basenames, placement and
+no-entry-point imports. Run it directly from a worktree; CI runs it in policy.
 
 ## Tests
+
+The inventory below includes pending families; `xmake/port.lua` owns the currently compiled subset.
 
 - `Tests/Render/Passes/Bloom/`: the threshold, downsample and upsample bloom shaders.
 - `Tests/Render/Passes/Display/`: the display-transform shader.
