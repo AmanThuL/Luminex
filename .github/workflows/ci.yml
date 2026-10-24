@@ -125,6 +125,12 @@ jobs:
           xmake f -m release -y --ccache=n --rojorhi_backend=null
           xmake project -k compile_commands
 
+      - name: Build
+        run: xmake -y
+
+      - name: Build test shader layouts
+        run: xmake build -P . Tests
+
       - name: C++ layout policy
         run: python3 Tools/check_cpp_layout.py
 
@@ -132,9 +138,6 @@ jobs:
         run: |
           python3 Tools/check_module_deps.py
           python3 Tools/check_source_headers.py
-
-      - name: Build
-        run: xmake -y
 
       - name: Module contract (link)
         run: python3 Tools/check_module_deps.py --link
@@ -199,21 +202,8 @@ jobs:
         working-directory: build/macosx/arm64/debug/test
         run: |
           ./Tests --list-tests "[tracker]" --reporter json --out tracker-inventory.json
-          python3 - <<'PYTHON'
-          import json
-          from pathlib import Path
-
-          inventory = json.loads(Path("tracker-inventory.json").read_text())
-          if inventory["version"] != 1:
-              raise SystemExit("unsupported Catch2 inventory version")
-          names = [case["name"] for case in inventory["listings"]["tests"]]
-          for required in (
-              "the minimal frame runs four frames under the validation tracker",
-              "the display read can be culled and restored under the tracker",
-          ):
-              if names.count(required) != 1:
-                  raise SystemExit(f"required tracker case missing or duplicated: {required}")
-          PYTHON
+          cat tracker-inventory.json
+          python3 "$GITHUB_WORKSPACE/Tools/check_tracker_inventory.py" tracker-inventory.json
           ./Tests "[tracker]"
 
   # Non-blocking per spec D8: reports style/modernization findings
@@ -247,6 +237,8 @@ jobs:
         run: |
           xmake f -m debug -y --ccache=n --rojorhi_backend=null
           xmake project -k compile_commands
+      - name: Build generated shader layouts
+        run: xmake build -P . App
       - name: clang-tidy (non-blocking)
         run: |
           tidy="$(brew --prefix llvm)/bin/clang-tidy"
