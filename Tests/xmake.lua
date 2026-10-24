@@ -15,6 +15,7 @@ target("Tests")
     add_defines('LMX_REPO_ROOT="$(projectdir)"')
     -- GPU tests load shaders relative to the test binary and do not depend on an App build.
     lmx_apply_shader_rule("tests")
+    -- [device] runs on the configured backend inside unit; [tracker] requires Debug.
     add_tests("unit", {runargs = {"~[gpu]"}})
     -- Hidden diagnostics have explicit reproduction commands and are not ordinary regression gates.
     add_tests("gpu", {runargs = {"[gpu]~[.]"}})

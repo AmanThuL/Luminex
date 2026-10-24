@@ -5,7 +5,7 @@
 #include "App/Model/Graph/GraphNodeModel.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Graph/TransientPool.h"
-#include "Support/GraphTestSupport.h"
+#include "Support/TransientBackendTestSupport.h"
 
 #include <array>
 #include <cstdint>
@@ -21,53 +21,6 @@ namespace {
 // The model reads a texture's kind, format, and range text off the compiled record alone -- never
 // the rojoRHI::Texture behind it -- so a fake needs to be real enough for RenderGraph::compile() to
 // accept, and nothing more.
-struct FakeTexture final : rojoRHI::Texture {
-
-    //==================================================================================================================
-    explicit FakeTexture(uint32_t extent, uint32_t mips = 1, uint32_t layers = 1)
-        : m_extent(extent), m_mipLevels(mips), m_arrayLayers(layers) {}
-
-    //==================================================================================================================
-    uint32_t width() const override { return m_extent; }
-
-    //==================================================================================================================
-    uint32_t height() const override { return m_extent; }
-
-    //==================================================================================================================
-    rojoRHI::Format format() const override { return rojoRHI::Format::Unknown; }
-
-    //==================================================================================================================
-    uint32_t mipLevels() const override { return m_mipLevels; }
-
-    //==================================================================================================================
-    uint32_t arrayLayers() const override { return m_arrayLayers; }
-
-    //==================================================================================================================
-    void readback(void*, uint64_t) override {}
-
-private:
-    uint32_t m_extent = 0;
-    uint32_t m_mipLevels = 1;
-    uint32_t m_arrayLayers = 1;
-};
-
-struct FakeBuffer final : rojoRHI::Buffer {
-
-    //==================================================================================================================
-    explicit FakeBuffer(uint64_t size) : m_size(size) {}
-
-    //==================================================================================================================
-    uint64_t size() const override { return m_size; }
-
-    //==================================================================================================================
-    void readback(void*, uint64_t) override {}
-
-    //==================================================================================================================
-    void write(uint64_t, const void*, uint64_t) override {}
-
-private:
-    uint64_t m_size = 0;
-};
 
 const ExecuteFn kNoWork = [](const PassResources&) {};
 
@@ -75,11 +28,11 @@ const ExecuteFn kNoWork = [](const PassResources&) {};
 // declared before the shadow pass it depends on, so an edge that merely followed declaration order
 // would run backwards and be caught.
 struct BaseFrame {
-    FakeTexture shadowMap{1024};
-    FakeTexture sceneColor{64};
-    FakeTexture sceneDepth{64};
-    FakeTexture displayColor{64};
-    FakeTexture extraColor{64};
+    engine::TextureRef shadowMap = textureFixture(1024);
+    engine::TextureRef sceneColor = textureFixture(64);
+    engine::TextureRef sceneDepth = textureFixture(64);
+    engine::TextureRef displayColor = textureFixture(64);
+    engine::TextureRef extraColor = textureFixture(64);
     RenderGraph graph;
     GraphTexture shadow;
     GraphTexture color;
@@ -101,15 +54,16 @@ struct BaseFrameOptions {
 //======================================================================================================================
 void declareBaseFrame(BaseFrame& frame, const BaseFrameOptions& options) {
     RenderGraph& graph = frame.graph;
-    frame.shadow = graph.importTexture(frame.shadowMap, rojoRHI::Format::D32Float, "lmx.shadowMap");
-    frame.color =
-        graph.importTexture(frame.sceneColor, rojoRHI::Format::RGBA16Float, "lmx.sceneColor");
-    frame.depth =
-        graph.importTexture(frame.sceneDepth, rojoRHI::Format::D32Float, "lmx.sceneDepth");
-    frame.display =
-        graph.importTexture(frame.displayColor, rojoRHI::Format::BGRA8Unorm, "lmx.displayColor");
-    frame.extra =
-        graph.importTexture(frame.extraColor, rojoRHI::Format::BGRA8Unorm, "lmx.extraColor");
+    frame.shadow =
+        graph.importTexture(formatted(frame.shadowMap, rojoRHI::Format::D32Float), "lmx.shadowMap");
+    frame.color = graph.importTexture(formatted(frame.sceneColor, rojoRHI::Format::RGBA16Float),
+                                      "lmx.sceneColor");
+    frame.depth = graph.importTexture(formatted(frame.sceneDepth, rojoRHI::Format::D32Float),
+                                      "lmx.sceneDepth");
+    frame.display = graph.importTexture(formatted(frame.displayColor, rojoRHI::Format::BGRA8Unorm),
+                                        "lmx.displayColor");
+    frame.extra = graph.importTexture(formatted(frame.extraColor, rojoRHI::Format::BGRA8Unorm),
+                                      "lmx.extraColor");
 
     PassDesc scene;
     scene.textureReads.push_back(nextVersion(frame.shadow));
@@ -146,9 +100,9 @@ void declareBaseFrame(BaseFrame& frame, const BaseFrameOptions& options) {
 // the second one's offset is the first one's size -- a placement that moves when the extent does
 // while the declared shape stays exactly the same.
 struct OverlappingTransientFrame {
-    FakeDevice device;
+    FakeTransientBackend device;
     TransientPool pool{device};
-    FakeTexture displayColor{64};
+    engine::TextureRef displayColor = textureFixture(64);
     RenderGraph graph{pool};
 };
 
@@ -167,8 +121,8 @@ void declareOverlappingTransients(OverlappingTransientFrame& frame, uint32_t ext
                                                      .renderTarget = true,
                                                      .sampled = true},
                                                     "lmx.transient.second");
-    const GraphTexture display =
-        graph.importTexture(frame.displayColor, rojoRHI::Format::BGRA8Unorm, "lmx.displayColor");
+    const GraphTexture display = graph.importTexture(
+        formatted(frame.displayColor, rojoRHI::Format::BGRA8Unorm), "lmx.displayColor");
 
     PassDesc writeFirst;
     writeFirst.color = ColorAttachment{.handle = first};
@@ -190,10 +144,10 @@ void declareOverlappingTransients(OverlappingTransientFrame& frame, uint32_t ext
 // Two transients whose lifetimes are disjoint, so with pooling on the second takes the first's
 // bytes and compilation emits the reuse boundary an alias link is drawn from.
 struct AliasingTransientFrame {
-    FakeDevice device;
+    FakeTransientBackend device;
     TransientPool pool{device};
-    FakeTexture midTarget{64};
-    FakeTexture displayColor{64};
+    engine::TextureRef midTarget = textureFixture(64);
+    engine::TextureRef displayColor = textureFixture(64);
     RenderGraph graph{pool};
 };
 
@@ -213,9 +167,9 @@ void declareAliasingTransients(AliasingTransientFrame& frame) {
                                                     .sampled = true},
                                                    "lmx.transient.bloom");
     const GraphTexture mid =
-        graph.importTexture(frame.midTarget, rojoRHI::Format::BGRA8Unorm, "lmx.mid");
-    const GraphTexture display =
-        graph.importTexture(frame.displayColor, rojoRHI::Format::BGRA8Unorm, "lmx.displayColor");
+        graph.importTexture(formatted(frame.midTarget, rojoRHI::Format::BGRA8Unorm), "lmx.mid");
+    const GraphTexture display = graph.importTexture(
+        formatted(frame.displayColor, rojoRHI::Format::BGRA8Unorm), "lmx.displayColor");
 
     PassDesc writeScene;
     writeScene.color = ColorAttachment{.handle = scene};
@@ -378,17 +332,17 @@ TEST_CASE("a sink node has one edge from its producer and the producing pass rec
 // Culled work is not part of the DAG the compiler proved. It keeps its declarations for the details
 // pane but gets no pin and no edge, so nothing in the drawn graph can depend on it.
 TEST_CASE("a culled pass has no pins and no edges", "[app]") {
-    FakeTexture color{64};
-    FakeTexture displayed{64};
-    FakeTexture unused{64};
-    FakeBuffer probe{256};
+    engine::TextureRef color = textureFixture(64);
+    engine::TextureRef displayed = textureFixture(64);
+    engine::TextureRef unused = textureFixture(64);
+    render::BufferRef probe = bufferFixture(256);
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(formatted(color, rojoRHI::Format::BGRA8Unorm), "sceneColor");
     const GraphTexture displayColor =
-        graph.importTexture(displayed, rojoRHI::Format::BGRA8Unorm, "displayColor");
+        graph.importTexture(formatted(displayed, rojoRHI::Format::BGRA8Unorm), "displayColor");
     const GraphTexture orphan =
-        graph.importTexture(unused, rojoRHI::Format::BGRA8Unorm, "unusedTarget");
+        graph.importTexture(formatted(unused, rojoRHI::Format::BGRA8Unorm), "unusedTarget");
     const GraphBuffer stats = graph.importBuffer(probe, "probe");
 
     PassDesc scene;

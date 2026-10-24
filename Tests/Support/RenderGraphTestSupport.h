@@ -7,71 +7,79 @@
 #include "Render/Graph/TransientPool.h"
 #include "Support/TransientBackendTestSupport.h"
 
-#include <algorithm>
 #include <array>
+#include <csignal>
+#include <cstdio>
 #include <deque>
-#include <limits>
+#include <functional>
 #include <ranges>
 #include <string>
+#include <sys/resource.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <variant>
 #include <vector>
 
 using namespace lmx;
 using namespace lmx::render;
 
-// The graph tests run on Luminex seams: the transient backend fake, assertions on the lowered
-// frame, and the recording list only in cases that exercise the emitter. The v1 subclasses that
-// remain, here and elsewhere in the test support, are listed in Support/GraphTestSupport.h.
-
 namespace {
-// A scaler the recording list can be handed; it carries no state.
-struct FakeTemporalScaler final : rojoRHI::TemporalScaler {};
-
-// Passes here are declarations and nothing else: this layer stores the body without running it, so
-// every pass gets the same empty one.
 [[maybe_unused]] const ExecuteFn kNoWork = [](const PassResources&) {};
 
-// REQUIRE(result.has_value()) on its own reports "false != true"; the graph's message is the only
-// thing that says *why*, so it is pulled out for INFO before the assertion.
 template <typename T>
-
 //======================================================================================================================
 inline std::string errorOf(const GraphResult<T>& result) {
     return result ? std::string{} : result.error().message;
 }
 
 //======================================================================================================================
-// The graph's ordering is a property of the lowered frame, so a case asserts it there with no
-// device and no command list. One string per op, with a barrier entry as one string of its own,
-// named by the resource's declared name and spelled like the recording log below, so the barrier
-// strings read the same in both. A narrowed texture range is spelled out, a whole-resource one is
-// left out, because a barrier covering the wrong subresources is what these cases look for.
-inline std::vector<std::string> describe(const LoweredFrame& frame) {
-    const auto nameOf = [&](uint32_t resource) {
-        return frame.record.debug.resources[resource].name;
-    };
+inline LoweredFrame lowered(const RenderGraph& graph, uint64_t frameId = 1) {
+    auto frame = graph.lower(frameId);
+    INFO(errorOf(frame));
+    REQUIRE(frame.has_value());
+    return std::move(*frame);
+}
+
+//======================================================================================================================
+inline std::string abortDiagnostic(const std::function<void()>& misuse) {
+    int output[2];
+    REQUIRE(pipe(output) == 0);
+    std::fflush(nullptr);
+    const auto child = fork();
+    REQUIRE(child >= 0);
+    if (child == 0) {
+        std::signal(SIGABRT, SIG_DFL);
+        const rlimit limit{0, 0};
+        setrlimit(RLIMIT_CORE, &limit);
+        close(output[0]);
+        dup2(output[1], STDOUT_FILENO);
+        dup2(output[1], STDERR_FILENO);
+        close(output[1]);
+        misuse();
+        _exit(0);
+    }
+    close(output[1]);
+    std::string diagnostic;
+    std::array<char, 1024> bytes;
+    ssize_t count;
+    while ((count = read(output[0], bytes.data(), bytes.size())) > 0) {
+        diagnostic.append(bytes.data(), static_cast<size_t>(count));
+    }
+    close(output[0]);
+    int status = 0;
+    REQUIRE(waitpid(child, &status, 0) == child);
+    REQUIRE(WIFSIGNALED(status));
+    REQUIRE(WTERMSIG(status) == SIGABRT);
+    return diagnostic;
+}
+
+// Pass placement and logical observer dependencies have separate oracles. Neither converts
+// physical synchronization masks back into nominal graph uses.
+//======================================================================================================================
+inline std::vector<std::string> passEvents(const LoweredFrame& frame) {
     std::vector<std::string> lines;
-    for (const LoweredOp& op : frame.ops) {
-        if (const auto* barriers = std::get_if<BarriersOp>(&op)) {
-            for (const LoweredBarrier& barrier : barriers->barriers) {
-                if (const auto* texture = std::get_if<LoweredTextureBarrier>(&barrier)) {
-                    const rojoRHI::TextureSubresourceRange& range = texture->range;
-                    const bool wholeResource = range.baseMipLevel == 0 &&
-                                               range.mipLevelCount == rojoRHI::kAllMipLevels &&
-                                               range.baseArrayLayer == 0 &&
-                                               range.arrayLayerCount == rojoRHI::kAllArrayLayers;
-                    lines.push_back("barrier " + nameOf(texture->resource) +
-                                    (wholeResource ? "" : " " + describeRange(range)) + " " +
-                                    std::string{textureUseName(texture->from)} + "->" +
-                                    std::string{textureUseName(texture->to)});
-                } else {
-                    const auto& buffer = std::get<LoweredBufferBarrier>(barrier);
-                    lines.push_back("barrier " + nameOf(buffer.resource) + " " +
-                                    std::string{bufferUseName(buffer.from)} + "->" +
-                                    std::string{bufferUseName(buffer.to)});
-                }
-            }
-        } else if (const auto* begin = std::get_if<BeginRenderPassOp>(&op)) {
+    for (const auto& op : frame.ops) {
+        if (const auto* begin = std::get_if<BeginRenderPassOp>(&op)) {
             lines.push_back("begin " + begin->label);
         } else if (std::holds_alternative<EndRenderPassOp>(op)) {
             lines.emplace_back("end");
@@ -79,179 +87,73 @@ inline std::vector<std::string> describe(const LoweredFrame& frame) {
             lines.push_back("scope " + scope->label);
         } else if (std::holds_alternative<EndScopeOp>(op)) {
             lines.emplace_back("end scope");
-        } else {
-            lines.push_back("run " + std::get<RunOp>(op).label);
+        } else if (const auto* run = std::get_if<RunOp>(&op)) {
+            lines.push_back("run " + run->label);
         }
     }
     return lines;
 }
 
 //======================================================================================================================
-inline LoweredFrame lowered(const RenderGraph& graph, uint64_t frameId = 1) {
-    GraphResult<LoweredFrame> frame = graph.lower(frameId);
-    INFO(errorOf(frame));
-    REQUIRE(frame.has_value());
-    return std::move(*frame);
+inline std::vector<std::string> logicalTransitions(const CompiledFrameRecord& record) {
+    std::vector<std::string> lines;
+    for (const auto& transition : record.debug.transitions) {
+        const auto& name = record.debug.resources[transition.resource].name;
+        if (transition.kind == GraphResourceKind::Texture) {
+            const auto& range = transition.range;
+            const bool whole = range.baseMip == 0 && range.mipCount == rojoRHI::kAllMips &&
+                               range.baseLayer == 0 && range.layerCount == rojoRHI::kAllLayers;
+            lines.push_back("barrier " + name + (whole ? "" : " " + describeRange(range)) + " " +
+                            std::string(textureUseName(transition.textureFrom)) + "->" +
+                            std::string(textureUseName(transition.textureTo)));
+        } else {
+            lines.push_back("barrier " + name + " " +
+                            std::string(bufferUseName(transition.bufferFrom)) + "->" +
+                            std::string(bufferUseName(transition.bufferTo)));
+        }
+    }
+    return lines;
 }
 
 //======================================================================================================================
-// The command list is a v1 object, so the log converts its barrier enums to the graph's own
-// vocabulary, whose names the dumps and the inspector print. v1 and the graph share enumerator
-// order, which the graph's own conversion asserts.
-inline std::string useName(rojoRHI::TextureUse use) {
-    return std::string{textureUseName(static_cast<lmx::render::TextureUse>(use))};
+inline std::vector<BeginRenderPassOp> renderPasses(const LoweredFrame& frame) {
+    std::vector<BeginRenderPassOp> result;
+    for (const auto& op : frame.ops) {
+        if (const auto* pass = std::get_if<BeginRenderPassOp>(&op))
+            result.push_back(*pass);
+    }
+    return result;
 }
 
 //======================================================================================================================
-inline std::string useName(rojoRHI::BufferUse use) {
-    return std::string{bufferUseName(static_cast<lmx::render::BufferUse>(use))};
+inline std::vector<LoweredTextureBarrier> textureBarriers(const LoweredFrame& frame) {
+    std::vector<LoweredTextureBarrier> result;
+    for (const auto& op : frame.ops) {
+        if (const auto* batch = std::get_if<BarriersOp>(&op)) {
+            for (const auto& barrier : batch->barriers) {
+                if (const auto* texture = std::get_if<LoweredTextureBarrier>(&barrier)) {
+                    result.push_back(*texture);
+                }
+            }
+        }
+    }
+    return result;
 }
 
-// What execute() produces is a sequence of RHI calls, so recording that sequence is what makes it
-// observable without a device. Only the calls execute() itself makes are recorded; the draw-level
-// binds a pass body might make are not this layer's output and are left as no-ops.
-struct RecordingCommandList final : rojoRHI::CommandList {
-    // The order of passes and of the barriers between them, as one flat log -- both are ordering,
-    // and separate lists would not say which came first.
-    std::vector<std::string> events;
-    // Every begun pass, for the attachment assertions the log cannot carry.
-    std::vector<rojoRHI::RenderPassDesc> passes;
-    std::vector<rojoRHI::TemporalScaleParams> temporalScales;
-    std::deque<std::string> temporalLabels;
-
-    //==================================================================================================================
-    void temporalScale(rojoRHI::TemporalScaler&,
-                       const rojoRHI::TemporalScaleParams& params) override {
-        temporalLabels.emplace_back(params.label);
-        temporalScales.push_back(params);
-        temporalScales.back().label = temporalLabels.back();
-        events.push_back("external " + std::string(params.label));
+//======================================================================================================================
+inline std::vector<LoweredBufferBarrier> bufferBarriers(const LoweredFrame& frame) {
+    std::vector<LoweredBufferBarrier> result;
+    for (const auto& op : frame.ops) {
+        if (const auto* batch = std::get_if<BarriersOp>(&op)) {
+            for (const auto& barrier : batch->barriers) {
+                if (const auto* buffer = std::get_if<LoweredBufferBarrier>(&barrier)) {
+                    result.push_back(*buffer);
+                }
+            }
+        }
     }
-
-    //==================================================================================================================
-    void beginRenderPass(const rojoRHI::RenderPassDesc& desc) override {
-        passes.push_back(desc);
-        events.push_back("begin " + std::string(desc.label));
-    }
-
-    //==================================================================================================================
-    void endRenderPass() override { events.push_back("end"); }
-
-    // Compute pass boundaries are part of the ordering this log exists to show, so they share the
-    // event list with the render ones; the dispatches inside a body are the body's output, not
-    // execute()'s, and are logged only so a stray one is visible.
-
-    //==================================================================================================================
-    void beginComputePass(std::string_view label) override {
-        events.push_back("begin compute " + std::string(label));
-    }
-
-    //==================================================================================================================
-    void endComputePass() override { events.push_back("end compute"); }
-
-    //==================================================================================================================
-    void bindComputePipeline(rojoRHI::ComputePipeline&) override {}
-
-    //==================================================================================================================
-    void bindStorageBuffer(uint32_t, rojoRHI::Buffer&, rojoRHI::StorageAccess) override {}
-
-    //==================================================================================================================
-    void bindStorageTexture(uint32_t, rojoRHI::Texture&, const rojoRHI::TextureViewDesc&,
-                            rojoRHI::StorageAccess) override {}
-
-    //==================================================================================================================
-    void dispatch(uint32_t x, uint32_t y, uint32_t z) override {
-        events.push_back("dispatch " + std::to_string(x) + "," + std::to_string(y) + "," +
-                         std::to_string(z));
-    }
-
-    //==================================================================================================================
-    void dispatchIndirect(rojoRHI::Buffer&, uint64_t) override {}
-
-    // Copy pass boundaries log for the same reason the compute ones do; the copies a body records
-    // are the body's own output and are left as no-ops.
-
-    //==================================================================================================================
-    void beginCopyPass(std::string_view label) override {
-        events.push_back("begin copy " + std::string(label));
-    }
-
-    //==================================================================================================================
-    void endCopyPass() override { events.push_back("end copy"); }
-
-    //==================================================================================================================
-    void copyBuffer(rojoRHI::Buffer&, uint64_t, rojoRHI::Buffer&, uint64_t, uint64_t) override {}
-
-    //==================================================================================================================
-    void copyBufferToTexture(rojoRHI::Buffer&, const rojoRHI::BufferTextureLayout&,
-                             rojoRHI::Texture&, const rojoRHI::TextureCopyRegion&) override {}
-
-    //==================================================================================================================
-    void copyTextureToBuffer(rojoRHI::Texture&, const rojoRHI::TextureCopyRegion&, rojoRHI::Buffer&,
-                             const rojoRHI::BufferTextureLayout&) override {}
-
-    //==================================================================================================================
-    void copyTexture(rojoRHI::Texture&, const rojoRHI::TextureCopyRegion&, rojoRHI::Texture&,
-                     const rojoRHI::TextureCopyRegion&) override {}
-
-    //==================================================================================================================
-    void fillBuffer(rojoRHI::Buffer&, uint64_t, uint64_t, uint8_t) override {}
-
-    //==================================================================================================================
-    void bufferBarrier(rojoRHI::Buffer& buffer, const rojoRHI::BufferRange&,
-                       rojoRHI::BufferUse from, rojoRHI::BufferUse to,
-                       rojoRHI::BarrierOptions) override {
-        events.push_back("barrier " + static_cast<FakeBuffer&>(buffer).name + " " + useName(from) +
-                         "->" + useName(to));
-    }
-
-    //==================================================================================================================
-    void textureBarrier(rojoRHI::Texture& texture, const rojoRHI::TextureSubresourceRange& range,
-                        rojoRHI::TextureUse from, rojoRHI::TextureUse to,
-                        rojoRHI::BarrierOptions) override {
-        // A whole-resource range is what a pass with no subresource detail declares and is the
-        // common case, so it is left out of the log; a narrowed one is spelled out, because a
-        // barrier covering the wrong subresources is exactly what these cases are looking for.
-        const bool wholeResource =
-            range.baseMipLevel == 0 && range.mipLevelCount == rojoRHI::kAllMipLevels &&
-            range.baseArrayLayer == 0 && range.arrayLayerCount == rojoRHI::kAllArrayLayers;
-        events.push_back("barrier " + static_cast<FakeTexture&>(texture).name +
-                         (wholeResource ? "" : " " + describeRange(range)) + " " + useName(from) +
-                         "->" + useName(to));
-    }
-
-    //==================================================================================================================
-    void bindPipeline(rojoRHI::GraphicsPipeline&) override {}
-
-    //==================================================================================================================
-    void bindBuffer(uint32_t, rojoRHI::Buffer&) override {}
-
-    //==================================================================================================================
-    void bindTexture(uint32_t, rojoRHI::Texture&, const rojoRHI::TextureViewDesc&) override {}
-
-    //==================================================================================================================
-    void bindSampler(uint32_t, rojoRHI::Sampler&) override {}
-
-    //==================================================================================================================
-    rojoRHI::GpuAddress bindFrameData(uint32_t, const void*, uint64_t, uint64_t) override {
-        return {};
-    }
-
-    //==================================================================================================================
-    void draw(uint32_t, uint32_t) override {}
-
-    //==================================================================================================================
-    void drawIndexed(rojoRHI::Buffer&, uint32_t, uint32_t) override {}
-
-    //==================================================================================================================
-    void drawIndirect(rojoRHI::Buffer&, uint64_t) override {}
-
-    //==================================================================================================================
-    void drawIndexedIndirect(rojoRHI::Buffer&, rojoRHI::Buffer&, uint64_t) override {}
-};
-} // namespace
-
-namespace {
+    return result;
+}
 
 // One transient the fake backend sizes to exactly one alignment unit: 64 * 64 texels at four bytes
 // each is 16 KiB, which is FakeTransientBackend::kTextureAlignment. Every offset below is
@@ -268,8 +170,8 @@ namespace {
 struct DisjointFrame {
     FakeTransientBackend transients;
     TransientPool pool{transients};
-    FakeTexture midTarget{64, 64, "mid"};
-    FakeTexture outTarget{64, 64, "out"};
+    engine::TextureRef midTarget = textureFixture(64, 64, "mid");
+    engine::TextureRef outTarget = textureFixture(64, 64, "out");
     RenderGraph graph{pool};
 
     //==================================================================================================================
@@ -278,8 +180,10 @@ struct DisjointFrame {
     void declare(const TransientTextureDesc& secondDesc = kTransientColor) {
         const GraphTexture first = graph.createTexture(kTransientColor, "lmx.transient.first");
         const GraphTexture second = graph.createTexture(secondDesc, "lmx.transient.second");
-        const GraphTexture mid = graph.importTexture(midTarget, rojoRHI::Format::BGRA8Unorm, "mid");
-        const GraphTexture out = graph.importTexture(outTarget, rojoRHI::Format::BGRA8Unorm, "out");
+        const GraphTexture mid =
+            graph.importTexture(formatted(midTarget, rojoRHI::Format::BGRA8Unorm), "mid");
+        const GraphTexture out =
+            graph.importTexture(formatted(outTarget, rojoRHI::Format::BGRA8Unorm), "out");
 
         PassDesc writeFirst;
         writeFirst.color = ColorAttachment{.handle = first};

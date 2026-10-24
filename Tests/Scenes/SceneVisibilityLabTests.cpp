@@ -7,8 +7,8 @@
 #include "Render/Renderer/SceneViewBuilder.h"
 #include "Scenes/CatalogScenes.h"
 #include "Scenes/SceneLibrary.h"
-#include "Support/GpuTestSupport.h"
 #include "Support/SceneDocumentTestSupport.h"
+#include "Support/TestGpu.h"
 
 #include <catch2/catch_test_macros.hpp>
 

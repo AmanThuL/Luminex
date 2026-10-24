@@ -1,77 +1,111 @@
 #include "Support/RenderGraphTestSupport.h"
+#include "Support/TestGpu.h"
 
 //======================================================================================================================
 // Each declaration path opens its own RHI scope, and the barrier between them is derived from the
 // declared uses on both sides: a storage write followed by a sampled read.
-TEST_CASE("execute encodes each pass kind in its own scope", "[render][graph]") {
-    FakeTexture storage{64, 64, "storage"};
-    FakeTexture target{64, 64, "target"};
+TEST_CASE("execute encodes each pass kind in its own scope", "[render][graph][device]") {
+    auto gpu = createTestGpu();
+    auto storage =
+        createTestTexture(*gpu, rojoRHI::Format::RGBA16Float,
+                          rojoRHI::TextureUsage::Storage | rojoRHI::TextureUsage::Sampled);
+    auto target =
+        createTestTexture(*gpu, rojoRHI::Format::BGRA8Unorm, rojoRHI::TextureUsage::RenderTarget);
     RenderGraph graph;
-    const GraphTexture written =
-        graph.importTexture(storage, rojoRHI::Format::RGBA16Float, "storage");
-    const GraphTexture color = graph.importTexture(target, rojoRHI::Format::BGRA8Unorm, "target");
+    const GraphTexture written = graph.importTexture(storage.ref(), "storage");
+    const GraphTexture color = graph.importTexture(target.ref(), "target");
 
     ComputePassDesc fill;
     fill.textureWrites.push_back(written);
-    graph.addComputePass("lmx.pass.fill", fill, kNoWork);
+    std::vector<std::string> bodies;
+    graph.addComputePass("lmx.pass.fill", fill, [&](const PassResources& resources) {
+        REQUIRE(resources.texture(written).texture == storage.rhi());
+        bodies.push_back("fill");
+    });
 
     PassDesc present;
     present.textureReads.push_back(nextVersion(written));
     present.color = ColorAttachment{.handle = color};
-    graph.addPass("lmx.pass.present", present, kNoWork);
+    graph.addPass("lmx.pass.present", present, [&](const PassResources& resources) {
+        REQUIRE(resources.texture(nextVersion(written)).texture == storage.rhi());
+        REQUIRE(resources.texture(color).texture == target.rhi());
+        bodies.push_back("present");
+    });
     graph.exportTexture(nextVersion(color));
 
     const LoweredFrame frame = lowered(graph);
 
-    REQUIRE(describe(frame) ==
+    REQUIRE(passEvents(frame) ==
             std::vector<std::string>{"scope lmx.frame", "scope lmx.pass.fill", "run lmx.pass.fill",
-                                     "end scope", "barrier storage StorageWrite->ShaderRead",
-                                     "begin lmx.pass.present", "run lmx.pass.present", "end",
-                                     "end scope"});
+                                     "end scope", "begin lmx.pass.present", "run lmx.pass.present",
+                                     "end", "end scope"});
+    REQUIRE(logicalTransitions(frame.record) ==
+            std::vector<std::string>{"barrier storage StorageWrite->ShaderRead"});
 
-    RecordingCommandList commands;
-    graph.execute(commands, 1);
-    REQUIRE(commands.events == std::vector<std::string>{"begin compute lmx.pass.fill",
-                                                        "end compute",
-                                                        "barrier storage StorageWrite->ShaderRead",
-                                                        "begin lmx.pass.present", "end"});
+    auto recording = gpu->beginFrame();
+    graph.execute(recording.commands, recording.number);
+    gpu->submitAndEndFrame(recording);
+    gpu->waitIdle();
+    REQUIRE(bodies == std::vector<std::string>{"fill", "present"});
+    const auto barriers = textureBarriers(frame);
+    REQUIRE(barriers.size() == 3);
+    REQUIRE(barriers[0].from.layout == rojoRHI::Layout::Undefined);
+    REQUIRE(barriers[0].to.layout == rojoRHI::Layout::ShaderWrite);
+    REQUIRE(barriers[1].resource == written.index);
+    REQUIRE(barriers[1].from.access == rojoRHI::Access::ShaderWrite);
+    REQUIRE(barriers[1].to.access == rojoRHI::Access::ShaderRead);
+    REQUIRE(barriers[1].to.stage ==
+            (rojoRHI::Stage::VertexShader | rojoRHI::Stage::FragmentShader));
 }
 
 //======================================================================================================================
 // A copy pass's destination is a write like any other, so a compute pass reading it afterwards gets
 // the copy-to-storage transition -- and buffers get one of their own, because a hazard on bytes has
 // no texture edge to borrow.
-TEST_CASE("execute derives a buffer barrier from a copy destination", "[render][graph]") {
-    FakeBuffer histogram{1024, "histogram"};
+TEST_CASE("execute derives a buffer barrier from a copy destination", "[render][graph][device]") {
+    auto gpu = createTestGpu();
+    auto histogram = createTestBuffer(*gpu, 1024, rojoRHI::BufferUsage::ShaderWrite);
     RenderGraph graph;
     const GraphBuffer bins = graph.importBuffer(histogram, "histogram");
 
     CopyPassDesc clear;
     clear.bufferDestinations.push_back(bins);
-    graph.addCopyPass("lmx.pass.clear", clear, kNoWork);
+    std::vector<std::string> bodies;
+    graph.addCopyPass("lmx.pass.clear", clear, [&](const PassResources& resources) {
+        REQUIRE(resources.buffer(bins) == histogram.rhi());
+        bodies.push_back("clear");
+    });
 
     ComputePassDesc accumulate;
     accumulate.bufferReads.push_back(nextVersion(bins));
     accumulate.bufferWrites.push_back(nextVersion(bins));
-    graph.addComputePass("lmx.pass.accumulate", accumulate, kNoWork);
+    graph.addComputePass("lmx.pass.accumulate", accumulate, [&](const PassResources& resources) {
+        REQUIRE(resources.buffer(nextVersion(bins)) == histogram.rhi());
+        bodies.push_back("accumulate");
+    });
     graph.exportBuffer(GraphBuffer{bins.index, 2});
 
     const LoweredFrame frame = lowered(graph);
 
-    REQUIRE(describe(frame) == std::vector<std::string>{
-                                   "scope lmx.frame", "scope lmx.pass.clear", "run lmx.pass.clear",
-                                   "end scope", "barrier histogram CopyDestination->StorageRead",
-                                   "barrier histogram CopyDestination->StorageWrite",
-                                   "scope lmx.pass.accumulate", "run lmx.pass.accumulate",
-                                   "end scope", "end scope"});
+    REQUIRE(passEvents(frame) ==
+            std::vector<std::string>{"scope lmx.frame", "scope lmx.pass.clear",
+                                     "run lmx.pass.clear", "end scope", "scope lmx.pass.accumulate",
+                                     "run lmx.pass.accumulate", "end scope", "end scope"});
+    REQUIRE(logicalTransitions(frame.record) ==
+            std::vector<std::string>{"barrier histogram CopyDestination->StorageRead",
+                                     "barrier histogram CopyDestination->StorageWrite"});
 
-    RecordingCommandList commands;
-    graph.execute(commands, 1);
-    REQUIRE(commands.events ==
-            std::vector<std::string>{"begin copy lmx.pass.clear", "end copy",
-                                     "barrier histogram CopyDestination->StorageRead",
-                                     "barrier histogram CopyDestination->StorageWrite",
-                                     "begin compute lmx.pass.accumulate", "end compute"});
+    auto recording = gpu->beginFrame();
+    graph.execute(recording.commands, recording.number);
+    gpu->submitAndEndFrame(recording);
+    gpu->waitIdle();
+    REQUIRE(bodies == std::vector<std::string>{"clear", "accumulate"});
+    const auto barriers = bufferBarriers(frame);
+    REQUIRE(barriers.size() == 1);
+    REQUIRE(barriers[0].from.stage == rojoRHI::Stage::Copy);
+    REQUIRE(barriers[0].from.access == rojoRHI::Access::CopyWrite);
+    REQUIRE(barriers[0].to.stage == rojoRHI::Stage::ComputeShader);
+    REQUIRE(barriers[0].to.access == (rojoRHI::Access::ShaderRead | rojoRHI::Access::ShaderWrite));
 }
 
 //======================================================================================================================
@@ -79,13 +113,13 @@ TEST_CASE("execute derives a buffer barrier from a copy destination", "[render][
 // UAV reads. The declaration has to preserve that distinction so stateful backends derive the same
 // resource state the callback actually binds.
 TEST_CASE("compute read roles map to their explicit RHI uses", "[render][graph]") {
-    FakeTexture sampledTexture{64, 64, "sampled"};
-    FakeBuffer constantsBuffer{256, "constants"};
-    FakeBuffer argumentsBuffer{256, "arguments"};
-    FakeBuffer outputBuffer{256, "output"};
+    auto sampledTexture = textureFixture(64, 64, "sampled");
+    auto constantsBuffer = bufferFixture(256, "constants");
+    auto argumentsBuffer = bufferFixture(256, "arguments");
+    auto outputBuffer = bufferFixture(256, "output");
     RenderGraph graph;
     const GraphTexture sampled =
-        graph.importTexture(sampledTexture, rojoRHI::Format::RGBA16Float, "sampled");
+        graph.importTexture(formatted(sampledTexture, rojoRHI::Format::RGBA16Float), "sampled");
     const GraphBuffer constants = graph.importBuffer(constantsBuffer, "constants");
     const GraphBuffer arguments = graph.importBuffer(argumentsBuffer, "arguments");
     const GraphBuffer output = graph.importBuffer(outputBuffer, "output");
@@ -118,23 +152,24 @@ TEST_CASE("compute read roles map to their explicit RHI uses", "[render][graph]"
 // the copy pass as its producer when the next version writes mip 1, and the later read must wait on
 // CopyDestination rather than on the unrelated dispatch.
 TEST_CASE("an untouched mip keeps its earlier writer use", "[render][graph]") {
-    FakeTexture chain{64, 64, "chain", 4};
-    FakeTexture output{64, 64, "output"};
+    auto chain = textureFixture(64, 64, "chain", 4);
+    auto output = textureFixture(64, 64, "output");
     RenderGraph graph;
-    const GraphTexture texture = graph.importTexture(chain, rojoRHI::Format::RGBA16Float, "chain");
-    const GraphTexture target = graph.importTexture(output, rojoRHI::Format::BGRA8Unorm, "output");
+    const GraphTexture texture =
+        graph.importTexture(formatted(chain, rojoRHI::Format::RGBA16Float), "chain");
+    const GraphTexture target =
+        graph.importTexture(formatted(output, rojoRHI::Format::BGRA8Unorm), "output");
 
     CopyPassDesc copy;
-    copy.textureDestinations.push_back({texture, {.baseMipLevel = 0, .mipLevelCount = 1}});
+    copy.textureDestinations.push_back({texture, {.baseMip = 0, .mipCount = 1}});
     graph.addCopyPass("lmx.pass.copyMip0", copy, kNoWork);
 
     ComputePassDesc write;
-    write.textureWrites.push_back({nextVersion(texture), {.baseMipLevel = 1, .mipLevelCount = 1}});
+    write.textureWrites.push_back({nextVersion(texture), {.baseMip = 1, .mipCount = 1}});
     graph.addComputePass("lmx.pass.writeMip1", write, kNoWork);
 
     PassDesc read;
-    read.textureReads.push_back(
-        {GraphTexture{texture.index, 2}, {.baseMipLevel = 0, .mipLevelCount = 1}});
+    read.textureReads.push_back({GraphTexture{texture.index, 2}, {.baseMip = 0, .mipCount = 1}});
     read.color = ColorAttachment{.handle = target};
     graph.addPass("lmx.pass.readMip0", read, kNoWork);
     graph.exportTexture(nextVersion(target));
@@ -144,7 +179,7 @@ TEST_CASE("an untouched mip keeps its earlier writer use", "[render][graph]") {
     REQUIRE(record.has_value());
     REQUIRE(record->debug.transitions.size() == 1);
     REQUIRE(record->debug.transitions[0].beforePass == 2);
-    REQUIRE(record->debug.transitions[0].range.baseMipLevel == 0);
+    REQUIRE(record->debug.transitions[0].range.baseMip == 0);
     REQUIRE(record->debug.transitions[0].textureFrom == lmx::render::TextureUse::CopyDestination);
     REQUIRE(record->debug.transitions[0].textureTo == lmx::render::TextureUse::ShaderRead);
 }
@@ -153,10 +188,11 @@ TEST_CASE("an untouched mip keeps its earlier writer use", "[render][graph]") {
 // Encoding order is not a dependency for Metal 4's untracked resources: two writes to the same
 // subresource still need a queue-stage barrier between their passes.
 TEST_CASE("a texture write is barriered after an earlier write", "[render][graph]") {
-    FakeTexture chain{64, 64, "chain", 4};
+    auto chain = textureFixture(64, 64, "chain", 4);
     RenderGraph graph;
-    const GraphTexture texture = graph.importTexture(chain, rojoRHI::Format::RGBA16Float, "chain");
-    const rojoRHI::TextureSubresourceRange mip0{.baseMipLevel = 0, .mipLevelCount = 1};
+    const GraphTexture texture =
+        graph.importTexture(formatted(chain, rojoRHI::Format::RGBA16Float), "chain");
+    const rojoRHI::SubresourceRange mip0{.baseMip = 0, .mipCount = 1};
 
     CopyPassDesc copy;
     copy.textureDestinations.push_back({texture, mip0});
@@ -180,7 +216,7 @@ TEST_CASE("a texture write is barriered after an earlier write", "[render][graph
 // Buffers have no subresource split, so every write conflicts with the preceding whole-buffer
 // writer, including a producer imported from an earlier frame.
 TEST_CASE("a buffer write is barriered after its preceding writer", "[render][graph]") {
-    FakeBuffer storage{256, "storage"};
+    auto storage = bufferFixture(256, "storage");
 
     SECTION("copy destination") {
         RenderGraph graph;
@@ -221,35 +257,39 @@ TEST_CASE("a buffer write is barriered after its preceding writer", "[render][gr
 // The derived barrier carries the subresources the consumer declared, so a reader of one mip does
 // not describe itself as depending on the whole chain.
 TEST_CASE("a derived barrier carries the range the reader declared", "[render][graph]") {
-    FakeTexture chain{64, 64, "chain", 4};
+    auto chain = textureFixture(64, 64, "chain", 4);
     RenderGraph graph;
-    const GraphTexture bloom = graph.importTexture(chain, rojoRHI::Format::RGBA16Float, "bloom");
+    const GraphTexture bloom =
+        graph.importTexture(formatted(chain, rojoRHI::Format::RGBA16Float), "bloom");
 
     ComputePassDesc write;
-    write.textureWrites.push_back({bloom, {.baseMipLevel = 0, .mipLevelCount = 1}});
+    write.textureWrites.push_back({bloom, {.baseMip = 0, .mipCount = 1}});
     graph.addComputePass("lmx.pass.write", write, kNoWork);
 
     ComputePassDesc downsample;
-    downsample.textureReads.push_back(
-        {nextVersion(bloom), {.baseMipLevel = 0, .mipLevelCount = 1}});
-    downsample.textureWrites.push_back(
-        {nextVersion(bloom), {.baseMipLevel = 1, .mipLevelCount = 1}});
+    downsample.textureReads.push_back({nextVersion(bloom), {.baseMip = 0, .mipCount = 1}});
+    downsample.textureWrites.push_back({nextVersion(bloom), {.baseMip = 1, .mipCount = 1}});
     graph.addComputePass("lmx.pass.downsample", downsample, kNoWork);
     graph.exportTexture(GraphTexture{bloom.index, 2});
 
     const LoweredFrame frame = lowered(graph);
 
-    REQUIRE(describe(frame) ==
-            std::vector<std::string>{
-                "scope lmx.frame", "scope lmx.pass.write", "run lmx.pass.write", "end scope",
-                "barrier bloom mips[0..0] layers[0..] StorageWrite->StorageRead",
-                "scope lmx.pass.downsample", "run lmx.pass.downsample", "end scope", "end scope"});
+    REQUIRE(passEvents(frame) ==
+            std::vector<std::string>{"scope lmx.frame", "scope lmx.pass.write",
+                                     "run lmx.pass.write", "end scope", "scope lmx.pass.downsample",
+                                     "run lmx.pass.downsample", "end scope", "end scope"});
+    REQUIRE(
+        logicalTransitions(frame.record) ==
+        std::vector<std::string>{"barrier bloom mips[0..0] layers[0..] StorageWrite->StorageRead"});
 
-    RecordingCommandList commands;
-    graph.execute(commands, 1);
-    REQUIRE(commands.events ==
-            std::vector<std::string>{"begin compute lmx.pass.write", "end compute",
-                                     "barrier chain mips[0..0] layers[0..] "
-                                     "StorageWrite->StorageRead",
-                                     "begin compute lmx.pass.downsample", "end compute"});
+    const auto barriers = textureBarriers(frame);
+    const auto dependency = std::ranges::find_if(barriers, [&](const auto& barrier) {
+        return barrier.resource == bloom.index &&
+               barrier.from.access == rojoRHI::Access::ShaderWrite;
+    });
+    REQUIRE(dependency != barriers.end());
+    REQUIRE(dependency->range.baseMip == 0);
+    REQUIRE(dependency->range.mipCount == 1);
+    REQUIRE(dependency->to.access == rojoRHI::Access::ShaderRead);
+    REQUIRE(dependency->to.layout == rojoRHI::Layout::ShaderWrite);
 }

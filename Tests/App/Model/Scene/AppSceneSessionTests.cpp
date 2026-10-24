@@ -1,8 +1,10 @@
 #include "App/Model/Scene/EditorSelection.h"
 #include "App/Model/Scene/SceneSession.h"
-#include "Support/GraphTestSupport.h"
+#include "Render/Gpu/Readback.h"
 #include "Support/SceneDocumentFixtures.h"
 #include "Support/SceneDocumentTestSupport.h"
+#include "Support/TestGpu.h"
+#include <cstring>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -166,16 +168,19 @@ TEST_CASE("SceneSession sequence samples absolute frames across the looping clip
 
 //======================================================================================================================
 TEST_CASE("SceneSession view borrows item storage while commit and rewind preserve frame ownership",
-          "[app][scene-session]") {
-    FakeDevice device;
+          "[app][scene-session][device]") {
+    auto gpu = createTestGpu();
+    auto device = gpu->device();
     engine::Scene scene = makeSessionScene();
     scene.material(scene.objects[0].material).roughness = 0.25f;
     REQUIRE(scene.finalize(device));
     SceneSession session;
     session.activate(scene, SceneActivationMotion::Reset);
     session.advanceEditorFrame(true, false, false);
-    device.frame = 1;
-    REQUIRE(session.prepareFrame(device.frameNumber()));
+    auto frame = gpu->beginFrame();
+    const auto frameNumber = frame.number;
+    gpu->submitAndEndFrame(frame);
+    REQUIRE(session.prepareFrame(frameNumber));
     std::vector<engine::DrawItem> items;
     scene.look.shadowFilter = asset::ShadowFilter::PCSS;
     const render::SceneView view = session.view(items, true);
@@ -187,17 +192,41 @@ TEST_CASE("SceneSession view borrows item storage while commit and rewind preser
     REQUIRE(view.shadowFilter == render::ShadowFilter::PCSS);
     REQUIRE(view.wireframe);
     engine::InstanceRow instance;
-    view.tables.instances->rhi().readback(&instance, sizeof(instance));
+    {
+        const auto bytes =
+            render::readbackNow(*gpu, *view.tables.instances, {}, {0, sizeof(instance)});
+        INFO(errorOf(bytes));
+        REQUIRE(bytes.has_value());
+        REQUIRE(bytes->size() == sizeof(instance));
+        std::memcpy(&instance, bytes->data(), sizeof(instance));
+        REQUIRE(gpu->frameNumber() == frameNumber);
+    }
     REQUIRE(instance.model[3].x == Catch::Approx(1.0f));
     REQUIRE(instance.previousModel[3].x == 7.0f);
     scene.material(scene.objects[0].material).roughness = 0.75f;
     engine::MaterialRow material;
-    view.tables.materials->rhi().readback(&material, sizeof(material));
+    {
+        const auto bytes =
+            render::readbackNow(*gpu, *view.tables.materials, {}, {0, sizeof(material)});
+        INFO(errorOf(bytes));
+        REQUIRE(bytes.has_value());
+        REQUIRE(bytes->size() == sizeof(material));
+        std::memcpy(&material, bytes->data(), sizeof(material));
+        REQUIRE(gpu->frameNumber() == frameNumber);
+    }
     REQUIRE(material.roughness == 0.25f);
     session.commitFrame();
     REQUIRE(scene.animationTime == 1.0 / asset::kAnimationBakeRate);
     REQUIRE(scene.objects[0].previousModel == scene.objects[0].modelMatrix());
-    view.tables.instances->rhi().readback(&instance, sizeof(instance));
+    {
+        const auto bytes =
+            render::readbackNow(*gpu, *view.tables.instances, {}, {0, sizeof(instance)});
+        INFO(errorOf(bytes));
+        REQUIRE(bytes.has_value());
+        REQUIRE(bytes->size() == sizeof(instance));
+        std::memcpy(&instance, bytes->data(), sizeof(instance));
+        REQUIRE(gpu->frameNumber() == frameNumber);
+    }
     REQUIRE(instance.previousModel[3].x == 7.0f);
     session.rewindAnimation();
     REQUIRE(scene.animationTime == 0.0);

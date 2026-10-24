@@ -2,109 +2,47 @@
 
 #include "Render/Graph/TransientBackend.h"
 #include "Render/Graph/TransientResourceDesc.h"
+#include "Support/GraphTestSupport.h"
 
-#include <rojoRHI/RHI.h>
-
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <map>
-#include <memory>
+#include <ranges>
 #include <string>
-#include <string_view>
-#include <utility>
 #include <vector>
 
 namespace {
-// Texture is an interface, and the graph reads three things from it: the extent, which is what the
-// attachment rules inspect since the format is declared at import, and the mip and layer counts,
-// which a declared subresource range is resolved and bounds-checked against. readback() is never
-// reached, so it is left empty rather than faked.
-//
-// `name` is the test's own label for the texture, so a recorded barrier says which resource it
-// transitioned rather than printing a pointer.
-struct FakeTexture final : rojoRHI::Texture {
-    std::string name;
 
-    //==================================================================================================================
-    FakeTexture(uint32_t width, uint32_t height, std::string label = {}, uint32_t mips = 1,
-                uint32_t layers = 1)
-        : name(std::move(label)), m_width(width), m_height(height), m_mipLevels(mips),
-          m_arrayLayers(layers) {}
-
-    //==================================================================================================================
-    uint32_t width() const override { return m_width; }
-
-    //==================================================================================================================
-    uint32_t height() const override { return m_height; }
-
-    // Unknown is the sentinel a test double uses when the graph case declares the format itself;
-    // production textures always report their concrete creation format.
-    //==================================================================================================================
-    rojoRHI::Format format() const override { return rojoRHI::Format::Unknown; }
-
-    //==================================================================================================================
-    uint32_t mipLevels() const override { return m_mipLevels; }
-
-    //==================================================================================================================
-    uint32_t arrayLayers() const override { return m_arrayLayers; }
-
-    //==================================================================================================================
-    void readback(void*, uint64_t) override {}
-
-private:
-    uint32_t m_width = 0;
-    uint32_t m_height = 0;
-    uint32_t m_mipLevels = 1;
-    uint32_t m_arrayLayers = 1;
-};
-
-// The graph never reads a buffer's size -- buffers carry no attachment or subresource rules at all
-// -- so this exists to give importBuffer a real object to borrow and to name itself in a barrier.
-struct FakeBuffer final : rojoRHI::Buffer {
-    std::string name;
-
-    //==================================================================================================================
-    explicit FakeBuffer(uint64_t size, std::string label = {})
-        : name(std::move(label)), m_size(size) {}
-
-    //==================================================================================================================
-    uint64_t size() const override { return m_size; }
-
-    //==================================================================================================================
-    void readback(void*, uint64_t) override {}
-
-    //==================================================================================================================
-    void write(uint64_t, const void*, uint64_t) override {}
-
-private:
-    uint64_t m_size = 0;
-};
-
-// A transient backend with no device behind it. Footprints follow one deterministic rule (four
-// bytes a texel over the whole mip chain, rounded up to 16 KiB; buffers rounded up to 256 bytes),
-// so a layout's offsets and totals are exact numbers a case can assert. Heaps are records by id;
-// placed resources are FakeTexture and FakeBuffer objects named by their labels, so a recorded
-// barrier on a transient names it, and they live until their heap is released.
+// Deterministic allocation metadata, with no native resources or device behind it.
 struct FakeTransientBackend final : lmx::render::TransientBackend {
     static constexpr uint64_t kTextureAlignment = 16384;
     static constexpr uint64_t kBufferAlignment = 256;
     static constexpr uint64_t kBytesPerTexel = 4;
 
-    // One live heap and what is placed in it now.
+    struct TexturePlacement {
+        lmx::engine::TextureRef ref;
+        std::vector<rojoRHI::ViewIndex> storageViews;
+    };
+    struct BufferPlacement {
+        rojoRHI::Buffer buffer;
+        rojoRHI::Addr address;
+    };
     struct Heap {
         uint64_t bytes = 0;
         std::string label;
-        std::vector<std::unique_ptr<FakeTexture>> textures;
-        std::vector<std::unique_ptr<FakeBuffer>> buffers;
+        std::vector<TexturePlacement> textures;
+        std::vector<BufferPlacement> buffers;
     };
 
-    // The frame the pool reads; a case advances it directly.
     uint64_t frame = 0;
-    // Live heaps keyed by id value.
     std::map<uint32_t, Heap> heaps;
-    // Every heap destroyed so far, in destruction order.
     std::vector<uint32_t> destroyedHeaps;
     uint32_t nextHeap = 1;
+    mutable uint32_t textureQueries = 0;
+    mutable uint32_t bufferQueries = 0;
+    mutable uint32_t indirectQueries = 0;
+    bool permitFootprintQueries = true;
 
     //==================================================================================================================
     static uint64_t alignUp(uint64_t value, uint64_t alignment) {
@@ -112,15 +50,12 @@ struct FakeTransientBackend final : lmx::render::TransientBackend {
     }
 
     //==================================================================================================================
-    // The resources currently placed in `heap`, which must be live.
     size_t placementCount(lmx::render::TransientHeapId heap) const {
         const Heap& entry = heaps.at(heap.value);
         return entry.textures.size() + entry.buffers.size();
     }
 
     //==================================================================================================================
-    // A placement past the end of its heap breaks the interface's contract, so the fake aborts
-    // rather than letting a case pass over it.
     void requireInHeap(lmx::render::TransientHeapId heap, uint64_t offset,
                        lmx::render::TransientFootprint footprint) const {
         if (offset + footprint.size > heaps.at(heap.value).bytes) {
@@ -132,23 +67,42 @@ struct FakeTransientBackend final : lmx::render::TransientBackend {
     uint64_t frameNumber() const override { return frame; }
 
     //==================================================================================================================
-    lmx::render::TransientFootprint
-    footprint(const lmx::render::TransientTextureDesc& desc) const override {
-        const uint32_t faces = desc.kind == rojoRHI::TextureKind::Cube ? 6 : 1;
+    static lmx::render::TransientFootprint
+    textureFootprint(const lmx::render::TransientTextureDesc& desc) {
+        const uint32_t faces = desc.kind == rojoRHI::TextureType::Cube ? 6 : 1;
         uint64_t texels = 0;
         for (uint32_t level = 0; level < desc.mipLevels; ++level) {
-            const uint64_t width = desc.width >> level;
-            const uint64_t height = desc.height >> level;
-            texels += (width > 0 ? width : 1) * (height > 0 ? height : 1);
+            texels +=
+                uint64_t{std::max(1u, desc.width >> level)} * std::max(1u, desc.height >> level);
         }
         return {.size = alignUp(texels * faces * kBytesPerTexel, kTextureAlignment),
                 .alignment = kTextureAlignment};
     }
 
     //==================================================================================================================
-    lmx::render::TransientFootprint
-    footprint(const lmx::render::TransientBufferDesc& desc) const override {
+    static lmx::render::TransientFootprint
+    bufferFootprint(const lmx::render::TransientBufferDesc& desc) {
         return {.size = alignUp(desc.size, kBufferAlignment), .alignment = kBufferAlignment};
+    }
+
+    //==================================================================================================================
+    lmx::render::TransientFootprint
+    footprint(const lmx::render::TransientTextureDesc& desc) const override {
+        if (!permitFootprintQueries)
+            std::abort();
+        ++textureQueries;
+        return textureFootprint(desc);
+    }
+
+    //==================================================================================================================
+    lmx::render::TransientFootprint footprint(const lmx::render::TransientBufferDesc& desc,
+                                              bool indirectArgs = false) const override {
+        if (!permitFootprintQueries)
+            std::abort();
+        ++bufferQueries;
+        if (indirectArgs)
+            ++indirectQueries;
+        return bufferFootprint(desc);
     }
 
     //==================================================================================================================
@@ -160,38 +114,67 @@ struct FakeTransientBackend final : lmx::render::TransientBackend {
     }
 
     //==================================================================================================================
-    // Destroying an unknown heap, or one that still holds placements, breaks the interface's
-    // contract, so the fake aborts rather than letting a case pass over it.
     void destroyHeap(lmx::render::TransientHeapId heap) override {
         const auto found = heaps.find(heap.value);
         if (found == heaps.end() || !found->second.textures.empty() ||
-            !found->second.buffers.empty()) {
+            !found->second.buffers.empty())
             std::abort();
-        }
         heaps.erase(found);
         destroyedHeaps.push_back(heap.value);
     }
 
     //==================================================================================================================
-    lmx::Result<rojoRHI::Texture*> placeTexture(lmx::render::TransientHeapId heap, uint64_t offset,
-                                                const lmx::render::TransientTextureDesc& desc,
-                                                std::string_view label) override {
-        requireInHeap(heap, offset, footprint(desc));
-        const uint32_t layers = desc.kind == rojoRHI::TextureKind::Cube ? 6 : 1;
-        auto& textures = heaps.at(heap.value).textures;
-        textures.push_back(std::make_unique<FakeTexture>(
-            desc.width, desc.height, std::string(label), desc.mipLevels, layers));
-        return textures.back().get();
+    lmx::Result<lmx::engine::TextureRef> placeTexture(lmx::render::TransientHeapId heap,
+                                                      uint64_t offset,
+                                                      const lmx::render::TransientTextureDesc& desc,
+                                                      std::string_view) override {
+        requireInHeap(heap, offset, textureFootprint(desc));
+        auto ref = testTextureRef(nextSyntheticIdentity(), desc.format, desc.width, desc.height,
+                                  desc.mipLevels, desc.kind == rojoRHI::TextureType::Cube ? 6 : 1);
+        if (desc.sampled)
+            ref.view = rojoRHI::ViewIndex{static_cast<uint32_t>(nextSyntheticIdentity())};
+        TexturePlacement placed{ref, {}};
+        if (desc.storageRead || desc.storageWrite) {
+            for (uint32_t mip = 0; mip < desc.mipLevels; ++mip) {
+                placed.storageViews.push_back(
+                    rojoRHI::ViewIndex{static_cast<uint32_t>(nextSyntheticIdentity())});
+            }
+        }
+        heaps.at(heap.value).textures.push_back(std::move(placed));
+        return ref;
     }
 
     //==================================================================================================================
-    lmx::Result<rojoRHI::Buffer*> placeBuffer(lmx::render::TransientHeapId heap, uint64_t offset,
-                                              const lmx::render::TransientBufferDesc& desc,
-                                              std::string_view label) override {
-        requireInHeap(heap, offset, footprint(desc));
-        auto& buffers = heaps.at(heap.value).buffers;
-        buffers.push_back(std::make_unique<FakeBuffer>(desc.size, std::string(label)));
-        return buffers.back().get();
+    lmx::Result<rojoRHI::Buffer> placeBuffer(lmx::render::TransientHeapId heap, uint64_t offset,
+                                             const lmx::render::TransientBufferDesc& desc,
+                                             std::string_view,
+                                             [[maybe_unused]] bool indirectArgs = false) override {
+        requireInHeap(heap, offset, bufferFootprint(desc));
+        const auto buffer = testBuffer(nextSyntheticIdentity());
+        heaps.at(heap.value).buffers.push_back({buffer, {0, static_cast<uint32_t>(buffer.bits)}});
+        return buffer;
+    }
+
+    //==================================================================================================================
+    rojoRHI::ViewIndex storageView(lmx::render::TransientHeapId heap, rojoRHI::Texture texture,
+                                   uint32_t mip) const override {
+        const auto& records = heaps.at(heap.value).textures;
+        const auto found = std::ranges::find_if(
+            records, [texture](const auto& record) { return record.ref.texture == texture; });
+        if (found == records.end() || mip >= found->storageViews.size())
+            std::abort();
+        return found->storageViews[mip];
+    }
+
+    //==================================================================================================================
+    rojoRHI::Addr address(lmx::render::TransientHeapId heap,
+                          rojoRHI::Buffer buffer) const override {
+        const auto& records = heaps.at(heap.value).buffers;
+        const auto found = std::ranges::find_if(
+            records, [buffer](const auto& record) { return record.buffer == buffer; });
+        if (found == records.end())
+            std::abort();
+        return found->address;
     }
 
     //==================================================================================================================

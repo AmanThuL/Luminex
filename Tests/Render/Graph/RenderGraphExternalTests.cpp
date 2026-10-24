@@ -3,73 +3,70 @@
 //======================================================================================================================
 TEST_CASE("external passes order inputs and outputs without opening an RHI scope",
           "[render][graph][external]") {
-    FakeTexture input{64, 64, "input"};
-    FakeTexture output{64, 64, "output"};
-    FakeTexture display{64, 64, "display"};
-    RecordingCommandList commands;
-    FakeTemporalScaler scaler;
+    auto input = textureFixture(64, 64, "input");
+    auto output = textureFixture(64, 64, "output");
+    auto display = textureFixture(64, 64, "display");
     RenderGraph graph;
-    const auto a = graph.importTexture(input, rojoRHI::Format::RGBA16Float, "input");
-    const auto b = graph.importTexture(output, rojoRHI::Format::RGBA16Float, "output");
-    const auto c = graph.importTexture(display, rojoRHI::Format::BGRA8Unorm, "display");
+    const auto a = graph.importTexture(formatted(input, rojoRHI::Format::RGBA16Float), "input");
+    const auto b = graph.importTexture(formatted(output, rojoRHI::Format::RGBA16Float), "output");
+    const auto c = graph.importTexture(formatted(display, rojoRHI::Format::BGRA8Unorm), "display");
 
     graph.addComputePass("pack", {.textureWrites = {a}}, kNoWork);
     graph.addExternalPass("vendor", {.textureReads = {nextVersion(a)}, .textureWrites = {b}},
-                          [&](const PassResources& resources) {
-                              REQUIRE(resources.texture(nextVersion(a)).has_value());
-                              REQUIRE(resources.texture(b).has_value());
-                              REQUIRE_FALSE(resources.texture(a).has_value());
-                              commands.temporalScale(scaler,
-                                                     {.color = *resources.texture(nextVersion(a)),
-                                                      .output = *resources.texture(b),
-                                                      .inputContentWidth = 32,
-                                                      .inputContentHeight = 32,
-                                                      .reset = true,
-                                                      .label = "vendor"});
-                          });
+                          kNoWork);
     graph.addPass("display",
                   {.textureReads = {nextVersion(b)}, .color = ColorAttachment{.handle = c}},
                   kNoWork);
     graph.presentTexture(nextVersion(c));
 
-    REQUIRE(describe(lowered(graph, 3)) ==
-            std::vector<std::string>{"scope lmx.frame", "scope pack", "run pack", "end scope",
-                                     "barrier input StorageWrite->ExternalRead", "run vendor",
-                                     "barrier output ExternalWrite->ShaderRead", "begin display",
-                                     "run display", "end", "end scope"});
-
-    const auto record = graph.execute(commands, 3);
+    const auto frame = lowered(graph, 3);
+    REQUIRE(passEvents(frame) == std::vector<std::string>{"scope lmx.frame", "scope pack",
+                                                          "run pack", "end scope", "run vendor",
+                                                          "begin display", "run display", "end",
+                                                          "end scope"});
+    const auto& record = frame.record;
     REQUIRE(record.debug.passes[1].kind == PassKind::External);
     REQUIRE(record.debug.transitions.size() == 2);
     REQUIRE(record.debug.transitions[0].textureFrom == lmx::render::TextureUse::StorageWrite);
     REQUIRE(record.debug.transitions[0].textureTo == lmx::render::TextureUse::ExternalRead);
     REQUIRE(record.debug.transitions[1].textureFrom == lmx::render::TextureUse::ExternalWrite);
     REQUIRE(record.debug.transitions[1].textureTo == lmx::render::TextureUse::ShaderRead);
-    REQUIRE(commands.events == std::vector<std::string>{"begin compute pack", "end compute",
-                                                        "barrier input StorageWrite->ExternalRead",
-                                                        "external vendor",
-                                                        "barrier output ExternalWrite->ShaderRead",
-                                                        "begin display", "end"});
-    REQUIRE(commands.temporalScales.size() == 1);
-    REQUIRE(commands.temporalScales.front().color == &input);
-    REQUIRE(commands.temporalScales.front().output == &output);
-    REQUIRE(commands.temporalScales.front().inputContentWidth == 32);
-    REQUIRE(commands.temporalScales.front().reset);
+    const auto resources = graph.passResources(frame, 1);
+    REQUIRE(resources.texture(nextVersion(a)).texture == input.texture);
+    REQUIRE(resources.texture(b).texture == output.texture);
+    const auto wrongVersion = abortDiagnostic([&] { (void)resources.texture(a); });
+    REQUIRE(wrongVersion.contains(
+        "pass 'vendor' resolves texture 'input' version 0, which it did not declare"));
+
+    const auto barriers = textureBarriers(frame);
+    const auto inputRead = std::ranges::find_if(barriers, [&](const auto& barrier) {
+        return barrier.resource == a.index && barrier.to.layout == rojoRHI::Layout::ShaderRead;
+    });
+    REQUIRE(inputRead != barriers.end());
+    REQUIRE(inputRead->from.access == rojoRHI::Access::ShaderWrite);
+    REQUIRE(inputRead->to.access == rojoRHI::Access::ShaderRead);
+    const auto outputRead = std::ranges::find_if(barriers, [&](const auto& barrier) {
+        return barrier.resource == b.index && barrier.to.layout == rojoRHI::Layout::ShaderRead;
+    });
+    REQUIRE(outputRead != barriers.end());
+    REQUIRE(outputRead->from.access == rojoRHI::Access::ShaderWrite);
+    REQUIRE(outputRead->to.access == rojoRHI::Access::ShaderRead);
 }
 
 //======================================================================================================================
 TEST_CASE("external terminal uses preserve cross-frame hazards", "[render][graph][external]") {
-    FakeTexture texture{64, 64};
-    FakeTexture output{64, 64};
+    auto texture = textureFixture(64, 64);
+    auto output = textureFixture(64, 64);
 
     SECTION("a prior external write is visible to a sampled read") {
         TextureStateTable states;
-        states.set(texture, lmx::render::TextureUse::ExternalWrite);
+        states.setLogicalUse(texture.texture, lmx::render::TextureUse::ExternalWrite);
         RenderGraph graph;
         graph.bindTextureStates(states);
-        const auto input =
-            graph.importPersistentTexture(texture, rojoRHI::Format::RGBA16Float, "history");
-        const auto result = graph.importTexture(output, rojoRHI::Format::RGBA16Float, "output");
+        const auto input = graph.importPersistentTexture(
+            formatted(texture, rojoRHI::Format::RGBA16Float), "history");
+        const auto result =
+            graph.importTexture(formatted(output, rojoRHI::Format::RGBA16Float), "output");
         graph.addComputePass("sample", {.shaderTextureReads = {input}, .textureWrites = {result}},
                              kNoWork);
         graph.exportTexture(nextVersion(result));
@@ -81,11 +78,11 @@ TEST_CASE("external terminal uses preserve cross-frame hazards", "[render][graph
     }
     SECTION("a prior external read is ordered before a new write") {
         TextureStateTable states;
-        states.set(texture, lmx::render::TextureUse::ExternalRead);
+        states.setLogicalUse(texture.texture, lmx::render::TextureUse::ExternalRead);
         RenderGraph graph;
         graph.bindTextureStates(states);
-        const auto input =
-            graph.importPersistentTexture(texture, rojoRHI::Format::RGBA16Float, "history");
+        const auto input = graph.importPersistentTexture(
+            formatted(texture, rojoRHI::Format::RGBA16Float), "history");
         graph.addComputePass("overwrite", {.textureWrites = {input}}, kNoWork);
         graph.exportTexture(nextVersion(input));
         const auto record = graph.compileFrame(1);
@@ -96,12 +93,13 @@ TEST_CASE("external terminal uses preserve cross-frame hazards", "[render][graph
     }
     SECTION("a prior external read needs no barrier for another read") {
         TextureStateTable states;
-        states.set(texture, lmx::render::TextureUse::ExternalRead);
+        states.setLogicalUse(texture.texture, lmx::render::TextureUse::ExternalRead);
         RenderGraph graph;
         graph.bindTextureStates(states);
-        const auto input =
-            graph.importPersistentTexture(texture, rojoRHI::Format::RGBA16Float, "history");
-        const auto result = graph.importTexture(output, rojoRHI::Format::RGBA16Float, "output");
+        const auto input = graph.importPersistentTexture(
+            formatted(texture, rojoRHI::Format::RGBA16Float), "history");
+        const auto result =
+            graph.importTexture(formatted(output, rojoRHI::Format::RGBA16Float), "output");
         graph.addExternalPass("vendor", {.textureReads = {input}, .textureWrites = {result}},
                               kNoWork);
         graph.exportTexture(nextVersion(result));
@@ -114,9 +112,10 @@ TEST_CASE("external terminal uses preserve cross-frame hazards", "[render][graph
 //======================================================================================================================
 TEST_CASE("external declarations enforce texture versions and ranges",
           "[render][graph][external]") {
-    FakeTexture texture{64, 64, "mips", 2};
+    auto texture = textureFixture(64, 64, "mips", 2);
     RenderGraph graph;
-    const auto input = graph.importTexture(texture, rojoRHI::Format::RGBA16Float, "mips");
+    const auto input =
+        graph.importTexture(formatted(texture, rojoRHI::Format::RGBA16Float), "mips");
 
     SECTION("overlapping read and write") {
         graph.addExternalPass("vendor", {.textureReads = {input}, .textureWrites = {input}},
@@ -126,7 +125,7 @@ TEST_CASE("external declarations enforce texture versions and ranges",
         graph.addExternalPass("vendor", {.textureReads = {nextVersion(input)}}, kNoWork);
     }
     SECTION("invalid subresource") {
-        graph.addExternalPass("vendor", {.textureReads = {{input, {.baseMipLevel = 2}}}}, kNoWork);
+        graph.addExternalPass("vendor", {.textureReads = {{input, {.baseMip = 2}}}}, kNoWork);
     }
     SECTION("multiple writers") {
         graph.addExternalPass("vendor", {.textureWrites = {input}}, kNoWork);
@@ -142,11 +141,12 @@ TEST_CASE("external consumers bound transient lifetimes and unused work is culle
           "[render][graph][external]") {
     FakeTransientBackend backend;
     TransientPool pool{backend};
-    FakeTexture output{64, 64};
+    auto output = textureFixture(64, 64);
     RenderGraph graph{pool};
     const auto packed = graph.createTexture(kTransientColor, "packed");
     const auto unused = graph.createTexture(kTransientColor, "unused");
-    const auto result = graph.importTexture(output, rojoRHI::Format::RGBA16Float, "result");
+    const auto result =
+        graph.importTexture(formatted(output, rojoRHI::Format::RGBA16Float), "result");
     graph.addComputePass("pack", {.textureWrites = {packed}}, kNoWork);
     graph.addExternalPass(
         "vendor", {.textureReads = {nextVersion(packed)}, .textureWrites = {result}}, kNoWork);
