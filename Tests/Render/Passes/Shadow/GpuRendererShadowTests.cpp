@@ -1,3 +1,5 @@
+#include "Render/Common/FrameData.h"
+#include "Render/Passes/Shadow/ShadowRoots.h"
 #include "Support/GpuRendererTestSupport.h"
 #include "Support/SceneTableTestSupport.h"
 
@@ -61,8 +63,10 @@ TEST_CASE("renderer shadows a floating cube onto the ground", "[gpu]") {
     std::vector<uint8_t> pixels(size_t{kSceneProbeSize} * kSceneProbeSize * 4);
     {
         const auto readbackBytes = lmx::render::readbackNow(*gpu, (*renderer)->colorTarget(),
-                                                            lmx::render::TextureUse::RenderTarget);
-        std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
+                                                            (*renderer)->textureStates());
+        INFO(errorOf(readbackBytes));
+        REQUIRE(readbackBytes.has_value());
+        std::memcpy(pixels.data(), readbackBytes->data(), pixels.size());
     }
 
     const PixelCoord shadowAt = projectToPixel(camera, kSceneProbeSize, {3.0f, 0.0f, 3.0f});
@@ -113,10 +117,6 @@ TEST_CASE("renderer shadows a floating cube onto the ground", "[gpu]") {
 TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[gpu]") {
     using namespace rojoRHI;
 
-    constexpr uint32_t kObjectSlot = 1;
-    constexpr uint32_t kDepthTextureSlot = 0;
-    constexpr uint32_t kSamplerSlot = 0;
-
     const std::array<lmx::engine::Vertex, 12> quads = {{
         clipVertex(-1.0f, -1.0f, 0.15f),
         clipVertex(1.0f, -1.0f, 0.15f),
@@ -141,34 +141,32 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
     INFO(errorOf(shadowLibrary));
     REQUIRE(shadowLibrary.has_value());
 
-    const auto makeDepthPipeline = [&](DepthBias bias, const char* label) {
-        return gpu->device().createGraphicsPipeline({.library = shadowLibrary->get(),
-                                                     .vertexEntry = "vertexMain",
-                                                     .fragmentEntry = "fragmentMain",
-                                                     .colorFormat = Format::Unknown,
-                                                     .depthFormat = Format::D32Float,
-                                                     .depthTestEnable = true,
-                                                     .depthWriteEnable = true,
-                                                     .cullMode = CullMode::None,
-                                                     .depthCompare = DepthCompare::Greater,
-                                                     .depthBias = bias,
-                                                     .label = label});
+    const auto makeDepthPipeline = [&](bool bias, const char* label) {
+        return lmx::engine::adoptGpu(
+            gpu->device(),
+            gpu->device().createPipeline({.vertex = {shadowLibrary->get(), "vertexMain"},
+                                          .fragment = {shadowLibrary->get(), "fragmentMain"},
+                                          .raster = {.cull = CullMode::None, .depthBias = bias},
+                                          .depthStencil = {.depthTest = true,
+                                                           .depthWrite = true,
+                                                           .depthCompare = CompareOp::Greater},
+                                          .depthFormat = Format::D32Float,
+                                          .label = label}));
     };
-    auto unbiasedPipeline = makeDepthPipeline({}, "lmx.test.unbiasedDepthPipeline");
+    auto unbiasedPipeline = makeDepthPipeline(false, "lmx.test.unbiasedDepthPipeline");
     INFO(errorOf(unbiasedPipeline));
     REQUIRE(unbiasedPipeline.has_value());
-    auto biasedPipeline =
-        makeDepthPipeline({.constant = -4.0f, .slopeScale = -1.0f}, "lmx.test.biasedDepthPipeline");
+    auto biasedPipeline = makeDepthPipeline(true, "lmx.test.biasedDepthPipeline");
     INFO(errorOf(biasedPipeline));
     REQUIRE(biasedPipeline.has_value());
 
     const auto makeDepthTarget = [&](const char* label) {
-        return gpu->device().createTexture({.width = kSize,
-                                            .height = kSize,
-                                            .format = Format::D32Float,
-                                            .renderTarget = true,
-                                            .sampled = true,
-                                            .label = label});
+        return lmx::engine::GpuTexture::create(
+            gpu->device(),
+            {.format = Format::D32Float,
+             .extent = {kSize, kSize, 1},
+             .usage = rojoRHI::TextureUsage::DepthStencil | rojoRHI::TextureUsage::Sampled,
+             .label = label});
     };
     auto unbiasedDepth = makeDepthTarget("lmx.test.unbiasedDepth");
     INFO(errorOf(unbiasedDepth));
@@ -187,18 +185,24 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
     auto sampleLibrary = gpu->loadShaderLibrary("SamplerSmoke");
     INFO(errorOf(sampleLibrary));
     REQUIRE(sampleLibrary.has_value());
-    auto samplePipeline =
-        gpu->device().createGraphicsPipeline({.library = sampleLibrary->get(),
-                                              .vertexEntry = "vertexMain",
-                                              .fragmentEntry = "fragmentIdentityUv",
-                                              .colorFormat = Format::BGRA8Unorm,
-                                              .label = "lmx.test.depthBiasSamplePipeline"});
+    auto samplePipeline = lmx::engine::adoptGpu(
+        gpu->device(),
+        gpu->device().createPipeline(
+            {.vertex = {sampleLibrary->get(), "vertexMain"},
+             .fragment = {sampleLibrary->get(), "fragmentIdentityUv"},
+             .raster = {.cull = rojoRHI::CullMode::Back},
+             .depthStencil = {.depthTest = false,
+                              .depthWrite = false,
+                              .depthCompare = rojoRHI::CompareOp::Less},
+             .colors = std::array{rojoRHI::ColorTarget{.format = Format::BGRA8Unorm}},
+             .label = "lmx.test.depthBiasSamplePipeline"}));
     INFO(errorOf(samplePipeline));
     REQUIRE(samplePipeline.has_value());
 
-    auto sampler = gpu->device().createSampler({.filter = FilterMode::Nearest,
-                                                .addressMode = AddressMode::Clamp,
-                                                .label = "lmx.test.depthBiasSampler"});
+    auto sampler = lmx::engine::adoptGpu(
+        gpu->device(), gpu->device().createSampler({.filter = SamplerFilter::Nearest,
+                                                    .address = SamplerAddress::ClampToEdge,
+                                                    .label = "lmx.test.depthBiasSampler"}));
     INFO(errorOf(sampler));
     REQUIRE(sampler.has_value());
 
@@ -218,59 +222,128 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
     REQUIRE(scene.prepareFrame(gpu->frameNumber()));
     const auto tables = scene.tables();
     const auto meshRow = *scene.tryMesh(mesh);
-    auto visibleRows = gpu->device().createBuffer(
-        {.size = sizeof(uint32_t), .storageRead = true, .label = "lmx.test.depthBias.visibleRows"},
-        &instance.slot);
+    auto visibleRows = lmx::engine::GpuBuffer::create(
+        gpu->device(), {.size = sizeof(uint32_t), .label = "lmx.test.depthBias.visibleRows"},
+        std::as_bytes(std::span(&instance.slot, 1)));
     REQUIRE(visibleRows.has_value());
-    const auto depthPass = [&](Texture& target, GraphicsPipeline& pipeline) {
-        commands.beginRenderPass({.depthTarget = &target,
-                                  .clearDepth = 0.0f,
-                                  .storeDepth = true,
+    const lmx::render::ShadowPassRoot passRoot{
+        .vertices = tables.vertices->address(),
+        .visibleRows = visibleRows->address(),
+        .instances = tables.instances->address(),
+        .materials = tables.materials->address(),
+        .uniforms = lmx::render::frameData(commands, lmx::render::ShadowPassUniforms{identity})};
+    const lmx::render::ShadowDrawRoot drawRoot{.pass = lmx::render::frameData(commands, passRoot)};
+    const auto depthPass = [&](const lmx::engine::GpuTexture& target, Pipeline pipeline,
+                               bool bias) {
+        const TextureBarrier begin{.texture = target.rhi(),
+                                   .range = {0, 1, 0, 1},
+                                   .dstStage = Stage::DepthStencil,
+                                   .dstAccess =
+                                       Access::DepthStencilRead | Access::DepthStencilWrite,
+                                   .newLayout = Layout::DepthStencilWrite};
+        commands.barrier({}, {}, std::span(&begin, 1));
+        commands.beginRenderPass({.depth = {.texture = target.rhi(),
+                                            .load = LoadOp::Clear,
+                                            .store = StoreOp::Store,
+                                            .clearDepth = 0.0f},
+                                  .area = {0, 0, kSize, kSize},
                                   .label = "lmx.test.depthBias.write"});
-        commands.bindPipeline(pipeline);
-        commands.bindFrameData(kObjectSlot, lmx::engine::DrawUniforms{0});
-        commands.bindBuffer(lmx::engine::kVisibleRowsSlot, **visibleRows);
-        commands.bindFrameData(2, identity);
-        commands.bindBuffer(kVertexBufferSlot, tables.vertices->rhi());
-        commands.bindBuffer(lmx::engine::kSceneInstancesSlot, tables.instances->rhi());
-        commands.bindBuffer(lmx::engine::kSceneMaterialsSlot, tables.materials->rhi());
-        commands.drawIndexed(tables.indices->rhi(), meshRow.indexCount, meshRow.firstIndex);
+        commands.setViewport({.width = float(kSize), .height = float(kSize)});
+        commands.setScissor({0, 0, kSize, kSize});
+        commands.setPipeline(pipeline);
+        if (bias)
+            commands.setDepthBias(-4.0f, -1.0f, 0.0f);
+        commands.pushRoot(drawRoot);
+#ifndef NDEBUG
+        const std::array<ResourceAccess, 3> accesses{
+            {{.buffer = tables.vertices->rhi(),
+              .size = tables.vertices->desc().size,
+              .stage = Stage::VertexShader,
+              .access = Access::ShaderRead},
+             {.buffer = visibleRows->rhi(),
+              .size = sizeof(uint32_t),
+              .stage = Stage::VertexShader,
+              .access = Access::ShaderRead},
+             {.buffer = tables.instances->rhi(),
+              .size = uint64_t{tables.instanceCount} * sizeof(lmx::engine::InstanceRow),
+              .stage = Stage::VertexShader,
+              .access = Access::ShaderRead}}};
+        commands.declareAccess(accesses);
+#endif
+        commands.drawIndexed(tables.indices->rhi(), IndexType::UInt32, meshRow.indexCount, 1,
+                             meshRow.firstIndex, 0, 0);
         commands.endRenderPass();
     };
-    depthPass(**unbiasedDepth, **unbiasedPipeline);
-    depthPass(**biasedDepth, **biasedPipeline);
-
-    commands.textureBarrier(**unbiasedDepth, TextureUse::RenderTarget, TextureUse::ShaderRead);
-    commands.textureBarrier(**biasedDepth, TextureUse::RenderTarget, TextureUse::ShaderRead);
-
-    const auto samplePass = [&](Texture& source, Texture& destination) {
-        commands.beginRenderPass({.colorTarget = &destination,
-                                  .clearColor = {1.0f, 0.0f, 1.0f, 1.0f},
-                                  .clear = true,
+    depthPass(*unbiasedDepth, unbiasedPipeline->get(), false);
+    depthPass(*biasedDepth, biasedPipeline->get(), true);
+    const auto samplePass = [&](const lmx::engine::GpuTexture& source,
+                                const lmx::engine::GpuTexture& destination) {
+        const std::array<TextureBarrier, 2> barriers{
+            {{.texture = source.rhi(),
+              .range = {0, 1, 0, 1},
+              .srcStage = Stage::DepthStencil,
+              .srcAccess = Access::DepthStencilRead | Access::DepthStencilWrite,
+              .dstStage = Stage::FragmentShader,
+              .dstAccess = Access::ShaderRead,
+              .oldLayout = Layout::DepthStencilWrite,
+              .newLayout = Layout::DepthStencilRead},
+             {.texture = destination.rhi(),
+              .range = {0, 1, 0, 1},
+              .dstStage = Stage::ColorAttachment,
+              .dstAccess = Access::ColorAttachmentWrite,
+              .newLayout = Layout::ColorAttachment}}};
+        commands.barrier({}, {}, barriers);
+        const ColorAttachment color{.texture = destination.rhi(),
+                                    .load = LoadOp::Clear,
+                                    .store = StoreOp::Store,
+                                    .clear = {1.0f, 0.0f, 1.0f, 1.0f}};
+        commands.beginRenderPass({.colors = std::span(&color, 1),
+                                  .area = {0, 0, kSize, kSize},
                                   .label = "lmx.test.depthBias.sample"});
-        commands.bindPipeline(**samplePipeline);
-        commands.bindTexture(kDepthTextureSlot, source);
-        commands.bindSampler(kSamplerSlot, **sampler);
+        commands.setViewport({.width = float(kSize), .height = float(kSize)});
+        commands.setScissor({0, 0, kSize, kSize});
+        commands.setPipeline(samplePipeline->get());
+        commands.pushRoot(lmx::test::SamplerRoot{.source = static_cast<uint32_t>(source.view()),
+                                                 .sampler = static_cast<uint32_t>(sampler->get())});
+#ifndef NDEBUG
+        const ResourceAccess access{.texture = source.rhi(),
+                                    .range = {0, 1, 0, 1},
+                                    .stage = Stage::FragmentShader,
+                                    .access = Access::ShaderRead};
+        commands.declareAccess(std::span(&access, 1));
+#endif
         commands.draw(3);
         commands.endRenderPass();
     };
-    samplePass(**unbiasedDepth, unbiasedImage->rhi());
-    samplePass(**biasedDepth, biasedImage->rhi());
+    samplePass(*unbiasedDepth, *unbiasedImage);
+    samplePass(*biasedDepth, *biasedImage);
 
     gpu->submitAndEndFrame(gpuFrame3);
     gpu->waitIdle();
 
     std::vector<uint8_t> unbiased(size_t{kSize} * kSize * 4);
     {
-        const auto readbackBytes =
-            lmx::render::readbackNow(*gpu, *unbiasedImage, lmx::render::TextureUse::RenderTarget);
-        std::memcpy(unbiased.data(), readbackBytes.data(), unbiased.size());
+        const auto readbackBytes = lmx::render::readbackNow(
+            *gpu, *unbiasedImage,
+            std::array{lmx::render::TextureRangeState{.range = {0, 1, 0, 1},
+                                                      .state = {Stage::ColorAttachment,
+                                                                Access::ColorAttachmentWrite,
+                                                                Layout::ColorAttachment}}});
+        INFO(errorOf(readbackBytes));
+        REQUIRE(readbackBytes.has_value());
+        std::memcpy(unbiased.data(), readbackBytes->data(), unbiased.size());
     }
     std::vector<uint8_t> biased(size_t{kSize} * kSize * 4);
     {
-        const auto readbackBytes =
-            lmx::render::readbackNow(*gpu, *biasedImage, lmx::render::TextureUse::RenderTarget);
-        std::memcpy(biased.data(), readbackBytes.data(), biased.size());
+        const auto readbackBytes = lmx::render::readbackNow(
+            *gpu, *biasedImage,
+            std::array{lmx::render::TextureRangeState{.range = {0, 1, 0, 1},
+                                                      .state = {Stage::ColorAttachment,
+                                                                Access::ColorAttachmentWrite,
+                                                                Layout::ColorAttachment}}});
+        INFO(errorOf(readbackBytes));
+        REQUIRE(readbackBytes.has_value());
+        std::memcpy(biased.data(), readbackBytes->data(), biased.size());
     }
 
     const Pixel rampUnbiased = pixelAt(unbiased, 32, 3);
@@ -344,8 +417,10 @@ TEST_CASE("renderer applies the chosen directional caster and leaves none or dis
                 std::vector<uint8_t> pixels(size_t{kSceneProbeSize} * kSceneProbeSize * 4);
                 {
                     const auto readbackBytes = lmx::render::readbackNow(
-                        *gpu, (*renderer)->colorTarget(), lmx::render::TextureUse::RenderTarget);
-                    std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
+                        *gpu, (*renderer)->colorTarget(), (*renderer)->textureStates());
+                    INFO(errorOf(readbackBytes));
+                    REQUIRE(readbackBytes.has_value());
+                    std::memcpy(pixels.data(), readbackBytes->data(), pixels.size());
                 }
                 return pixels;
             };

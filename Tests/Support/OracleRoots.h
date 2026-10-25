@@ -9,6 +9,25 @@
 
 namespace lmx::test {
 
+struct alignas(16) SceneTableAbiRoot {
+    rojoRHI::Addr output{};
+    rojoRHI::Addr instances{};
+    rojoRHI::Addr materials{};
+    rojoRHI::Addr meshes{};
+    rojoRHI::Addr lights{};
+    uint32_t padding0{};
+    uint32_t padding1{};
+};
+static_assert(alignof(SceneTableAbiRoot) == 16);
+static_assert(sizeof(SceneTableAbiRoot) == 48);
+static_assert(offsetof(SceneTableAbiRoot, output) == 0);
+static_assert(offsetof(SceneTableAbiRoot, instances) == 8);
+static_assert(offsetof(SceneTableAbiRoot, materials) == 16);
+static_assert(offsetof(SceneTableAbiRoot, meshes) == 24);
+static_assert(offsetof(SceneTableAbiRoot, lights) == 32);
+static_assert(offsetof(SceneTableAbiRoot, padding0) == 40);
+static_assert(offsetof(SceneTableAbiRoot, padding1) == 44);
+
 struct alignas(16) ShadowSmokeRoot {
     rojoRHI::Addr vertices{};
     rojoRHI::Addr uniforms{};

@@ -31,17 +31,15 @@ using lmx::test::FixtureSceneView;
 //
 // Tolerance: 2e-3 relative, roughly twice the worst case of the one lossy step. The depth itself
 // is D32Float (relative error ~6e-8, and depth is linear in screen space so the rasterizer's
-// interpolation across a plane is exact), but the probe pass has to carry it out through an
-// RGBA16Float target -- the only float format this RHI renders into, and D32Float has no packed
-// readback of its own. Binary16 keeps 11 significant bits, and the measured probes here all land
+// interpolation across a plane is exact), but this oracle retains its RGBA16Float sampling pass
+// so the same quantization chain and bounds remain pinned. Direct packed D32 readback is also
+// available. Binary16 keeps 11 significant bits, and the measured probes here all land
 // one binary16 ulp low rather than at the nearest value, so the bound is a whole ulp: at most
 // 2^-10 = 9.8e-4 relative. Measured at the three probes: 2.4e-4, 2.4e-4, 7.3e-4. The
 // reconstruction divides by d, which carries relative error through unchanged rather than
 // amplifying it, so that bound is the answer's bound too.
 TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's probes", "[gpu]") {
     using namespace rojoRHI;
-
-    constexpr uint32_t kSourceTextureSlot = 0;
 
     auto gpu = createTestGpu();
 
@@ -62,15 +60,13 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
     REQUIRE(camera.position.z == kMaterialLabCameraDistance);
     camera.position.x = kMaterialLabDepthLaneX;
 
-    // The depth buffer is D32Float, which readback() has no packed texel size for, so the probe
-    // pass copies it into a half-float target that does.
-    auto probeImage =
-        lmx::engine::GpuTexture::create(gpu->device(), {.width = kDepthReconstructSize,
-                                                        .height = kDepthReconstructSize,
-                                                        .format = Format::RGBA16Float,
-                                                        .renderTarget = true,
-                                                        .cpuReadback = true,
-                                                        .label = "lmx.test.depthProbeImage"});
+    // Retain the original sampled-depth half-float oracle, including its quantization bound,
+    // independently of the helper's newer direct packed D32 readback support.
+    auto probeImage = lmx::engine::GpuTexture::create(
+        gpu->device(), {.format = Format::RGBA16Float,
+                        .extent = {kDepthReconstructSize, kDepthReconstructSize, 1},
+                        .usage = rojoRHI::TextureUsage::RenderTarget,
+                        .label = "lmx.test.depthProbeImage"});
     INFO(errorOf(probeImage));
     REQUIRE(probeImage.has_value());
 
@@ -78,13 +74,17 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
     INFO(errorOf(probeLibrary));
     REQUIRE(probeLibrary.has_value());
 
-    auto probePipeline =
-        gpu->device().createGraphicsPipeline({.library = probeLibrary->get(),
-                                              .vertexEntry = "vertexMain",
-                                              .fragmentEntry = "fragmentMain",
-                                              .colorFormat = Format::RGBA16Float,
-                                              .cullMode = CullMode::None,
-                                              .label = "lmx.test.depthProbePipeline"});
+    auto probePipeline = lmx::engine::adoptGpu(
+        gpu->device(),
+        gpu->device().createPipeline(
+            {.vertex = {probeLibrary->get(), "vertexMain"},
+             .fragment = {probeLibrary->get(), "fragmentMain"},
+             .raster = {.cull = CullMode::None},
+             .depthStencil = {.depthTest = false,
+                              .depthWrite = false,
+                              .depthCompare = rojoRHI::CompareOp::Less},
+             .colors = std::array{rojoRHI::ColorTarget{.format = Format::RGBA16Float}},
+             .label = "lmx.test.depthProbePipeline"}));
     INFO(errorOf(probePipeline));
     REQUIRE(probePipeline.has_value());
 
@@ -94,14 +94,49 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
     std::vector<lmx::engine::DrawItem> items;
     const auto view = lmx::render::buildSceneView(**scene, items, false);
     (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, *gpu));
-    commands.textureBarrier((*renderer)->depthTexture().rhi(), TextureUse::RenderTarget,
-                            TextureUse::ShaderRead);
-    commands.beginRenderPass({.colorTarget = &probeImage->rhi(),
-                              .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
-                              .clear = true,
+    auto& states = (*renderer)->textureStates();
+    std::vector<TextureBarrier> depthBarriers;
+    for (const auto& entry :
+         states.physicalRanges((*renderer)->depthTexture().rhi(), {0, 1, 0, 1})) {
+        depthBarriers.push_back({.texture = (*renderer)->depthTexture().rhi(),
+                                 .range = entry.range,
+                                 .srcStage = entry.state.stage,
+                                 .srcAccess = entry.state.access,
+                                 .dstStage = Stage::FragmentShader,
+                                 .dstAccess = Access::ShaderRead,
+                                 .oldLayout = entry.state.layout,
+                                 .newLayout = Layout::DepthStencilRead});
+    }
+    commands.barrier({}, {}, depthBarriers);
+    states.set((*renderer)->depthTexture().rhi(), {0, 1, 0, 1},
+               {Stage::FragmentShader, Access::ShaderRead, Layout::DepthStencilRead});
+
+    const rojoRHI::TextureBarrier beginColor{.texture = probeImage->rhi(),
+                                             .range = {0, 1, 0, 1},
+                                             .dstStage = rojoRHI::Stage::ColorAttachment,
+                                             .dstAccess = rojoRHI::Access::ColorAttachmentWrite,
+                                             .newLayout = rojoRHI::Layout::ColorAttachment};
+    commands.barrier({}, {}, std::span(&beginColor, 1));
+    const rojoRHI::ColorAttachment color{.texture = probeImage->rhi(),
+                                         .load = rojoRHI::LoadOp::Clear,
+                                         .store = rojoRHI::StoreOp::Store,
+                                         .clear = {0.0f, 0.0f, 0.0f, 1.0f}};
+    commands.beginRenderPass({.colors = std::span(&color, 1),
+                              .area = {0, 0, kDepthReconstructSize, kDepthReconstructSize},
                               .label = "lmx.test.depthProbe.copy"});
-    commands.bindPipeline(**probePipeline);
-    commands.bindTexture(kSourceTextureSlot, (*renderer)->depthTexture().rhi());
+    commands.setViewport(
+        {.width = float(kDepthReconstructSize), .height = float(kDepthReconstructSize)});
+    commands.setScissor({0, 0, kDepthReconstructSize, kDepthReconstructSize});
+    commands.setPipeline(probePipeline->get());
+    commands.pushRoot(lmx::test::FullscreenSampleRoot{
+        .source = static_cast<uint32_t>((*renderer)->depthTexture().view())});
+#ifndef NDEBUG
+    const rojoRHI::ResourceAccess access{.texture = (*renderer)->depthTexture().rhi(),
+                                         .range = {0, 1, 0, 1},
+                                         .stage = rojoRHI::Stage::FragmentShader,
+                                         .access = rojoRHI::Access::ShaderRead};
+    commands.declareAccess(std::span(&access, 1));
+#endif
     commands.draw(3);
     commands.endRenderPass();
     gpu->submitAndEndFrame(gpuFrame1);
@@ -109,9 +144,15 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
 
     std::vector<uint16_t> texels(size_t{kDepthReconstructSize} * kDepthReconstructSize * 4);
     {
-        const auto readbackBytes =
-            lmx::render::readbackNow(*gpu, *probeImage, lmx::render::TextureUse::RenderTarget);
-        std::memcpy(texels.data(), readbackBytes.data(), texels.size() * sizeof(uint16_t));
+        const auto readbackBytes = lmx::render::readbackNow(
+            *gpu, *probeImage,
+            std::array{lmx::render::TextureRangeState{
+                .range = {0, 1, 0, 1},
+                .state = {rojoRHI::Stage::ColorAttachment, rojoRHI::Access::ColorAttachmentWrite,
+                          rojoRHI::Layout::ColorAttachment}}});
+        INFO(errorOf(readbackBytes));
+        REQUIRE(readbackBytes.has_value());
+        std::memcpy(texels.data(), readbackBytes->data(), texels.size() * sizeof(uint16_t));
     }
 
     const glm::mat4 viewProj = camera.projectionMatrix(1.0f) * camera.viewMatrix();
@@ -236,8 +277,10 @@ TEST_CASE("MaterialLab's sphere grid conserves energy in a white furnace", "[gpu
     std::vector<uint16_t> texels(size_t{kBrdfProbeSize} * kBrdfProbeSize * 4);
     {
         const auto readbackBytes = lmx::render::readbackNow(*gpu, (*renderer)->hdrColorTexture(),
-                                                            lmx::render::TextureUse::ShaderRead);
-        std::memcpy(texels.data(), readbackBytes.data(), texels.size() * sizeof(uint16_t));
+                                                            (*renderer)->textureStates());
+        INFO(errorOf(readbackBytes));
+        REQUIRE(readbackBytes.has_value());
+        std::memcpy(texels.data(), readbackBytes->data(), texels.size() * sizeof(uint16_t));
     }
 
     // Four RGBA16Float roundings at 1.0; see this case's derivation above.
@@ -355,8 +398,10 @@ TEST_CASE("dielectric and conductor probes match a CPU BRDF reference at pinned 
         std::vector<uint16_t> texels(size_t{kBrdfProbeSize} * kBrdfProbeSize * 4);
         {
             const auto readbackBytes = lmx::render::readbackNow(
-                *gpu, (*renderer)->hdrColorTexture(), lmx::render::TextureUse::ShaderRead);
-            std::memcpy(texels.data(), readbackBytes.data(), texels.size() * sizeof(uint16_t));
+                *gpu, (*renderer)->hdrColorTexture(), (*renderer)->textureStates());
+            INFO(errorOf(readbackBytes));
+            REQUIRE(readbackBytes.has_value());
+            std::memcpy(texels.data(), readbackBytes->data(), texels.size() * sizeof(uint16_t));
         }
         const glm::vec3 radiance =
             hdrTexelAt(texels, kBrdfProbeSize, kBrdfProbeSize / 2, kBrdfProbeSize / 2);

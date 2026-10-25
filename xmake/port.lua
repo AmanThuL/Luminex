@@ -5,26 +5,6 @@ local port_path = path.join(repository_root, "xmake/port.lua")
 
 local pending_families = {
     {
-        family = "SCENE",
-        sources = {
-        },
-        tests = {
-            "Tests/Render/Passes/Scene/GpuAlphaMaskTests.cpp",
-            "Tests/Render/Passes/Scene/GpuRendererTests.cpp",
-            "Tests/Render/Passes/Scene/GpuSceneShadingTests.cpp",
-            "Tests/Render/Passes/Shadow/GpuRendererShadowTests.cpp",
-            "Tests/Engine/Scene/GpuSceneTableAbiTests.cpp",
-            "Tests/Engine/Scene/GpuSceneTableTests.cpp",
-            "Tests/Scenes/EngineSceneTests.cpp",
-            "Tests/Scenes/SceneMaterialLabTests.cpp",
-        },
-        shaders = {
-        },
-        testShaders = {
-            "Shaders/Tests/SceneTableAbi.slang",
-        },
-    },
-    {
         family = "VISIBILITY",
         sources = {
             "Source/Render/Passes/Visibility/GpuVisibility*.cpp",
@@ -111,6 +91,7 @@ local pending_families = {
             "Source/Render/Renderer/RendererTemporal.cpp",
         },
         tests = {
+            "Tests/Engine/Scene/GpuSceneTableTemporalTests.cpp",
             "Tests/Render/Passes/Temporal/Gpu*.cpp",
             "Tests/Render/Passes/Temporal/RenderVendorTemporalTests.cpp",
             "Tests/App/Model/Graph/GpuGraphInspectorTests.cpp",

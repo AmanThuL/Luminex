@@ -108,6 +108,7 @@ function lmx_configure_shader_library(target)
             -- ---- scene ----
             "VertexStorage=lmx::engine::Vertex",
             "ShadowSmokeRoot=lmx::test::ShadowSmokeRoot",
+            "SceneTableAbiRoot=lmx::test::SceneTableAbiRoot",
             "ShadowSmokeUniforms=lmx::test::ShadowSmokeUniforms",
             -- ---- visibility ----
             -- ---- lights ----

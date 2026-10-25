@@ -8,11 +8,23 @@
 #include "Support/SceneDocumentTestSupport.h"
 #include "Support/SceneTableTestSupport.h"
 
+#include <chrono>
 #include <cstring>
 
 #include <set>
 
 namespace {
+
+struct OwnedHelmetFixture {
+    std::filesystem::path root;
+    //==================================================================================================================
+    ~OwnedHelmetFixture() {
+        if (!root.empty()) {
+            std::error_code error;
+            std::filesystem::remove_all(root, error);
+        }
+    }
+};
 
 //======================================================================================================================
 std::vector<lmx::engine::InstanceRow> readSceneInstances(Scene& scene, GpuContext& gpu) {
@@ -23,10 +35,14 @@ std::vector<lmx::engine::InstanceRow> readSceneInstances(Scene& scene, GpuContex
     gpu.waitIdle();
     std::vector<lmx::engine::InstanceRow> rows(tables.instanceCount);
     {
-        const auto bytes =
-            lmx::render::readbackNow(gpu, *tables.instances, lmx::render::BufferUse::ShaderRead,
-                                     {0, rows.size() * sizeof(lmx::engine::InstanceRow)});
-        std::memcpy(rows.data(), bytes.data(), rows.size() * sizeof(lmx::engine::InstanceRow));
+        const auto bytes = lmx::render::readbackNow(
+            gpu, *tables.instances,
+            lmx::render::SyncPoint{rojoRHI::Stage::None, rojoRHI::Access::None,
+                                   rojoRHI::Layout::Undefined},
+            {0, rows.size() * sizeof(lmx::engine::InstanceRow)});
+        INFO(errorOf(bytes));
+        REQUIRE(bytes.has_value());
+        std::memcpy(rows.data(), bytes->data(), rows.size() * sizeof(lmx::engine::InstanceRow));
     }
     return rows;
 }
@@ -147,11 +163,38 @@ TEST_CASE("loadHelmetScene's unbaked fallback computes the same mip 1 the offlin
              "the asset-gated pin");
     }
 
+    OwnedHelmetFixture fixture;
+    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+    for (uint32_t attempt = 0; attempt < 100 && fixture.root.empty(); ++attempt) {
+        const auto candidate =
+            std::filesystem::temp_directory_path() /
+            ("lmx-helmet-fallback-" + std::to_string(nonce) + "-" + std::to_string(attempt));
+        if (std::filesystem::create_directory(candidate))
+            fixture.root = candidate;
+    }
+    REQUIRE_FALSE(fixture.root.empty());
+    const auto copied = fixture.root / path->parent_path().filename();
+    std::filesystem::create_directory(copied);
+    // Materialize ordinary files even when a source entry is a symlink; never install a link
+    // back into fetched assets. Relative names are the loader's asset/baked lookup contract.
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(
+             path->parent_path(), std::filesystem::directory_options::follow_directory_symlink)) {
+        const auto destination = copied / entry.path().lexically_relative(path->parent_path());
+        if (entry.is_directory())
+            std::filesystem::create_directories(destination);
+        else if (entry.is_regular_file())
+            std::filesystem::copy_file(entry.path(), destination);
+        else
+            FAIL("Helmet fixture contains an unsupported non-file entry");
+    }
+    const auto copiedPath = copied / path->filename();
+    const auto copiedBaked = copied / "Baked";
+
     auto gpu = createTestGpu();
     auto* device = &gpu->device();
     REQUIRE(gpu);
 
-    auto bakedScene = loadGltfScene(*device, path->string(), "Damaged Helmet");
+    auto bakedScene = loadGltfScene(*device, copiedPath.string(), "Damaged Helmet");
     INFO(describeSceneError(bakedScene));
     REQUIRE(bakedScene.has_value());
     const lmx::engine::GpuTexture* bakedDiffuse =
@@ -162,8 +205,8 @@ TEST_CASE("loadHelmetScene's unbaked fallback computes the same mip 1 the offlin
 
     std::vector<uint8_t> fallbackMip1;
     {
-        const TemporarilyHiddenDirectory hidden(bakedDir);
-        auto fallbackScene = loadGltfScene(*device, path->string(), "Damaged Helmet");
+        const TemporarilyHiddenDirectory hidden(copiedBaked);
+        auto fallbackScene = loadGltfScene(*device, copiedPath.string(), "Damaged Helmet");
         INFO(describeSceneError(fallbackScene));
         REQUIRE(fallbackScene.has_value());
         const lmx::engine::GpuTexture* fallbackDiffuse =
@@ -231,8 +274,10 @@ TEST_CASE("loadSponzaScene's full SceneView renders through Renderer without exh
     std::vector<uint8_t> pixels(size_t{kProbeSize} * kProbeSize * 4);
     {
         const auto bytes = lmx::render::readbackNow(*gpu, (*renderer)->colorTarget(),
-                                                    lmx::render::TextureUse::RenderTarget);
-        std::memcpy(pixels.data(), bytes.data(), pixels.size());
+                                                    (*renderer)->textureStates());
+        INFO(errorOf(bytes));
+        REQUIRE(bytes.has_value());
+        std::memcpy(pixels.data(), bytes->data(), pixels.size());
     }
     bool sawNonClearPixel = false;
     for (size_t i = 0; i + 3 < pixels.size(); i += 4) {
@@ -333,8 +378,10 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
     std::vector<uint8_t> pixels(size_t{kProbeSize} * kProbeSize * 4);
     {
         const auto bytes = lmx::render::readbackNow(*gpu, (*renderer)->colorTarget(),
-                                                    lmx::render::TextureUse::RenderTarget);
-        std::memcpy(pixels.data(), bytes.data(), pixels.size());
+                                                    (*renderer)->textureStates());
+        INFO(errorOf(bytes));
+        REQUIRE(bytes.has_value());
+        std::memcpy(pixels.data(), bytes->data(), pixels.size());
     }
 
     const auto pixelAt = [&](uint32_t x, uint32_t y) {

@@ -19,3 +19,5 @@ StructuredBuffer<ShadowSmokeUniforms> gRecord_ShadowSmokeUniforms;
 void probeMain()
 {
 }
+
+StructuredBuffer<SceneTableAbiRoot> gRoot_SceneTableAbiRoot;

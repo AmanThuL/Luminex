@@ -1,5 +1,16 @@
 import RojoRHI;
 
+struct SceneTableAbiRoot
+{
+    rojoRHI::Addr output;
+    rojoRHI::Addr instances;
+    rojoRHI::Addr materials;
+    rojoRHI::Addr meshes;
+    rojoRHI::Addr lights;
+    uint padding0;
+    uint padding1;
+};
+
 struct ShadowSmokeRoot
 {
     rojoRHI::Addr vertices;

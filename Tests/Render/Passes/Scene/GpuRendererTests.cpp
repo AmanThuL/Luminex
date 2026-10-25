@@ -8,6 +8,139 @@ using lmx::test::FixtureMesh;
 using lmx::test::fixtureMesh;
 using lmx::test::FixtureSceneView;
 
+#include <cerrno>
+#include <chrono>
+#include <csignal>
+#include <cstdio>
+#include <fcntl.h>
+#include <mach-o/dyld.h>
+#include <poll.h>
+#include <spawn.h>
+#include <sys/resource.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+extern char** environ;
+
+namespace {
+constexpr const char* kRefusalCase =
+    "a pass resolving an undeclared texture is refused while the frame runs";
+constexpr const char* kRefusalMarker = "lmx.scene.refusal.reached-body";
+
+struct RefusalChild {
+    pid_t pid = -1;
+    int input = -1;
+    int output = -1;
+    posix_spawn_file_actions_t actions{};
+    posix_spawnattr_t attributes{};
+    bool actionsReady = false;
+    bool attributesReady = false;
+    //==================================================================================================================
+    ~RefusalChild() {
+        if (attributesReady)
+            ::posix_spawnattr_destroy(&attributes);
+        if (actionsReady)
+            ::posix_spawn_file_actions_destroy(&actions);
+        if (input >= 0)
+            ::close(input);
+        if (output >= 0)
+            ::close(output);
+        if (pid > 0) {
+            ::kill(pid, SIGKILL);
+            int status = 0;
+            while (::waitpid(pid, &status, 0) < 0 && errno == EINTR) {
+            }
+        }
+    }
+};
+
+//======================================================================================================================
+std::string refusalDiagnostic() {
+    uint32_t size = 0;
+    _NSGetExecutablePath(nullptr, &size);
+    std::string executable(size, '\0');
+    REQUIRE(_NSGetExecutablePath(executable.data(), &size) == 0);
+    executable.resize(std::strlen(executable.c_str()));
+    RefusalChild child;
+    int pipeEnds[2];
+    REQUIRE(::pipe(pipeEnds) == 0);
+    child.input = pipeEnds[0];
+    child.output = pipeEnds[1];
+    int error = ::posix_spawn_file_actions_init(&child.actions);
+    child.actionsReady = error == 0;
+    REQUIRE(error == 0);
+    error = ::posix_spawn_file_actions_adddup2(&child.actions, child.output, STDOUT_FILENO);
+    if (!error)
+        error = ::posix_spawn_file_actions_adddup2(&child.actions, child.output, STDERR_FILENO);
+    if (!error)
+        error = ::posix_spawn_file_actions_addclose(&child.actions, child.input);
+    if (!error)
+        error = ::posix_spawn_file_actions_addclose(&child.actions, child.output);
+    if (!error)
+        error = ::posix_spawn_file_actions_addopen(&child.actions, STDIN_FILENO, "/dev/null",
+                                                   O_RDONLY, 0);
+    std::string filter = std::string("\"") + kRefusalCase + "\"";
+    std::array<char*, 3> args{executable.data(), filter.data(), nullptr};
+    std::vector<std::string> variables;
+    for (char** entry = environ; *entry; ++entry) {
+        if (!std::string_view(*entry).starts_with("LMX_SCENE_REFUSAL_CHILD="))
+            variables.emplace_back(*entry);
+    }
+    variables.emplace_back("LMX_SCENE_REFUSAL_CHILD=1");
+    std::vector<char*> environment;
+    for (auto& variable : variables)
+        environment.push_back(variable.data());
+    environment.push_back(nullptr);
+    if (!error) {
+        error = ::posix_spawnattr_init(&child.attributes);
+        child.attributesReady = error == 0;
+    }
+    if (!error)
+        error = ::posix_spawnattr_setflags(&child.attributes, POSIX_SPAWN_CLOEXEC_DEFAULT);
+    if (!error)
+        error = ::posix_spawn(&child.pid, executable.c_str(), &child.actions, &child.attributes,
+                              args.data(), environment.data());
+    INFO("posix_spawn error " << error);
+    REQUIRE(error == 0);
+    ::close(child.output);
+    child.output = -1;
+    std::string diagnostic;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+    for (;;) {
+        REQUIRE(std::chrono::steady_clock::now() < deadline);
+        pollfd ready{.fd = child.input, .events = POLLIN | POLLHUP, .revents = 0};
+        const int polled = ::poll(&ready, 1, 100);
+        if (polled < 0 && errno == EINTR)
+            continue;
+        REQUIRE(polled >= 0);
+        if (!polled)
+            continue;
+        std::array<char, 4096> bytes;
+        const auto count = ::read(child.input, bytes.data(), bytes.size());
+        if (count < 0 && errno == EINTR)
+            continue;
+        REQUIRE(count >= 0);
+        if (!count)
+            break;
+        diagnostic.append(bytes.data(), static_cast<size_t>(count));
+    }
+    ::close(child.input);
+    child.input = -1;
+    int status = 0;
+    pid_t waited;
+    do {
+        waited = ::waitpid(child.pid, &status, 0);
+    } while (waited < 0 && errno == EINTR);
+    REQUIRE(waited == child.pid);
+    child.pid = -1;
+    INFO(diagnostic);
+    REQUIRE(WIFSIGNALED(status));
+    REQUIRE(WTERMSIG(status) == SIGABRT);
+    REQUIRE(diagnostic.contains(kRefusalMarker));
+    return diagnostic;
+}
+} // namespace
+
 //======================================================================================================================
 // Separated red and blue cubes catch argument-table last-write reuse across per-draw uniforms.
 TEST_CASE("renderer draws per-object uniforms in one pass", "[gpu]") {
@@ -35,8 +168,10 @@ TEST_CASE("renderer draws per-object uniforms in one pass", "[gpu]") {
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
     {
         const auto readbackBytes = lmx::render::readbackNow(*gpu, (*renderer)->colorTarget(),
-                                                            lmx::render::TextureUse::RenderTarget);
-        std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
+                                                            (*renderer)->textureStates());
+        INFO(errorOf(readbackBytes));
+        REQUIRE(readbackBytes.has_value());
+        std::memcpy(pixels.data(), readbackBytes->data(), pixels.size());
     }
     requireTwoCubeImage(pixels, "clear");
 }
@@ -81,9 +216,11 @@ TEST_CASE("renderer depth test beats draw order", "[gpu]") {
         gpu->submitAndEndFrame(gpuFrame2);
         gpu->waitIdle();
         {
-            const auto readbackBytes = lmx::render::readbackNow(
-                *gpu, (*renderer)->colorTarget(), lmx::render::TextureUse::RenderTarget);
-            std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
+            const auto readbackBytes = lmx::render::readbackNow(*gpu, (*renderer)->colorTarget(),
+                                                                (*renderer)->textureStates());
+            INFO(errorOf(readbackBytes));
+            REQUIRE(readbackBytes.has_value());
+            std::memcpy(pixels.data(), readbackBytes->data(), pixels.size());
         }
 
         INFO(std::string("ordering: ") + names[i]);
@@ -116,13 +253,11 @@ TEST_CASE("renderer scene survives a barrier into a sampling pass", "[gpu]") {
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
-    auto destination =
-        lmx::engine::GpuTexture::create(gpu->device(), {.width = kSize,
-                                                        .height = kSize,
-                                                        .format = Format::BGRA8Unorm,
-                                                        .renderTarget = true,
-                                                        .cpuReadback = true,
-                                                        .label = "lmx.test.barrierDestination"});
+    auto destination = lmx::engine::GpuTexture::create(
+        gpu->device(), {.format = Format::BGRA8Unorm,
+                        .extent = {kSize, kSize, 1},
+                        .usage = rojoRHI::TextureUsage::RenderTarget,
+                        .label = "lmx.test.barrierDestination"});
     INFO(errorOf(destination));
     REQUIRE(destination.has_value());
 
@@ -130,16 +265,19 @@ TEST_CASE("renderer scene survives a barrier into a sampling pass", "[gpu]") {
     INFO(errorOf(library));
     REQUIRE(library.has_value());
 
-    auto copyPipeline =
-        gpu->device().createGraphicsPipeline({.library = library->get(),
-                                              .vertexEntry = "vertexMain",
-                                              .fragmentEntry = "fragmentMain",
-                                              .colorFormat = Format::BGRA8Unorm,
-                                              .label = "lmx.test.fullscreenSamplePipeline"});
+    auto copyPipeline = lmx::engine::adoptGpu(
+        gpu->device(),
+        gpu->device().createPipeline(
+            {.vertex = {library->get(), "vertexMain"},
+             .fragment = {library->get(), "fragmentMain"},
+             .raster = {.cull = rojoRHI::CullMode::Back},
+             .depthStencil = {.depthTest = false,
+                              .depthWrite = false,
+                              .depthCompare = rojoRHI::CompareOp::Less},
+             .colors = std::array{rojoRHI::ColorTarget{.format = Format::BGRA8Unorm}},
+             .label = "lmx.test.fullscreenSamplePipeline"}));
     INFO(errorOf(copyPipeline));
     REQUIRE(copyPipeline.has_value());
-
-    constexpr uint32_t kSourceTextureSlot = 0;
 
     auto gpuFrame3 = gpu->beginFrame();
     auto& commands = gpuFrame3.commands;
@@ -147,15 +285,46 @@ TEST_CASE("renderer scene survives a barrier into a sampling pass", "[gpu]") {
     (*renderer)->render(commands, sceneCamera(),
                         lmx::test::prepareSceneView(litSceneView(items), *gpu));
     // The pass below is encoded by hand, so it declared no read the graph could order.
-    commands.textureBarrier((*renderer)->colorTarget().rhi(), TextureUse::RenderTarget,
-                            TextureUse::ShaderRead);
+    auto& states = (*renderer)->textureStates();
+    std::vector<TextureBarrier> sourceBarriers;
+    for (const auto& entry :
+         states.physicalRanges((*renderer)->colorTarget().rhi(), {0, 1, 0, 1})) {
+        sourceBarriers.push_back({.texture = (*renderer)->colorTarget().rhi(),
+                                  .range = entry.range,
+                                  .srcStage = entry.state.stage,
+                                  .srcAccess = entry.state.access,
+                                  .dstStage = Stage::FragmentShader,
+                                  .dstAccess = Access::ShaderRead,
+                                  .oldLayout = entry.state.layout,
+                                  .newLayout = Layout::ShaderRead});
+    }
+    commands.barrier({}, {}, sourceBarriers);
 
-    commands.beginRenderPass({.colorTarget = &destination->rhi(),
-                              .clearColor = {1.0f, 0.0f, 1.0f, 1.0f},
-                              .clear = true,
+    const rojoRHI::TextureBarrier beginColor{.texture = destination->rhi(),
+                                             .range = {0, 1, 0, 1},
+                                             .dstStage = rojoRHI::Stage::ColorAttachment,
+                                             .dstAccess = rojoRHI::Access::ColorAttachmentWrite,
+                                             .newLayout = rojoRHI::Layout::ColorAttachment};
+    commands.barrier({}, {}, std::span(&beginColor, 1));
+    const rojoRHI::ColorAttachment color{.texture = destination->rhi(),
+                                         .load = rojoRHI::LoadOp::Clear,
+                                         .store = rojoRHI::StoreOp::Store,
+                                         .clear = {1.0f, 0.0f, 1.0f, 1.0f}};
+    commands.beginRenderPass({.colors = std::span(&color, 1),
+                              .area = {0, 0, kSize, kSize},
                               .label = "lmx.test.rendererCopy"});
-    commands.bindPipeline(**copyPipeline);
-    commands.bindTexture(kSourceTextureSlot, (*renderer)->colorTarget().rhi());
+    commands.setViewport({.width = float(kSize), .height = float(kSize)});
+    commands.setScissor({0, 0, kSize, kSize});
+    commands.setPipeline(copyPipeline->get());
+    commands.pushRoot(lmx::test::FullscreenSampleRoot{
+        .source = static_cast<uint32_t>((*renderer)->colorTarget().view())});
+#ifndef NDEBUG
+    const rojoRHI::ResourceAccess access{.texture = (*renderer)->colorTarget().rhi(),
+                                         .range = {0, 1, 0, 1},
+                                         .stage = rojoRHI::Stage::FragmentShader,
+                                         .access = rojoRHI::Access::ShaderRead};
+    commands.declareAccess(std::span(&access, 1));
+#endif
     commands.draw(3);
     commands.endRenderPass();
     gpu->submitAndEndFrame(gpuFrame3);
@@ -163,9 +332,15 @@ TEST_CASE("renderer scene survives a barrier into a sampling pass", "[gpu]") {
 
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
     {
-        const auto readbackBytes =
-            lmx::render::readbackNow(*gpu, *destination, lmx::render::TextureUse::RenderTarget);
-        std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
+        const auto readbackBytes = lmx::render::readbackNow(
+            *gpu, *destination,
+            std::array{lmx::render::TextureRangeState{
+                .range = {0, 1, 0, 1},
+                .state = {rojoRHI::Stage::ColorAttachment, rojoRHI::Access::ColorAttachmentWrite,
+                          rojoRHI::Layout::ColorAttachment}}});
+        INFO(errorOf(readbackBytes));
+        REQUIRE(readbackBytes.has_value());
+        std::memcpy(pixels.data(), readbackBytes->data(), pixels.size());
     }
 
     requireTwoCubeImage(pixels, "copied clear");
@@ -202,9 +377,11 @@ TEST_CASE("a wireframe SceneView leaves the interior of a face unfilled", "[gpu]
         gpu->submitAndEndFrame(gpuFrame4);
         gpu->waitIdle();
         {
-            const auto readbackBytes = lmx::render::readbackNow(
-                *gpu, (*renderer)->colorTarget(), lmx::render::TextureUse::RenderTarget);
-            std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
+            const auto readbackBytes = lmx::render::readbackNow(*gpu, (*renderer)->colorTarget(),
+                                                                (*renderer)->textureStates());
+            INFO(errorOf(readbackBytes));
+            REQUIRE(readbackBytes.has_value());
+            std::memcpy(pixels.data(), readbackBytes->data(), pixels.size());
         }
     };
 
@@ -241,8 +418,8 @@ TEST_CASE("the sky pass fills the background behind the scene", "[gpu]") {
     using namespace rojoRHI;
 
     constexpr std::array<uint8_t, 4> kSkyTexel = {0, 128, 255, 255};
-    const TextureMip skyMip{.data = kSkyTexel.data(), .bytesPerRow = 4};
-    const std::array<TextureMip, 6> skyFaces = {skyMip, skyMip, skyMip, skyMip, skyMip, skyMip};
+    const TextureData skyMip{.bytes = std::as_bytes(std::span(kSkyTexel)), .bytesPerRow = 4};
+    const std::array<TextureData, 6> skyFaces = {skyMip, skyMip, skyMip, skyMip, skyMip, skyMip};
 
     auto gpu = createTestGpu();
 
@@ -258,11 +435,11 @@ TEST_CASE("the sky pass fills the background behind the scene", "[gpu]") {
     REQUIRE(skySphere.has_value());
 
     auto skyCubemap = lmx::engine::GpuTexture::create(gpu->device(),
-                                                      {.width = 1,
-                                                       .height = 1,
+                                                      {.type = TextureType::Cube,
                                                        .format = Format::RGBA8Unorm,
-                                                       .kind = TextureKind::Cube,
-                                                       .sampled = true,
+                                                       .extent = {1, 1, 1},
+                                                       .layers = 6,
+                                                       .usage = rojoRHI::TextureUsage::Sampled,
                                                        .label = "lmx.test.skyCubemap"},
                                                       skyFaces);
     INFO(errorOf(skyCubemap));
@@ -286,8 +463,10 @@ TEST_CASE("the sky pass fills the background behind the scene", "[gpu]") {
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
     {
         const auto readbackBytes = lmx::render::readbackNow(*gpu, (*renderer)->colorTarget(),
-                                                            lmx::render::TextureUse::RenderTarget);
-        std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
+                                                            (*renderer)->textureStates());
+        INFO(errorOf(readbackBytes));
+        REQUIRE(readbackBytes.has_value());
+        std::memcpy(pixels.data(), readbackBytes->data(), pixels.size());
     }
 
     // kSkyTexel is uploaded to a plain RGBA8Unorm cubemap, not an sRGB view, so the sampler hands
@@ -314,56 +493,42 @@ TEST_CASE("the sky pass fills the background behind the scene", "[gpu]") {
 }
 
 //======================================================================================================================
-// The editor reads these labels straight out of the device, so the frame's passes have to arrive
-// named and in the order the graph ran them -- an unnamed or missing pass is an invisible pass.
-TEST_CASE("pass timings name every pass the graph ran", "[gpu]") {
-    using namespace rojoRHI;
-
+TEST_CASE("scene pass timings name the active Off frame after slot retirement", "[gpu]") {
     auto gpu = createTestGpu();
-
-    auto cube =
-        lmx::test::fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.timedCube");
+    auto cube = fixtureMesh(gpu->device(), lmx::engine::makeCube(), "lmx.test.timedCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
-
-    auto renderer = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
+    auto renderer = Renderer::create(*gpu, kSize, kSize, true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
-
-    const std::array<FixtureDrawItem, 2> items = twoCubeScene(*cube);
-
-    auto gpuFrame6 = gpu->beginFrame();
-    auto& commands = gpuFrame6.commands;
-    (*renderer)->render(commands, sceneCamera(),
-                        lmx::test::prepareSceneView(litSceneView(items), *gpu));
-    gpu->submitAndEndFrame(gpuFrame6);
-    gpu->waitIdle();
-
-    // waitIdle retires the measured frame; the next beginFrame is what publishes its counters.
-    auto gpuFrame7 = gpu->beginFrame();
-    gpu->submitAndEndFrame(gpuFrame7);
-
-    // Bloom is enabled by default (spec 10) and its passes always schedule with it -- kSize == 64
-    // gives a 32-wide bloom base, which clamps to Renderer.cpp's full kMaxBloomDownsampleLevels ==
-    // 4: threshold, 4 downsample passes, 4 upsample passes. Auto exposure is off by default (spec
-    // 9), so the histogram/resolve/seed passes are culled and do not appear here -- see the
-    // culling test in RenderGraphTests.cpp for that half of the picture.
-    const std::span<const PassTiming> timings = gpu->device().passTimings();
-    REQUIRE(timings.size() == 12);
+    const auto items = twoCubeScene(*cube);
+    auto view = litSceneView(items);
+    view.temporal.enabled = false;
+    view.bloomEnabled = false;
+    view.localLightMode = lmx::engine::LocalLightMode::Off;
+    auto rendered = gpu->beginFrame();
+    (*renderer)->render(rendered.commands, sceneCamera(), lmx::test::prepareSceneView(view, *gpu));
+    const uint64_t measured = rendered.number;
+    gpu->submitAndEndFrame(rendered);
+    std::vector<lmx::engine::PassTiming> timings;
+    uint64_t retired = 0;
+    for (uint32_t slot = 0; slot < 3 && retired != measured; ++slot) {
+        auto empty = gpu->beginFrame();
+        gpu->submitAndEndFrame(empty);
+        const auto publication = gpu->passTimings();
+        if (publication.frame == measured) {
+            retired = publication.frame;
+            timings.assign(publication.passes.begin(), publication.passes.end());
+        }
+    }
+    REQUIRE(retired == measured);
+    REQUIRE(timings.size() == 3);
     REQUIRE(timings[0].label == "lmx.pass.shadow");
     REQUIRE(timings[1].label == "lmx.pass.scene");
-    REQUIRE(timings[2].label == "lmx.pass.bloom.threshold");
-    REQUIRE(timings[3].label == "lmx.pass.bloom.downsample0");
-    REQUIRE(timings[4].label == "lmx.pass.bloom.downsample1");
-    REQUIRE(timings[5].label == "lmx.pass.bloom.downsample2");
-    REQUIRE(timings[6].label == "lmx.pass.bloom.downsample3");
-    REQUIRE(timings[7].label == "lmx.pass.bloom.upsample3");
-    REQUIRE(timings[8].label == "lmx.pass.bloom.upsample2");
-    REQUIRE(timings[9].label == "lmx.pass.bloom.upsample1");
-    REQUIRE(timings[10].label == "lmx.pass.bloom.upsample0");
-    REQUIRE(timings[11].label == "lmx.pass.display");
-    for (const PassTiming& timing : timings) {
-        INFO(timing.label + ": " + std::to_string(timing.gpuMilliseconds) + " ms");
+    REQUIRE(timings[2].label == "lmx.pass.display");
+    for (const auto& timing : timings) {
+        INFO(timing.label);
+        REQUIRE(std::isfinite(timing.gpuMilliseconds));
         REQUIRE(timing.gpuMilliseconds > 0.0);
     }
 }
@@ -394,23 +559,26 @@ TEST_CASE("a joined pass samples the scene colour the graph rendered", "[gpu]") 
     auto library = gpu->loadShaderLibrary("FullscreenSample");
     INFO(errorOf(library));
     REQUIRE(library.has_value());
-    auto copyPipeline =
-        gpu->device().createGraphicsPipeline({.library = library->get(),
-                                              .vertexEntry = "vertexMain",
-                                              .fragmentEntry = "fragmentMain",
-                                              .colorFormat = Format::BGRA8Unorm,
-                                              .label = "lmx.test.joinedCopyPipeline"});
+    auto copyPipeline = lmx::engine::adoptGpu(
+        gpu->device(),
+        gpu->device().createPipeline(
+            {.vertex = {library->get(), "vertexMain"},
+             .fragment = {library->get(), "fragmentMain"},
+             .raster = {.cull = rojoRHI::CullMode::Back},
+             .depthStencil = {.depthTest = false,
+                              .depthWrite = false,
+                              .depthCompare = rojoRHI::CompareOp::Less},
+             .colors = std::array{rojoRHI::ColorTarget{.format = Format::BGRA8Unorm}},
+             .label = "lmx.test.joinedCopyPipeline"}));
     INFO(errorOf(copyPipeline));
     REQUIRE(copyPipeline.has_value());
-
-    constexpr uint32_t kSourceTextureSlot = 0;
 
     const std::array<FixtureDrawItem, 2> items = twoCubeScene(*cube);
     const FixtureSceneView view = litSceneView(items);
 
     // declarePasses() always declares bloom's transients (spec 10), so a caller building its own
     // graph around it needs a pool exactly as Renderer::render()'s convenience path does.
-    lmx::render::TransientPool transients(gpu->device());
+    lmx::render::TransientPool transients(*gpu);
     auto gpuFrame8 = gpu->beginFrame();
     auto& commands = gpuFrame8.commands;
     transients.beginFrame();
@@ -418,21 +586,29 @@ TEST_CASE("a joined pass samples the scene colour the graph rendered", "[gpu]") 
     const lmx::render::GraphTexture sceneColor = (*renderer)->declarePasses(
         graph, commands, sceneCamera(), lmx::test::prepareSceneView(view, *gpu));
     const lmx::render::GraphTexture copyTarget =
-        graph.importTexture(destination->rhi(), Format::BGRA8Unorm, "destination");
+        graph.importTexture(destination->ref(), "destination");
 
     lmx::render::PassDesc copy;
     copy.textureReads.push_back(sceneColor);
     // Magenta makes a pass that drew nothing at all obvious rather than merely wrong.
     copy.color =
         lmx::render::ColorAttachment{.handle = copyTarget, .clearColor = {1.0f, 0.0f, 1.0f, 1.0f}};
-    graph.addPass("lmx.pass.copy", std::move(copy),
-                  [&](const lmx::render::PassResources& resources) {
-                      const auto source = resources.texture(sceneColor);
-                      REQUIRE(source.has_value());
-                      commands.bindPipeline(**copyPipeline);
-                      commands.bindTexture(kSourceTextureSlot, **source);
-                      commands.draw(3);
-                  });
+    graph.addPass(
+        "lmx.pass.copy", std::move(copy), [&](const lmx::render::PassResources& resources) {
+            const auto source = resources.texture(sceneColor);
+            REQUIRE(source.texture.bits != 0);
+            commands.setPipeline(copyPipeline->get());
+            commands.pushRoot(
+                lmx::test::FullscreenSampleRoot{.source = static_cast<uint32_t>(source.view)});
+#ifndef NDEBUG
+            const rojoRHI::ResourceAccess access{.texture = source.texture,
+                                                 .range = {0, 1, 0, 1},
+                                                 .stage = rojoRHI::Stage::FragmentShader,
+                                                 .access = rojoRHI::Access::ShaderRead};
+            commands.declareAccess(std::span(&access, 1));
+#endif
+            commands.draw(3);
+        });
     graph.exportTexture(lmx::render::nextVersion(copyTarget));
     graph.execute(commands, gpu->frameNumber());
 
@@ -441,9 +617,15 @@ TEST_CASE("a joined pass samples the scene colour the graph rendered", "[gpu]") 
 
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
     {
-        const auto readbackBytes =
-            lmx::render::readbackNow(*gpu, *destination, lmx::render::TextureUse::RenderTarget);
-        std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
+        const auto readbackBytes = lmx::render::readbackNow(
+            *gpu, *destination,
+            std::array{lmx::render::TextureRangeState{
+                .range = {0, 1, 0, 1},
+                .state = {rojoRHI::Stage::ColorAttachment, rojoRHI::Access::ColorAttachmentWrite,
+                          rojoRHI::Layout::ColorAttachment}}});
+        INFO(errorOf(readbackBytes));
+        REQUIRE(readbackBytes.has_value());
+        std::memcpy(pixels.data(), readbackBytes->data(), pixels.size());
     }
     requireTwoCubeImage(pixels, "clear sampled through the graph");
 }
@@ -453,6 +635,13 @@ TEST_CASE("a joined pass samples the scene colour the graph rendered", "[gpu]") 
 // declaration layer: a pass body reaching for a resource it never declared is refused mid-frame,
 // with the pass and the resource named.
 TEST_CASE("a pass resolving an undeclared texture is refused while the frame runs", "[gpu]") {
+    if (!std::getenv("LMX_SCENE_REFUSAL_CHILD")) {
+        const auto refusal = refusalDiagnostic();
+        REQUIRE(refusal.contains("lmx.pass.probe"));
+        REQUIRE(refusal.contains("undeclaredTarget"));
+        REQUIRE(refusal.contains("did not declare"));
+        return;
+    }
     using namespace rojoRHI;
 
     auto gpu = createTestGpu();
@@ -468,19 +657,21 @@ TEST_CASE("a pass resolving an undeclared texture is refused while the frame run
 
     lmx::render::RenderGraph graph;
     const lmx::render::GraphTexture declared =
-        graph.importTexture(declaredTarget->rhi(), Format::BGRA8Unorm, "declaredTarget");
+        graph.importTexture(declaredTarget->ref(), "declaredTarget");
     const lmx::render::GraphTexture undeclared =
-        graph.importTexture(undeclaredTarget->rhi(), Format::BGRA8Unorm, "undeclaredTarget");
+        graph.importTexture(undeclaredTarget->ref(), "undeclaredTarget");
 
-    std::optional<lmx::render::GraphError> refusal;
     lmx::render::PassDesc probe;
     probe.color = lmx::render::ColorAttachment{.handle = declared};
     graph.addPass("lmx.pass.probe", std::move(probe),
                   [&](const lmx::render::PassResources& resources) {
-                      const auto texture = resources.texture(undeclared);
-                      if (!texture) {
-                          refusal = texture.error();
-                      }
+                      const rlimit limit{0, 0};
+                      REQUIRE(::setrlimit(RLIMIT_CORE, &limit) == 0);
+                      std::signal(SIGABRT, SIG_DFL);
+                      std::fputs(kRefusalMarker, stderr);
+                      std::fputc('\n', stderr);
+                      std::fflush(stderr);
+                      (void)resources.texture(undeclared);
                   });
     graph.exportTexture(lmx::render::nextVersion(declared));
 
@@ -490,9 +681,5 @@ TEST_CASE("a pass resolving an undeclared texture is refused while the frame run
     gpu->submitAndEndFrame(gpuFrame9);
     gpu->waitIdle();
 
-    REQUIRE(refusal.has_value());
-    INFO(refusal->message);
-    REQUIRE(refusal->message.contains("lmx.pass.probe"));
-    REQUIRE(refusal->message.contains("undeclaredTarget"));
-    REQUIRE(refusal->message.contains("did not declare"));
+    FAIL("undeclared resolution unexpectedly returned");
 }
