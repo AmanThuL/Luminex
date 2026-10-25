@@ -18,8 +18,7 @@ counts use `[gpu]~[.]`. Hidden diagnostics are tracked separately.
 | `Tests/Render/Passes/Scene/GpuAlphaMaskTests.cpp` | 0 | 3 | 0 |
 | `Tests/Render/Passes/Scene/GpuRendererTests.cpp` | 0 | 8 | 0 |
 | `Tests/Render/Passes/Scene/GpuSceneShadingTests.cpp` | 0 | 3 | 0 |
-| `Tests/Render/Passes/Shadow/GpuRendererShadowTests.cpp` | 0 | 4 | 0 |
-| `Tests/Render/Passes/Shadow/RenderShadowFitTests.cpp` | 4 | 0 | 0 |
+| `Tests/Render/Passes/Shadow/GpuRendererShadowTests.cpp` | 0 | 3 | 0 |
 | `Tests/Scenes/EngineSceneTests.cpp` | 2 | 12 | 0 |
 | `Tests/Scenes/SceneMaterialLabTests.cpp` | 1 | 9 | 0 |
 
@@ -86,8 +85,8 @@ Kept: **1232 CPU / 52 GPU**. Thus 1232+26=1258 CPU and 52+177=229 GPU.
 The excluded files also contain 1 hidden diagnostic case; it is outside the ordinary totals.
 
 All nine pure FrameData families/tests remain compiled, as do the three checkpoint cases and
-the direct graph dump goldens. HzbTests needs hzbLayout from excluded HzbStage; shadow-fit tests
-need excluded ShadowStage. VisibilityTablesTests and VisibilityTests are active with the draw
+the direct graph dump goldens. HzbTests needs hzbLayout from excluded HzbStage; the four shadow-fit
+cases are active with ShadowStage. VisibilityTablesTests and VisibilityTests are active with the draw
 submission builder; their original seven names and tags remain.
 The mixed inspector file needs Native TAA history alternation and waits for TEMPORAL. The shared
 frame-declaration file requires bloom transients and waits for POST. Mixed scene pixel files wait
@@ -276,3 +275,25 @@ Source-derived discovery delta at this boundary is +7 unit and +1 ordinary GPU: 
 inventory 1,265 unit / 59 ordinary GPU, including the same three tracker cases. Binary discovery
 and runtime results are recorded separately as validation evidence; this inventory makes no claim
 that the remaining Scene, Shadow, visibility classifier or temporal coverage has returned.
+
+## Shadow fitting and independent filter coverage
+
+All four original `RenderShadowFitTests.cpp` cases return unchanged apart from including their
+actual ShadowStage API header. The complete existing case
+"shadow filters resolve a quad's shadow on a plane" (`[gpu]`) moves from
+`GpuRendererShadowTests.cpp` to the active mirrored `GpuShadowSmokeTests.cpp`. Its receiver and
+occluder geometry, homogeneous interpolation, PCF/PCSS math, filter values and all original
+fourteen REQUIRE sites remain; checked v2 creation/readback and optional byte-export assertions
+are additional. The three complete renderer-dependent cases remain pending in their original
+file; no case is duplicated, renamed or retired by this extraction.
+
+The independent oracle uses reflected ShadowSmokeRoot32 and pointed ShadowSmokeUniforms144,
+including explicit twelve-byte zero tail padding. Production Shadow roots48/32 and the pointed
+64-byte light transform are reflected separately. The real scalar48-byte engine vertex transport
+is checked at all twelve field offsets through both App and Test assertion consumers; the
+independent oracle retains its original packed12-byte position vertex.
+
+The source-derived delta is +4 unit and +1 active ordinary GPU, with no full-source case-count
+change. Expected configured inventory is 1,269 unit / 60 ordinary GPU, including the unchanged
+three tracker cases. Discovery and native filter results are separate evidence; this extraction
+does not establish integrated renderer shadows, masks, depth bias or Scene rendering coverage.

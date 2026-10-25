@@ -8,7 +8,6 @@ local pending_families = {
         family = "SCENE",
         sources = {
             "Source/Render/Passes/Scene/SceneStage*.cpp",
-            "Source/Render/Passes/Shadow/ShadowStage.cpp",
             "Source/Render/Renderer/RendererVisibility.cpp",
         },
         tests = {
@@ -16,7 +15,6 @@ local pending_families = {
             "Tests/Render/Passes/Scene/GpuRendererTests.cpp",
             "Tests/Render/Passes/Scene/GpuSceneShadingTests.cpp",
             "Tests/Render/Passes/Shadow/GpuRendererShadowTests.cpp",
-            "Tests/Render/Passes/Shadow/RenderShadowFitTests.cpp",
             "Tests/Engine/Scene/GpuSceneTableAbiTests.cpp",
             "Tests/Engine/Scene/GpuSceneTableTests.cpp",
             "Tests/Scenes/EngineSceneTests.cpp",
@@ -29,12 +27,9 @@ local pending_families = {
             "Shaders/Passes/Scene/ScenePassAutoMask.slang",
             "Shaders/Passes/Scene/Sky.slang",
             "Shaders/Passes/Scene/SkyAuto.slang",
-            "Shaders/Passes/Shadow/ShadowPass.slang",
-            "Shaders/Passes/Shadow/ShadowPassMask.slang",
         },
         testShaders = {
             "Shaders/Tests/SceneTableAbi.slang",
-            "Shaders/Tests/ShadowSmoke.slang",
         },
     },
     {

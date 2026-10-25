@@ -2,10 +2,46 @@
 
 #include <rojoRHI/RHI.h>
 
+#include <glm/mat4x4.hpp>
+
 #include <cstddef>
 #include <cstdint>
 
 namespace lmx::test {
+
+struct alignas(16) ShadowSmokeRoot {
+    rojoRHI::Addr vertices{};
+    rojoRHI::Addr uniforms{};
+    uint32_t shadow{};
+    uint32_t sampler{};
+    uint32_t padding0{};
+    uint32_t padding1{};
+};
+
+struct ShadowSmokeUniforms {
+    glm::mat4 lightViewProj;
+    glm::mat4 shadowTransform;
+    int32_t filter = 0;
+    int32_t padding0 = 0;
+    int32_t padding1 = 0;
+    int32_t padding2 = 0;
+};
+
+static_assert(alignof(ShadowSmokeRoot) == 16);
+static_assert(sizeof(ShadowSmokeRoot) == 32);
+static_assert(offsetof(ShadowSmokeRoot, vertices) == 0);
+static_assert(offsetof(ShadowSmokeRoot, uniforms) == 8);
+static_assert(offsetof(ShadowSmokeRoot, shadow) == 16);
+static_assert(offsetof(ShadowSmokeRoot, sampler) == 20);
+static_assert(offsetof(ShadowSmokeRoot, padding0) == 24);
+static_assert(offsetof(ShadowSmokeRoot, padding1) == 28);
+static_assert(sizeof(ShadowSmokeUniforms) == 144);
+static_assert(offsetof(ShadowSmokeUniforms, lightViewProj) == 0);
+static_assert(offsetof(ShadowSmokeUniforms, shadowTransform) == 64);
+static_assert(offsetof(ShadowSmokeUniforms, filter) == 128);
+static_assert(offsetof(ShadowSmokeUniforms, padding0) == 132);
+static_assert(offsetof(ShadowSmokeUniforms, padding1) == 136);
+static_assert(offsetof(ShadowSmokeUniforms, padding2) == 140);
 
 struct BufferHazardRoot {
     rojoRHI::Addr output;

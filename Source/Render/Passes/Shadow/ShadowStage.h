@@ -5,8 +5,6 @@
 
 #pragma once
 
-#ifndef LMX_PENDING_SCENE
-
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Gpu/GpuContext.h"
 #include "Engine/Gpu/GpuTexture.h"
@@ -56,8 +54,8 @@ struct ShadowStageInputs {
     GraphTexture shadowMap;                ///< D32Float attachment version to write.
     glm::mat4 lightViewProj;               ///< World-to-light clip transform, reversed depth.
     const engine::GpuTexture*
-        whiteTexture;                ///< Non-null neutral diffuse fallback owned by Renderer.
-    rojoRHI::Sampler* linearSampler; ///< Non-null material sampler owned by Renderer.
+        whiteTexture;                    ///< Non-null neutral diffuse fallback owned by Renderer.
+    rojoRHI::SamplerIndex linearSampler; ///< Material sampler index owned by Renderer.
 };
 
 /// Owns shadow pipelines; Renderer keeps the stage alive through graph execution.
@@ -78,10 +76,8 @@ private:
     ShadowStage() = default;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_shadowLibrary;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_maskShadowLibrary;
-    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_shadowPipeline;
-    std::array<engine::GpuOwned<rojoRHI::GraphicsPipeline>, 2> m_maskShadowPipelines;
+    engine::GpuOwned<rojoRHI::Pipeline> m_shadowPipeline;
+    std::array<engine::GpuOwned<rojoRHI::Pipeline>, 2> m_maskShadowPipelines;
 };
 
 } // namespace lmx::render
-
-#endif

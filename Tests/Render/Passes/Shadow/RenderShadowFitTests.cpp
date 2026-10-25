@@ -4,7 +4,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
 
-#include "Render/Renderer/Renderer.h"
+#include "Render/Passes/Shadow/ShadowStage.h"
 
 #include <algorithm>
 #include <cmath>

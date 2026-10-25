@@ -73,6 +73,10 @@ function lmx_configure_shader_library(target)
         local layout_map = {
             "DisplayRoot=lmx::render::DisplayRoot",
             -- ---- scene ----
+            "VertexStorage=lmx::engine::Vertex",
+            "ShadowPassRoot=lmx::render::ShadowPassRoot",
+            "ShadowDrawRoot=lmx::render::ShadowDrawRoot",
+            "ShadowPassUniforms=lmx::render::ShadowPassUniforms",
             "ScenePassRoot=lmx::render::ScenePassRoot",
             "SceneDrawRoot=lmx::render::SceneDrawRoot",
             "SkyRoot=lmx::render::SkyRoot",
@@ -83,7 +87,8 @@ function lmx_configure_shader_library(target)
         }
         target:values_set("slang.layout_map", table.unpack(layout_map))
         target:values_set("slang.layout_include", "Render/Passes/Display/DisplayRoots.h",
-                          "Render/Passes/Scene/SceneRoots.h")
+                          "Render/Passes/Scene/SceneRoots.h", "Render/Passes/Shadow/ShadowRoots.h",
+                          "Engine/Geometry/Mesh.h")
     elseif kind == "tests" then
         target:values_set("slang.layout_probe", path.join(repository_root, "Shaders/Layout/TestLayout.slang"))
         local layout_map = {
@@ -93,13 +98,17 @@ function lmx_configure_shader_library(target)
             "SamplerRoot=lmx::test::SamplerRoot",
             "VisibilityDepthRoot=lmx::test::VisibilityDepthRoot",
             -- ---- scene ----
+            "VertexStorage=lmx::engine::Vertex",
+            "ShadowSmokeRoot=lmx::test::ShadowSmokeRoot",
+            "ShadowSmokeUniforms=lmx::test::ShadowSmokeUniforms",
             -- ---- visibility ----
             -- ---- lights ----
             -- ---- post ----
             -- ---- temporal ----
         }
         target:values_set("slang.layout_map", table.unpack(layout_map))
-        target:values_set("slang.layout_include", "Support/OracleRoots.h")
+        target:values_set("slang.layout_include", "Support/OracleRoots.h",
+                          "Engine/Geometry/Mesh.h")
     end
     local entries = lmx_shader_entries(kind)
     target:values_set("lmx.shader.entries", table.unpack(entries))
