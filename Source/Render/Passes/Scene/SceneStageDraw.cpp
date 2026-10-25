@@ -1,35 +1,77 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file SceneStageDraw.cpp
-/// @brief Encodes scene geometry and sky commands for a declared scene pass.
+/// @brief Encodes scene geometry and sky commands with address-first roots.
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Render/Common/DrawEncoding.h"
+#include "Render/Common/FrameData.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Passes/Scene/SceneStage.h"
 
 #include "Core/Diagnostics/Assert.h"
+#include "Engine/Gpu/CaptureSchema.h"
+#include "Render/Passes/Scene/SceneRoots.h"
 #include "Render/Passes/Scene/SceneStageInternal.h"
+
+#include <array>
+#include <cstring>
+#include <optional>
 
 namespace lmx::render {
 using namespace scene_detail;
+namespace {
+#ifndef NDEBUG
+//======================================================================================================================
+// GPU-private hand-built material tables expose no flags to the consumer tracker. Their normal
+// read remains unobserved, like pointed frame-arena payloads; shading and graph state are
+// unchanged.
+std::optional<bool> readsNormal(const SceneView& view, const engine::DrawItem& item) {
+    LMX_ASSERT(item.instanceRow < view.tables.instanceCount &&
+                   item.instanceRow < view.tables.instanceRows.size(),
+               "normal access requires the current instance row");
+    const uint32_t materialRow = view.tables.instanceRows[item.instanceRow].materialRow;
+    LMX_ASSERT(materialRow < view.tables.materialCount, "normal access requires a material row");
+    const auto& materials = *view.tables.materials;
+    LMX_ASSERT(view.tables.instanceRows.size() >= view.tables.instanceCount &&
+                   view.tables.materialCount <= materials.desc().size / sizeof(engine::MaterialRow),
+               "prepared table high-water counts exceed their storage");
+    const uint64_t offset = uint64_t{materialRow} * sizeof(engine::MaterialRow);
+    LMX_ASSERT(offset <= materials.desc().size &&
+                   sizeof(engine::MaterialRow) <= materials.desc().size - offset,
+               "material row exceeds its prepared buffer");
+    if (materials.desc().memory != rojoRHI::Memory::Upload) {
+        return std::nullopt;
+    }
+    uint32_t flags = 0;
+    std::memcpy(&flags, materials.cpuPointer() + offset + offsetof(engine::MaterialRow, flags),
+                sizeof(flags));
+    return (flags & engine::kMaterialHasNormalMap) != 0;
+}
+
+//======================================================================================================================
+void declareTextureRead(rojoRHI::CommandList& commands, const engine::TextureRef& texture) {
+    const std::array<rojoRHI::ResourceAccess, 1> access{
+        {{.texture = texture.texture,
+          .range = {0, texture.mips, 0, texture.layers},
+          .stage = rojoRHI::Stage::FragmentShader,
+          .access = rojoRHI::Access::ShaderRead}}};
+    commands.declareAccess(access);
+}
+#endif
+} // namespace
 
 //======================================================================================================================
 void SceneStage::draw(rojoRHI::CommandList& commands, const SceneView& view,
-                      const SceneStageInputs& inputs,
-                      const scene_detail::PassUniforms& passUniforms,
-                      const scene_detail::LocalLightParams& localLightParams,
+                      const SceneStageInputs& inputs, const PassUniforms& passUniforms,
                       GraphTexture shadowRead, GraphBuffer exposureCurrent, bool temporalEnabled,
                       const CameraFrameState& cameraState, const CameraFrameState& previousCamera,
                       glm::vec2 jitterNdc, const PassResources& resources) {
-    // Resolved rather than captured: the graph hands over the shadow map only because this
-    // pass declared reading it, which is what ordered it after the pass that wrote it.
-    auto& shadowMapTexture = lmx::render::texture(resources, shadowRead);
-
-    // Auto-exposure selects ScenePassAuto.slang's compiled pipeline instead of
-    // ScenePass.slang's (spec 9): a separate shader file and pipeline, not a runtime
-    // branch in one, is what keeps the manual pipeline's compiled output identical to
-    // pre-M5 -- see ScenePassAuto.slang's header.
-    rojoRHI::GraphicsPipeline* opaquePipeline = nullptr;
+    const bool hasSky =
+        view.skySphere.has_value() && view.skyCubemap != nullptr && view.skySphere->indexCount != 0;
+    if (inputs.draws.runs.empty() && !hasSky) {
+        return;
+    }
+    rojoRHI::Pipeline opaquePipeline;
     if (temporalEnabled) {
         opaquePipeline = view.autoExposureEnabled
                              ? (view.wireframe ? m_sceneWireframePipelineAutoMotion.get()
@@ -42,110 +84,152 @@ void SceneStage::draw(rojoRHI::CommandList& commands, const SceneView& view,
                 ? (view.wireframe ? m_sceneWireframePipelineAuto.get() : m_scenePipelineAuto.get())
                 : (view.wireframe ? m_sceneWireframePipeline.get() : m_scenePipeline.get());
     }
-    commands.bindPipeline(*opaquePipeline);
-    commands.bindSampler(kLinearSamplerSlot, *inputs.linearSampler);
-    commands.bindSampler(kShadowSamplerSlot, *inputs.shadowSampler);
-    commands.bindSampler(kIblSamplerSlot, *inputs.iblSampler);
-    commands.bindTexture(kShadowTextureSlot, shadowMapTexture);
-    // The pass-wide IBL set. Each slot falls back independently, so a SceneView that
-    // carries no environment still renders -- with both image-based terms at zero.
-    commands.bindTexture(kIrradianceTextureSlot, view.irradiance != nullptr
-                                                     ? view.irradiance->rhi()
-                                                     : inputs.blackCubeTexture->rhi());
-    commands.bindTexture(kPrefilteredEnvTextureSlot, view.prefilteredEnv != nullptr
-                                                         ? view.prefilteredEnv->rhi()
-                                                         : inputs.blackCubeTexture->rhi());
-    commands.bindTexture(kDfgLutTextureSlot, view.dfgLut != nullptr ? view.dfgLut->rhi()
-                                                                    : inputs.zeroDfgTexture->rhi());
-    // Only ScenePassAuto.slang/SkyAuto.slang declare this resource at all, so it is bound
-    // only when their pipelines are the ones in use.
-    if (view.autoExposureEnabled) {
-        auto& exposureOverride = lmx::render::buffer(resources, exposureCurrent);
-        commands.bindBuffer(kExposureOverrideSlot, exposureOverride);
-    }
-    commands.bindFrameData(kPassUniformsSlot, passUniforms);
-    // Declared slots stay bound even when the selected loop never reads their data.
-    rojoRHI::Buffer* lightRows = &m_fallbackLightRows.rhi();
-    if (inputs.lights.has_value()) {
-        auto& imported = lmx::render::buffer(resources, *inputs.lights);
-        lightRows = &imported;
-    }
-    commands.bindBuffer(engine::kSceneLightsSlot, *lightRows);
-    rojoRHI::Buffer* grid = &m_fallbackClusterGrid.rhi();
-    rojoRHI::Buffer* indices = &m_fallbackClusterIndices.rhi();
-    if (inputs.lightGrid) {
-        auto& gridResult = lmx::render::buffer(resources, *inputs.lightGrid);
-        auto& indexResult = lmx::render::buffer(resources, *inputs.lightIndices);
-        grid = &gridResult;
-        indices = &indexResult;
-    }
-    commands.bindBuffer(engine::kLightClusterGridSlot, *grid);
-    commands.bindBuffer(engine::kLightClusterIndexSlot, *indices);
-    commands.bindFrameData(engine::kLocalLightParamsSlot, localLightParams);
-    if (view.tables.vertices) {
-        bindSceneTables(
-            commands, view.tables,
-            {kVertexBufferSlot, engine::kSceneInstancesSlot, engine::kSceneMaterialsSlot});
+    const auto* irradiance = view.irradiance ? view.irradiance : inputs.blackCubeTexture;
+    const auto* prefiltered = view.prefilteredEnv ? view.prefilteredEnv : inputs.blackCubeTexture;
+    const auto* dfg = view.dfgLut ? view.dfgLut : inputs.zeroDfgTexture;
+    const auto exposure =
+        view.autoExposureEnabled ? resources.address(exposureCurrent) : rojoRHI::Addr{};
+    if (!inputs.draws.runs.empty()) {
+        commands.setPipeline(opaquePipeline);
+        const auto uniformsAddress = frameData(commands, passUniforms);
+        engine::registerFrameRoot("PassUniforms", uniformsAddress);
+        // Local-light addresses remain zero while address-based light accumulation is unavailable.
+        const ScenePassRoot pass{.vertices = view.tables.vertices->address(),
+                                 .visibleRows = resources.address(inputs.drawRows),
+                                 .instances = view.tables.instances->address(),
+                                 .materials = view.tables.materials->address(),
+                                 .passUniforms = uniformsAddress,
+                                 .exposure = exposure,
+                                 .shadow = static_cast<uint32_t>(resources.view(shadowRead)),
+                                 .irradiance = static_cast<uint32_t>(irradiance->view()),
+                                 .prefilteredEnv = static_cast<uint32_t>(prefiltered->view()),
+                                 .dfg = static_cast<uint32_t>(dfg->view()),
+                                 .linearSampler = static_cast<uint32_t>(inputs.linearSampler),
+                                 .shadowSampler = static_cast<uint32_t>(inputs.shadowSampler),
+                                 .iblSampler = static_cast<uint32_t>(inputs.iblSampler)};
+        const auto passAddress = frameData(commands, pass);
+        engine::registerFrameRoot("ScenePassRoot", passAddress);
+        encodeDrawRuns(
+            commands, {inputs.draws, view.tables.indices, opaquePipeline},
+            [&](const DrawRun& run, const auto& bindPipeline) -> const engine::DrawItem& {
+                const engine::DrawItem& item = view.items[run.itemIndex];
+                const bool masked = item.alphaMode == engine::AlphaMode::Mask;
+                const uint32_t maskIndex = (item.doubleSided ? 8u : 0u) +
+                                           (view.autoExposureEnabled ? 4u : 0u) +
+                                           (temporalEnabled ? 2u : 0u) + (view.wireframe ? 1u : 0u);
+                bindPipeline(masked ? m_maskScenePipelines[maskIndex].get() : opaquePipeline);
+                LMX_ASSERT(item.instanceRow < view.tables.instanceCount,
+                           "draw instance must name a current table row");
+                const auto* diffuse = item.diffuse ? item.diffuse : inputs.whiteTexture;
+                const auto* normal = item.normalMap ? item.normalMap : inputs.flatNormalTexture;
+                const auto* metalRough =
+                    item.metallicRoughness ? item.metallicRoughness : inputs.whiteTexture;
+                const auto* occlusion = item.occlusion ? item.occlusion : inputs.whiteTexture;
+                const auto* emissive = item.emissiveMap ? item.emissiveMap : inputs.whiteTexture;
+                const SceneDrawRoot draw{.pass = passAddress,
+                                         .firstEntry = run.firstEntry,
+                                         .baseColor = static_cast<uint32_t>(diffuse->view()),
+                                         .normal = static_cast<uint32_t>(normal->view()),
+                                         .metalRough = static_cast<uint32_t>(metalRough->view()),
+                                         .occlusion = static_cast<uint32_t>(occlusion->view()),
+                                         .emissive = static_cast<uint32_t>(emissive->view()),
+                                         .indirect =
+                                             inputs.draws.mode != SubmissionMode::Direct ? 1u : 0u};
+                engine::registerFrameRoot("SceneDrawRoot", commands.pushRoot(draw));
+#ifndef NDEBUG
+                if (run.instanceCount != 0 && item.mesh.indexCount != 0) {
+                    const std::array<rojoRHI::ResourceAccess, 6> buffers{
+                        {{.buffer = view.tables.vertices->rhi(),
+                          .size = view.tables.vertices->desc().size,
+                          .stage = rojoRHI::Stage::VertexShader,
+                          .access = rojoRHI::Access::ShaderRead},
+                         {.buffer = inputs.draws.rows->rhi(),
+                          .offset = uint64_t{run.firstEntry} * 4,
+                          .size = uint64_t{run.instanceCount} * 4,
+                          .stage = rojoRHI::Stage::VertexShader,
+                          .access = rojoRHI::Access::ShaderRead},
+                         {.buffer = view.tables.instances->rhi(),
+                          .size = uint64_t{view.tables.instanceCount} * sizeof(engine::InstanceRow),
+                          .stage = rojoRHI::Stage::VertexShader,
+                          .access = rojoRHI::Access::ShaderRead},
+                         {.buffer = view.tables.materials->rhi(),
+                          .size = uint64_t{view.tables.materialCount} * sizeof(engine::MaterialRow),
+                          .stage = rojoRHI::Stage::VertexShader,
+                          .access = rojoRHI::Access::ShaderRead},
+                         {.buffer = view.tables.instances->rhi(),
+                          .size = uint64_t{view.tables.instanceCount} * sizeof(engine::InstanceRow),
+                          .stage = rojoRHI::Stage::FragmentShader,
+                          .access = rojoRHI::Access::ShaderRead},
+                         {.buffer = view.tables.materials->rhi(),
+                          .size = uint64_t{view.tables.materialCount} * sizeof(engine::MaterialRow),
+                          .stage = rojoRHI::Stage::FragmentShader,
+                          .access = rojoRHI::Access::ShaderRead}}};
+                    commands.declareAccess(buffers);
+                    for (const auto* texture :
+                         {diffuse, metalRough, occlusion, emissive, irradiance, prefiltered, dfg}) {
+                        declareTextureRead(commands, texture->ref());
+                    }
+                    if (readsNormal(view, item).value_or(false)) {
+                        declareTextureRead(commands, normal->ref());
+                    }
+                    declareTextureRead(commands, resources.texture(shadowRead));
+                    if (view.autoExposureEnabled) {
+                        const std::array<rojoRHI::ResourceAccess, 1> access{
+                            {{.buffer = resources.buffer(exposureCurrent),
+                              .size = sizeof(float),
+                              .stage = rojoRHI::Stage::FragmentShader,
+                              .access = rojoRHI::Access::ShaderRead}}};
+                        commands.declareAccess(access);
+                    }
+                }
+#endif
+                return item;
+            });
     }
 
-    encodeDrawRuns(
-        commands, {inputs.draws, view.tables.indices, opaquePipeline},
-        [&](const DrawRun& run, const auto& bindPipeline) -> const engine::DrawItem& {
-            const engine::DrawItem& item = view.items[run.itemIndex];
-            const bool masked = item.alphaMode == engine::AlphaMode::Mask;
-            const uint32_t maskIndex = (item.doubleSided ? 8u : 0u) +
-                                       (view.autoExposureEnabled ? 4u : 0u) +
-                                       (temporalEnabled ? 2u : 0u) + (view.wireframe ? 1u : 0u);
-            auto* pipeline = masked ? m_maskScenePipelines[maskIndex].get() : opaquePipeline;
-            bindPipeline(*pipeline);
-            LMX_ASSERT(item.instanceRow < view.tables.instanceCount,
-                       "draw instance must name a current table row");
-            commands.bindTexture(kDiffuseTextureSlot, item.diffuse != nullptr
-                                                          ? item.diffuse->rhi()
-                                                          : inputs.whiteTexture->rhi());
-            commands.bindTexture(kNormalTextureSlot, item.normalMap != nullptr
-                                                         ? item.normalMap->rhi()
-                                                         : inputs.flatNormalTexture->rhi());
-            // The shared white fallback lets each factor pass through unchanged when a
-            // material carries no map -- white is the identity for all three.
-            commands.bindTexture(kMetallicRoughnessTextureSlot, item.metallicRoughness != nullptr
-                                                                    ? item.metallicRoughness->rhi()
-                                                                    : inputs.whiteTexture->rhi());
-            commands.bindTexture(kOcclusionTextureSlot, item.occlusion != nullptr
-                                                            ? item.occlusion->rhi()
-                                                            : inputs.whiteTexture->rhi());
-            commands.bindTexture(kEmissiveTextureSlot, item.emissiveMap != nullptr
-                                                           ? item.emissiveMap->rhi()
-                                                           : inputs.whiteTexture->rhi());
-
-            return item;
-        });
-
-    // Draw the solid sky last so opaque geometry rejects covered fragments at the depth
-    // clear.
-    if (view.skySphere.has_value() && view.skyCubemap != nullptr) {
-        // Unjittered, unlike the scene draws' mvp: the sky's vertex entry point applies
-        // jitterNdc itself so its motion pair stays unjittered. Off the temporal path the
-        // jitter is zero and this is the same matrix the scene rasterised with.
+    // Draw the solid sky last so geometry rejects covered fragments at the reversed-depth clear.
+    if (hasSky) {
         const SkyUniforms sky = buildSkyUniforms({.viewProj = cameraState.viewProjection,
                                                   .eyePos = passUniforms.eyePos,
                                                   .preExposure = passUniforms.preExposure,
                                                   .jitterNdc = jitterNdc,
                                                   .previousViewProj = previousCamera.viewProjection,
                                                   .previousEyePos = previousCamera.position});
-        // Same pipeline switch as the scene draws above, for the same reason (spec 9).
         if (temporalEnabled) {
-            commands.bindPipeline(view.autoExposureEnabled ? *m_skyPipelineAutoMotion
-                                                           : *m_skyPipelineMotion);
+            commands.setPipeline(view.autoExposureEnabled ? m_skyPipelineAutoMotion.get()
+                                                          : m_skyPipelineMotion.get());
         } else {
-            commands.bindPipeline(view.autoExposureEnabled ? *m_skyPipelineAuto : *m_skyPipeline);
+            commands.setPipeline(view.autoExposureEnabled ? m_skyPipelineAuto.get()
+                                                          : m_skyPipeline.get());
         }
-        // Shaders/Passes/Scene/Sky.slang and SkyAuto.slang are the only readers of this
-        // slot, so it is bound here rather than with the pass's shared set.
-        commands.bindTexture(kSkyTextureSlot, view.skyCubemap->rhi());
-        commands.bindFrameData(kPassUniformsSlot, sky);
-        commands.drawIndexed(view.tables.indices->rhi(), view.skySphere->indexCount,
-                             view.skySphere->firstIndex);
+        const auto uniformsAddress = frameData(commands, sky);
+        engine::registerFrameRoot("SkyUniforms", uniformsAddress);
+        // Scene finalization already rebases sky indices into this whole vertex pool.
+        const SkyRoot root{.vertices = view.tables.vertices->address(),
+                           .uniforms = uniformsAddress,
+                           .exposure = exposure,
+                           .sky = static_cast<uint32_t>(view.skyCubemap->view()),
+                           .sampler = static_cast<uint32_t>(inputs.linearSampler)};
+        engine::registerFrameRoot("SkyRoot", commands.pushRoot(root));
+#ifndef NDEBUG
+        const std::array<rojoRHI::ResourceAccess, 1> vertices{
+            {{.buffer = view.tables.vertices->rhi(),
+              .size = view.tables.vertices->desc().size,
+              .stage = rojoRHI::Stage::VertexShader,
+              .access = rojoRHI::Access::ShaderRead}}};
+        commands.declareAccess(vertices);
+        declareTextureRead(commands, view.skyCubemap->ref());
+        if (view.autoExposureEnabled) {
+            const std::array<rojoRHI::ResourceAccess, 1> access{
+                {{.buffer = resources.buffer(exposureCurrent),
+                  .size = sizeof(float),
+                  .stage = rojoRHI::Stage::FragmentShader,
+                  .access = rojoRHI::Access::ShaderRead}}};
+            commands.declareAccess(access);
+        }
+#endif
+        commands.drawIndexed(view.tables.indices->rhi(), rojoRHI::IndexType::UInt32,
+                             view.skySphere->indexCount, 1, view.skySphere->firstIndex, 0, 0);
     }
 }
 

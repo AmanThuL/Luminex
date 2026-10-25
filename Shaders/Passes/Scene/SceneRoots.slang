@@ -1,4 +1,5 @@
 import RojoRHI;
+import Lighting;
 
 struct ScenePassRoot
 {
@@ -44,4 +45,35 @@ struct SkyRoot
     rojoRHI::Addr exposure;
     uint sky;
     uint sampler;
+};
+
+struct PassUniforms
+{
+    float4x4 viewProj;
+    float4x4 shadowTransform;
+    float3 eyePos;
+    float eyePadding;
+    float time;
+    float preExposure;
+    float alignmentPadding[2];
+    DirLight lights[3];
+    int shadowFilter;
+    int shadowCaster;
+    int tailPadding[2];
+    float4x4 viewProjUnjittered;
+    float4x4 previousViewProjUnjittered;
+};
+
+struct SkyUniforms
+{
+    float4x4 viewProj;
+    float3 eyePos;
+    float eyePadding;
+    float preExposure;
+    float jitterNdcX;
+    float jitterNdcY;
+    float jitterPadding;
+    float4x4 previousViewProj;
+    float3 previousEyePos;
+    float previousEyePosPadding;
 };

@@ -1,33 +1,14 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file RendererStandIns.cpp
-/// @brief Creates neutral frame resources and declares a scene-linear clear.
+/// @brief Creates neutral frame resources for unavailable temporal and exposure stages.
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Render/Renderer/RendererStandIns.h"
-
-#include "Core/Math/Color.h"
 
 #include <array>
 #include <utility>
 
 namespace lmx::render {
-
-//======================================================================================================================
-GraphTexture declareSceneClear(RenderGraph& graph, GraphTexture sceneColor, GraphTexture depth,
-                               const float clearColor[4]) {
-    const glm::vec3 clearLinear =
-        lmx::srgbToLinear(glm::vec3(clearColor[0], clearColor[1], clearColor[2]));
-    PassDesc pass;
-    pass.color =
-        ColorAttachment{.handle = sceneColor,
-                        .load = LoadOp::Clear,
-                        .store = StoreOp::Store,
-                        .clearColor = {clearLinear.r, clearLinear.g, clearLinear.b, clearColor[3]}};
-    pass.depth = DepthAttachment{
-        .handle = depth, .load = LoadOp::Clear, .store = StoreOp::Store, .clearDepth = 0.0f};
-    graph.addPass("lmx.pass.sceneClear", std::move(pass), [](const PassResources&) {});
-    return nextVersion(sceneColor);
-}
 
 //======================================================================================================================
 lmx::Result<RendererStandIns> createRendererStandIns(rojoRHI::Device& device, uint32_t width,

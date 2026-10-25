@@ -42,9 +42,7 @@ struct RendererFrameState {
     glm::vec2 jitterPixels;
     CameraFrameState cameraState;
     CameraFrameState previousCamera;
-#ifndef LMX_PENDING_SCENE
     ShadowMatrices shadow;
-#endif
 };
 
 // Graph-local imports, in the original declaration order including exposure seeding.

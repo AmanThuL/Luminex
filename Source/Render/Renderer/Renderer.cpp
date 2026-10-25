@@ -31,17 +31,14 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& c
                                                state.extents, state.cameraState);
 #endif
 
-#ifndef LMX_PENDING_SCENE
     const auto planes =
         extractFrustumPlanes(state.temporalEnabled ? state.cameraState.viewProjectionJittered
                                                    : state.cameraState.viewProjection);
-#endif
 
 #ifndef LMX_PENDING_VISIBILITY
     m_previousPyramid = prepareOcclusion(graph, camera, view, state.extents, state.cameraState);
 #endif
 
-#ifndef LMX_PENDING_SCENE
     const auto drawBuffers = prepareVisibility(graph, commands, view, planes, imports.sceneBuffers);
     const auto drawRows = drawBuffers[0];
     const auto drawArguments = drawBuffers[1];
@@ -101,10 +98,6 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& c
          .linearSampler = m_linearSampler.get(),
          .shadowSampler = m_shadowSampler.get(),
          .iblSampler = m_iblSampler.get()});
-#else
-    const GraphTexture sceneColorRead =
-        declareSceneClear(graph, imports.sceneColor, imports.sceneDepth, clearColor);
-#endif
     [[maybe_unused]] const uint32_t sceneWidth = m_width;
     [[maybe_unused]] const uint32_t sceneHeight = m_height;
 #ifndef LMX_PENDING_TEMPORAL

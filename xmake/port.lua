@@ -7,8 +7,6 @@ local pending_families = {
     {
         family = "SCENE",
         sources = {
-            "Source/Render/Passes/Scene/SceneStage*.cpp",
-            "Source/Render/Renderer/RendererVisibility.cpp",
         },
         tests = {
             "Tests/Render/Passes/Scene/GpuAlphaMaskTests.cpp",
@@ -21,12 +19,6 @@ local pending_families = {
             "Tests/Scenes/SceneMaterialLabTests.cpp",
         },
         shaders = {
-            "Shaders/Passes/Scene/ScenePass.slang",
-            "Shaders/Passes/Scene/ScenePassMask.slang",
-            "Shaders/Passes/Scene/ScenePassAuto.slang",
-            "Shaders/Passes/Scene/ScenePassAutoMask.slang",
-            "Shaders/Passes/Scene/Sky.slang",
-            "Shaders/Passes/Scene/SkyAuto.slang",
         },
         testShaders = {
             "Shaders/Tests/SceneTableAbi.slang",

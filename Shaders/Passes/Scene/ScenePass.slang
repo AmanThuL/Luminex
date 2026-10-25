@@ -1,27 +1,8 @@
-// Forward linear-space metallic-roughness pass: analytic directional lights with a GGX BRDF,
-// image-based lighting from the scene's generated IBL set, normal mapping, occlusion, emissive, and
-// light-0 shadows. Output is scene-linear radiance scaled by exposure; nothing here encodes,
-// because the target is a half-float scene-colour buffer and
-// Shaders/Passes/Display/DisplayTransform.slang owns the encode.
-//
-// Slots -- resource classes use separate index spaces:
-//   buffers   b0 vertices, b1 first-entry DrawUniforms, b2 per-pass PassUniforms
-//             b4 visible rows, b5 instances, b6 materials
-//             b8 light rows, b9 cluster grid, b10 cluster index list,
-//             b11 LocalLightParams
-//   textures  per-draw material set: t0 base colour, t1 normal, t4 metallic-roughness,
-//             t5 occlusion, t6 emissive
-//             per-pass shared set:   t3 shadow map, t7 irradiance, t8 prefiltered environment,
-//             t9 DFG lookup table
-//   samplers  s0 linear (wrap, anisotropic), s1 shadow comparison, s2 linear clamped with a linear
-//             mip filter, for the IBL set only
-//
-// t2 belongs to the sky cubemap, which only Shaders/Passes/Scene/Sky.slang reads; the sky draws
-// inside this same render pass, so the slot is bound there rather than here. This fragment no
-// longer samples the sky directly -- its ad-hoc mirror reflection was replaced by the prefiltered
-// environment on t8.
+// Scene-linear shading with address-first scene and per-run material roots.
+import RojoRHI;
+import SceneRoots;
+import VertexStorage;
 import Lighting;
-import LocalLights;
 import SceneTables;
 import Motion;
 import Shadow;
@@ -31,97 +12,6 @@ import Shadow;
 // prefilters each level for. Tests/Engine/Asset/EngineMeshGeneratorTests.cpp pins the two constants
 // against each other.
 static const float kSpecularMipCount = 5.0f;
-
-struct Vertex
-{
-    float3 position;
-    float3 normal;
-    float4 tangent; // xyz tangent, w handedness (+1/-1)
-    float2 uv;
-};
-
-[[vk::binding(0, 0)]]
-StructuredBuffer<Vertex> gVertices : register(t0); // → MSL [[buffer(0)]]
-
-[[vk::binding(1, 0)]]
-ConstantBuffer<DrawUniforms> gDraw : register(b1);
-[[vk::binding(4, 0)]]
-StructuredBuffer<uint> gVisibleRows : register(t4);
-[[vk::binding(5, 0)]]
-StructuredBuffer<InstanceRow> gInstances : register(t5);
-[[vk::binding(6, 0)]]
-StructuredBuffer<MaterialRow> gMaterials : register(t6);
-
-// Always bound, including Off and zero-light frames: replay requires valid declared slots.
-[[vk::binding(8, 0)]]
-StructuredBuffer<LightRow> gLights : register(t8);
-[[vk::binding(9, 0)]]
-StructuredBuffer<ClusterRecord> gLightClusterGrid : register(t9);
-[[vk::binding(10, 0)]]
-StructuredBuffer<uint> gLightClusterIndices : register(t10);
-[[vk::binding(11, 0)]]
-ConstantBuffer<LocalLightParams> gLocalLights : register(b11);
-
-struct PassUniforms
-{
-    float4x4 viewProj;
-    float4x4 shadowTransform; // light view-proj with the NDC → texcoord map baked in
-    float3 eyePos;
-    float time;        // retained in the pass ABI; no current shader reads it
-    float preExposure; // exp2(exposure in EV), applied to the fragment's linear output
-    DirLight lights[3];
-    int shadowFilter; // Shadow.slang's kShadowFilterPcf / kShadowFilterPcss
-    int shadowCaster; // key/fill/rim role index; -1 leaves every contribution unshadowed
-    // The motion pair, unjittered on purpose: jitter moves where the frame is sampled, never where
-    // the surface is, so a still scene rendered with a moving jitter sequence must still produce
-    // zero motion. Rasterisation uses PassUniforms.viewProj, which carries the jitter.
-    float4x4 viewProjUnjittered;
-    float4x4 previousViewProjUnjittered;
-};
-
-[[vk::binding(2, 0)]]
-ConstantBuffer<PassUniforms> gPass : register(b2); // → MSL [[buffer(2)]]
-
-[[vk::binding(0, 2)]]
-Texture2D gDiffuse : register(t0); // → MSL [[texture(0)]]
-[[vk::binding(1, 2)]]
-Texture2D gNormalMap : register(t1); // → MSL [[texture(1)]]
-[[vk::binding(3, 2)]]
-Texture2D gShadowMap : register(t3); // → MSL [[texture(3)]]
-
-// Per-draw material inputs, bound every draw with a shared white fallback when a material has no
-// map -- white is the identity for all three, so a factor-only material shades exactly as if the
-// texture were absent. Channel conventions match glTF 2.0: metallic-roughness packs roughness = G
-// and metallic = B; occlusion packs R.
-[[vk::binding(4, 2)]]
-Texture2D gMetallicRoughness : register(t4); // → MSL [[texture(4)]]
-[[vk::binding(5, 2)]]
-Texture2D gOcclusion : register(t5); // → MSL [[texture(5)]]
-[[vk::binding(6, 2)]]
-Texture2D gEmissive : register(t6); // → MSL [[texture(6)]]
-
-// The scene's IBL set (Source/Engine/Ibl.h). Black cubes and a zero DFG table stand in when a
-// SceneView carries no IBL, which makes both image-based terms vanish rather than read an unbound
-// slot.
-[[vk::binding(7, 2)]]
-TextureCube gIrradiance : register(t7); // → MSL [[texture(7)]]
-[[vk::binding(8, 2)]]
-TextureCube gPrefilteredEnv : register(t8); // → MSL [[texture(8)]]
-[[vk::binding(9, 2)]]
-Texture2D gDfgLut : register(t9); // → MSL [[texture(9)]]
-
-[[vk::binding(0, 1)]]
-SamplerState gLinearSampler : register(s0); // → MSL [[sampler(0)]]
-[[vk::binding(1, 1)]]
-SamplerComparisonState gShadowSampler : register(s1); // → MSL [[sampler(1)]]
-
-// The IBL set needs clamped addressing, not the wrapping s0 above. Both of its lookups run to the
-// very edge of their domain -- the DFG table is read at N.V = 1 and at roughness 1, and a wrapping
-// sampler would blend those edge texels with the opposite edge's, so a facing mirror would pick up
-// the grazing column and a fully rough surface the mirror row. Clamping also keeps a cube's
-// bilinear footprint inside the face it selected.
-[[vk::binding(2, 1)]]
-SamplerState gIblSampler : register(s2); // → MSL [[sampler(2)]]
 
 // Build the tangent basis explicitly to preserve handedness and matrix convention.
 float3 applyNormalMap(float3 mapSample, float3 unitNormalW, float4 tangentW)
@@ -148,9 +38,12 @@ struct VSOutput
 
 VSOutput shadeVertex(uint vid, uint instanceRow)
 {
-    InstanceRow instance = gInstances[instanceRow];
-    MaterialRow material = gMaterials[instance.materialRow];
-    Vertex v = gVertices[vid];
+    SceneDrawRoot draw = rojoRHI::root<SceneDrawRoot>();
+    ScenePassRoot pass = rojoRHI::load<ScenePassRoot>(draw.pass, 0);
+    PassUniforms gPass = rojoRHI::load<PassUniforms>(pass.passUniforms, 0);
+    InstanceRow instance = rojoRHI::load<InstanceRow>(pass.instances, instanceRow);
+    MaterialRow material = rojoRHI::load<MaterialRow>(pass.materials, instance.materialRow);
+    Vertex v = loadVertex(pass.vertices, vid);
     float4 positionW = mul(instance.model, float4(v.position, 1.0));
 
     VSOutput o;
@@ -193,14 +86,17 @@ struct SurfaceShading
 
 SurfaceShading shadeSurfaceDetailed(VSOutput input)
 {
-    InstanceRow instance = gInstances[input.instanceRow];
-    MaterialRow material = gMaterials[instance.materialRow];
+    SceneDrawRoot draw = rojoRHI::root<SceneDrawRoot>();
+    ScenePassRoot pass = rojoRHI::load<ScenePassRoot>(draw.pass, 0);
+    PassUniforms gPass = rojoRHI::load<PassUniforms>(pass.passUniforms, 0);
+    InstanceRow instance = rojoRHI::load<InstanceRow>(pass.instances, input.instanceRow);
+    MaterialRow material = rojoRHI::load<MaterialRow>(pass.materials, instance.materialRow);
     // sRGB sampling decodes base colour before lighting.
-    float4 baseColorSample = gDiffuse.Sample(gLinearSampler, input.uv) * material.albedo;
+    float4 baseColorSample = rojoRHI::texture2D(draw.baseColor).Sample(rojoRHI::sampler(pass.linearSampler), input.uv) * material.albedo;
     float3 baseColor = baseColorSample.rgb;
 
     // glTF 2.0 packing: roughness in G, metallic in B, each scaling its own factor.
-    float3 metallicRoughness = gMetallicRoughness.Sample(gLinearSampler, input.uv).rgb;
+    float3 metallicRoughness = rojoRHI::texture2D(draw.metalRough).Sample(rojoRHI::sampler(pass.linearSampler), input.uv).rgb;
     // Clamped once, here, so the direct lobe, the prefiltered mip, and the DFG lookup all speak of
     // the same roughness -- the split-sum contract only holds if they agree.
     float perceptualRoughness =
@@ -209,13 +105,13 @@ SurfaceShading shadeSurfaceDetailed(VSOutput input)
     float alpha = AlphaFromRoughness(perceptualRoughness);
     // glTF strength interpolates between no occlusion and the authored map; multiplying by the
     // strength directly would incorrectly black out the environment when strength is zero.
-    float occlusion = lerp(1.0f, gOcclusion.Sample(gLinearSampler, input.uv).r,
+    float occlusion = lerp(1.0f, rojoRHI::texture2D(draw.occlusion).Sample(rojoRHI::sampler(pass.linearSampler), input.uv).r,
                            saturate(material.occlusionStrength));
 
     float3 normalW = normalize(input.normalW);
     if ((material.flags & kMaterialHasNormalMap) != 0u)
     {
-        normalW = applyNormalMap(gNormalMap.Sample(gLinearSampler, input.uv).rgb, normalW,
+        normalW = applyNormalMap(rojoRHI::texture2D(draw.normal).Sample(rojoRHI::sampler(pass.linearSampler), input.uv).rgb, normalW,
                                  input.tangentW);
     }
 
@@ -224,7 +120,7 @@ SurfaceShading shadeSurfaceDetailed(VSOutput input)
 
     // Only light 0 owns a shadow map.
     float shadowFactor =
-        CalcShadowFactor(input.shadowPos, gShadowMap, gShadowSampler, gPass.shadowFilter);
+        CalcShadowFactor(input.shadowPos, rojoRHI::texture2D(pass.shadow), rojoRHI::comparisonSampler(pass.shadowSampler), gPass.shadowFilter);
     float3 litColor = (gPass.shadowCaster == 0 ? shadowFactor : 1.0f) *
                       ComputeDirectionalLight(gPass.lights[0], normalW, toEye,
                                                              baseColor, f0, metallic, alpha);
@@ -235,20 +131,18 @@ SurfaceShading shadeSurfaceDetailed(VSOutput input)
                 ComputeDirectionalLight(gPass.lights[2], normalW, toEye, baseColor, f0, metallic,
                                         alpha);
 
-    litColor += AccumulateLocalLights(gLocalLights, gLights, gLightClusterGrid,
-                                      gLightClusterIndices, input.position, input.positionW,
-                                      normalW, toEye, baseColor, f0, metallic, alpha);
+    // Local-light accumulation is unavailable until address-based light lists are supplied.
 
     // Image-based lighting. N.V is clamped off zero because the DFG table's first column stands for
     // a half-texel inside the domain, not for the grazing limit itself.
     float nov = clamp(dot(normalW, toEye), 1e-4f, 1.0f);
     float3 reflectDir = reflect(-toEye, normalW);
-    float3 irradiance = gIrradiance.Sample(gIblSampler, normalW).rgb;
+    float3 irradiance = rojoRHI::textureCube(pass.irradiance).Sample(rojoRHI::sampler(pass.iblSampler), normalW).rgb;
     float3 prefiltered =
-        gPrefilteredEnv.SampleLevel(gIblSampler, reflectDir,
+        rojoRHI::textureCube(pass.prefilteredEnv).SampleLevel(rojoRHI::sampler(pass.iblSampler), reflectDir,
                                     perceptualRoughness * (kSpecularMipCount - 1.0f))
             .rgb;
-    float2 dfg = gDfgLut.Sample(gIblSampler, float2(nov, perceptualRoughness)).rg;
+    float2 dfg = rojoRHI::texture2D(pass.dfg).Sample(rojoRHI::sampler(pass.iblSampler), float2(nov, perceptualRoughness)).rg;
     // Occlusion attenuates the environment only. It describes how much of the surrounding hemisphere
     // reaches this point, which says nothing about a light whose visibility the shadow map already
     // answered -- applying it to both would darken a lit surface twice.
@@ -258,7 +152,7 @@ SurfaceShading shadeSurfaceDetailed(VSOutput input)
     // Emissive is radiance the surface produces rather than reflects, so it takes no lighting term
     // and is added last; pre-exposure then applies to the whole sum exactly once.
     float3 emissiveTerm =
-        (material.emissive * instance.emissiveScale) * gEmissive.Sample(gLinearSampler, input.uv).rgb;
+        (material.emissive * instance.emissiveScale) * rojoRHI::texture2D(draw.emissive).Sample(rojoRHI::sampler(pass.linearSampler), input.uv).rgb;
     litColor += emissiveTerm;
 
     // Pre-exposed, still linear: the display transform is the only thing that leaves this space.
@@ -269,9 +163,12 @@ SurfaceShading shadeSurfaceDetailed(VSOutput input)
 }
 
 [shader("vertex")]
-VSOutput vertexMain(uint vid: SV_VertexID, uint instanceIndex: SV_InstanceID)
+VSOutput vertexMain(rojoRHI::VertexIds ids)
 {
-    return shadeVertex(vid, gVisibleRows[gDraw.firstEntry + instanceIndex]);
+    SceneDrawRoot draw = rojoRHI::root<SceneDrawRoot>();
+    ScenePassRoot pass = rojoRHI::load<ScenePassRoot>(draw.pass, 0);
+    uint firstEntry = draw.indirect != 0 ? rojoRHI::drawId(ids) : draw.firstEntry;
+    return shadeVertex(rojoRHI::vertexIndex(ids), rojoRHI::load<uint>(pass.visibleRows, firstEntry + rojoRHI::instanceIndex(ids)));
 }
 
 [shader("fragment")]
@@ -299,12 +196,17 @@ struct MotionFSOutput
 };
 
 [shader("vertex")]
-MotionVSOutput vertexMainMotion(uint vid: SV_VertexID, uint instanceIndex: SV_InstanceID)
+MotionVSOutput vertexMainMotion(rojoRHI::VertexIds ids)
 {
-    InstanceRow instance = gInstances[gVisibleRows[gDraw.firstEntry + instanceIndex]];
-    float3 position = gVertices[vid].position;
+    SceneDrawRoot draw = rojoRHI::root<SceneDrawRoot>();
+    ScenePassRoot pass = rojoRHI::load<ScenePassRoot>(draw.pass, 0);
+    PassUniforms gPass = rojoRHI::load<PassUniforms>(pass.passUniforms, 0);
+    uint vid = rojoRHI::vertexIndex(ids);
+    uint firstEntry = draw.indirect != 0 ? rojoRHI::drawId(ids) : draw.firstEntry;
+    InstanceRow instance = rojoRHI::load<InstanceRow>(pass.instances, rojoRHI::load<uint>(pass.visibleRows, firstEntry + rojoRHI::instanceIndex(ids)));
+    float3 position = loadVertex(pass.vertices, vid).position;
     MotionVSOutput o;
-    o.base = shadeVertex(vid, gVisibleRows[gDraw.firstEntry + instanceIndex]);
+    o.base = shadeVertex(vid, rojoRHI::load<uint>(pass.visibleRows, firstEntry + rojoRHI::instanceIndex(ids)));
     o.clipCurrent = mul(gPass.viewProjUnjittered, mul(instance.model, float4(position, 1.0)));
     o.clipPrevious =
         mul(gPass.previousViewProjUnjittered, mul(instance.previousModel, float4(position, 1.0)));
@@ -314,7 +216,9 @@ MotionVSOutput vertexMainMotion(uint vid: SV_VertexID, uint instanceIndex: SV_In
 [shader("fragment")]
 MotionFSOutput fragmentMainMotion(MotionVSOutput input)
 {
-    InstanceRow instance = gInstances[input.base.instanceRow];
+    SceneDrawRoot draw = rojoRHI::root<SceneDrawRoot>();
+    ScenePassRoot pass = rojoRHI::load<ScenePassRoot>(draw.pass, 0);
+    InstanceRow instance = rojoRHI::load<InstanceRow>(pass.instances, input.base.instanceRow);
     MotionFSOutput o;
     SurfaceShading shaded = shadeSurfaceDetailed(input.base);
     o.color = shaded.color;

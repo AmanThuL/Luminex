@@ -21,11 +21,13 @@ import SceneTables;
 
 static const float kPi = 3.141592653589793;
 
-// Constant-buffer float3 fields occupy 16-byte slots in the CPU mirror.
+// Explicit tails preserve the CPU light record when loaded through an address.
 public struct DirLight
 {
     public float3 strength;
+    public float strengthPadding;
     public float3 direction;
+    public float directionPadding;
 };
 
 // Dielectric reflectance at normal incidence: the 4% every non-metal is approximated with, and the

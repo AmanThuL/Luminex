@@ -80,6 +80,13 @@ function lmx_configure_shader_library(target)
             "ScenePassRoot=lmx::render::ScenePassRoot",
             "SceneDrawRoot=lmx::render::SceneDrawRoot",
             "SkyRoot=lmx::render::SkyRoot",
+            "PassUniforms=lmx::render::scene_detail::PassUniforms",
+            "SkyUniforms=lmx::render::scene_detail::SkyUniforms",
+            "DirLight=lmx::render::scene_detail::DirLightUniform",
+            "InstanceRow=lmx::engine::InstanceRow",
+            "MaterialRow=lmx::engine::MaterialRow",
+            "MeshRow=lmx::engine::MeshRow",
+            "LightRow=lmx::engine::LightRow",
             -- ---- visibility ----
             -- ---- lights ----
             -- ---- post ----
@@ -88,7 +95,8 @@ function lmx_configure_shader_library(target)
         target:values_set("slang.layout_map", table.unpack(layout_map))
         target:values_set("slang.layout_include", "Render/Passes/Display/DisplayRoots.h",
                           "Render/Passes/Scene/SceneRoots.h", "Render/Passes/Shadow/ShadowRoots.h",
-                          "Engine/Geometry/Mesh.h")
+                          "Engine/Geometry/Mesh.h", "Render/Passes/Scene/SceneFrameData.h",
+                          "Engine/Scene/SceneTables.h")
     elseif kind == "tests" then
         target:values_set("slang.layout_probe", path.join(repository_root, "Shaders/Layout/TestLayout.slang"))
         local layout_map = {
