@@ -131,9 +131,6 @@ jobs:
       - name: Build test shader layouts
         run: xmake build -P . Tests
 
-      - name: C++ layout policy
-        run: python3 Tools/check_cpp_layout.py
-
       - name: Module and header contract
         run: |
           python3 Tools/check_module_deps.py
@@ -196,8 +193,14 @@ jobs:
         run: xmake setup -P .
       - name: Configure Debug Null
         run: xmake f -m debug -y -P . --ccache=n --rojorhi_backend=null
+      - name: Generate Debug compile_commands
+        run: xmake project -k compile_commands -P .
+      - name: Build app shader layouts
+        run: xmake build -P . App
       - name: Build tracker cases
         run: xmake build -P . Tests
+      - name: C++ layout policy
+        run: python3 Tools/check_cpp_layout.py
       - name: Run tracker cases
         working-directory: build/macosx/arm64/debug/test
         run: |
