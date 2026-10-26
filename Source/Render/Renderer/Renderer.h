@@ -24,17 +24,11 @@
 #include "Render/Passes/Occlusion/HzbStage.h"
 #endif
 
-#ifndef LMX_PENDING_SCENE
 #include "Render/Passes/Scene/DrawSubmission.h"
-#endif
 
-#ifndef LMX_PENDING_SCENE
 #include "Render/Passes/Scene/SceneStage.h"
-#endif
 
-#ifndef LMX_PENDING_SCENE
 #include "Render/Passes/Shadow/ShadowStage.h"
-#endif
 #include "Render/Passes/Temporal/Temporal.h"
 #include "Render/Passes/Temporal/TemporalHistory.h"
 #ifndef LMX_PENDING_TEMPORAL
@@ -235,11 +229,9 @@ private:
                                               const SceneView& view,
                                               const RendererFrameState& state);
     void recordFrameStatus(const RendererFrameState& state);
-#ifndef LMX_PENDING_SCENE
     std::array<GraphBuffer, 2> prepareVisibility(RenderGraph& graph, rojoRHI::CommandList& commands,
                                                  const SceneView& view, const FrustumPlanes& planes,
                                                  std::span<const GraphBuffer> sceneBuffers);
-#endif
 
 #ifndef LMX_PENDING_LIGHTS
     LightClusterOutputs prepareLighting(RenderGraph& graph, rojoRHI::CommandList& commands,
@@ -277,10 +269,8 @@ private:
     // What the last frame to touch each persistent target left it as, written back by every graph
     // declarePasses() binds it to.
     TextureStateTable m_textureStates;
-#ifndef LMX_PENDING_SCENE
     std::unique_ptr<ShadowStage> m_shadowStage;
     std::unique_ptr<SceneStage> m_sceneStage;
-#endif
 
 #ifndef LMX_PENDING_POST
     // Stage owners retain callback inputs and persistent feedback through graph execution.
@@ -293,9 +283,7 @@ private:
     engine::GpuTexture m_hdrColor;
     engine::GpuTexture m_color;
     RendererStandIns m_standIns;
-#ifndef LMX_PENDING_SCENE
     engine::GpuTexture m_shadowMap;
-#endif
 
 #ifndef LMX_PENDING_TEMPORAL
     // Allocated with the scene targets and replaced by resize() like them, whether or not any
@@ -310,21 +298,17 @@ private:
     std::unique_ptr<TemporalResolve> m_temporalResolve;
 #endif
 
-#ifndef LMX_PENDING_SCENE
-    // The "nothing here" textures every draw binds when a material or a scene leaves a slot empty.
-    // They exist because the fragment shader reads every texture slot unconditionally (Slang gives
-    // every entry point the file's whole global set), so an empty slot has to hold something that
-    // shades to the right answer rather than nothing at all: white is the identity for the
-    // material factors, a flat normal leaves the tangent frame alone, and a black cube plus a zero
-    // DFG table make both image-based terms vanish.
+    // Roots select these owned views whenever a material or environment has no texture. White
+    // preserves material factors, the flat normal preserves the tangent frame when sampled, and
+    // a black cube plus zero DFG makes both image-based terms vanish. Owners outlive submitted
+    // readers, including views selected independently by each draw.
     engine::GpuTexture m_whiteTexture;
     engine::GpuTexture m_flatNormalTexture;
     engine::GpuTexture m_blackCubeTexture;
     engine::GpuTexture m_zeroDfgTexture;
-    engine::GpuOwned<rojoRHI::Sampler> m_linearSampler;
-    engine::GpuOwned<rojoRHI::Sampler> m_shadowSampler;
-    engine::GpuOwned<rojoRHI::Sampler> m_iblSampler;
-#endif
+    engine::GpuOwned<rojoRHI::SamplerIndex> m_linearSampler;
+    engine::GpuOwned<rojoRHI::SamplerIndex> m_shadowSampler;
+    engine::GpuOwned<rojoRHI::SamplerIndex> m_iblSampler;
 
 #ifndef LMX_PENDING_TEMPORAL
     // What the previous declared frame was, recorded every frame -- temporal on or off -- because
@@ -339,9 +323,7 @@ private:
 #endif
     uint64_t m_declaredFrames = 0;
     TemporalStatus m_temporalStatus;
-#ifndef LMX_PENDING_SCENE
     DrawSubmission m_drawSubmission;
-#endif
 
 #ifndef LMX_PENDING_VISIBILITY
     std::unique_ptr<GpuVisibility> m_gpuVisibility;

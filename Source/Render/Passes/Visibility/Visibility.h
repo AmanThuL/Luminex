@@ -94,15 +94,18 @@ struct SubmissionStats {
     uint32_t instancedRuns = 0;          ///< Runs with more than one instance.
     uint64_t listBytes = 0;              ///< Bytes written to this frame's row list.
     uint64_t argumentBytes = 0;          ///< Bytes written to this frame's arguments.
-    uint64_t allocatedListBytes = 0;     ///< All three active slot allocations.
-    uint64_t allocatedArgumentBytes = 0; ///< All three active slot allocations.
-    uint32_t pendingReleaseBuffers = 0;  ///< Replaced buffers awaiting retirement.
-    uint64_t candidateBytes = 0;         ///< Logical candidate table bytes.
-    uint64_t runBytes = 0;               ///< Logical run table bytes.
-    uint64_t chunkBytes = 0;             ///< Logical chunk table bytes.
-    uint64_t stateBytes = 0;             ///< State storage bytes.
-    uint64_t counterBytes = 0;           ///< Counter storage bytes.
-    uint32_t growthEvents = 0;           ///< Cumulative paired slot growth count.
+    uint64_t allocatedListBytes = 0;     ///< All three active GPU destination allocations.
+    uint64_t allocatedArgumentBytes = 0; ///< All three active GPU destination allocations.
+    uint64_t allocatedUploadBytes = 0;   ///< All six active Upload staging allocations.
+    uint32_t pendingReleaseBuffers = 0;  ///< Replaced GPU destinations awaiting retirement.
+    /// Replaced Upload staging buffers awaiting retirement.
+    uint32_t pendingReleaseUploadBuffers = 0;
+    uint64_t candidateBytes = 0; ///< Logical candidate table bytes.
+    uint64_t runBytes = 0;       ///< Logical run table bytes.
+    uint64_t chunkBytes = 0;     ///< Logical chunk table bytes.
+    uint64_t stateBytes = 0;     ///< State storage bytes.
+    uint64_t counterBytes = 0;   ///< Counter storage bytes.
+    uint32_t growthEvents = 0;   ///< Cumulative paired slot growth count.
 };
 /// Renderer-owned diagnostics for the last declared frame.
 struct VisibilityStatus {

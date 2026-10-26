@@ -2,7 +2,7 @@
 
 **Status**: Implemented
 
-This retained walkthrough covers the pending full-stage frame; the [active subset](rojorhi.md#component-boundary) is scene-clear → display → UI, with lighting measurement unavailable. Native TAA, CPU culling, indirect submission and Clustered local lighting are the retained defaults; vendor reconstruction shares temporal inputs. The [local-light default decision](../milestones/m7/m7.5-validation.md#default-decision) follows the passed lossless-list and scoped exact-image gates; Direct remains the reference.
+This retained walkthrough covers the pending full-stage frame; the [active subset](rojorhi.md#component-boundary) is shadow → scene/sky/IBL → display → UI, with lighting measurement unavailable. Native TAA, CPU culling, indirect submission and Clustered local lighting are the retained defaults; vendor reconstruction shares temporal inputs. The [local-light default decision](../milestones/m7/m7.5-validation.md#default-decision) follows the passed lossless-list and scoped exact-image gates; Direct remains the reference.
 ## The frame at a glance
 
 A fresh `RenderGraph` imports targets, five geometry/material scene buffers (plus lights when live), two submission buffers, persistent histogram/exposure buffers and the drawable. Renderer composes the stages below; graph compilation
@@ -39,21 +39,21 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-curs
 │       what restarts the loop from the manual value (spec 9). Manual mode: declared every temporal
 │       frame. Auto mode: only on a reset trigger
 ├─ 1. lmx.pass.shadow      depth-only → shadow map (2048², D32Float, store)
-│       unculled opaque/masked draws: firstEntry b1, lightViewProj b2, rows b4, instances/materials b5/b6
+│       unculled opaque/masked draws: ShadowDrawRoot → ShadowPassRoot Addr fields
 │       depth bias {-4.0, -32.0} (reversed-Z), light 0 only
 │       reversed depth: clears to 0, Greater compare, comparison sampler GreaterEqual
 ├─ 2. lmx.pass.scene       → scene color (RGBA16Float), lmx.render.motion (RG16Float, extra 0),
 │    │  lmx.render.reactive (R8Unorm, extra 1, cleared to 0) + this frame's depth slot, viewport-sized
-│       │  per-pass uniforms (b2): viewProj, shadowTransform, eye, time, preExposure,
+│       │  pointed ScenePassRoot.passUniforms: viewProj, shadowTransform, eye, time, preExposure,
 │       │  3 directional lights, shadow filter
 │       ├─ opaque/masked DrawItems: GGX metallic-roughness BRDF (direct lights) + diffuse/specular IBL
 │       │    (split-sum reconstruction with Fdez-Agüera multi-scatter compensation) + shadow
 │       │    factor (25-tap Poisson PCF or PCSS) + normal mapping (TBN) + occlusion (image-based
 │       │    terms only) + material emissive × instance emissiveScale, summed and pre-exposed
-│       │    b1 firstEntry + instanceIndex selects b4 row, then transforms b5 and material factors b6;
-│       │    shared vertices b0, per-draw material textures and shared shadow/IBL textures
-│       │    local lights b8, cluster grid b9, indices b10, copied LocalLightParams b11 (136 B)
-│       │    one Off/Direct/Clustered loop adds point/spot terms before ambient/emissive and exposure
+│       │    direct firstEntry or indirect drawId plus instanceIndex selects visible rows and Addr tables;
+│       │    VertexStorage loads through vertices Addr, per-draw material textures and shared shadow/IBL textures
+│       │    pending LIGHTS inputs: light rows, cluster grid, indices, copied LocalLightParams (136 B)
+│       │    retained Off/Direct/Clustered loop adds point/spot terms before ambient/emissive and exposure
 │       ├─ reads the shadow map's written version — the graph derives the barrier from that
 │       │    declaration
 │       ├─ auto-exposure only: binds ScenePassAuto.slang/SkyAuto.slang's pipelines instead of
@@ -63,7 +63,7 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-curs
 │       │    Motion.slang); an Invalid-class draw writes the +inf sentinel instead. Reactive:
 │       │    `saturate(luminance(emissiveTerm · preExposure) / kReactiveEmissiveScale)`
 │       └─ sky, drawn last: camera-centered sphere pinned to the reversed far plane (depth 0),
-│            cull none, GreaterEqual, t2 cubemap, the same preExposure, motion from the previous
+│            cull none, GreaterEqual, SkyRoot cubemap view, the same preExposure, motion from the previous
 │            eye's rotation alone, reactive 0
 ├─ [reset reason None] 2b. lmx.pass.temporal.reproject   compute, diagnostic only, over the output
 │       extent, reads the previous colour slot + scene colour + motion → temporalDiagnostic; culled
@@ -140,14 +140,13 @@ Motion/reprojection diagnostics stay engine-owned; ReprojectedHistory adds the v
 native-only. Vendor frames record `ExternalWrite` for current colour, `ExternalRead` for depth/scene
 colour and `ShaderRead` for other depth; previous colour changes only if sampled (ADR 0017).
 
-Vertex pulling uses 48-byte vertices at b0 and the scene's rebased uint32 index pool (base vertex 0).
+Vertex pulling loads 48-byte VertexStorage through the vertices Addr and uses the scene's rebased uint32 index pool (base vertex 0).
 Shared CPU/Slang rows are `InstanceRow` 240 bytes, `MaterialRow` 112 and `MeshRow` 48. Instances hold current/previous/normal matrices, identity selectors, motion/bounds flags, emissive scale and
 world bounds; meshes hold ranges and local bounds. `Scene::meshBounds` also feeds selection framing.
 The CPU oracle reads uploaded rows: five jittered VP planes, 1e-3 world margin, no far plane. Unreliable/nonfinite inputs bypass; rejected table rows retain identity and motion.
-Renderer owns three paced `DrawSubmission` pairs, retired on growth at last prepared frame + 3. Scene rows precede unculled shadows; `lmx.draw.rows`/`lmx.draw.args` expose graph reads.
-Scene/shadow shaders select `gVisibleRows[gDraw.firstEntry + instanceIndex]` at b4, then b5/b6.
-Direct binds a 16-byte firstEntry selector per object; indirect binds zero once and uses firstInstance
-in each 20-byte argument. Batched stably sorts pipeline/material/mesh keys and draws one run per
+Renderer owns three paced GPU `DrawSubmission` pairs and three separate Upload staging pairs, retired on growth at last prepared frame + 3. Scene rows precede unculled shadows; `lmx.draw.rows`/`lmx.draw.args` expose graph reads.
+Scene/shadow flat draw roots select direct firstEntry or indirect drawId, then add instanceIndex into addressed visible/instance/material rows; records are24bytes with zero native bases.
+Batched stably sorts pipeline/material/mesh keys and draws one run per
 command; fragments retain a flat instance row. Sky remains separate. Counts report issued commands.
 
 Masked materials select `ScenePassMask`/`ScenePassAutoMask` and `ShadowPassMask` (ADR 0018).
@@ -160,8 +159,8 @@ The 16×9×24 light grid uses active render pixels and the raster's jittered pro
 near-to-0.3 m, exponential-to-100 m and open-last slices. Count preserves raw hits; scan caps at
 128 lights per froxel and 65,536 global indices. Fill keeps lowest row indices in order, with bit
 31 in count marking truncation. Safe-math predicates match `LightClusters`' ordered fp32 mirror.
-With zero live lights there is no light-table import or light-list/debug pass; all scene b8–b11
-bindings still resolve through immutable fallbacks. Direct uses no list passes. Retired counters
+In the retained LIGHTS path, zero live lights omit the light-table import and light-list/debug passes;
+conceptual light rows/grid/indices/parameters resolve through immutable fallbacks. Direct uses no list passes. Retired counters
 join declaration frame/mode, and `--light-check` compares captured lists with that frame's CPU
 mirror; `drainLightingAfterIdle` resolves the final in-flight frames before headless completion.
 Stage callbacks borrow inputs through graph execution; `Renderer.cpp` retains stage ordering, while `RendererFrame.cpp` derives state and imports resources, `RendererCreate.cpp` owns construction/resize and `RendererStatus.cpp` records outcomes. SceneStage packing/declaration, layouts, pipelines and draw encoding occupy separate units.

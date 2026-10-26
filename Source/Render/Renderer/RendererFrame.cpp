@@ -18,7 +18,6 @@
 namespace lmx::render {
 //======================================================================================================================
 RendererFrameState Renderer::deriveFrameState(const engine::Camera& camera, const SceneView& view) {
-#ifndef LMX_PENDING_SCENE
 #ifndef LMX_PENDING_TEMPORAL
     LMX_ASSERT(m_hdrColor && m_color && m_shadowMap && m_motion && m_reactive && m_temporalResolve,
                "Renderer::declarePasses: targets are missing -- create() failed");
@@ -26,16 +25,10 @@ RendererFrameState Renderer::deriveFrameState(const engine::Camera& camera, cons
     LMX_ASSERT(m_hdrColor && m_color && m_standIns.depth,
                "Renderer::declarePasses: targets are missing -- create() failed");
 #endif
-#else
-    LMX_ASSERT(m_hdrColor && m_color && m_standIns.depth,
-               "Renderer::declarePasses: targets are missing -- create() failed");
-#endif
 
-#ifndef LMX_PENDING_SCENE
     LMX_ASSERT(view.boundingSphere.w > 0.0f,
                "SceneView::boundingSphere needs a positive radius -- it is what the shadow "
                "frustum is fitted to");
-#endif
 
 #ifndef LMX_PENDING_POST
     if (view.autoExposureEnabled) {
@@ -133,10 +126,8 @@ RendererFrameState Renderer::deriveFrameState(const engine::Camera& camera, cons
     const CameraFrameState previousCamera = cameraState;
 #endif
 
-#ifndef LMX_PENDING_SCENE
     const ShadowMatrices shadow = fitShadowOrtho(
         view.boundingSphere, view.lights[view.shadowCaster >= 0 ? view.shadowCaster : 0].direction);
-#endif
 
     return {.temporalEnabled = temporalEnabled,
 #ifndef LMX_PENDING_TEMPORAL
@@ -158,11 +149,7 @@ RendererFrameState Renderer::deriveFrameState(const engine::Camera& camera, cons
             .jitterPixels = jitterPixels,
             .cameraState = cameraState,
             .previousCamera = previousCamera,
-#ifndef LMX_PENDING_SCENE
             .shadow = shadow};
-#else
-    };
-#endif
 }
 
 //======================================================================================================================
@@ -176,12 +163,8 @@ RendererFrameImports Renderer::importFrameResources(RenderGraph& graph,
     // imported with the use the last frame to touch it left it in: that is what orders this frame's
     // first access behind those earlier reads and writes on Metal 4's queue. The graph writes the
     // uses back from the passes that ran; the few set by hand below are accesses it cannot see.
-#ifndef LMX_PENDING_SCENE
-    const GraphTexture shadowMap = graph.importPersistentTexture(
-        m_shadowMap.rhi(), rojoRHI::Format::D32Float, "lmx.render.shadowMap");
-#else
-    const GraphTexture shadowMap;
-#endif
+    const GraphTexture shadowMap =
+        graph.importPersistentTexture(m_shadowMap, "lmx.render.shadowMap");
     const GraphTexture sceneColor =
         graph.importPersistentTexture(m_hdrColor, "lmx.render.sceneColorHdr");
     if (state.temporalEnabled && !state.nativeTaa && !state.vendorTemporal && !state.upscaled) {
@@ -272,20 +255,18 @@ RendererFrameImports Renderer::importFrameResources(RenderGraph& graph,
 #endif
 
     std::vector<GraphBuffer> sceneBuffers;
-#ifndef LMX_PENDING_SCENE
     if (view.tables.vertices) {
         LMX_ASSERT(view.tables.indices && view.tables.meshes && view.tables.instances &&
                        view.tables.materials,
                    "scene table bindings must be complete");
-        sceneBuffers = {graph.importBuffer(view.tables.vertices->rhi(), "lmx.scene.vertices"),
-                        graph.importBuffer(view.tables.indices->rhi(), "lmx.scene.indices"),
-                        graph.importBuffer(view.tables.meshes->rhi(), "lmx.scene.meshes"),
-                        graph.importBuffer(view.tables.instances->rhi(), "lmx.scene.instances"),
-                        graph.importBuffer(view.tables.materials->rhi(), "lmx.scene.materials")};
+        sceneBuffers = {graph.importBuffer(*view.tables.vertices, "lmx.scene.vertices"),
+                        graph.importBuffer(*view.tables.indices, "lmx.scene.indices"),
+                        graph.importBuffer(*view.tables.meshes, "lmx.scene.meshes"),
+                        graph.importBuffer(*view.tables.instances, "lmx.scene.instances"),
+                        graph.importBuffer(*view.tables.materials, "lmx.scene.materials")};
     } else {
         LMX_ASSERT(view.items.empty() && !view.skySphere, "geometry needs scene table bindings");
     }
-#endif
 
     // Row count is a high-water mark; only live lights justify importing the sixth table.
     std::optional<GraphBuffer> lightsImport;

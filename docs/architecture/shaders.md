@@ -10,10 +10,10 @@ modules are dependencies, not standalone runtime libraries.
 
 `xmake/luminex_shaders.lua` shares entry selection and settings across App, Tests and the dormant
 FrameDataBench target. It subtracts the pending source/test-shader patterns in `xmake/port.lua`,
-then selects files containing shader attributes. App currently selects DisplayTransform alone;
-Tests additionally selects BufferHazardSmoke, ComputeImageSmoke, FullscreenSample, MrtSmoke,
-SamplerSmoke and VisibilityDepthReadback. BENCH remains skipped; its declared entry is FrameDataQuad
-only. SCENE, VISIBILITY, LIGHTS, POST and TEMPORAL stay out of the active entry list.
+then selects files containing shader attributes. App selects DisplayTransform plus all six
+Scene/Sky and two Shadow entries. Tests adds the retained sampler/fullscreen/MRT/compute/buffer
+oracles, ShadowSmoke and SceneTableAbi. BENCH remains skipped with FrameDataQuad. VISIBILITY,
+LIGHTS, POST and TEMPORAL entries remain excluded by their exact family patterns.
 
 `RojoRHI/xmake/slang.lua` owns `rojorhi.slang` and the backend compilation/package contract.
 A Metal 4 configure requires `xcodebuild -downloadComponent MetalToolchain`: Slang emits MSL,
@@ -42,9 +42,9 @@ sampler. The [shader convention](../conventions/shader-style.md) owns the retain
 
 Two leaf `rojorhi.shader_layout` probes have separate ownership roles:
 
-- `Shaders/Layout/LuminexLayout.slang` reflects Source roots for App, currently DisplayRoot.
-- `Shaders/Layout/TestLayout.slang` reflects test-only oracle roots for Tests. Its five flat
-  layouts cover BufferHazard, ComputeImage, FullscreenSample, SamplerSmoke and VisibilityDepth;
+- `Shaders/Layout/LuminexLayout.slang` reflects Source roots for App, DisplayRoot, ScenePass112/Draw48/Sky32, ShadowPass48/Draw32 and their pointed payloads/rows.
+- `Shaders/Layout/TestLayout.slang` reflects test-only oracle roots for Tests. Its flat
+  layouts cover the retained roots plus ShadowSmoke32 and SceneTableAbi48;
   MrtSmoke remains root-free.
 
 The rule reflects Metal, SPIR-V scalar layout and HLSL, maps probe names to C++ types, and generates
@@ -56,8 +56,17 @@ cannot import Tests roots. Pending families keep their probe sections until thei
 ## Shaders/Common/
 
 `Shaders/Common/` holds the modules shared across pass families: `Encode`, `Lighting`,
-`LocalLights`, `Shadow`, `Motion`, `Tonemap`, `SceneTables` and `AlphaMask`. A module here declares
+`LocalLights`, `Shadow`, `Motion`, `Tonemap`, `SceneTables`, `AlphaMask` and `VertexStorage`. A module here declares
 no shader entry point.
+
+VertexStorage contains twelve scalar floats at offsets0..44/size48, mapped to the real Engine
+Vertex. loadVertex reconstructs logical vectors only. Scene and Shadow roots preserve direct
+firstEntry versus indirect drawId identity and use view/sampler indices. The SceneTableAbi oracle
+writes all116uint words per row for two rows, preserving every field, explicit padding and stride.
+New C++ roots align16; pushRoot supplies GPU256 alignment. Named roots/payloads feed capture
+schema2; the old decoder remains unsupported until its migration. Four local-light contribution
+sites stay neutral with unread zero addresses while LIGHTS is pending; motion entries compile but
+Renderer MRT reachability stays TEMPORAL-owned.
 
 ## Shaders/Passes/<family>/
 

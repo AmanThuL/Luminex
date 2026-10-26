@@ -170,6 +170,8 @@ def validate_report(report, expected, scored):
                     "transientBytes", "allocatedListBytes", "allocatedArgumentBytes", "candidateBytes",
                     "runBytes", "chunkBytes", "stateBytes", "counterBytes"):
             nonnegative_integer(sample.get(key), key)
+        if "allocatedUploadBytes" in sample:
+            nonnegative_integer(sample["allocatedUploadBytes"], "allocatedUploadBytes")
         if sample["ordinal"] != ordinal or sample["sequenceFrame"] != expected["warmupFrames"] + ordinal:
             raise ValueError("missing or unordered plan frame")
         frame_id = sample["frameId"]
@@ -521,6 +523,20 @@ def binary_selftest(template):
     for report in documents.values():
         report.update(schemaVersion=5, startingPopulation=None,
                       sceneDocument={"path": "a.scene.gltf", "sha256": "c" * 64, "dirty": False})
+    validate_report(documents[0], documents[0]["plan"], True)
+    for upload_bytes in (0, 672):
+        additive = copy.deepcopy(documents[0])
+        additive["samples"][0]["allocatedUploadBytes"] = upload_bytes
+        validate_report(additive, additive["plan"], True)
+    for upload_bytes in (-1, True, 0.5):
+        additive = copy.deepcopy(documents[0])
+        additive["samples"][0]["allocatedUploadBytes"] = upload_bytes
+        try:
+            validate_report(additive, additive["plan"], True)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("invalid allocatedUploadBytes accepted")
     args.frozen_document = None
     checked_provenance(args, documents)
     for side, mutation in ((1, lambda r: r["sceneDocument"].update(sha256="d" * 64)),

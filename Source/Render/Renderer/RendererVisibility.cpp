@@ -15,7 +15,6 @@
 #include <limits>
 
 namespace lmx::render {
-#ifndef LMX_PENDING_SCENE
 namespace {
 //======================================================================================================================
 VisibilityCounters cpuCounters(const VisibilityResult& result, uint32_t commands) {
@@ -30,11 +29,10 @@ VisibilityCounters cpuCounters(const VisibilityResult& result, uint32_t commands
 } // namespace
 
 //======================================================================================================================
-std::array<GraphBuffer, 2> Renderer::prepareVisibility(RenderGraph& graph,
-                                                       rojoRHI::CommandList& commands,
-                                                       const SceneView& view,
-                                                       const FrustumPlanes& planes,
-                                                       std::span<const GraphBuffer> sceneBuffers) {
+std::array<GraphBuffer, 2>
+Renderer::prepareVisibility(RenderGraph& graph, rojoRHI::CommandList& commands,
+                            const SceneView& view, const FrustumPlanes& planes,
+                            [[maybe_unused]] std::span<const GraphBuffer> sceneBuffers) {
     const auto frame = m_gpu.frameNumber();
 #ifndef LMX_PENDING_VISIBILITY
     // Retirement precedes draw-buffer growth, whose release list may destroy completed storage.
@@ -108,17 +106,17 @@ std::array<GraphBuffer, 2> Renderer::prepareVisibility(RenderGraph& graph,
 #else
     SceneView cpuView = view;
     cpuView.classifyMode = ClassifyMode::Cpu;
-    const auto prepared = m_drawSubmission.prepare(frame, cpuView, m_visibilityStatus.scene,
-                                                   m_visibilityStatus.shadow);
+    const auto prepared = m_drawSubmission.prepare(
+        commands, frame, cpuView, m_visibilityStatus.scene, m_visibilityStatus.shadow);
 #endif
     LMX_ASSERT(prepared.has_value(), prepared.error().message);
     m_visibilityStatus.submission = m_drawSubmission.stats();
-    auto import = [&](rojoRHI::Buffer& buffer, const char* label, std::optional<BufferUse> use) {
+    auto import = [&](const engine::GpuBuffer& buffer, const char* label,
+                      std::optional<BufferUse> use) {
         return use ? graph.importBuffer(buffer, label, *use) : graph.importBuffer(buffer, label);
     };
-    auto rows =
-        import(m_drawSubmission.scene().rows->rhi(), "lmx.draw.rows", m_drawSubmission.rowUse());
-    auto arguments = import(m_drawSubmission.scene().arguments->rhi(), "lmx.draw.args",
+    auto rows = import(*m_drawSubmission.scene().rows, "lmx.draw.rows", m_drawSubmission.rowUse());
+    auto arguments = import(*m_drawSubmission.scene().arguments, "lmx.draw.args",
                             m_drawSubmission.argumentUse());
 #ifndef LMX_PENDING_VISIBILITY
     if (view.classifyMode == ClassifyMode::Gpu) {
@@ -159,5 +157,4 @@ std::array<GraphBuffer, 2> Renderer::prepareVisibility(RenderGraph& graph,
     return {rows, arguments};
 }
 
-#endif
 } // namespace lmx::render

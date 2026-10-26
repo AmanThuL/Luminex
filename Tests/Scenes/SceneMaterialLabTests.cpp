@@ -276,11 +276,9 @@ TEST_CASE("MaterialLab document's normal-map probe encodes an exact flat {128,12
 
     constexpr uint32_t kMapSize = 64;
     auto destination =
-        lmx::engine::GpuTexture::create(*device, {.width = kMapSize,
-                                                  .height = kMapSize,
-                                                  .format = rojoRHI::Format::BGRA8Unorm,
-                                                  .renderTarget = true,
-                                                  .cpuReadback = true,
+        lmx::engine::GpuTexture::create(*device, {.format = rojoRHI::Format::BGRA8Unorm,
+                                                  .extent = {kMapSize, kMapSize, 1},
+                                                  .usage = rojoRHI::TextureUsage::RenderTarget,
                                                   .label = "lmx.test.materialLabNormalCopy"});
     INFO(describeSceneError(destination));
     REQUIRE(destination.has_value());
@@ -288,23 +286,47 @@ TEST_CASE("MaterialLab document's normal-map probe encodes an exact flat {128,12
     auto library = gpu->loadShaderLibrary("FullscreenSample");
     INFO(describeSceneError(library));
     REQUIRE(library.has_value());
-    auto pipeline =
-        device->createGraphicsPipeline({.library = library->get(),
-                                        .vertexEntry = "vertexMain",
-                                        .fragmentEntry = "fragmentMain",
-                                        .colorFormat = rojoRHI::Format::BGRA8Unorm,
-                                        .label = "lmx.test.materialLabNormalCopyPipeline"});
+    auto pipeline = lmx::engine::adoptGpu(
+        (*device),
+        (*device).createPipeline(
+            {.vertex = {library->get(), "vertexMain"},
+             .fragment = {library->get(), "fragmentMain"},
+             .raster = {.cull = rojoRHI::CullMode::Back},
+             .depthStencil = {.depthTest = false,
+                              .depthWrite = false,
+                              .depthCompare = rojoRHI::CompareOp::Less},
+             .colors = std::array{rojoRHI::ColorTarget{.format = rojoRHI::Format::BGRA8Unorm}},
+             .label = "lmx.test.materialLabNormalCopyPipeline"}));
     INFO(errorOf(pipeline));
     REQUIRE(pipeline.has_value());
 
     auto gpuFrame2 = gpu->beginFrame();
     rojoRHI::CommandList& commands = gpuFrame2.commands;
-    commands.beginRenderPass({.colorTarget = &destination->rhi(),
-                              .clearColor = {1.0f, 0.0f, 1.0f, 1.0f},
-                              .clear = true,
+    const rojoRHI::TextureBarrier beginColor{.texture = destination->rhi(),
+                                             .range = {0, 1, 0, 1},
+                                             .dstStage = rojoRHI::Stage::ColorAttachment,
+                                             .dstAccess = rojoRHI::Access::ColorAttachmentWrite,
+                                             .newLayout = rojoRHI::Layout::ColorAttachment};
+    commands.barrier({}, {}, std::span(&beginColor, 1));
+    const rojoRHI::ColorAttachment color{.texture = destination->rhi(),
+                                         .load = rojoRHI::LoadOp::Clear,
+                                         .store = rojoRHI::StoreOp::Store,
+                                         .clear = {1.0f, 0.0f, 1.0f, 1.0f}};
+    commands.beginRenderPass({.colors = std::span(&color, 1),
+                              .area = {0, 0, kMapSize, kMapSize},
                               .label = "lmx.test.materialLabNormalCopy"});
-    commands.bindPipeline(**pipeline);
-    commands.bindTexture(0, normalMap->rhi());
+    commands.setViewport({.width = float(kMapSize), .height = float(kMapSize)});
+    commands.setScissor({0, 0, kMapSize, kMapSize});
+    commands.setPipeline(pipeline->get());
+    commands.pushRoot(
+        lmx::test::FullscreenSampleRoot{.source = static_cast<uint32_t>(normalMap->view())});
+#ifndef NDEBUG
+    const rojoRHI::ResourceAccess access{.texture = normalMap->rhi(),
+                                         .range = {0, 1, 0, 1},
+                                         .stage = rojoRHI::Stage::FragmentShader,
+                                         .access = rojoRHI::Access::ShaderRead};
+    commands.declareAccess(std::span(&access, 1));
+#endif
     commands.draw(3);
     commands.endRenderPass();
     gpu->submitAndEndFrame(gpuFrame2);
@@ -312,9 +334,15 @@ TEST_CASE("MaterialLab document's normal-map probe encodes an exact flat {128,12
 
     std::vector<uint8_t> pixels(size_t{kMapSize} * kMapSize * 4);
     {
-        const auto bytes =
-            lmx::render::readbackNow(*gpu, *destination, lmx::render::TextureUse::RenderTarget);
-        std::memcpy(pixels.data(), bytes.data(), pixels.size());
+        const auto bytes = lmx::render::readbackNow(
+            *gpu, *destination,
+            std::array{lmx::render::TextureRangeState{
+                .range = {0, 1, 0, 1},
+                .state = {rojoRHI::Stage::ColorAttachment, rojoRHI::Access::ColorAttachmentWrite,
+                          rojoRHI::Layout::ColorAttachment}}});
+        INFO(errorOf(bytes));
+        REQUIRE(bytes.has_value());
+        std::memcpy(pixels.data(), bytes->data(), pixels.size());
     }
 
     // Texel (0,0) is well outside the centred bump radius (28 texels from the (31.5,31.5)
@@ -423,8 +451,10 @@ TEST_CASE("MaterialLab document's known-colour patches round-trip the display tr
     std::vector<uint8_t> pixels(size_t{kProbeSize} * kProbeSize * 4);
     {
         const auto bytes = lmx::render::readbackNow(*gpu, (*renderer)->colorTarget(),
-                                                    lmx::render::TextureUse::RenderTarget);
-        std::memcpy(pixels.data(), bytes.data(), pixels.size());
+                                                    (*renderer)->textureStates());
+        INFO(errorOf(bytes));
+        REQUIRE(bytes.has_value());
+        std::memcpy(pixels.data(), bytes->data(), pixels.size());
     }
 
     // Readback hands back BGRA, so the channel at offset 0 is blue.
@@ -569,8 +599,10 @@ TEST_CASE("MaterialLab document's mip probe converges to mid-gray under strong m
     std::vector<uint8_t> pixels(size_t{kProbeSize} * kProbeSize * 4);
     {
         const auto bytes = lmx::render::readbackNow(*gpu, (*renderer)->colorTarget(),
-                                                    lmx::render::TextureUse::RenderTarget);
-        std::memcpy(pixels.data(), bytes.data(), pixels.size());
+                                                    (*renderer)->textureStates());
+        INFO(errorOf(bytes));
+        REQUIRE(bytes.has_value());
+        std::memcpy(pixels.data(), bytes->data(), pixels.size());
     }
 
     const ProjectedPixel coord = projectScenePixel(camera, kProbeSize, probe->position);

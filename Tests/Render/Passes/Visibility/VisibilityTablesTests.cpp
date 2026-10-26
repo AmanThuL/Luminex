@@ -41,6 +41,10 @@ TEST_CASE("GPU candidate tables preserve sparse identities and canonical run ord
         for (uint32_t i = 0; i < tables.runs.size(); ++i) {
             const auto& run = tables.runs[i];
             REQUIRE(run.argumentIndex == i);
+            REQUIRE(prepared.arguments[i].drawId == run.firstSlot);
+            REQUIRE(prepared.arguments[i].instanceCount == run.candidateCount);
+            REQUIRE(prepared.arguments[i].firstInstance == 0);
+            REQUIRE(prepared.arguments[i].baseVertex == 0);
             REQUIRE(run.firstSlot == run.firstCandidate);
             REQUIRE(tables.candidates[run.firstCandidate].run == i);
         }

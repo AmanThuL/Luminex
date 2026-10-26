@@ -5,40 +5,6 @@ local port_path = path.join(repository_root, "xmake/port.lua")
 
 local pending_families = {
     {
-        family = "SCENE",
-        sources = {
-            "Source/Render/Passes/Scene/DrawSubmission.cpp",
-            "Source/Render/Passes/Scene/SceneStage*.cpp",
-            "Source/Render/Passes/Shadow/ShadowStage.cpp",
-            "Source/Render/Renderer/RendererVisibility.cpp",
-        },
-        tests = {
-            "Tests/Render/Passes/Scene/Gpu*.cpp",
-            "Tests/Render/Passes/Shadow/GpuRendererShadowTests.cpp",
-            "Tests/Render/Passes/Shadow/RenderShadowFitTests.cpp",
-            "Tests/Engine/Scene/GpuSceneTableAbiTests.cpp",
-            "Tests/Engine/Scene/GpuSceneTableTests.cpp",
-            "Tests/Render/Passes/Visibility/VisibilityTests.cpp",
-            "Tests/Render/Passes/Visibility/VisibilityTablesTests.cpp",
-            "Tests/Scenes/EngineSceneTests.cpp",
-            "Tests/Scenes/SceneMaterialLabTests.cpp",
-        },
-        shaders = {
-            "Shaders/Passes/Scene/ScenePass.slang",
-            "Shaders/Passes/Scene/ScenePassMask.slang",
-            "Shaders/Passes/Scene/ScenePassAuto.slang",
-            "Shaders/Passes/Scene/ScenePassAutoMask.slang",
-            "Shaders/Passes/Scene/Sky.slang",
-            "Shaders/Passes/Scene/SkyAuto.slang",
-            "Shaders/Passes/Shadow/ShadowPass.slang",
-            "Shaders/Passes/Shadow/ShadowPassMask.slang",
-        },
-        testShaders = {
-            "Shaders/Tests/SceneTableAbi.slang",
-            "Shaders/Tests/ShadowSmoke.slang",
-        },
-    },
-    {
         family = "VISIBILITY",
         sources = {
             "Source/Render/Passes/Visibility/GpuVisibility*.cpp",
@@ -125,6 +91,7 @@ local pending_families = {
             "Source/Render/Renderer/RendererTemporal.cpp",
         },
         tests = {
+            "Tests/Engine/Scene/GpuSceneTableTemporalTests.cpp",
             "Tests/Render/Passes/Temporal/Gpu*.cpp",
             "Tests/Render/Passes/Temporal/RenderVendorTemporalTests.cpp",
             "Tests/App/Model/Graph/GpuGraphInspectorTests.cpp",

@@ -7,6 +7,10 @@ StructuredBuffer<SamplerRoot> gRoot_SamplerRoot;
 StructuredBuffer<VisibilityDepthRoot> gRoot_VisibilityDepthRoot;
 
 // ---- scene ----
+import VertexStorage;
+StructuredBuffer<VertexStorage> gRecord_VertexStorage;
+StructuredBuffer<ShadowSmokeRoot> gRoot_ShadowSmokeRoot;
+StructuredBuffer<ShadowSmokeUniforms> gRecord_ShadowSmokeUniforms;
 // ---- visibility ----
 // ---- lights ----
 // ---- post ----
@@ -15,3 +19,5 @@ StructuredBuffer<VisibilityDepthRoot> gRoot_VisibilityDepthRoot;
 void probeMain()
 {
 }
+
+StructuredBuffer<SceneTableAbiRoot> gRoot_SceneTableAbiRoot;

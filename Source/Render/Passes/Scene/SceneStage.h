@@ -5,8 +5,6 @@
 
 #pragma once
 
-#ifndef LMX_PENDING_SCENE
-
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Gpu/GpuBuffer.h"
 #include "Engine/Gpu/GpuContext.h"
@@ -27,7 +25,6 @@
 namespace lmx::render {
 namespace scene_detail {
 struct PassUniforms;
-struct LocalLightParams;
 } // namespace scene_detail
 
 /// Frame values and Renderer-owned resources borrowed by the scene and sky pass.
@@ -38,7 +35,7 @@ struct SceneStageInputs {
     GraphBuffer drawArguments;             ///< Indirect-argument import.
     std::vector<GraphBuffer> sceneBuffers; ///< Five read-only scene pool/table imports.
     /// Read-only `lmx.scene.lights` import, present exactly when the frame has a live local light.
-    /// Absent leaves the pass declaring nothing new and binding the stage's own fallback rows.
+    /// No local-light shader access is made while address-based light lists are unavailable.
     std::optional<GraphBuffer> lights;
     std::optional<GraphBuffer> lightGrid; ///< Cluster records when clustered shading is selected.
     std::optional<GraphBuffer> lightIndices; ///< Ascending light row indices paired with lightGrid.
@@ -61,9 +58,9 @@ struct SceneStageInputs {
     const engine::GpuTexture* flatNormalTexture; ///< Tangent-space positive-Z normal fallback.
     const engine::GpuTexture* blackCubeTexture;  ///< Zero-radiance environment fallback.
     const engine::GpuTexture* zeroDfgTexture;    ///< Zero split-sum reconstruction fallback.
-    rojoRHI::Sampler* linearSampler;             ///< Material sampler.
-    rojoRHI::Sampler* shadowSampler;             ///< Reversed-depth comparison sampler.
-    rojoRHI::Sampler* iblSampler;                ///< Clamped environment sampler.
+    rojoRHI::SamplerIndex linearSampler;         ///< Material sampler.
+    rojoRHI::SamplerIndex shadowSampler;         ///< Reversed-depth comparison sampler.
+    rojoRHI::SamplerIndex iblSampler;            ///< Clamped environment sampler.
 };
 
 /// Owns scene and sky pipeline variants; Renderer keeps it alive through graph execution.
@@ -88,37 +85,29 @@ private:
     SceneStage() = default;
 
     void draw(rojoRHI::CommandList& commands, const SceneView& view, const SceneStageInputs& inputs,
-              const scene_detail::PassUniforms& passUniforms,
-              const scene_detail::LocalLightParams& localLightParams, GraphTexture shadowRead,
+              const scene_detail::PassUniforms& passUniforms, GraphTexture shadowRead,
               GraphBuffer exposureCurrent, bool temporalEnabled,
               const CameraFrameState& cameraState, const CameraFrameState& previousCamera,
               glm::vec2 jitterNdc, const PassResources& resources);
 
-    // Replay needs valid bindings even for unused slots. Immutable fallbacks stay outside the
-    // graph so zero-light declarations retain their resource and pass topology.
-    engine::GpuBuffer m_fallbackLightRows;
-    engine::GpuBuffer m_fallbackClusterGrid;
-    engine::GpuBuffer m_fallbackClusterIndices;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_sceneLibrary;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_sceneAutoLibrary;
     std::array<engine::GpuOwned<rojoRHI::ShaderLibrary>, 2> m_maskSceneLibraries;
-    std::array<engine::GpuOwned<rojoRHI::GraphicsPipeline>, 16> m_maskScenePipelines;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_skyLibrary;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_skyAutoLibrary;
-    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_scenePipeline;
-    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_sceneWireframePipeline;
-    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_scenePipelineAuto;
-    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_sceneWireframePipelineAuto;
-    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_skyPipeline;
-    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_skyPipelineAuto;
-    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_scenePipelineMotion;
-    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_sceneWireframePipelineMotion;
-    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_scenePipelineAutoMotion;
-    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_sceneWireframePipelineAutoMotion;
-    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_skyPipelineMotion;
-    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_skyPipelineAutoMotion;
+    std::array<engine::GpuOwned<rojoRHI::Pipeline>, 16> m_maskScenePipelines;
+    engine::GpuOwned<rojoRHI::Pipeline> m_scenePipeline;
+    engine::GpuOwned<rojoRHI::Pipeline> m_sceneWireframePipeline;
+    engine::GpuOwned<rojoRHI::Pipeline> m_scenePipelineAuto;
+    engine::GpuOwned<rojoRHI::Pipeline> m_sceneWireframePipelineAuto;
+    engine::GpuOwned<rojoRHI::Pipeline> m_skyPipeline;
+    engine::GpuOwned<rojoRHI::Pipeline> m_skyPipelineAuto;
+    engine::GpuOwned<rojoRHI::Pipeline> m_scenePipelineMotion;
+    engine::GpuOwned<rojoRHI::Pipeline> m_sceneWireframePipelineMotion;
+    engine::GpuOwned<rojoRHI::Pipeline> m_scenePipelineAutoMotion;
+    engine::GpuOwned<rojoRHI::Pipeline> m_sceneWireframePipelineAutoMotion;
+    engine::GpuOwned<rojoRHI::Pipeline> m_skyPipelineMotion;
+    engine::GpuOwned<rojoRHI::Pipeline> m_skyPipelineAutoMotion;
 };
 
 } // namespace lmx::render
-
-#endif

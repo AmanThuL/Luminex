@@ -69,13 +69,21 @@ TEST_CASE("draw submission preserves sparse rows and separates batched argument 
     scene.visibleItems = {0, 1, 2};
     VisibilityResult shadow;
     shadow.visibleItems = {0, 1, 2, 3};
+    REQUIRE(sizeof(rojoRHI::DrawIndexedIndirectArgs) == 24);
+    REQUIRE(offsetof(rojoRHI::DrawIndexedIndirectArgs, drawId) == 0);
+    REQUIRE(offsetof(rojoRHI::DrawIndexedIndirectArgs, indexCount) == 4);
+    REQUIRE(offsetof(rojoRHI::DrawIndexedIndirectArgs, instanceCount) == 8);
+    REQUIRE(offsetof(rojoRHI::DrawIndexedIndirectArgs, firstIndex) == 12);
+    REQUIRE(offsetof(rojoRHI::DrawIndexedIndirectArgs, baseVertex) == 16);
+    REQUIRE(offsetof(rojoRHI::DrawIndexedIndirectArgs, firstInstance) == 20);
     for (const auto mode : {SubmissionMode::Direct, SubmissionMode::Indirect}) {
         const auto output = buildDrawSubmission(view, scene, shadow, mode);
         REQUIRE(output.rows == std::vector<uint32_t>{7, 2, 5, 7, 2, 5, 1});
         REQUIRE(output.arguments.size() == 7);
         REQUIRE(output.shadow.firstEntry == 3);
         for (uint32_t i = 0; i < 7; ++i) {
-            REQUIRE(output.arguments[i].firstInstance == i);
+            REQUIRE(output.arguments[i].drawId == i);
+            REQUIRE(output.arguments[i].firstInstance == 0);
             REQUIRE(output.arguments[i].instanceCount == 1);
             REQUIRE(output.arguments[i].indexCount == 6);
             REQUIRE(output.arguments[i].firstIndex == 9);
@@ -88,9 +96,17 @@ TEST_CASE("draw submission preserves sparse rows and separates batched argument 
     REQUIRE(batch.shadow.runs.size() == 2);
     REQUIRE(batch.shadow.runs[0].firstEntry == 3);
     REQUIRE(batch.shadow.runs[0].argumentIndex == 1);
-    REQUIRE(batch.arguments[1].firstInstance == 3);
+    REQUIRE(batch.arguments[0].drawId == 0);
+    REQUIRE(batch.arguments[0].instanceCount == 3);
+    REQUIRE(batch.arguments[1].drawId == 3);
+    REQUIRE(batch.arguments[1].firstInstance == 0);
     REQUIRE(batch.arguments[1].instanceCount == 3);
-    REQUIRE(batch.arguments[2].firstInstance == 6);
+    REQUIRE(batch.arguments[2].drawId == 6);
+    REQUIRE(batch.arguments[2].instanceCount == 1);
+    for (const auto& args : batch.arguments) {
+        REQUIRE(args.firstInstance == 0);
+        REQUIRE(args.baseVertex == 0);
+    }
     items[1].doubleSided = true;
     batch = buildDrawSubmission(view, scene, shadow, SubmissionMode::Batched);
     REQUIRE(batch.scene.runs.size() == 2);

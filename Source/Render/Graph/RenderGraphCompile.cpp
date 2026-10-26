@@ -44,6 +44,8 @@ struct AliasClass {
     // The backend's own answer for the descriptor, which is what the packing is actually built on.
     uint64_t size = 0;
     uint64_t alignment = 0;
+
+    //==================================================================================================================
     friend bool operator==(const AliasClass&, const AliasClass&) = default;
 };
 

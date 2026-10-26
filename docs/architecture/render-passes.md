@@ -2,6 +2,8 @@
 
 **Status**: Implemented
 
+The active address-root subset is Scene, Shadow, Sky, IBL and Display; remaining families are retained below.
+
 `Render` composes a `Renderer` over a borrowed `SceneView` into ten shader-matched pass families
 under `Source/Render/Passes/<family>/`, sharing mechanics through `Source/Render/Common/`. It
 depends on Engine for the camera, the CPU geometry vocabulary (`Vertex`/`MeshData`) and the shared
@@ -43,32 +45,24 @@ unit allowed to reach `Engine/Scene/Scene.h` itself, beyond the `Engine/View/`, 
 
 ## Common helpers
 
-`Source/Render/Common/` shares free functions and templates across the pass families: `Dispatch.h`
-for compute dispatch, `GraphResources.h` for checked graph-resource lookups, `StageSetup.h`/`.cpp`
-for shared pass setup, and `PacedSlots.h` for paced-buffer retirement. `DrawEncoding.h` holds
-`bindSceneTables`, which the scene, shadow, occlusion-reference and selection-outline passes use to
-bind the scene tables, and `encodeDrawRuns`, the direct or indirect draw-run loop, which only
-`SceneStage` uses; the shadow pass keeps its own run loop, as the
-[adoption measurements](../milestones/r/r3.5-validation.md) found.
+`Source/Render/Common/` shares dispatch, graph-resource lookup, setup and frame-data helpers.
+`DrawEncoding.h::encodeDrawRuns` records direct or indirect indexed Scene runs using value Pipeline
+handles. Shadow retains its measured explicit run loop. Each callback pushes its concrete root
+and declares actual resource reads immediately before its draw in Debug. Graph declarations alone
+are not shader observations; nested frame-arena payloads and opaque adapter draws remain outside
+public handle-based access observation.
 
 ## Readback
 
-`Source/Render/Gpu/Readback.h` is the one way Luminex reads GPU results back, in two forms. The
-recorded form, `recordReadback`, runs inside the frame that writes a buffer or texture and returns
-a `ReadbackTicket` (the resource, a `BufferRegion`, the frame number); the caller keeps its
-frame-number retirement and calls `resolve` with the ticket once that frame has retired. A ticket
-names the object the owner held when it was recorded, not the owner, because an owner can take a
-new object while the readback is pending (draw-list growth does). A buffer resolve may read just
-the region's leading bytes when the retired frame says how many are defined. `GpuVisibility`,
-`LightClusterStage` and `OcclusionReference` record their tickets inside the passes that write each
-buffer, after the write; headless screenshots read the display target through `readbackNow`. The
-immediate form, `readbackNow`, waits for the GPU to go idle and returns the bytes; it is valid only
-outside a frame. Both take the resource's current `TextureUse` or `BufferUse` (the graph's own
-vocabulary), so that the switch to RojoRHI v2, which has no blocking readback, can record the
-barriers and the copy into a readback buffer without touching callers. On v1 recording records
-nothing, the use is ignored, and both forms forward to the blocking `readback`, which covers level
-0 of a texture (`packedTextureBytes`) and a buffer's leading bytes only, so a buffer region starts
-at offset zero.
+`Render/Gpu/Readback.h` records preserving copies with exact current texture range/frontier state
+or buffer SyncPoint. Tickets retain recorded identity and staging ownership; checked `resolve`
+waits the recorded frame. Source lifetime extends through retirement; mapped sources remain
+unmodified through resolution. Immediate `readbackNow` returns a checked byte-vector Result
+outside a frame. Upload/Readback mapped reads wait without consuming a frame; Gpu sources use an
+explicit copy frame. Renderer reads use its physical TextureStateTable, never creation metadata
+or a guessed RenderTarget state. Restored SceneTable image tickets preserve overlapping submitted
+frames independently of later target reuse. Pending visibility/light readback consumers return
+with their owning families.
 
 ## Visibility and submission modes
 
@@ -80,13 +74,13 @@ bypasses stay inspectable, and shadow candidates are never culled. CPU-only prod
 classify, scan and emit passes with deterministic fixed slots and retired diagnostics
 ([contracts](../guides/gpu-visibility.md)).
 
-`Renderer` owns `DrawSubmission`: three paced, growable row/argument buffer pairs, retained on
-replacement until the last prepared frame plus 3, with scene entries preceding shadow entries. The
-default indirect mode issues one command per retained object; batched mode stably sorts pipeline,
-material and mesh keys and issues one instanced command per run; direct submission remains
-selectable. The 16-byte b1 `DrawUniforms.firstEntry`, combined with the shader instance index,
-selects a b4 visible-list entry, which points to the instance and material rows at b5 and b6;
-vertices at b0 and the rebased index pool are shared per pass.
+`Renderer` owns three paced GPU row/argument pairs plus three separate Upload staging pairs.
+CPU preparation records real copies and post-copy dependencies on the current list before graph
+consumers. Growth retires old owners at last prepared frame + 3. Destination bytes/counts retain
+their meaning; allocatedUploadBytes and pendingReleaseUploadBuffers describe staging separately.
+Scene rows precede unculled shadows. Indirect records are 24 bytes, with drawId first, baseVertex0
+and firstInstance0. Direct roots choose firstEntry; indirect roots choose drawId; both add only
+instanceIndex. Vertex pulling uses the shared rebased index pool without a second base addition.
 
 ## Occlusion and HZB
 
@@ -109,6 +103,19 @@ cutoff; color, depth, motion and reactive coverage share one scene invocation, a
 the same UV transform and cutoff. One- and two-sided pipeline variants support foliage and reversed
 back-face shading normals, with cutoff and sidedness taken from the shared material row.
 `AlphaMask.slang` stays a pure coverage function, with no per-draw alpha-mask frame-data block.
+
+Scene has 28 pipeline states (8 opaque, 4 sky, 16 masked) and Shadow has 3. Geometry uses reversed
+Greater depth with writes; sky uses GreaterOrEqual without writes/culling. Shadow enables depth
+bias and sets constant−4/slope−32/clamp0 before draws. Flat aligned16 roots are ScenePass112,
+SceneDraw48, Sky32, ShadowPass48 and ShadowDraw32; bound roots use pushRoot's GPU256 alignment,
+while pointed pass roots use natural16. The 48-byte scalar VertexStorage matches all twelve
+Engine Vertex fields. Real App/Test assertion TUs consume three-target reflection.
+
+Current frames force local lights, temporal and bloom Off, CPU classification and no occlusion.
+Four Scene shader local-light contributions are neutral until LIGHTS returns; their named zero
+addresses are never loaded. Ordinary/motion twins retain MRT layouts, but Renderer cannot reach
+motion before TEMPORAL returns. Capture schema2 registers actual named roots/addresses and
+pointed layouts; existing schema1 tools reject it until the decoder migration.
 
 ## Clustered local lighting
 

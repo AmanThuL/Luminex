@@ -1,68 +1,50 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file DrawEncoding.h
-/// @brief Shares scene table binding and the existing direct or indirect draw-run loop.
+/// @brief Shares the direct and indirect draw-run loop with cache-aware value pipelines.
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
 
-#ifndef LMX_PENDING_SCENE
-
 #include "Engine/Scene/DrawItem.h"
-#include "Engine/Scene/SceneTables.h"
 #include "Render/Passes/Scene/DrawSubmission.h"
 
 #include <rojoRHI/RHI.h>
 
 namespace lmx::render {
 
-struct SceneTableSlots {
-    uint32_t vertices;
-    uint32_t instances;
-    uint32_t materials;
-};
-
-inline void bindSceneTables(rojoRHI::CommandList& commands, const engine::SceneTables& tables,
-                            const SceneTableSlots& slots) {
-    commands.bindBuffer(slots.vertices, tables.vertices->rhi());
-    commands.bindBuffer(slots.instances, tables.instances->rhi());
-    commands.bindBuffer(slots.materials, tables.materials->rhi());
-}
-
+/// Borrowed geometry and prepared runs for one raster pass.
 struct DrawEncodingInputs {
-    const DrawList& list;
-    const engine::GpuBuffer* indices;
-    rojoRHI::GraphicsPipeline* initialPipeline = nullptr;
+    const DrawList& list;                ///< Current paced runs and argument destination.
+    const engine::GpuBuffer* indices;    ///< Index owner, alive through execution.
+    rojoRHI::Pipeline initialPipeline{}; ///< Pipeline already selected by the pass, or null.
 };
 
-// PerRun selects and binds the pipeline through the supplied cache-aware callable, binds its
-// material state, then returns the representative item. All callbacks inline into the pass body.
+/// PerRun selects a pipeline through the cache-aware callable, pushes the concrete draw root,
+/// declares actual shader accesses, and returns the representative item. Draw roots choose either
+/// direct firstEntry or indirect drawId; both paths use zero base vertex and first instance.
+//======================================================================================================================
 template <class PerRun>
 void encodeDrawRuns(rojoRHI::CommandList& commands, const DrawEncodingInputs& draws,
                     PerRun&& perRun) {
-    rojoRHI::GraphicsPipeline* bound = draws.initialPipeline;
-    const auto bindPipeline = [&](rojoRHI::GraphicsPipeline& pipeline) {
-        if (&pipeline != bound) {
-            commands.bindPipeline(pipeline);
-            bound = &pipeline;
+    rojoRHI::Pipeline bound = draws.initialPipeline;
+    const auto bindPipeline = [&](rojoRHI::Pipeline pipeline) {
+        if (pipeline.bits != bound.bits) {
+            commands.setPipeline(pipeline);
+            bound = pipeline;
         }
     };
-    commands.bindBuffer(engine::kVisibleRowsSlot, draws.list.rows->rhi());
-    if (draws.list.mode != SubmissionMode::Direct) {
-        commands.bindFrameData(engine::kDrawUniformsSlot, engine::DrawUniforms{0});
-    }
     for (const auto& run : draws.list.runs) {
         const engine::DrawItem& item = perRun(run, bindPipeline);
         if (draws.list.mode == SubmissionMode::Direct) {
-            commands.bindFrameData(engine::kDrawUniformsSlot, engine::DrawUniforms{run.firstEntry});
-            commands.drawIndexed(draws.indices->rhi(), item.mesh.indexCount, item.mesh.firstIndex);
+            commands.drawIndexed(draws.indices->rhi(), rojoRHI::IndexType::UInt32,
+                                 item.mesh.indexCount, run.instanceCount, item.mesh.firstIndex, 0,
+                                 0);
         } else {
-            commands.drawIndexedIndirect(draws.indices->rhi(), draws.list.arguments->rhi(),
-                                         uint64_t{run.argumentIndex} *
-                                             sizeof(rojoRHI::DrawIndexedIndirectArgs));
+            commands.drawIndexedIndirect(
+                draws.indices->rhi(), rojoRHI::IndexType::UInt32,
+                draws.list.arguments->address(uint64_t{run.argumentIndex} * 24), 1);
         }
     }
 }
 
 } // namespace lmx::render
-
-#endif

@@ -42,14 +42,16 @@ struct PreparedSubmission {
 /// Builds rows and arguments deterministically without touching a GPU.
 PreparedSubmission buildDrawSubmission(const SceneView& view, const VisibilityResult& scene,
                                        const VisibilityResult& shadow, SubmissionMode mode);
-/// Owns three frame-paced buffers and keeps replaced allocations alive through retirement.
+/// Owns three paced destination/staging pairs and retains replaced owners through retirement.
 class DrawSubmission {
 public:
     /// Borrows the device until destruction, after the caller has retired all submitted work.
     explicit DrawSubmission(rojoRHI::Device& device);
-    /// Prepares only the slot retired by the current beginFrame; allocation errors propagate.
-    lmx::Result<void> prepare(uint64_t frameNumber, const SceneView& view,
-                              const VisibilityResult& scene, const VisibilityResult& shadow);
+    /// Copies CPU prefixes outside a render pass on the current paced graphics list. The actual
+    /// beginFrame number selects the retired slot; allocation errors leave prepared data intact.
+    lmx::Result<void> prepare(rojoRHI::CommandList& commands, uint64_t frameNumber,
+                              const SceneView& view, const VisibilityResult& scene,
+                              const VisibilityResult& shadow);
     /// Last prepared scene commands, valid through graph execution.
     const DrawList& scene() const { return m_prepared.scene; }
     /// Last prepared shadow commands, valid through graph execution.
@@ -58,16 +60,17 @@ public:
     SubmissionStats stats() const { return m_stats; }
     /// Current canonical CPU command preparation, before GPU writes.
     const PreparedSubmission& prepared() const { return m_prepared; }
-    /// Last GPU terminal use of the current physical row allocation.
+    /// Nominal terminal graph use; CPU-only slots retain a null previous-use import.
     std::optional<BufferUse> rowUse() const { return m_slots[m_lastFrame % 3].rowUse; }
-    /// Last GPU terminal use of the current physical argument allocation.
+    /// Nominal terminal graph use, not an observation of an actual indirect command.
     std::optional<BufferUse> argumentUse() const { return m_slots[m_lastFrame % 3].argumentUse; }
-    /// Records terminal graph reads for the current physical allocation.
+    /// Records nominal terminal graph reads, including empty lists, for import compatibility.
     void recordUses();
 
 private:
     struct Slot {
         engine::GpuBuffer rows, arguments;
+        engine::GpuBuffer rowUpload, argumentUpload;
         std::optional<BufferUse> rowUse, argumentUse;
     };
     struct Retiring {

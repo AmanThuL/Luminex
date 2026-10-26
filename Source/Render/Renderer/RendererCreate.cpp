@@ -44,7 +44,6 @@ namespace lmx::render {
 
 namespace {
 
-#ifndef LMX_PENDING_SCENE
 constexpr uint32_t kShadowMapSize = 2048;
 
 // Linear white is the neutral multiplier for every per-draw material factor.
@@ -56,7 +55,6 @@ constexpr std::array<uint8_t, 4> kBlackTexel = {0, 0, 0, 255};
 // The DFG fallback's (scale, bias), as RG16Float bits. Zero makes the specular reconstruction
 // F0 * 0 + 0 vanish -- the matching answer for an environment that is itself black.
 constexpr std::array<uint16_t, 2> kZeroDfgTexel = {0, 0};
-#endif
 
 } // namespace
 
@@ -79,10 +77,8 @@ void seedReplacement(TextureStateTable& states, const engine::GpuTexture& previo
 
 //======================================================================================================================
 void registerUniformLayoutsForCapture() {
-#ifndef LMX_PENDING_SCENE
     SceneStage::registerSceneTableLayoutsForCapture();
     ShadowStage::registerUniformLayoutsForCapture();
-#endif
 
 #ifndef LMX_PENDING_VISIBILITY
     registerVisibilityLayoutsForCapture();
@@ -92,18 +88,12 @@ void registerUniformLayoutsForCapture() {
     LightClusterStage::registerLayoutsForCapture();
 #endif
 
-#ifndef LMX_PENDING_SCENE
     SceneStage::registerPassLayoutsForCapture();
-#endif
 }
 
 //======================================================================================================================
 Renderer::Renderer(engine::GpuContext& gpu, bool cpuReadback)
-    : m_gpu(gpu), m_transientPool(gpu),
-#ifndef LMX_PENDING_SCENE
-      m_drawSubmission(gpu.device()),
-#endif
-      m_cpuReadback(cpuReadback) {
+    : m_gpu(gpu), m_transientPool(gpu), m_drawSubmission(gpu.device()), m_cpuReadback(cpuReadback) {
 }
 
 //======================================================================================================================
@@ -120,7 +110,6 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
     [[maybe_unused]] rojoRHI::Device& device = gpu.device();
     std::unique_ptr<Renderer> self(new Renderer(gpu, cpuReadback));
 
-#ifndef LMX_PENDING_SCENE
     {
         auto stage = ShadowStage::create(gpu);
         if (!stage) {
@@ -135,7 +124,6 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
         }
         self->m_sceneStage = std::move(*stage);
     }
-#endif
 
     auto displayStage = DisplayStage::create(gpu);
     if (!displayStage) {
@@ -157,26 +145,26 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
     self->m_bloomStage = std::move(*bloomStage);
 #endif
 
-#ifndef LMX_PENDING_SCENE
     // The shadow map transitions from depth attachment to sampled texture each frame.
     {
-        auto shadowMap = engine::GpuTexture::create(device, {.width = kShadowMapSize,
-                                                             .height = kShadowMapSize,
-                                                             .format = rojoRHI::Format::D32Float,
-                                                             .renderTarget = true,
-                                                             .sampled = true,
-                                                             .label = "lmx.render.shadowMap"});
+        auto shadowMap = engine::GpuTexture::create(
+            device, {.format = rojoRHI::Format::D32Float,
+                     .extent = {kShadowMapSize, kShadowMapSize, 1},
+                     .usage = rojoRHI::TextureUsage::DepthStencil | rojoRHI::TextureUsage::Sampled,
+                     .label = "lmx.render.shadowMap"});
         if (!shadowMap) {
             return std::unexpected(shadowMap.error());
         }
         self->m_shadowMap = std::move(*shadowMap);
         // What every frame leaves it as: the scene pass samples it after the shadow pass writes it.
-        self->m_textureStates.set(self->m_shadowMap.rhi(), TextureUse::ShaderRead);
+        self->m_textureStates.setLogicalUse(self->m_shadowMap.rhi(), TextureUse::ShaderRead);
+        self->m_textureStates.seedPhysical(self->m_shadowMap.rhi(), 1, 1,
+                                           self->m_shadowMap.initialLayout());
     }
 
     {
         auto texture =
-            createTexel(device, rojoRHI::Format::RGBA8Unorm, rojoRHI::TextureKind::Tex2D,
+            createTexel(device, rojoRHI::Format::RGBA8Unorm, rojoRHI::TextureType::Tex2D,
                         std::as_bytes(std::span{kWhiteTexel}), "lmx.render.whiteFallback");
         if (!texture) {
             return std::unexpected(texture.error());
@@ -184,7 +172,7 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
         self->m_whiteTexture = std::move(*texture);
     }
     {
-        auto texture = createTexel(device, rojoRHI::Format::RGBA8Unorm, rojoRHI::TextureKind::Tex2D,
+        auto texture = createTexel(device, rojoRHI::Format::RGBA8Unorm, rojoRHI::TextureType::Tex2D,
                                    std::as_bytes(std::span{kFlatNormalTexel}),
                                    "lmx.render.flatNormalFallback");
         if (!texture) {
@@ -194,7 +182,7 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
     }
     {
         auto texture =
-            createTexel(device, rojoRHI::Format::RGBA8Unorm, rojoRHI::TextureKind::Cube,
+            createTexel(device, rojoRHI::Format::RGBA8Unorm, rojoRHI::TextureType::Cube,
                         std::as_bytes(std::span{kBlackTexel}), "lmx.render.blackCubeFallback");
         if (!texture) {
             return std::unexpected(texture.error());
@@ -203,7 +191,7 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
     }
     {
         auto texture =
-            createTexel(device, rojoRHI::Format::RG16Float, rojoRHI::TextureKind::Tex2D,
+            createTexel(device, rojoRHI::Format::RG16Float, rojoRHI::TextureType::Tex2D,
                         std::as_bytes(std::span{kZeroDfgTexel}), "lmx.render.zeroDfgFallback");
         if (!texture) {
             return std::unexpected(texture.error());
@@ -211,11 +199,11 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
         self->m_zeroDfgTexture = std::move(*texture);
     }
     {
-        auto sampler =
-            engine::adoptGpu(device.createSampler({.filter = rojoRHI::FilterMode::Linear,
-                                                   .addressMode = rojoRHI::AddressMode::Wrap,
-                                                   .maxAnisotropy = 16,
-                                                   .label = "lmx.render.linearSampler"}));
+        auto sampler = engine::adoptGpu(
+            device, device.createSampler({.filter = rojoRHI::SamplerFilter::Linear,
+                                          .address = rojoRHI::SamplerAddress::Repeat,
+                                          .maxAnisotropy = 16,
+                                          .label = "lmx.render.linearSampler"}));
         if (!sampler) {
             return std::unexpected(sampler.error());
         }
@@ -226,12 +214,13 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
     // Clamp extends the 0.0 clear outside the fitted shadow footprint, and every receiver depth
     // clears that bar, so that region stays lit exactly as it did under the 1.0 clear before.
     {
-        auto sampler =
-            engine::adoptGpu(device.createSampler({.filter = rojoRHI::FilterMode::Linear,
-                                                   .addressMode = rojoRHI::AddressMode::Clamp,
-                                                   .maxAnisotropy = 16,
-                                                   .compare = rojoRHI::CompareFunc::GreaterEqual,
-                                                   .label = "lmx.render.shadowSampler"}));
+        auto sampler = engine::adoptGpu(
+            device, device.createSampler({.filter = rojoRHI::SamplerFilter::Linear,
+                                          .address = rojoRHI::SamplerAddress::ClampToEdge,
+                                          .maxAnisotropy = 16,
+                                          .compareEnable = true,
+                                          .compare = rojoRHI::CompareOp::GreaterOrEqual,
+                                          .label = "lmx.render.shadowSampler"}));
         if (!sampler) {
             return std::unexpected(sampler.error());
         }
@@ -245,15 +234,15 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
     // about.
     {
         auto sampler = engine::adoptGpu(
-            self->m_gpu.device().createSampler({.filter = rojoRHI::FilterMode::Linear,
-                                                .addressMode = rojoRHI::AddressMode::Clamp,
+            device,
+            self->m_gpu.device().createSampler({.filter = rojoRHI::SamplerFilter::Linear,
+                                                .address = rojoRHI::SamplerAddress::ClampToEdge,
                                                 .label = "lmx.render.iblSampler"}));
         if (!sampler) {
             return std::unexpected(sampler.error());
         }
         self->m_iblSampler = std::move(*sampler);
     }
-#endif
 
 #ifndef LMX_PENDING_TEMPORAL
     // The reconstruction stage owns both history pairs and the passes over them, so it is built
