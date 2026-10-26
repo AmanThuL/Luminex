@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate C++ function boundaries using clangd's parsed document symbols."""
+"""Validate C++ function boundaries using clangd symbols, semantic tokens and AST ranges."""
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from Tools.pending_sources import PendingSourceError, validate_pending_sources
 
 CPP_ROOTS = ("Source", "Tests", "Benchmarks")
 FUNCTION_SYMBOL_KINDS = {6, 9, 12}  # Method, Constructor, Function (LSP SymbolKind)
+FUNCTION_AST_KINDS = {"Function", "CXXMethod", "CXXConstructor", "CXXDestructor", "CXXConversion"}
 RULER = re.compile(r"^\s*//.*(?:={8,}|-{8,})")
 SEPARATOR_BODY = re.compile(r"^//={100,}$")
 FILE_RULER = "//" + "-" * 118
@@ -147,6 +148,70 @@ def semantic_definition_lines(data: list[int], definition_modifier: int) -> set[
     return lines
 
 
+def callable_definition_ranges(
+    data: list[int], definition_modifier: int, token_types: list[str]
+) -> list[dict[str, Any]]:
+    """Keep exact parsed callable-name spans, including overloaded operator tokens."""
+    if len(data) % 5:
+        raise LayoutSetupError("clangd returned a malformed semantic token stream")
+    ranges: list[dict[str, Any]] = []
+    line = 0
+    column = 0
+    for index in range(0, len(data), 5):
+        line_delta, column_delta, length, token_type, modifiers = data[index : index + 5]
+        line += line_delta
+        column = column_delta if line_delta else column + column_delta
+        if not 0 <= token_type < len(token_types):
+            raise LayoutSetupError("clangd returned a semantic token outside its type legend")
+        if modifiers & (1 << definition_modifier) and token_types[token_type] in {
+            "function", "method", "operator"
+        }:
+            if line < 0 or column < 0 or length <= 0:
+                raise LayoutSetupError("clangd returned an invalid callable definition span")
+            ranges.append({"start": {"line": line, "character": column},
+                           "end": {"line": line, "character": column + length}})
+    return ranges
+
+
+def ast_function_start(node: dict[str, Any] | None, selection: dict[str, Any]) -> int:
+    """Resolve a callable token to its innermost spelled function declaration range."""
+    def position(value: Any) -> tuple[int, int] | None:
+        if not isinstance(value, dict):
+            return None
+        line, column = value.get("line"), value.get("character")
+        if not isinstance(line, int) or not isinstance(column, int) or min(line, column) < 0:
+            return None
+        return line, column
+
+    selected_start = position(selection.get("start"))
+    selected_end = position(selection.get("end"))
+
+    def find(current: Any) -> int | None:
+        if not isinstance(current, dict):
+            return None
+        # An enclosing function's body can contain a distinct local-class definition.
+        for child in current.get("children", []):
+            found = find(child)
+            if found is not None:
+                return found
+        if current.get("role") != "declaration" or current.get("kind") not in FUNCTION_AST_KINDS:
+            return None
+        source_range = current.get("range")
+        if not isinstance(source_range, dict):
+            return None  # Implicit or macro-generated nodes may have no spelled range.
+        start = position(source_range.get("start"))
+        end = position(source_range.get("end"))
+        if (start is not None and end is not None and selected_start is not None
+                and selected_end is not None and start <= selected_start < selected_end <= end):
+            return start[0]
+        return None
+
+    start = find(node)
+    if start is None:
+        raise LayoutSetupError("clangd AST could not resolve a callable definition to a spelled function range")
+    return start
+
+
 def expected_separator(indent: str) -> str:
     columns = len(indent.expandtabs(4))
     if columns > 117:
@@ -230,6 +295,8 @@ class ClangdClient:
         self._input: BinaryIO = self._process.stdin
         self._output: BinaryIO = self._process.stdout
         self._definition_modifier: int | None = None
+        self._token_types: list[str] = []
+        self._ast_provider = False
 
     def _send(self, method: str, params: dict[str, Any], request: bool = True) -> int | None:
         message: dict[str, Any] = {"jsonrpc": "2.0", "method": method, "params": params}
@@ -277,9 +344,9 @@ class ClangdClient:
             "initialize",
             {"processId": None, "rootUri": self.root.as_uri(), "capabilities": {}},
         )
+        capabilities = response.get("result", {}).get("capabilities", {})
         legend = (
-            response.get("result", {})
-            .get("capabilities", {})
+            capabilities
             .get("semanticTokensProvider", {})
             .get("legend", {})
         )
@@ -287,6 +354,8 @@ class ClangdClient:
         if "definition" not in modifiers:
             raise LayoutSetupError("clangd does not expose semantic definition tokens")
         self._definition_modifier = modifiers.index("definition")
+        self._token_types = legend.get("tokenTypes", [])
+        self._ast_provider = capabilities.get("astProvider") is True
         self.notify("initialized", {})
 
     def definition_lines(self, path: Path, text: str) -> set[int]:
@@ -302,14 +371,21 @@ class ClangdClient:
                 }
             },
         )
-        symbols = self.request("textDocument/documentSymbol", {"textDocument": {"uri": uri}})
-        tokens = self.request("textDocument/semanticTokens/full", {"textDocument": {"uri": uri}})
-        self.notify("textDocument/didClose", {"textDocument": {"uri": uri}})
-        assert self._definition_modifier is not None
-        token_lines = semantic_definition_lines(
-            (tokens.get("result") or {}).get("data", []), self._definition_modifier
-        )
-        return definition_start_lines(symbols.get("result") or [], uri, token_lines)
+        try:
+            symbols = self.request("textDocument/documentSymbol", {"textDocument": {"uri": uri}})
+            tokens = self.request("textDocument/semanticTokens/full", {"textDocument": {"uri": uri}})
+            assert self._definition_modifier is not None
+            data = (tokens.get("result") or {}).get("data", [])
+            token_lines = semantic_definition_lines(data, self._definition_modifier)
+            starts = definition_start_lines(symbols.get("result") or [], uri, token_lines)
+            for selection in callable_definition_ranges(data, self._definition_modifier, self._token_types):
+                if not self._ast_provider:
+                    raise LayoutSetupError("clangd must expose AST ranges for callable definition coverage")
+                ast = self.request("textDocument/ast", {"textDocument": {"uri": uri}, "range": selection})
+                starts.add(ast_function_start(ast.get("result"), selection))
+            return starts
+        finally:
+            self.notify("textDocument/didClose", {"textDocument": {"uri": uri}})
 
     def close(self) -> None:
         if self._process.poll() is not None:
