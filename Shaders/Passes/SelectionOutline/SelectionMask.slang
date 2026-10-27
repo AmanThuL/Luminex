@@ -1,54 +1,35 @@
 // Editor selection coverage uses the same alpha rule as scene and shadow rendering.
+import RojoRHI;
 import AlphaMask;
 import SceneTables;
+import VertexStorage;
+import SelectionOutlineRoots;
 
-struct Vertex
-{
-    float3 position;
-    float3 normal;
-    float4 tangent;
-    float2 uv;
-};
-[[vk::binding(0, 0)]]
-StructuredBuffer<Vertex> gVertices : register(t0);
-struct MaskParams
-{
-    float4x4 viewProj;
-    uint instanceRow;
-    float selected;
-    uint padding0;
-    uint padding1;
-};
-[[vk::binding(1, 0)]]
-ConstantBuffer<MaskParams> gMask : register(b1);
-[[vk::binding(5, 0)]]
-StructuredBuffer<InstanceRow> gInstances : register(t5);
-[[vk::binding(6, 0)]]
-StructuredBuffer<MaterialRow> gMaterials : register(t6);
-[[vk::binding(0, 2)]]
-Texture2D gDiffuse : register(t0);
-[[vk::binding(0, 1)]]
-SamplerState gSampler : register(s0);
 struct VSOutput
 {
     float4 position : SV_Position;
     float2 uv : TEXCOORD0;
 };
 [shader("vertex")]
-VSOutput vertexMain(uint vid: SV_VertexID)
+VSOutput vertexMain(rojoRHI::VertexIds ids)
 {
-    Vertex vertex = gVertices[vid];
+    uint vid = rojoRHI::vertexIndex(ids);
+    SelectionMaskRoot gRoot = rojoRHI::root<SelectionMaskRoot>();
+    MaskParams gMask = rojoRHI::load<MaskParams>(gRoot.paramsAddr, 0);
+    Vertex vertex = loadVertex(gRoot.verticesAddr, vid);
     VSOutput output;
-    output.position = mul(gMask.viewProj, mul(gInstances[gMask.instanceRow].model, float4(vertex.position, 1.0)));
-    output.uv = mul(gMaterials[gInstances[gMask.instanceRow].materialRow].uvTransform, float4(vertex.uv, 0.0, 1.0)).xy;
+    output.position = mul(gMask.viewProj, mul(rojoRHI::load<InstanceRow>(gRoot.instancesAddr, gMask.instanceRow).model, float4(vertex.position, 1.0)));
+    output.uv = mul(rojoRHI::load<MaterialRow>(gRoot.materialsAddr, rojoRHI::load<InstanceRow>(gRoot.instancesAddr, gMask.instanceRow).materialRow).uvTransform, float4(vertex.uv, 0.0, 1.0)).xy;
     return output;
 }
 [shader("fragment")]
 float fragmentMain(VSOutput input): SV_Target
 {
-    if ((gMaterials[gInstances[gMask.instanceRow].materialRow].flags & kMaterialMasked) != 0)
-        applyAlphaMask(gDiffuse.Sample(gSampler, input.uv).a * gMaterials[gInstances[gMask.instanceRow].materialRow].albedo.a,
-                       gMaterials[gInstances[gMask.instanceRow].materialRow].alphaCutoff);
+    SelectionMaskRoot gRoot = rojoRHI::root<SelectionMaskRoot>();
+    MaskParams gMask = rojoRHI::load<MaskParams>(gRoot.paramsAddr, 0);
+    if ((rojoRHI::load<MaterialRow>(gRoot.materialsAddr, rojoRHI::load<InstanceRow>(gRoot.instancesAddr, gMask.instanceRow).materialRow).flags & kMaterialMasked) != 0)
+        applyAlphaMask(rojoRHI::texture2D(gRoot.diffuse).Sample(rojoRHI::sampler(gRoot.sampler), input.uv).a * rojoRHI::load<MaterialRow>(gRoot.materialsAddr, rojoRHI::load<InstanceRow>(gRoot.instancesAddr, gMask.instanceRow).materialRow).albedo.a,
+                       rojoRHI::load<MaterialRow>(gRoot.materialsAddr, rojoRHI::load<InstanceRow>(gRoot.instancesAddr, gMask.instanceRow).materialRow).alphaCutoff);
     return gMask.selected;
 }
 
@@ -56,7 +37,9 @@ float fragmentMain(VSOutput input): SV_Target
 [shader("fragment")]
 void depthMain(VSOutput input)
 {
-    if ((gMaterials[gInstances[gMask.instanceRow].materialRow].flags & kMaterialMasked) != 0)
-        applyAlphaMask(gDiffuse.Sample(gSampler, input.uv).a * gMaterials[gInstances[gMask.instanceRow].materialRow].albedo.a,
-                       gMaterials[gInstances[gMask.instanceRow].materialRow].alphaCutoff);
+    SelectionMaskRoot gRoot = rojoRHI::root<SelectionMaskRoot>();
+    MaskParams gMask = rojoRHI::load<MaskParams>(gRoot.paramsAddr, 0);
+    if ((rojoRHI::load<MaterialRow>(gRoot.materialsAddr, rojoRHI::load<InstanceRow>(gRoot.instancesAddr, gMask.instanceRow).materialRow).flags & kMaterialMasked) != 0)
+        applyAlphaMask(rojoRHI::texture2D(gRoot.diffuse).Sample(rojoRHI::sampler(gRoot.sampler), input.uv).a * rojoRHI::load<MaterialRow>(gRoot.materialsAddr, rojoRHI::load<InstanceRow>(gRoot.instancesAddr, gMask.instanceRow).materialRow).albedo.a,
+                       rojoRHI::load<MaterialRow>(gRoot.materialsAddr, rojoRHI::load<InstanceRow>(gRoot.instancesAddr, gMask.instanceRow).materialRow).alphaCutoff);
 }

@@ -1,150 +1,6 @@
-#include "Support/GpuTestSupport.h"
-
-#include "Render/Graph/FrameDeclaration.h"
-#include "Render/Graph/GraphDump.h"
-#include "Render/Passes/SelectionOutline/SelectionOutline.h"
-
-#include "Support/SceneTableTestSupport.h"
-#include <algorithm>
-#include <array>
-#include <cstring>
-
-using lmx::test::FixtureDrawItem;
-using lmx::test::FixtureMaterial;
-using lmx::test::FixtureMesh;
-using lmx::test::fixtureMesh;
-using lmx::test::FixtureSceneView;
+#include "Support/SelectionOutlineTestSupport.h"
 
 namespace {
-using namespace lmx::render;
-using namespace rojoRHI;
-
-//======================================================================================================================
-lmx::engine::MeshData outlineQuad() {
-    return {.vertices = {{-1, -1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1},
-                         {1, -1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1},
-                         {1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0},
-                         {-1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0}},
-            .indices = {0, 1, 2, 0, 2, 3}};
-}
-
-struct OutlineFrame {
-    std::vector<uint8_t> display;
-    std::vector<uint8_t> outlined;
-    std::vector<uint16_t> scene;
-    std::vector<uint16_t> history;
-    CompiledFrameRecord record;
-};
-
-//======================================================================================================================
-FixtureSceneView outlineView(std::span<const FixtureDrawItem> items) {
-    FixtureSceneView view;
-    view.items = items;
-    view.boundingSphere = {0, 0, 0, 8};
-    for (auto& light : view.lights) {
-        light.strength = {0, 0, 0};
-    }
-    view.bloomEnabled = false;
-    return view;
-}
-
-//======================================================================================================================
-FixtureDrawItem outlineItem(const FixtureMesh& mesh) {
-    FixtureDrawItem item;
-    item.mesh = &mesh;
-    item.material.albedo = {0, 0, 0, 1};
-    item.material.emissive = {0.1f, 0.25f, 0.4f};
-    return item;
-}
-
-//======================================================================================================================
-OutlineFrame outlineFrame(lmx::engine::GpuContext& gpu, TransientPool& pool, Renderer& renderer,
-                          SelectionOutline* outline, const FixtureSceneView& view,
-                          float backingScale = 1.0f, bool visible = true) {
-    lmx::engine::Camera camera;
-    camera.position = {0, 0, 4};
-    camera.fovY = glm::half_pi<float>();
-    auto gpuFrame1 = gpu.beginFrame();
-    auto& commands = gpuFrame1.commands;
-    const auto prepared = view.prepare(gpu);
-    FrameDeclaration frame(pool, renderer, commands, camera, prepared, true);
-    const auto output = outline ? outline->declare(frame.graph(), commands, prepared,
-                                                   {.display = frame.displayColor(),
-                                                    .camera = camera,
-                                                    .selectedDraw = 0,
-                                                    .backingScale = backingScale,
-                                                    .visible = visible})
-                                : frame.displayColor();
-    frame.graph().exportTexture(output);
-    OutlineFrame result;
-    result.record = frame.execute();
-    gpu.submitAndEndFrame(gpuFrame1);
-    gpu.waitIdle();
-    result.display.resize(kSize * kSize * 4);
-    {
-        const auto readbackBytes = lmx::render::readbackNow(
-            gpu, renderer.colorTarget(),
-            outline ? lmx::render::TextureUse::ShaderRead : lmx::render::TextureUse::RenderTarget);
-        std::memcpy(result.display.data(), readbackBytes.data(), result.display.size());
-    }
-    if (outline) {
-        result.outlined.resize(result.display.size());
-        {
-            const auto readbackBytes = lmx::render::readbackNow(
-                gpu, outline->target(), lmx::render::TextureUse::RenderTarget);
-            std::memcpy(result.outlined.data(), readbackBytes.data(), result.outlined.size());
-        }
-    }
-    result.scene.resize(kSize * kSize * 4);
-    {
-        const auto readbackBytes = lmx::render::readbackNow(
-            gpu, renderer.hdrColorTexture(),
-            view.temporal.enabled && view.temporal.reconstruction == ReconstructionMode::Raw
-                ? lmx::render::TextureUse::CopySource
-                : lmx::render::TextureUse::ShaderRead);
-        std::memcpy(result.scene.data(), readbackBytes.data(),
-                    result.scene.size() * sizeof(uint16_t));
-    }
-    if (view.temporal.enabled) {
-        result.history.resize(result.scene.size());
-        {
-            const auto readbackBytes =
-                lmx::render::readbackNow(gpu, *renderer.historyTexture(),
-                                         view.temporal.reconstruction == ReconstructionMode::Raw
-                                             ? lmx::render::TextureUse::CopyDestination
-                                             : lmx::render::TextureUse::ShaderRead);
-            std::memcpy(result.history.data(), readbackBytes.data(),
-                        result.history.size() * sizeof(uint16_t));
-        }
-    }
-    return result;
-}
-
-//======================================================================================================================
-size_t changedPixels(const OutlineFrame& frame, uint32_t left = 0, uint32_t top = 0,
-                     uint32_t right = kSize, uint32_t bottom = kSize) {
-    size_t changed = 0;
-    for (uint32_t y = top; y < bottom; ++y) {
-        for (uint32_t x = left; x < right; ++x) {
-            const size_t offset = (size_t{y} * kSize + x) * 4;
-            bool different = false;
-            for (size_t channel = 0; channel < 4; ++channel) {
-                different |= frame.display[offset + channel] != frame.outlined[offset + channel];
-            }
-            changed += different ? 1 : 0;
-        }
-    }
-    return changed;
-}
-
-//======================================================================================================================
-size_t selectionPasses(const CompiledFrameRecord& record) {
-    return static_cast<size_t>(
-        std::count_if(record.debug.passes.begin(), record.debug.passes.end(), [](const auto& pass) {
-            return pass.label.starts_with("lmx.pass.selection.");
-        }));
-}
-
 //======================================================================================================================
 lmx::engine::GpuTexture outlineCutout(Device& device) {
     // Half alpha times the authored 0.5 factor is below 0.3; full alpha times that factor survives.
@@ -155,12 +11,11 @@ lmx::engine::GpuTexture outlineCutout(Device& device) {
     for (size_t texel = 0; texel < 8; ++texel) {
         texels[texel * 4 + 3] = 128;
     }
-    const TextureMip mip{.data = texels.data(), .bytesPerRow = 64};
+    const TextureData mip{.bytes = std::as_bytes(std::span{texels}), .bytesPerRow = 64};
     auto texture = lmx::engine::GpuTexture::create(device,
-                                                   {.width = 16,
-                                                    .height = 1,
-                                                    .format = Format::RGBA8Unorm_sRGB,
-                                                    .sampled = true,
+                                                   {.format = Format::RGBA8Unorm_sRGB,
+                                                    .extent = {16, 1, 1},
+                                                    .usage = TextureUsage::Sampled,
                                                     .label = "lmx.test.selection.cutout"},
                                                    std::span{&mip, 1});
     INFO(errorOf(texture));
@@ -174,7 +29,7 @@ TEST_CASE(
     "selection outline changes visible borders but preserves solid interiors and scales thickness",
     "[gpu][selection-outline]") {
     auto gpu = createTestGpu();
-    TransientPool pool(gpu->device());
+    TransientPool pool(*gpu);
     auto renderer = Renderer::create(*gpu, kSize, kSize, true);
     INFO(errorOf(renderer));
     REQUIRE(renderer);
@@ -204,7 +59,7 @@ TEST_CASE(
 TEST_CASE("selection outline respects full and partial foreground occlusion",
           "[gpu][selection-outline]") {
     auto gpu = createTestGpu();
-    TransientPool pool(gpu->device());
+    TransientPool pool(*gpu);
     auto renderer = Renderer::create(*gpu, kSize, kSize, true);
     REQUIRE(renderer);
     auto outline = SelectionOutline::create(*gpu, kSize, kSize, true);
@@ -234,7 +89,7 @@ TEST_CASE("selection outline respects full and partial foreground occlusion",
 TEST_CASE("selection outline never traces or paints a thin foreground rod",
           "[gpu][selection-outline]") {
     auto gpu = createTestGpu();
-    TransientPool pool(gpu->device());
+    TransientPool pool(*gpu);
     auto renderer = Renderer::create(*gpu, kSize, kSize, true);
     REQUIRE(renderer);
     auto outline = SelectionOutline::create(*gpu, kSize, kSize, true);
@@ -268,7 +123,7 @@ TEST_CASE("selection outline never traces or paints a thin foreground rod",
 TEST_CASE("selection outline respects masked foreground cutouts without tracing their interior",
           "[gpu][selection-outline][alpha-mask]") {
     auto gpu = createTestGpu();
-    TransientPool pool(gpu->device());
+    TransientPool pool(*gpu);
     auto renderer = Renderer::create(*gpu, kSize, kSize, true);
     REQUIRE(renderer);
     auto outline = SelectionOutline::create(*gpu, kSize, kSize, true);
@@ -319,7 +174,7 @@ TEST_CASE("selection outline respects masked foreground cutouts without tracing 
 TEST_CASE("selection outline shares MASK factor cutoff transformed UV and double-sided coverage",
           "[gpu][selection-outline][alpha-mask]") {
     auto gpu = createTestGpu();
-    TransientPool pool(gpu->device());
+    TransientPool pool(*gpu);
     auto renderer = Renderer::create(*gpu, kSize, kSize, true);
     REQUIRE(renderer);
     auto outline = SelectionOutline::create(*gpu, kSize, kSize, true);
@@ -356,46 +211,10 @@ TEST_CASE("selection outline shares MASK factor cutoff transformed UV and double
 }
 
 //======================================================================================================================
-TEST_CASE(
-    "selection presentation leaves ordinary display scene color and temporal history untouched",
-    "[gpu][selection-outline][temporal]") {
-    auto gpu = createTestGpu();
-    TransientPool referencePool(gpu->device());
-    TransientPool outlinedPool(gpu->device());
-    auto reference = Renderer::create(*gpu, kSize, kSize, true);
-    REQUIRE(reference);
-    auto renderer = Renderer::create(*gpu, kSize, kSize, true);
-    REQUIRE(renderer);
-    auto outline = SelectionOutline::create(*gpu, kSize, kSize, true);
-    INFO(errorOf(outline));
-    REQUIRE(outline);
-    auto mesh = fixtureMesh(gpu->device(), outlineQuad(), "lmx.test.selection.historyQuad");
-    REQUIRE(mesh);
-    auto item = outlineItem(*mesh);
-    auto view = outlineView(std::span{&item, 1});
-    view.temporal.enabled = true;
-    view.temporal.jitterEnabled = true;
-    view.temporal.reconstruction = ReconstructionMode::NativeTaa;
-    for (uint32_t index = 0; index < 4; ++index) {
-        INFO("declared frame " << index);
-        const auto plain = outlineFrame(*gpu, referencePool, **reference, nullptr, view);
-        const auto selected = outlineFrame(*gpu, outlinedPool, **renderer, outline->get(), view);
-        REQUIRE(selectionPasses(plain.record) == 0);
-        REQUIRE(selectionPasses(selected.record) == 3);
-        REQUIRE(selected.display == plain.display);
-        REQUIRE(selected.scene == plain.scene);
-        REQUIRE(selected.history == plain.history);
-        REQUIRE(changedPixels(selected) > 0);
-        REQUIRE((*renderer)->temporalStatus().historyAge ==
-                (*reference)->temporalStatus().historyAge);
-    }
-}
-
-//======================================================================================================================
 TEST_CASE("rejected selection refreshes its UI target without a stale outline",
           "[gpu][selection-outline][visibility]") {
     auto gpu = createTestGpu();
-    TransientPool pool(gpu->device());
+    TransientPool pool(*gpu);
     auto renderer = Renderer::create(*gpu, kSize, kSize, true);
     REQUIRE(renderer);
     auto outline = SelectionOutline::create(*gpu, kSize, kSize, true);
@@ -423,7 +242,7 @@ TEST_CASE("rejected selection refreshes its UI target without a stale outline",
 TEST_CASE("disabled selection and foreground contribute no outline coverage",
           "[gpu][selection-outline][disabled-instance]") {
     auto gpu = createTestGpu();
-    TransientPool pool(gpu->device());
+    TransientPool pool(*gpu);
     auto renderer = Renderer::create(*gpu, kSize, kSize, true);
     REQUIRE(renderer);
     auto outline = SelectionOutline::create(*gpu, kSize, kSize, true);

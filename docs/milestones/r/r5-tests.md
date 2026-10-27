@@ -46,7 +46,6 @@ All original SCENE sources, shaders and independent tests are active. The eight 
 |---|---:|---:|---:|
 | `Tests/Render/Graph/GpuAppFrameDeclarationTests.cpp` | 0 | 1 | 0 |
 | `Tests/Render/Passes/Exposure/GpuRendererDisplayTests.cpp` | 0 | 5 | 0 |
-| `Tests/Render/Passes/SelectionOutline/GpuSelectionOutlineTests.cpp` | 0 | 8 | 0 |
 
 ### TEMPORAL
 
@@ -54,6 +53,7 @@ All original SCENE sources, shaders and independent tests are active. The eight 
 |---|---:|---:|---:|
 | `Tests/App/Model/Graph/GpuGraphInspectorTests.cpp` | 0 | 2 | 0 |
 | `Tests/Render/Passes/Temporal/GpuExposureTemporalTests.cpp` | 0 | 1 | 0 |
+| `Tests/Render/Passes/Temporal/GpuSelectionOutlineTemporalTests.cpp` | 0 | 1 | 0 |
 | `Tests/Render/Passes/Temporal/GpuTemporalAccumulationTests.cpp` | 0 | 8 | 0 |
 | `Tests/Render/Passes/Temporal/GpuTemporalHistoryTests.cpp` | 0 | 6 | 0 |
 | `Tests/Render/Passes/Temporal/GpuTemporalMotionTests.cpp` | 0 | 10 | 0 |
@@ -70,7 +70,7 @@ The six original standalone cases in `Tests/Render/Passes/Exposure/GpuExposureBl
 
 The original seventh case, "a manual temporal frame records the EV edit and the value before it", moves whole to `GpuExposureTemporalTests.cpp`. Its EV 0 to 2 to -1 sequence, original sections and assertions remain excluded with TEMPORAL. The shared Exposure/Bloom helper uses v2 resources; both complete active consumer TUs compile, while the temporal consumer remains excluded. Renderer POST integration and the transferred temporal case's native acceptance remain pending.
 
-Bloom restores all three original cases in `Tests/Render/Passes/Bloom/GpuBloomTests.cpp` and adds "a one-mip bloom output remains sampled threshold data". Actual Null discovery lists all four with their `[gpu]` tags; numerical bodies are unexecuted in this source preparation. The new case uses the real Bloom and Display owners at tiny extents with nonzero threshold output and zero intensity. Source roots carry exact mip storage views; final output alone is sampled. Full native red/green, per-mip tracker stress, Renderer integration and POST acceptance remain separate. Layout reflection or returned-root registration does not close Z13.actual submitted consumption under #145/P6.9.
+Bloom restores all three original cases in `Tests/Render/Passes/Bloom/GpuBloomTests.cpp` and adds "a one-mip bloom output remains sampled threshold data". Actual Null discovery lists all four with their `[gpu]` tags; numerical bodies are unexecuted in this source preparation. The new case uses the real Bloom and Display owners at tiny extents with nonzero threshold output and zero intensity. Source roots carry exact mip storage views; final output alone is sampled. Full native red/green, per-mip tracker stress, Renderer integration and POST acceptance remain separate. Layout reflection or returned-root registration does not close Z13.actual submitted consumption under #145/P6.9. Selection restores seven original cases in `Tests/Render/Passes/SelectionOutline/GpuSelectionOutlineTests.cpp` with their original names, tags, sections and numerical assertions. The complete eighth case, "selection presentation leaves ordinary display scene color and temporal history untouched", moves to `Tests/Render/Passes/Temporal/GpuSelectionOutlineTemporalTests.cpp`; its four Native TAA frames, jitter, history equality, age and positive outline checks remain intact. The shared v2 fixture has both actual source consumers. The nine pool constructor transports use the owning `GpuContext` rather than its device handle. Compilation and native evidence are recorded separately; the Temporal case remains excluded from ordinary discovery and execution until its family returns. The editor target starts in its actual creation state and ends in the sampled UI state. Same-extent replacement allocates successfully before forgetting the previous state; failure retains the old owner. Seven original Metal numerical cases, editor selected/rejected/disabled and resize/window lifecycle, and the planned Selection tracker cases remain pending. Source roots, reflected layout and returned-root registration do not prove submitted pipeline/root/draw consumption: P/B/M remain distinct from C, and Z13.actual under #145/P6.9 remains open. Renderer POST activation, Z03/Z11 POST-dependent obligations, image gates and the fixed smoke/performance gates remain separate.
 
 ## Totals
 

@@ -42,6 +42,12 @@ StructuredBuffer<BloomUpsampleRoot> gRoot_BloomUpsampleRoot;
 StructuredBuffer<BloomThresholdParams> gRecord_BloomThresholdParams;
 StructuredBuffer<BloomDownsampleParams> gRecord_BloomDownsampleParams;
 StructuredBuffer<BloomUpsampleParams> gRecord_BloomUpsampleParams;
+import SelectionOutlineRoots;
+StructuredBuffer<SelectionMaskRoot> gRoot_SelectionMaskRoot;
+StructuredBuffer<SelectionOutlineRoot> gRoot_SelectionOutlineRoot;
+StructuredBuffer<SelectionCopyRoot> gRoot_SelectionCopyRoot;
+StructuredBuffer<MaskParams> gRecord_MaskParams;
+StructuredBuffer<OutlineParams> gRecord_OutlineParams;
 // ---- temporal ----
 
 void probeMain()

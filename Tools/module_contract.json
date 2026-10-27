@@ -251,6 +251,7 @@
         "Tests/Support/RenderGraphTestSupport.h",
         "Tests/Support/SceneTableTestSupport.h",
         "Tests/Support/SceneDocumentTestSupport.h",
+        "Tests/Support/SelectionOutlineTestSupport.h",
         "Tests/Support/TestGpu.h",
         "Tests/Support/TrackerFrameSupport.h",
         "Tests/Support/SceneDocumentFixtures.h",

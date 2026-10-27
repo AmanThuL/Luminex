@@ -1,25 +1,15 @@
 // Editor-only encoded SDR overlay. It never feeds lighting, reconstruction or capture output.
-[[vk::binding(0, 0)]]
-Texture2D<float4> gDisplay : register(t0);
-[[vk::binding(1, 0)]]
-Texture2D<float> gMask : register(t1);
-[[vk::binding(2, 0)]]
-Texture2D<float> gSelectedDepth : register(t2);
-[[vk::binding(3, 0)]]
-Texture2D<float> gSceneDepth : register(t3);
-struct OutlineParams
-{
-    float radius;
-};
-[[vk::binding(0, 0)]]
-ConstantBuffer<OutlineParams> gParams : register(b0);
+import RojoRHI;
+import SelectionOutlineRoots;
+
 struct VSOutput
 {
     float4 position : SV_Position;
 };
 [shader("vertex")]
-VSOutput vertexMain(uint vid: SV_VertexID)
+VSOutput vertexMain(rojoRHI::VertexIds ids)
 {
+    uint vid = rojoRHI::vertexIndex(ids);
     float2 uv = float2((vid << 1) & 2, vid & 2);
     VSOutput output;
     output.position = float4(uv * 2.0 - 1.0, 0.0, 1.0);
@@ -28,6 +18,12 @@ VSOutput vertexMain(uint vid: SV_VertexID)
 [shader("fragment")]
 float4 fragmentMain(VSOutput input): SV_Target
 {
+    SelectionOutlineRoot gRoot = rojoRHI::root<SelectionOutlineRoot>();
+    OutlineParams gParams = rojoRHI::load<OutlineParams>(gRoot.paramsAddr, 0);
+    let gDisplay = rojoRHI::texture2D<float4>(gRoot.display);
+    let gMask = rojoRHI::texture2D<float>(gRoot.mask);
+    let gSelectedDepth = rojoRHI::texture2D<float>(gRoot.selectedDepth);
+    let gSceneDepth = rojoRHI::texture2D<float>(gRoot.sceneDepth);
     int2 pixel = int2(input.position.xy);
     float4 scene = gDisplay.Load(int3(pixel, 0));
     uint width, height;
@@ -67,5 +63,7 @@ float4 fragmentMain(VSOutput input): SV_Target
 [shader("fragment")]
 float4 fragmentCopy(VSOutput input): SV_Target
 {
+    SelectionCopyRoot gRoot = rojoRHI::root<SelectionCopyRoot>();
+    let gDisplay = rojoRHI::texture2D<float4>(gRoot.display);
     return gDisplay.Load(int3(int2(input.position.xy), 0));
 }

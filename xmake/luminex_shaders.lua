@@ -108,6 +108,11 @@ function lmx_configure_shader_library(target)
             "BloomThresholdParams=lmx::render::BloomThresholdParams",
             "BloomDownsampleParams=lmx::render::BloomDownsampleParams",
             "BloomUpsampleParams=lmx::render::BloomUpsampleParams",
+            "SelectionMaskRoot=lmx::render::SelectionMaskRoot",
+            "SelectionOutlineRoot=lmx::render::SelectionOutlineRoot",
+            "SelectionCopyRoot=lmx::render::SelectionCopyRoot",
+            "MaskParams=lmx::render::MaskParams",
+            "OutlineParams=lmx::render::OutlineParams",
             -- ---- temporal ----
         }
         target:values_set("slang.layout_map", table.unpack(layout_map))
@@ -120,7 +125,9 @@ function lmx_configure_shader_library(target)
                           "Render/Passes/Exposure/ExposureRoots.h",
                           "Render/Passes/Exposure/ExposureFrameData.h",
                           "Render/Passes/Bloom/BloomRoots.h",
-                          "Render/Passes/Bloom/BloomFrameData.h")
+                          "Render/Passes/Bloom/BloomFrameData.h",
+                          "Render/Passes/SelectionOutline/SelectionOutlineRoots.h",
+                          "Render/Passes/SelectionOutline/SelectionOutlineFrameData.h")
     elseif kind == "tests" then
         target:values_set("slang.layout_probe", path.join(repository_root, "Shaders/Layout/TestLayout.slang"))
         local layout_map = {
@@ -158,6 +165,11 @@ function lmx_configure_shader_library(target)
             "BloomThresholdParams=lmx::render::BloomThresholdParams",
             "BloomDownsampleParams=lmx::render::BloomDownsampleParams",
             "BloomUpsampleParams=lmx::render::BloomUpsampleParams",
+            "SelectionMaskRoot=lmx::render::SelectionMaskRoot",
+            "SelectionOutlineRoot=lmx::render::SelectionOutlineRoot",
+            "SelectionCopyRoot=lmx::render::SelectionCopyRoot",
+            "MaskParams=lmx::render::MaskParams",
+            "OutlineParams=lmx::render::OutlineParams",
             -- ---- temporal ----
         }
         target:values_set("slang.layout_map", table.unpack(layout_map))
@@ -170,7 +182,9 @@ function lmx_configure_shader_library(target)
                           "Render/Passes/Exposure/ExposureRoots.h",
                           "Render/Passes/Exposure/ExposureFrameData.h",
                           "Render/Passes/Bloom/BloomRoots.h",
-                          "Render/Passes/Bloom/BloomFrameData.h")
+                          "Render/Passes/Bloom/BloomFrameData.h",
+                          "Render/Passes/SelectionOutline/SelectionOutlineRoots.h",
+                          "Render/Passes/SelectionOutline/SelectionOutlineFrameData.h")
     end
     local entries = lmx_shader_entries(kind)
     target:values_set("lmx.shader.entries", table.unpack(entries))
