@@ -2,6 +2,9 @@ target("App")
     set_kind("binary")
     add_files("Shell/*.cpp", "Headless/*.cpp", "Panels/*/*.cpp")
     add_files("Shell/*.mm")
+    if is_mode("release") then
+        add_mxxflags("-DNDEBUG")
+    end
     add_frameworks("AppKit")
     remove_files(lmx_pending_files("sources"))
     add_defines(lmx_pending_defines())
