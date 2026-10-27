@@ -166,10 +166,11 @@ std::vector<LightingStatus> Renderer::takeRetiredLighting() {
 }
 
 //======================================================================================================================
-void Renderer::drainLightingAfterIdle() {
+lmx::Result<void> Renderer::drainLightingAfterIdle() {
 #ifndef LMX_PENDING_LIGHTS
-    retireLightingThrough(std::numeric_limits<uint64_t>::max());
+    return retireLightingThrough(std::numeric_limits<uint64_t>::max());
 #else
+    return {};
 #endif
 }
 

@@ -114,16 +114,19 @@ public:
     ///
     /// Nothing is encoded here. The pass bodies run when the graph executes, and they encode into
     /// `commands` -- so the graph must be executed on that same command list, and `camera`, `view`,
-    /// and everything `view` borrows must outlive that call.
-    GraphTexture declarePasses(RenderGraph& graph, rojoRHI::CommandList& commands,
-                               const engine::Camera& camera, const SceneView& view);
+    /// and everything `view` borrows must outlive that call. Creation or retirement failure returns
+    /// its causal error; the caller must not execute or export a failed declaration.
+    lmx::Result<GraphTexture> declarePasses(RenderGraph& graph, rojoRHI::CommandList& commands,
+                                            const engine::Camera& camera, const SceneView& view);
 
     /// Renders one frame into this renderer's own targets: declarePasses into a graph of nothing
     /// else, compiled and executed on the spot. It is what a caller with no passes of its own wants
     /// -- the offscreen capture path and the tests; a caller that has its own pass declares against
     /// declarePasses instead, so the graph orders the whole frame rather than half of it.
-    void render(rojoRHI::CommandList& commands, const engine::Camera& camera,
-                const SceneView& view);
+    /// Returns declaration errors without exporting or executing the graph. The caller still owns
+    /// submission and completion of the acquired device frame on either outcome.
+    lmx::Result<void> render(rojoRHI::CommandList& commands, const engine::Camera& camera,
+                             const SceneView& view);
 
     /// The finished, display-encoded image: what the viewport shows and what a screenshot reads.
     const engine::GpuTexture& colorTarget();
@@ -171,7 +174,8 @@ public:
     /// Moves completed lighting contexts to the caller; consume regularly as for visibility.
     std::vector<LightingStatus> takeRetiredLighting();
     /// Reads every submitted lighting result after the caller has completed Device::waitIdle.
-    void drainLightingAfterIdle();
+    /// Preserves a causal retirement error instead of publishing an incomplete success.
+    lmx::Result<void> drainLightingAfterIdle();
 
 #ifndef LMX_PENDING_TEMPORAL
     /// The frame's motion target in kMotionFormat, allocated with the scene targets and so never
@@ -234,11 +238,11 @@ private:
                                                  std::span<const GraphBuffer> sceneBuffers);
 
 #ifndef LMX_PENDING_LIGHTS
-    LightClusterOutputs prepareLighting(RenderGraph& graph, rojoRHI::CommandList& commands,
-                                        const SceneView& view, std::optional<GraphBuffer> lights,
-                                        const FrameExtents& extents,
-                                        const CameraFrameState& cameraState);
-    void retireLightingThrough(uint64_t frame);
+    lmx::Result<LightClusterOutputs>
+    prepareLighting(RenderGraph& graph, rojoRHI::CommandList& commands, const SceneView& view,
+                    std::optional<GraphBuffer> lights, const FrameExtents& extents,
+                    const CameraFrameState& cameraState);
+    lmx::Result<void> retireLightingThrough(uint64_t frame);
 #endif
 
 #ifndef LMX_PENDING_VISIBILITY

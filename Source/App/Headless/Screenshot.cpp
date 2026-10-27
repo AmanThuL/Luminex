@@ -274,8 +274,16 @@ int runOffscreen(AppOptions options) {
                                         ? (**scaleStep).scale
                                         : resolutionSettings.renderScale;
 
-        render::FrameDeclaration declared(transientPool, **renderer, commands, camera, view,
-                                          /*poolingEnabled=*/true);
+        render::FrameDeclaration declared(transientPool, commands, /*poolingEnabled=*/true);
+        if (auto declaration = declared.declare(**renderer, camera, view); !declaration) {
+            LMX_LOG_ERROR("frame declaration failed: {}", declaration.error().message);
+            gpu.submitAndEndFrame(gpuFrame);
+            joinRetiredTimings();
+            gpu.waitIdle();
+            if (sequence)
+                writeManifest(false, declaration.error().message);
+            return 1;
+        }
         declared.graph().exportTexture(declared.displayColor());
         frameRecords.retain(declared.execute());
         if (options.dynamicResolution)
@@ -288,7 +296,12 @@ int runOffscreen(AppOptions options) {
         session.commitFrame();
         (*renderer)->drainVisibilityAfterIdle();
 #ifndef LMX_PENDING_LIGHTS
-        (*renderer)->drainLightingAfterIdle();
+        if (auto retired = (*renderer)->drainLightingAfterIdle(); !retired) {
+            LMX_LOG_ERROR("lighting retirement failed: {}", retired.error().message);
+            if (sequence)
+                writeManifest(false, retired.error().message);
+            return 1;
+        }
         captureLighting = (*renderer)->lightingStatus();
         for (const auto& retired : (*renderer)->takeRetiredLighting()) {
             if (retired.frameNumber == captureLighting.frameNumber)

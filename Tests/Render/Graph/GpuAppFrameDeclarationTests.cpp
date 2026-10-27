@@ -53,7 +53,13 @@ TEST_CASE("FrameDeclaration preserves headless rendering and retains its caller-
     for (uint32_t index = 0; index < 5; ++index) {
         auto referenceCommandsFrame = gpu->beginFrame();
         auto& referenceCommands = referenceCommandsFrame.commands;
-        (*reference)->render(referenceCommands, camera, lmx::test::prepareSceneView(view, *gpu));
+        const auto renderResult =
+            (*reference)
+                ->render(referenceCommands, camera, lmx::test::prepareSceneView(view, *gpu));
+        if (!renderResult)
+            gpu->submitAndEndFrame(referenceCommandsFrame);
+        INFO(errorOf(renderResult));
+        REQUIRE(renderResult.has_value());
         gpu->submitAndEndFrame(referenceCommandsFrame);
         gpu->waitIdle();
         std::vector<uint8_t> expected(size_t{kSize} * kSize * 4);
@@ -71,8 +77,12 @@ TEST_CASE("FrameDeclaration preserves headless rendering and retains its caller-
         }
         const bool poolingEnabled = index % 2 == 0;
         const auto prepared = view.prepare(*gpu);
-        lmx::render::FrameDeclaration frame(pool, **shared, commands, camera, prepared,
-                                            poolingEnabled);
+        lmx::render::FrameDeclaration frame(pool, commands, poolingEnabled);
+        const auto declared = frame.declare(**shared, camera, prepared);
+        if (!declared)
+            gpu->submitAndEndFrame(commandsFrame);
+        INFO(errorOf(declared));
+        REQUIRE(declared.has_value());
         frame.graph().exportTexture(frame.displayColor());
         records.retain(frame.execute());
         gpu->submitAndEndFrame(commandsFrame);

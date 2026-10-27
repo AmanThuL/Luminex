@@ -222,8 +222,14 @@ int runMeasurement(const AppOptions& options) {
         view.temporal.renderScale = *scaleStep && frame.sequenceFrame >= (**scaleStep).frame
                                         ? (**scaleStep).scale
                                         : options.renderScale;
-        render::FrameDeclaration declaration(pool, **renderer, commands, session.camera(), view,
-                                             true);
+        render::FrameDeclaration declaration(pool, commands, true);
+        if (auto declared = declaration.declare(**renderer, session.camera(), view); !declared) {
+            run.cancel(declared.error().message);
+            gpu.submitAndEndFrame(gpuFrame);
+            const engine::PassTimingFrame timings = gpu.passTimings();
+            run.retire(timings.frame, timings.passes);
+            break;
+        }
         declaration.graph().exportTexture(declaration.displayColor());
         auto record = declaration.execute();
         session.commitFrame();
@@ -244,7 +250,10 @@ int runMeasurement(const AppOptions& options) {
         // preserve every frame's timestamps; report this pacing, and exclude it from CPU encoding.
         gpu.waitIdle();
         (*renderer)->drainVisibilityAfterIdle();
-        (*renderer)->drainLightingAfterIdle();
+        if (auto retired = (*renderer)->drainLightingAfterIdle(); !retired) {
+            run.cancel(retired.error().message);
+            break;
+        }
         for (const auto& status : (*renderer)->takeRetiredLighting())
             if (run.active())
                 run.retireLighting(status);

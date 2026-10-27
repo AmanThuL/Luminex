@@ -49,7 +49,12 @@ std::vector<uint16_t> cutoutFrame(lmx::engine::GpuContext& gpu, Renderer& render
     camera.position = {0, 0, 5};
     auto gpuFrame1 = gpu.beginFrame();
     auto& commands = gpuFrame1.commands;
-    renderer.render(commands, camera, lmx::test::prepareSceneView(view, gpu));
+    const auto renderResult =
+        renderer.render(commands, camera, lmx::test::prepareSceneView(view, gpu));
+    if (!renderResult)
+        gpu.submitAndEndFrame(gpuFrame1);
+    INFO(errorOf(renderResult));
+    REQUIRE(renderResult.has_value());
     gpu.submitAndEndFrame(gpuFrame1);
     gpu.waitIdle();
     std::vector<uint16_t> pixels(kSize * kSize * 4);

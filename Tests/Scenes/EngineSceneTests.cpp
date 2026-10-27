@@ -261,7 +261,11 @@ TEST_CASE("loadSponzaScene's full SceneView renders through Renderer without exh
     const render::SceneView view = render::buildSceneView(**scene, items, /*wireframe=*/false);
     REQUIRE(items.size() == 25);
 
-    (*renderer)->render(commands, camera, view);
+    const auto renderResult = (*renderer)->render(commands, camera, view);
+    if (!renderResult)
+        gpu->submitAndEndFrame(gpuFrame1);
+    INFO(errorOf(renderResult));
+    REQUIRE(renderResult.has_value());
     gpu->submitAndEndFrame(gpuFrame1);
     gpu->waitIdle();
 
@@ -371,7 +375,11 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
 
     auto gpuFrame2 = gpu->beginFrame();
     rojoRHI::CommandList& commands = gpuFrame2.commands;
-    (*renderer)->render(commands, camera, view.prepare(*gpu));
+    const auto renderResult = (*renderer)->render(commands, camera, view.prepare(*gpu));
+    if (!renderResult)
+        gpu->submitAndEndFrame(gpuFrame2);
+    INFO(errorOf(renderResult));
+    REQUIRE(renderResult.has_value());
     gpu->submitAndEndFrame(gpuFrame2);
     gpu->waitIdle();
 

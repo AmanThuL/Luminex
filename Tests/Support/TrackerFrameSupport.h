@@ -103,7 +103,12 @@ inline void runTrackedFrames(std::string_view sceneId, const TrackedFrameOptions
         const auto previousPhysical = states.find(displayTexture, {0, 1, 0, 1});
 
         auto& commands = frame.commands;
-        render::FrameDeclaration declaration(pool, *renderer, commands, camera, view, true);
+        render::FrameDeclaration declaration(pool, commands, true);
+        const auto declared = declaration.declare(*renderer, camera, view);
+        if (!declared)
+            gpu->submitAndEndFrame(frame);
+        INFO(errorOf(declared));
+        REQUIRE(declared.has_value());
         auto& graph = declaration.graph();
         const auto display = declaration.displayColor();
         const auto target = graph.importPersistentTexture(offscreen, "lmx.test.uiTarget");
