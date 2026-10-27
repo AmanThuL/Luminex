@@ -4,10 +4,13 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Render/Passes/Exposure/ExposureStage.h"
+#include "Engine/Gpu/CaptureSchema.h"
 #include "Render/Common/Dispatch.h"
+#include "Render/Common/FrameData.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Common/PacedSlots.h"
 #include "Render/Passes/Exposure/ExposureFrameData.h"
+#include "Render/Passes/Exposure/ExposureRoots.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"
@@ -15,28 +18,65 @@
 #include "Render/Renderer/Renderer.h"
 
 #include <array>
+#include <span>
 #include <utility>
 
 namespace lmx::render {
 namespace {
 
-// HistogramAccumulate.slang's slot map.
-constexpr uint32_t kHistogramSceneColorSlot = 0; // texture
-constexpr uint32_t kHistogramBufferSlot = 0;     // buffer
-constexpr uint32_t kHistogramExposureSlot = 1;   // buffer
-constexpr uint32_t kHistogramParamsSlot = 2;     // buffer
-
-// ExposureResolve.slang's slot map (buffer space only).
-constexpr uint32_t kResolveHistogramSlot = 0;
-constexpr uint32_t kResolveExposureSlot = 1;
-constexpr uint32_t kResolveParamsSlot = 2;
-
-// ExposureSeed.slang's slot map (buffer space only).
-constexpr uint32_t kSeedExposureSlot = 0;
-constexpr uint32_t kSeedParamsSlot = 1;
-
 constexpr uint32_t kHistogramBins = 256;
 constexpr uint64_t kHistogramBufferSize = uint64_t{kHistogramBins} * sizeof(uint32_t);
+
+//======================================================================================================================
+void registerExposureLayoutsForCapture() {
+    engine::registerUniformStruct(
+        {"ExposureSeedRoot",
+         sizeof(ExposureSeedRoot),
+         {{"exposureAddr", offsetof(ExposureSeedRoot, exposureAddr), "Addr"},
+          {"paramsAddr", offsetof(ExposureSeedRoot, paramsAddr), "Addr"}}});
+    engine::registerUniformStruct(
+        {"HistogramRoot",
+         sizeof(HistogramRoot),
+         {{"histogramAddr", offsetof(HistogramRoot, histogramAddr), "Addr"},
+          {"exposureAddr", offsetof(HistogramRoot, exposureAddr), "Addr"},
+          {"paramsAddr", offsetof(HistogramRoot, paramsAddr), "Addr"},
+          {"sceneColor", offsetof(HistogramRoot, sceneColor), "uint"},
+          {"padding", offsetof(HistogramRoot, padding), "uint"}}});
+    engine::registerUniformStruct(
+        {"ExposureResolveRoot",
+         sizeof(ExposureResolveRoot),
+         {{"histogramAddr", offsetof(ExposureResolveRoot, histogramAddr), "Addr"},
+          {"exposureAddr", offsetof(ExposureResolveRoot, exposureAddr), "Addr"},
+          {"paramsAddr", offsetof(ExposureResolveRoot, paramsAddr), "Addr"},
+          {"padding0", offsetof(ExposureResolveRoot, padding0), "uint"},
+          {"padding1", offsetof(ExposureResolveRoot, padding1), "uint"}}});
+    engine::registerUniformStruct(
+        {"HistogramParams",
+         sizeof(HistogramParams),
+         {{"logLuminanceMin", offsetof(HistogramParams, logLuminanceMin), "float"},
+          {"logLuminanceMax", offsetof(HistogramParams, logLuminanceMax), "float"},
+          {"width", offsetof(HistogramParams, width), "uint"},
+          {"height", offsetof(HistogramParams, height), "uint"}}});
+    engine::registerUniformStruct(
+        {"ExposureSeedParams",
+         sizeof(ExposureSeedParams),
+         {{"exposure", offsetof(ExposureSeedParams, exposure), "float"}}});
+    engine::registerUniformStruct(
+        {"ExposureResolveParams",
+         sizeof(ExposureResolveParams),
+         {{"lowPercentile", offsetof(ExposureResolveParams, lowPercentile), "float"},
+          {"highPercentile", offsetof(ExposureResolveParams, highPercentile), "float"},
+          {"targetGrey", offsetof(ExposureResolveParams, targetGrey), "float"},
+          {"evMin", offsetof(ExposureResolveParams, evMin), "float"},
+          {"evMax", offsetof(ExposureResolveParams, evMax), "float"},
+          {"compensationEv", offsetof(ExposureResolveParams, compensationEv), "float"},
+          {"logLuminanceMin", offsetof(ExposureResolveParams, logLuminanceMin), "float"},
+          {"logLuminanceMax", offsetof(ExposureResolveParams, logLuminanceMax), "float"},
+          {"adaptUp", offsetof(ExposureResolveParams, adaptUp), "float"},
+          {"adaptDown", offsetof(ExposureResolveParams, adaptDown), "float"},
+          {"deltaSeconds", offsetof(ExposureResolveParams, deltaSeconds), "float"},
+          {"pad", offsetof(ExposureResolveParams, pad), "float"}}});
+}
 
 } // namespace
 
@@ -44,6 +84,8 @@ constexpr uint64_t kHistogramBufferSize = uint64_t{kHistogramBins} * sizeof(uint
 lmx::Result<std::unique_ptr<ExposureStage>> ExposureStage::create(engine::GpuContext& gpu,
                                                                   bool cpuReadback) {
     rojoRHI::Device& device = gpu.device();
+    // Readback uses staging; the persistent feedback source always stays GPU-resident.
+    (void)cpuReadback;
     std::unique_ptr<ExposureStage> self(new ExposureStage);
 
     {
@@ -69,11 +111,10 @@ lmx::Result<std::unique_ptr<ExposureStage>> ExposureStage::create(engine::GpuCon
     }
 
     {
-        auto pipeline = engine::adoptGpu(device.createComputePipeline(
-            {.library = self->m_histogramLibrary.get(),
-             .computeEntry = "computeHistogramAccumulate",
-             .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
-             .label = "lmx.render.histogramPipeline"}));
+        auto pipeline = engine::adoptGpu(
+            device, device.createPipeline(rojoRHI::ComputePipelineDesc{
+                        .compute = {self->m_histogramLibrary.get(), "computeHistogramAccumulate"},
+                        .label = "lmx.render.histogramPipeline"}));
         if (!pipeline) {
             return std::unexpected(pipeline.error());
         }
@@ -81,10 +122,9 @@ lmx::Result<std::unique_ptr<ExposureStage>> ExposureStage::create(engine::GpuCon
     }
     {
         auto pipeline = engine::adoptGpu(
-            device.createComputePipeline({.library = self->m_exposureResolveLibrary.get(),
-                                          .computeEntry = "computeExposureResolve",
-                                          .threadsPerThreadgroup = {1, 1, 1},
-                                          .label = "lmx.render.exposureResolvePipeline"}));
+            device, device.createPipeline(rojoRHI::ComputePipelineDesc{
+                        .compute = {self->m_exposureResolveLibrary.get(), "computeExposureResolve"},
+                        .label = "lmx.render.exposureResolvePipeline"}));
         if (!pipeline) {
             return std::unexpected(pipeline.error());
         }
@@ -92,10 +132,9 @@ lmx::Result<std::unique_ptr<ExposureStage>> ExposureStage::create(engine::GpuCon
     }
     {
         auto pipeline = engine::adoptGpu(
-            device.createComputePipeline({.library = self->m_exposureSeedLibrary.get(),
-                                          .computeEntry = "computeExposureSeed",
-                                          .threadsPerThreadgroup = {1, 1, 1},
-                                          .label = "lmx.render.exposureSeedPipeline"}));
+            device, device.createPipeline(rojoRHI::ComputePipelineDesc{
+                        .compute = {self->m_exposureSeedLibrary.get(), "computeExposureSeed"},
+                        .label = "lmx.render.exposureSeedPipeline"}));
         if (!pipeline) {
             return std::unexpected(pipeline.error());
         }
@@ -104,8 +143,7 @@ lmx::Result<std::unique_ptr<ExposureStage>> ExposureStage::create(engine::GpuCon
 
     {
         auto buffer = engine::GpuBuffer::create(device, {.size = kHistogramBufferSize,
-                                                         .storageRead = true,
-                                                         .storageWrite = true,
+                                                         .usage = rojoRHI::BufferUsage::ShaderWrite,
                                                          .label = "lmx.render.histogramBuffer"});
         if (!buffer) {
             return std::unexpected(buffer.error());
@@ -117,18 +155,15 @@ lmx::Result<std::unique_ptr<ExposureStage>> ExposureStage::create(engine::GpuCon
     // scene and sky passes read index 0 directly as a storage buffer (declarePasses()'s
     // exposureCurrent/bufferReads below), never through a CPU readback. Unit exposure in both slots
     // is what a buffer no frame has seeded or resolved yet holds, which is the same answer EV 0
-    // gives. cpuReadback only where the caller asked for it: the App never reads this back -- that
-    // is the whole point of keeping the feedback GPU-resident -- and the tests do.
+    // gives. Readbacks use separate staging, leaving this source GPU-resident for every caller.
     {
         constexpr std::array<float, kExposureBufferFloats> kInitialExposure{1.0f, 1.0f};
         {
             auto buffer = engine::GpuBuffer::create(device,
                                                     {.size = sizeof(kInitialExposure),
-                                                     .storageRead = true,
-                                                     .storageWrite = true,
-                                                     .cpuReadback = cpuReadback,
+                                                     .usage = rojoRHI::BufferUsage::ShaderWrite,
                                                      .label = "lmx.render.exposureBuffer"},
-                                                    kInitialExposure.data());
+                                                    std::as_bytes(std::span{kInitialExposure}));
             if (!buffer) {
                 return std::unexpected(buffer.error());
             }
@@ -136,6 +171,7 @@ lmx::Result<std::unique_ptr<ExposureStage>> ExposureStage::create(engine::GpuCon
         }
     }
 
+    registerExposureLayoutsForCapture();
     return self;
 }
 
@@ -157,12 +193,21 @@ GraphBuffer ExposureStage::declareSeed(RenderGraph& graph, rojoRHI::CommandList&
         graph.addComputePass(
             "lmx.pass.exposure.seed", std::move(seedDesc),
             [this, &commands, exposureImport, seedParams](const PassResources& resources) {
-                auto& exposure = lmx::render::buffer(resources, exposureImport);
-                commands.bindComputePipeline(*m_exposureSeedPipeline);
-                // Read-write, not write: the kernel shifts index 0 into index 1 before it sets it.
-                commands.bindStorageBuffer(kSeedExposureSlot, exposure,
-                                           rojoRHI::StorageAccess::ReadWrite);
-                commands.bindFrameData(kSeedParamsSlot, seedParams);
+                const auto paramsAddress = frameData(commands, seedParams);
+                engine::registerFrameRoot("ExposureSeedParams", paramsAddress);
+                commands.setPipeline(m_exposureSeedPipeline.get());
+                engine::registerFrameRoot("ExposureSeedRoot",
+                                          commands.pushRoot(ExposureSeedRoot{
+                                              .exposureAddr = resources.address(exposureImport),
+                                              .paramsAddr = paramsAddress}));
+#ifndef NDEBUG
+                const rojoRHI::ResourceAccess access{.buffer = resources.buffer(exposureImport),
+                                                     .size = kExposureBufferFloats * sizeof(float),
+                                                     .stage = rojoRHI::Stage::ComputeShader,
+                                                     .access = rojoRHI::Access::ShaderRead |
+                                                               rojoRHI::Access::ShaderWrite};
+                commands.declareAccess(std::span{&access, 1});
+#endif
                 commands.dispatch(1, 1, 1);
             });
         exposureCurrent = nextVersion(exposureImport);
@@ -193,8 +238,8 @@ void ExposureStage::declareMetering(RenderGraph& graph, rojoRHI::CommandList& co
     // The previous frame's resolve dispatch is still potentially reading the histogram when this
     // frame clears it. Seeding the import with that terminal read makes the first live clear wait
     // on the real WAR edge; when auto exposure is off the chain is culled, so this costs nothing.
-    const GraphBuffer histogramImport = graph.importBuffer(
-        m_histogramBuffer.rhi(), "lmx.render.histogramBuffer", BufferUse::StorageRead);
+    const GraphBuffer histogramImport =
+        graph.importBuffer(m_histogramBuffer, "lmx.render.histogramBuffer", BufferUse::StorageRead);
 
     declareZeroFill(graph, commands, "lmx.pass.exposure.clearHistogram", histogramImport,
                     kHistogramBufferSize);
@@ -209,24 +254,40 @@ void ExposureStage::declareMetering(RenderGraph& graph, rojoRHI::CommandList& co
     histogramDesc.shaderTextureReads.push_back(sceneColorRead);
     histogramDesc.shaderBufferReads.push_back(exposureCurrent);
     histogramDesc.bufferWrites.push_back(histogramCleared);
-    graph.addComputePass("lmx.pass.exposure.histogram", std::move(histogramDesc),
-                         [this, &commands, sceneColorRead, histogramCleared, exposureCurrent,
-                          meterWidth, meterHeight](const PassResources& resources) {
-                             auto& scene = lmx::render::texture(resources, sceneColorRead);
-                             auto& histogram = lmx::render::buffer(resources, histogramCleared);
-                             auto& exposure = lmx::render::buffer(resources, exposureCurrent);
-
-                             const HistogramParams params =
-                                 buildHistogramParams(meterWidth, meterHeight);
-                             commands.bindComputePipeline(*m_histogramPipeline);
-                             commands.bindTexture(kHistogramSceneColorSlot, scene);
-                             commands.bindStorageBuffer(kHistogramBufferSlot, histogram,
-                                                        rojoRHI::StorageAccess::ReadWrite);
-                             commands.bindBuffer(kHistogramExposureSlot, exposure);
-                             commands.bindFrameData(kHistogramParamsSlot, params);
-                             const auto groups = dispatchGroups2D(meterWidth, meterHeight);
-                             commands.dispatch(groups[0], groups[1], 1);
-                         });
+    graph.addComputePass(
+        "lmx.pass.exposure.histogram", std::move(histogramDesc),
+        [this, &commands, sceneColorRead, histogramCleared, exposureCurrent, meterWidth,
+         meterHeight](const PassResources& resources) {
+            const HistogramParams params = buildHistogramParams(meterWidth, meterHeight);
+            const auto paramsAddress = frameData(commands, params);
+            engine::registerFrameRoot("HistogramParams", paramsAddress);
+            commands.setPipeline(m_histogramPipeline.get());
+            engine::registerFrameRoot(
+                "HistogramRoot",
+                commands.pushRoot(HistogramRoot{
+                    .histogramAddr = resources.address(histogramCleared),
+                    .exposureAddr = resources.address(exposureCurrent),
+                    .paramsAddr = paramsAddress,
+                    .sceneColor = static_cast<uint32_t>(resources.view(sceneColorRead))}));
+#ifndef NDEBUG
+            const std::array<rojoRHI::ResourceAccess, 3> accesses{
+                {{.texture = resources.texture(sceneColorRead).texture,
+                  .range = {0, 1, 0, 1},
+                  .stage = rojoRHI::Stage::ComputeShader,
+                  .access = rojoRHI::Access::ShaderRead},
+                 {.buffer = resources.buffer(exposureCurrent),
+                  .size = sizeof(float),
+                  .stage = rojoRHI::Stage::ComputeShader,
+                  .access = rojoRHI::Access::ShaderRead},
+                 {.buffer = resources.buffer(histogramCleared),
+                  .size = kHistogramBufferSize,
+                  .stage = rojoRHI::Stage::ComputeShader,
+                  .access = rojoRHI::Access::ShaderWrite}}};
+            commands.declareAccess(accesses);
+#endif
+            const auto groups = dispatchGroups2D(meterWidth, meterHeight);
+            commands.dispatch(groups[0], groups[1], 1);
+        });
     const GraphBuffer histogramFinal = nextVersion(histogramCleared);
 
     ComputePassDesc resolveDesc;
@@ -239,9 +300,6 @@ void ExposureStage::declareMetering(RenderGraph& graph, rojoRHI::CommandList& co
     graph.addComputePass(
         "lmx.pass.exposure.resolve", std::move(resolveDesc),
         [this, &commands, histogramFinal, exposureCurrent, view](const PassResources& resources) {
-            auto& histogram = lmx::render::buffer(resources, histogramFinal);
-            auto& exposure = lmx::render::buffer(resources, exposureCurrent);
-
             const ExposureResolveParams params = buildExposureResolveParams(
                 {.lowPercentile = view.exposureLowPercentile,
                  .highPercentile = view.exposureHighPercentile,
@@ -251,14 +309,26 @@ void ExposureStage::declareMetering(RenderGraph& graph, rojoRHI::CommandList& co
                  .compensationEv = view.exposureCompensationEv,
                  .adaptUpStopsPerSecond = view.exposureAdaptUpStopsPerSecond,
                  .adaptDownStopsPerSecond = view.exposureAdaptDownStopsPerSecond});
-            commands.bindComputePipeline(*m_exposureResolvePipeline);
-            commands.bindStorageBuffer(kResolveHistogramSlot, histogram,
-                                       rojoRHI::StorageAccess::Read);
-            // Read-write, not write: the kernel steps from the exposure this frame applied, which
-            // it reads out of index 0 before overwriting it.
-            commands.bindStorageBuffer(kResolveExposureSlot, exposure,
-                                       rojoRHI::StorageAccess::ReadWrite);
-            commands.bindFrameData(kResolveParamsSlot, params);
+            const auto paramsAddress = frameData(commands, params);
+            engine::registerFrameRoot("ExposureResolveParams", paramsAddress);
+            commands.setPipeline(m_exposureResolvePipeline.get());
+            engine::registerFrameRoot("ExposureResolveRoot",
+                                      commands.pushRoot(ExposureResolveRoot{
+                                          .histogramAddr = resources.address(histogramFinal),
+                                          .exposureAddr = resources.address(exposureCurrent),
+                                          .paramsAddr = paramsAddress}));
+#ifndef NDEBUG
+            const std::array<rojoRHI::ResourceAccess, 2> accesses{
+                {{.buffer = resources.buffer(histogramFinal),
+                  .size = kHistogramBufferSize,
+                  .stage = rojoRHI::Stage::ComputeShader,
+                  .access = rojoRHI::Access::ShaderRead},
+                 {.buffer = resources.buffer(exposureCurrent),
+                  .size = kExposureBufferFloats * sizeof(float),
+                  .stage = rojoRHI::Stage::ComputeShader,
+                  .access = rojoRHI::Access::ShaderRead | rojoRHI::Access::ShaderWrite}}};
+            commands.declareAccess(accesses);
+#endif
             commands.dispatch(1, 1, 1);
         });
     const GraphBuffer exposureResolved = nextVersion(exposureCurrent);

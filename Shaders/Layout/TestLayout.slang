@@ -28,6 +28,13 @@ StructuredBuffer<LightClusterParams> gRecord_LightClusterParams;
 StructuredBuffer<DebugParams> gRecord_DebugParams;
 StructuredBuffer<PunctualSample> gRecord_PunctualSample;
 // ---- post ----
+import ExposureRoots;
+StructuredBuffer<ExposureSeedRoot> gRoot_ExposureSeedRoot;
+StructuredBuffer<HistogramRoot> gRoot_HistogramRoot;
+StructuredBuffer<ExposureResolveRoot> gRoot_ExposureResolveRoot;
+StructuredBuffer<HistogramParams> gRecord_HistogramParams;
+StructuredBuffer<ExposureSeedParams> gRecord_ExposureSeedParams;
+StructuredBuffer<ExposureResolveParams> gRecord_ExposureResolveParams;
 // ---- temporal ----
 
 void probeMain()

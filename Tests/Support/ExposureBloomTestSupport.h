@@ -35,13 +35,12 @@ inline lmx::Result<engine::GpuTexture> makeSceneColorTexture(engine::GpuContext&
                                                              uint32_t width, uint32_t height,
                                                              std::span<const uint16_t> rgbaHalf,
                                                              const char* label) {
-    const rojoRHI::TextureMip mip{.data = rgbaHalf.data(),
-                                  .bytesPerRow = uint64_t{width} * 4 * sizeof(uint16_t)};
+    const rojoRHI::TextureData mip{.bytes = std::as_bytes(rgbaHalf),
+                                   .bytesPerRow = uint64_t{width} * 4 * sizeof(uint16_t)};
     return engine::GpuTexture::create(gpu.device(),
-                                      {.width = width,
-                                       .height = height,
-                                       .format = rojoRHI::Format::RGBA16Float,
-                                       .sampled = true,
+                                      {.format = rojoRHI::Format::RGBA16Float,
+                                       .extent = {width, height, 1},
+                                       .usage = rojoRHI::TextureUsage::Sampled,
                                        .label = label},
                                       std::span{&mip, 1});
 }

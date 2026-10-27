@@ -96,6 +96,12 @@ function lmx_configure_shader_library(target)
             "LightClusterParams=lmx::render::LightClusterKernelParams",
             "DebugParams=lmx::render::LightDebugParams",
             -- ---- post ----
+            "ExposureSeedRoot=lmx::render::ExposureSeedRoot",
+            "HistogramRoot=lmx::render::HistogramRoot",
+            "ExposureResolveRoot=lmx::render::ExposureResolveRoot",
+            "HistogramParams=lmx::render::HistogramParams",
+            "ExposureSeedParams=lmx::render::ExposureSeedParams",
+            "ExposureResolveParams=lmx::render::ExposureResolveParams",
             -- ---- temporal ----
         }
         target:values_set("slang.layout_map", table.unpack(layout_map))
@@ -104,7 +110,9 @@ function lmx_configure_shader_library(target)
                           "Engine/Geometry/Mesh.h", "Render/Passes/Scene/SceneFrameData.h",
                           "Engine/Scene/SceneTables.h",
                           "Render/Passes/LocalLights/LightRoots.h",
-                          "Render/Passes/LocalLights/LightClusterFrameData.h")
+                          "Render/Passes/LocalLights/LightClusterFrameData.h",
+                          "Render/Passes/Exposure/ExposureRoots.h",
+                          "Render/Passes/Exposure/ExposureFrameData.h")
     elseif kind == "tests" then
         target:values_set("slang.layout_probe", path.join(repository_root, "Shaders/Layout/TestLayout.slang"))
         local layout_map = {
@@ -130,6 +138,12 @@ function lmx_configure_shader_library(target)
             "PunctualLightRoot=lmx::test::PunctualLightRoot",
             "PunctualSample=lmx::test::PunctualSample",
             -- ---- post ----
+            "ExposureSeedRoot=lmx::render::ExposureSeedRoot",
+            "HistogramRoot=lmx::render::HistogramRoot",
+            "ExposureResolveRoot=lmx::render::ExposureResolveRoot",
+            "HistogramParams=lmx::render::HistogramParams",
+            "ExposureSeedParams=lmx::render::ExposureSeedParams",
+            "ExposureResolveParams=lmx::render::ExposureResolveParams",
             -- ---- temporal ----
         }
         target:values_set("slang.layout_map", table.unpack(layout_map))
@@ -138,7 +152,9 @@ function lmx_configure_shader_library(target)
                           "Render/Passes/Scene/SceneFrameData.h",
                           "Render/Passes/LocalLights/LightRoots.h",
                           "Render/Passes/LocalLights/LightClusterFrameData.h",
-                          "Support/LocalLightOracleRoots.h")
+                          "Support/LocalLightOracleRoots.h",
+                          "Render/Passes/Exposure/ExposureRoots.h",
+                          "Render/Passes/Exposure/ExposureFrameData.h")
     end
     local entries = lmx_shader_entries(kind)
     target:values_set("lmx.shader.entries", table.unpack(entries))

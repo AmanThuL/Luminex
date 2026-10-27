@@ -2,16 +2,13 @@
 
 **Status**: In progress
 
-The pending-family list in `xmake/port.lua` temporarily leaves concrete stages and their tests out of the build. Every case keeps its name, explicit tags and assertions and returns
-with its family. The inventory below was measured before exclusion at `9a82612` with Catch2 file tags; ordinary GPU counts use `[gpu]~[.]`. Hidden diagnostics are tracked
-separately.
+The pending-family list in `xmake/port.lua` temporarily leaves concrete stages and their tests out of the build. Every case keeps its name, explicit tags and assertions and returns with its family. The inventory below was measured before exclusion at `9a82612` with Catch2 file tags; ordinary GPU counts use `[gpu]~[.]`. Hidden diagnostics are tracked separately.
 
 ## Left out on the integration branch
 
 ### SCENE returned
 
-All original SCENE sources, shaders and independent tests are active. The eight dependent original cases below remain whole in TEMPORAL/POST, with unchanged names, tags, sections
-and assertions. SCENE has no remaining manifest exclusion.
+All original SCENE sources, shaders and independent tests are active. The eight dependent original cases below remain whole in TEMPORAL/POST, with unchanged names, tags, sections and assertions. SCENE has no remaining manifest exclusion.
 
 ### VISIBILITY
 
@@ -49,7 +46,6 @@ and assertions. SCENE has no remaining manifest exclusion.
 |---|---:|---:|---:|
 | `Tests/Render/Graph/GpuAppFrameDeclarationTests.cpp` | 0 | 1 | 0 |
 | `Tests/Render/Passes/Bloom/GpuBloomTests.cpp` | 0 | 3 | 0 |
-| `Tests/Render/Passes/Exposure/GpuExposureBloomTests.cpp` | 0 | 7 | 0 |
 | `Tests/Render/Passes/Exposure/GpuRendererDisplayTests.cpp` | 0 | 5 | 0 |
 | `Tests/Render/Passes/SelectionOutline/GpuSelectionOutlineTests.cpp` | 0 | 8 | 0 |
 
@@ -58,6 +54,7 @@ and assertions. SCENE has no remaining manifest exclusion.
 | Test file | CPU | GPU | Hidden |
 |---|---:|---:|---:|
 | `Tests/App/Model/Graph/GpuGraphInspectorTests.cpp` | 0 | 2 | 0 |
+| `Tests/Render/Passes/Temporal/GpuExposureTemporalTests.cpp` | 0 | 1 | 0 |
 | `Tests/Render/Passes/Temporal/GpuTemporalAccumulationTests.cpp` | 0 | 8 | 0 |
 | `Tests/Render/Passes/Temporal/GpuTemporalHistoryTests.cpp` | 0 | 6 | 0 |
 | `Tests/Render/Passes/Temporal/GpuTemporalMotionTests.cpp` | 0 | 10 | 0 |
@@ -68,14 +65,17 @@ and assertions. SCENE has no remaining manifest exclusion.
 | `Tests/Render/Passes/Temporal/GpuZeroLightHistoryTests.cpp` | 0 | 1 | 1 |
 | `Tests/Render/Passes/Temporal/RenderVendorTemporalTests.cpp` | 5 | 0 | 0 |
 
+### Exposure source compiled; native validation pending
+
+The six original standalone cases in `Tests/Render/Passes/Exposure/GpuExposureBloomTests.cpp` compile and link with the address-root Exposure stage and its three shader entries in Debug on Null. JSON discovery confirms their original names and `[gpu]` tags. Their numeric bodies have not run on Null or Metal, so this is source integration evidence only. Both actual generated layout consumers check the Exposure roots and pointed fields against Metal, SPIR-V and HLSL reflection; complete four-configuration compile evidence is recorded separately.
+
+The original seventh case, "a manual temporal frame records the EV edit and the value before it", moves whole to `GpuExposureTemporalTests.cpp`. Its EV 0 to 2 to -1 sequence, original sections and assertions remain excluded with TEMPORAL. The shared Exposure/Bloom helper uses v2 resources; the actual Exposure consumer compiles, while compilation of the complete legacy Bloom consumer remains deferred with Bloom. Renderer POST integration and native acceptance remain pending.
+
 ## Totals
 
-The measured phase-A baseline is **1256 CPU / 229 ordinary GPU** cases. Two retained detached-window CLI cases make the full-source equivalent **1258 CPU / 229 ordinary GPU**.
-Excluded: **26 CPU / 177 GPU**. Kept: **1232 CPU / 52 GPU**. Thus 1232+26=1258 CPU and 52+177=229 GPU. The excluded files also contain 1 hidden diagnostic case; it is outside the
-ordinary totals.
+The measured phase-A baseline is **1256 CPU / 229 ordinary GPU** cases. Two retained detached-window CLI cases make the full-source equivalent **1258 CPU / 229 ordinary GPU**. Excluded: **26 CPU / 177 GPU**. Kept: **1232 CPU / 52 GPU**. Thus 1232+26=1258 CPU and 52+177=229 GPU. The excluded files also contain 1 hidden diagnostic case; it is outside the ordinary totals.
 
-All nine pure FrameData families/tests remain compiled, as do the three checkpoint cases and the direct graph dump goldens. HzbTests needs hzbLayout from excluded HzbStage; the
-four shadow-fit cases are active with ShadowStage. VisibilityTablesTests and VisibilityTests are active with the draw submission builder; their original seven names and tags
+All nine pure FrameData families/tests remain compiled, as do the three checkpoint cases and the direct graph dump goldens. HzbTests needs hzbLayout from excluded HzbStage; the four shadow-fit cases are active with ShadowStage. VisibilityTablesTests and VisibilityTests are active with the draw submission builder; their original seven names and tags
 remain. The mixed inspector file needs Native TAA history alternation and waits for TEMPORAL. The shared frame-declaration file requires bloom transients and waits for POST. Mixed
 scene pixel files wait for SCENE. Their complete registered file inventories are counted above; assertions are unchanged.
 

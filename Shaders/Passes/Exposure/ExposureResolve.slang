@@ -18,32 +18,10 @@
 // One thread: 256 bins is cheap enough that a sequential scan costs nothing worth parallelising,
 // and it keeps the CPU reference this is tested against a straight line-for-line port.
 //
-// Slots: buffers 0 histogram (read-only), 1 exposure pair (read-write), 2 params.
+// The address root borrows the histogram, persistent pair and this dispatch's parameters.
 
-struct ExposureResolveParams
-{
-    float lowPercentile;   // 0..100, lower bound of the retained population.
-    float highPercentile;  // 0..100, upper bound of the retained population.
-    float targetGrey;      // Output value the retained population's average maps to.
-    float evMin;            // Clamp on the resolved exposure, in stops.
-    float evMax;
-    float compensationEv;  // Extra stops applied after metering, before the clamp.
-    float logLuminanceMin; // Must match HistogramAccumulate.slang's binning range.
-    float logLuminanceMax;
-    float adaptUpStopsPerSecond;   // Bound on a rising step; 0 disables adaptation.
-    float adaptDownStopsPerSecond; // Bound on a falling step; 0 disables adaptation.
-    float deltaSeconds;            // The App's fixed frame step, never wall time.
-    float pad;                     // Keeps the block a multiple of 16 bytes.
-};
-
-[[vk::binding(0, 0)]]
-StructuredBuffer<uint> gHistogram : register(t0); // → MSL [[buffer(0)]]
-
-[[vk::binding(1, 0)]]
-RWStructuredBuffer<float> gExposure : register(u1); // → MSL [[buffer(1)]]
-
-[[vk::binding(2, 0)]]
-ConstantBuffer<ExposureResolveParams> gParams : register(b2); // → MSL [[buffer(2)]]
+import RojoRHI;
+import ExposureRoots;
 
 static const uint kHistogramBins = 256;
 
@@ -51,10 +29,12 @@ static const uint kHistogramBins = 256;
 [numthreads(1, 1, 1)]
 void computeExposureResolve(uint3 tid: SV_DispatchThreadID)
 {
+    let root = rojoRHI::root<ExposureResolveRoot>();
+    let params = rojoRHI::load<ExposureResolveParams>(root.paramsAddr, 0);
     uint totalCount = 0u;
     for (uint i = 0u; i < kHistogramBins; ++i)
     {
-        totalCount += gHistogram[i];
+        totalCount += rojoRHI::load<uint>(root.histogramAddr, i);
     }
 
     // An empty frame (a fully clipped or fully black target) has nothing to meter; unit exposure
@@ -63,27 +43,27 @@ void computeExposureResolve(uint3 tid: SV_DispatchThreadID)
     // the discontinuity is one a history correction can see rather than one it cannot.
     if (totalCount == 0u)
     {
-        gExposure[1] = gExposure[0];
-        gExposure[0] = 1.0;
+        rojoRHI::store<float>(root.exposureAddr, 1, rojoRHI::load<float>(root.exposureAddr, 0));
+        rojoRHI::store<float>(root.exposureAddr, 0, 1.0);
         return;
     }
 
-    float lowCount = gParams.lowPercentile * 0.01 * float(totalCount);
-    float highCount = gParams.highPercentile * 0.01 * float(totalCount);
+    float lowCount = params.lowPercentile * 0.01 * float(totalCount);
+    float highCount = params.highPercentile * 0.01 * float(totalCount);
 
-    float binWidth = (gParams.logLuminanceMax - gParams.logLuminanceMin) / float(kHistogramBins);
+    float binWidth = (params.logLuminanceMax - params.logLuminanceMin) / float(kHistogramBins);
     float weightedLogLuminance = 0.0;
     float weight = 0.0;
     float cumulative = 0.0;
 
     for (uint i = 0u; i < kHistogramBins; ++i)
     {
-        float count = float(gHistogram[i]);
+        float count = float(rojoRHI::load<uint>(root.histogramAddr, i));
         float binStart = cumulative;
         float binEnd = cumulative + count;
         // The portion of this bin's pixels that survive the percentile trim.
         float overlap = max(min(binEnd, highCount) - max(binStart, lowCount), 0.0);
-        float binCenterLogLuminance = gParams.logLuminanceMin + (float(i) + 0.5) * binWidth;
+        float binCenterLogLuminance = params.logLuminanceMin + (float(i) + 0.5) * binWidth;
         weightedLogLuminance += overlap * binCenterLogLuminance;
         weight += overlap;
         cumulative = binEnd;
@@ -95,22 +75,23 @@ void computeExposureResolve(uint3 tid: SV_DispatchThreadID)
     float averageLuminance = exp2(averageLogLuminance);
 
     float targetExposure =
-        (gParams.targetGrey / max(averageLuminance, 1e-6)) * exp2(gParams.compensationEv);
+        (params.targetGrey / max(averageLuminance, 1e-6)) * exp2(params.compensationEv);
 
     // Which rate bounds the step is decided on the linear exposures rather than their logarithms:
     // log2 is monotonic, so the comparison is the same one and costs nothing.
-    float applied = gExposure[0];
-    float rate = targetExposure > applied ? gParams.adaptUpStopsPerSecond
-                                          : gParams.adaptDownStopsPerSecond;
+    float applied = rojoRHI::load<float>(root.exposureAddr, 0);
+    float rate = targetExposure > applied ? params.adaptUp
+                                          : params.adaptDown;
     float adapted = targetExposure;
     if (rate > 0.0)
     {
-        float maxStep = rate * gParams.deltaSeconds;
+        float maxStep = rate * params.deltaSeconds;
         float evApplied = log2(max(applied, 1e-6));
         float evTarget = log2(max(targetExposure, 1e-6));
         adapted = exp2(evApplied + clamp(evTarget - evApplied, -maxStep, maxStep));
     }
 
-    gExposure[1] = applied;
-    gExposure[0] = clamp(adapted, exp2(gParams.evMin), exp2(gParams.evMax));
+    rojoRHI::store<float>(root.exposureAddr, 1, applied);
+    rojoRHI::store<float>(root.exposureAddr, 0,
+                        clamp(adapted, exp2(params.evMin), exp2(params.evMax)));
 }

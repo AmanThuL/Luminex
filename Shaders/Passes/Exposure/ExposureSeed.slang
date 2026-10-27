@@ -15,23 +15,17 @@
 // pre-temporal frame's declaration exact; the frame that enables temporal is a history reset, so
 // nothing ever reads a `previous` left stale by the frames in between.
 //
-// Slots: buffer 0 exposure (read-write), 1 params.
+// ExposureSeedRoot carries the read-write exposure address and the parameter address.
 
-struct ExposureSeedParams
-{
-    float exposure; // exp2(manual EV), computed on the CPU once per declaring frame.
-};
-
-[[vk::binding(0, 0)]]
-RWStructuredBuffer<float> gExposure : register(u0); // → MSL [[buffer(0)]]
-
-[[vk::binding(1, 0)]]
-ConstantBuffer<ExposureSeedParams> gParams : register(b1); // → MSL [[buffer(1)]]
+import RojoRHI;
+import ExposureRoots;
 
 [shader("compute")]
 [numthreads(1, 1, 1)]
 void computeExposureSeed(uint3 tid: SV_DispatchThreadID)
 {
-    gExposure[1] = gExposure[0];
-    gExposure[0] = gParams.exposure;
+    let root = rojoRHI::root<ExposureSeedRoot>();
+    let params = rojoRHI::load<ExposureSeedParams>(root.paramsAddr, 0);
+    rojoRHI::store<float>(root.exposureAddr, 1, rojoRHI::load<float>(root.exposureAddr, 0));
+    rojoRHI::store<float>(root.exposureAddr, 0, params.exposure);
 }
