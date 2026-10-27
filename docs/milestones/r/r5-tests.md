@@ -45,7 +45,6 @@ All original SCENE sources, shaders and independent tests are active. The eight 
 | Test file | CPU | GPU | Hidden |
 |---|---:|---:|---:|
 | `Tests/Render/Graph/GpuAppFrameDeclarationTests.cpp` | 0 | 1 | 0 |
-| `Tests/Render/Passes/Bloom/GpuBloomTests.cpp` | 0 | 3 | 0 |
 | `Tests/Render/Passes/Exposure/GpuRendererDisplayTests.cpp` | 0 | 5 | 0 |
 | `Tests/Render/Passes/SelectionOutline/GpuSelectionOutlineTests.cpp` | 0 | 8 | 0 |
 
@@ -65,18 +64,19 @@ All original SCENE sources, shaders and independent tests are active. The eight 
 | `Tests/Render/Passes/Temporal/GpuZeroLightHistoryTests.cpp` | 0 | 1 | 1 |
 | `Tests/Render/Passes/Temporal/RenderVendorTemporalTests.cpp` | 5 | 0 | 0 |
 
-### Exposure source compiled; native validation pending
+### Exposure numerical checkpoint and Bloom source coverage
 
-The six original standalone cases in `Tests/Render/Passes/Exposure/GpuExposureBloomTests.cpp` compile and link with the address-root Exposure stage and its three shader entries in Debug on Null. JSON discovery confirms their original names and `[gpu]` tags. Their numeric bodies have not run on Null or Metal, so this is source integration evidence only. Both actual generated layout consumers check the Exposure roots and pointed fields against Metal, SPIR-V and HLSL reflection; complete four-configuration compile evidence is recorded separately.
+The six original standalone cases in `Tests/Render/Passes/Exposure/GpuExposureBloomTests.cpp` retain their names and `[gpu]` tags. At checkpoint `7d7979c374ba3ca7c84376ad65d049a116c28334`, the 2026-10-27 M4 Pro run passes all six on Release Metal with `MTL_DEBUG_LAYER=1`: 345 assertions and clean diagnostics. Their source and four-configuration compile evidence use both genuine generated consumers for all Exposure roots and pointed fields on Metal, SPIR-V and HLSL. This numerical checkpoint does not accept production ExposureStage/Renderer feedback or the later combined Bloom build.
 
-The original seventh case, "a manual temporal frame records the EV edit and the value before it", moves whole to `GpuExposureTemporalTests.cpp`. Its EV 0 to 2 to -1 sequence, original sections and assertions remain excluded with TEMPORAL. The shared Exposure/Bloom helper uses v2 resources; the actual Exposure consumer compiles, while compilation of the complete legacy Bloom consumer remains deferred with Bloom. Renderer POST integration and native acceptance remain pending.
+The original seventh case, "a manual temporal frame records the EV edit and the value before it", moves whole to `GpuExposureTemporalTests.cpp`. Its EV 0 to 2 to -1 sequence, original sections and assertions remain excluded with TEMPORAL. The shared Exposure/Bloom helper uses v2 resources; both complete active consumer TUs compile, while the temporal consumer remains excluded. Renderer POST integration and the transferred temporal case's native acceptance remain pending.
+
+Bloom restores all three original cases in `Tests/Render/Passes/Bloom/GpuBloomTests.cpp` and adds "a one-mip bloom output remains sampled threshold data". Actual Null discovery lists all four with their `[gpu]` tags; numerical bodies are unexecuted in this source preparation. The new case uses the real Bloom and Display owners at tiny extents with nonzero threshold output and zero intensity. Source roots carry exact mip storage views; final output alone is sampled. Full native red/green, per-mip tracker stress, Renderer integration and POST acceptance remain separate. Layout reflection or returned-root registration does not close Z13.actual submitted consumption under #145/P6.9.
 
 ## Totals
 
 The measured phase-A baseline is **1256 CPU / 229 ordinary GPU** cases. Two retained detached-window CLI cases make the full-source equivalent **1258 CPU / 229 ordinary GPU**. Excluded: **26 CPU / 177 GPU**. Kept: **1232 CPU / 52 GPU**. Thus 1232+26=1258 CPU and 52+177=229 GPU. The excluded files also contain 1 hidden diagnostic case; it is outside the ordinary totals.
 
-All nine pure FrameData families/tests remain compiled, as do the three checkpoint cases and the direct graph dump goldens. HzbTests needs hzbLayout from excluded HzbStage; the four shadow-fit cases are active with ShadowStage. VisibilityTablesTests and VisibilityTests are active with the draw submission builder; their original seven names and tags
-remain. The mixed inspector file needs Native TAA history alternation and waits for TEMPORAL. The shared frame-declaration file requires bloom transients and waits for POST. Mixed
+All nine pure FrameData families/tests remain compiled, as do the three checkpoint cases and the direct graph dump goldens. HzbTests needs hzbLayout from excluded HzbStage; the four shadow-fit cases are active with ShadowStage. VisibilityTablesTests and VisibilityTests are active with the draw submission builder; their original seven names and tags remain. The mixed inspector file needs Native TAA history alternation and waits for TEMPORAL. The shared frame-declaration file requires bloom transients and waits for POST. Mixed
 scene pixel files wait for SCENE. Their complete registered file inventories are counted above; assertions are unchanged.
 
 The two added retained cases in `Tests/App/Model/Options/AppOptionsTests.cpp` are "--open-window opens a detached tool window" and "--open-window rejects unknown names and headless

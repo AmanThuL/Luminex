@@ -62,20 +62,15 @@ local pending_families = {
     {
         family = "POST",
         sources = {
-            "Source/Render/Passes/Bloom/BloomStage.cpp",
             "Source/Render/Passes/SelectionOutline/SelectionOutline.cpp",
         },
         tests = {
-            "Tests/Render/Passes/Bloom/Gpu*.cpp",
             "Tests/Render/Passes/Exposure/GpuRendererDisplayTests.cpp",
             "Tests/Render/Passes/Exposure/GpuSceneTimingTests.cpp",
             "Tests/Render/Passes/SelectionOutline/Gpu*.cpp",
             "Tests/Render/Graph/GpuAppFrameDeclarationTests.cpp",
         },
         shaders = {
-            "Shaders/Passes/Bloom/BloomThreshold.slang",
-            "Shaders/Passes/Bloom/BloomDownsample.slang",
-            "Shaders/Passes/Bloom/BloomUpsample.slang",
             "Shaders/Passes/SelectionOutline/SelectionMask.slang",
             "Shaders/Passes/SelectionOutline/SelectionOutline.slang",
         },

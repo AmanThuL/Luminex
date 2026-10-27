@@ -33,6 +33,16 @@
       "file": "Tests/Engine/Asset/Document/SceneDocumentContentTests.cpp",
       "header": "Source/Engine/Asset/Document/SceneDocumentSaveInternal.h",
       "reason": "Inject rename failures to verify rollback of new geometry and PNG companions."
+    },
+    {
+      "file": "Tests/Render/Passes/Bloom/GpuBloomTests.cpp",
+      "header": "Source/Render/Passes/Bloom/BloomStage.h",
+      "reason": "Exercise the actual bloom owner and one-mip sampled threshold output through the graph."
+    },
+    {
+      "file": "Tests/Render/Passes/Bloom/GpuBloomTests.cpp",
+      "header": "Source/Render/Passes/Display/DisplayStage.h",
+      "reason": "Verify actual display sampling of the bloom owner's one-mip threshold output and zero-intensity branch."
     }
   ],
   "units": {

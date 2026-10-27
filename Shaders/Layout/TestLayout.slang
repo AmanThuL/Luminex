@@ -35,6 +35,13 @@ StructuredBuffer<ExposureResolveRoot> gRoot_ExposureResolveRoot;
 StructuredBuffer<HistogramParams> gRecord_HistogramParams;
 StructuredBuffer<ExposureSeedParams> gRecord_ExposureSeedParams;
 StructuredBuffer<ExposureResolveParams> gRecord_ExposureResolveParams;
+import BloomRoots;
+StructuredBuffer<BloomThresholdRoot> gRoot_BloomThresholdRoot;
+StructuredBuffer<BloomDownsampleRoot> gRoot_BloomDownsampleRoot;
+StructuredBuffer<BloomUpsampleRoot> gRoot_BloomUpsampleRoot;
+StructuredBuffer<BloomThresholdParams> gRecord_BloomThresholdParams;
+StructuredBuffer<BloomDownsampleParams> gRecord_BloomDownsampleParams;
+StructuredBuffer<BloomUpsampleParams> gRecord_BloomUpsampleParams;
 // ---- temporal ----
 
 void probeMain()
