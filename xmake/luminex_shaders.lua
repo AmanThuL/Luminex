@@ -89,6 +89,12 @@ function lmx_configure_shader_library(target)
             "LightRow=lmx::engine::LightRow",
             -- ---- visibility ----
             -- ---- lights ----
+            "LightClusterRoot=lmx::render::LightClusterRoot",
+            "LightDebugRoot=lmx::render::LightDebugRoot",
+            "ClusterRecord=lmx::render::ClusterRecord",
+            "LocalLightParams=lmx::render::scene_detail::LocalLightParams",
+            "LightClusterParams=lmx::render::LightClusterKernelParams",
+            "DebugParams=lmx::render::LightDebugParams",
             -- ---- post ----
             -- ---- temporal ----
         }
@@ -96,7 +102,9 @@ function lmx_configure_shader_library(target)
         target:values_set("slang.layout_include", "Render/Passes/Display/DisplayRoots.h",
                           "Render/Passes/Scene/SceneRoots.h", "Render/Passes/Shadow/ShadowRoots.h",
                           "Engine/Geometry/Mesh.h", "Render/Passes/Scene/SceneFrameData.h",
-                          "Engine/Scene/SceneTables.h")
+                          "Engine/Scene/SceneTables.h",
+                          "Render/Passes/LocalLights/LightRoots.h",
+                          "Render/Passes/LocalLights/LightClusterFrameData.h")
     elseif kind == "tests" then
         target:values_set("slang.layout_probe", path.join(repository_root, "Shaders/Layout/TestLayout.slang"))
         local layout_map = {
@@ -112,12 +120,25 @@ function lmx_configure_shader_library(target)
             "ShadowSmokeUniforms=lmx::test::ShadowSmokeUniforms",
             -- ---- visibility ----
             -- ---- lights ----
+            "LightClusterRoot=lmx::render::LightClusterRoot",
+            "LightDebugRoot=lmx::render::LightDebugRoot",
+            "ClusterRecord=lmx::render::ClusterRecord",
+            "LocalLightParams=lmx::render::scene_detail::LocalLightParams",
+            "LightClusterParams=lmx::render::LightClusterKernelParams",
+            "DebugParams=lmx::render::LightDebugParams",
+            "LightRow=lmx::engine::LightRow",
+            "PunctualLightRoot=lmx::test::PunctualLightRoot",
+            "PunctualSample=lmx::test::PunctualSample",
             -- ---- post ----
             -- ---- temporal ----
         }
         target:values_set("slang.layout_map", table.unpack(layout_map))
         target:values_set("slang.layout_include", "Support/OracleRoots.h",
-                          "Engine/Geometry/Mesh.h")
+                          "Engine/Geometry/Mesh.h", "Engine/Scene/SceneTables.h",
+                          "Render/Passes/Scene/SceneFrameData.h",
+                          "Render/Passes/LocalLights/LightRoots.h",
+                          "Render/Passes/LocalLights/LightClusterFrameData.h",
+                          "Support/LocalLightOracleRoots.h")
     end
     local entries = lmx_shader_entries(kind)
     target:values_set("lmx.shader.entries", table.unpack(entries))

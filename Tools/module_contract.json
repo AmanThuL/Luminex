@@ -236,6 +236,7 @@
         "Tests/Support/GpuTemporalTestSupport.h",
         "Tests/Support/GpuTestSupport.h",
         "Tests/Support/GraphTestSupport.h",
+        "Tests/Support/LocalLightOracleRoots.h",
         "Tests/Support/OracleRoots.h",
         "Tests/Support/RenderGraphTestSupport.h",
         "Tests/Support/SceneTableTestSupport.h",

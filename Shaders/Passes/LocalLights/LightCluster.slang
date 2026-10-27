@@ -3,18 +3,12 @@
 // intrinsic, no matrix product and no reciprocal shortcut, so the GPU grid equals the CPU mirror
 // bit for bit. The prefix joins the safe-math shader set in xmake/shaders.lua and the backend.
 import SceneTables;
+import LocalLightTypes;
 
 static const uint kClusterTilesX = 16u;
 static const uint kClusterTilesY = 9u;
 static const uint kClusterSliceCount = 24u;
 static const uint kClusterTruncatedBit = 0x80000000u;
-
-// One froxel's range in the flat index list; mirrors lmx::render::ClusterRecord.
-struct ClusterRecord
-{
-    uint offset;
-    uint count;
-};
 
 // Mirrors the fixed ABI block LightClusterStage.cpp uploads. Matrices arrive as their four glm
 // columns so `column[c][r]` names exactly the element `m[c][r]` names on the CPU, and the 25

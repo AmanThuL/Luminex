@@ -24,6 +24,15 @@ StructuredBuffer<MeshRow> gRecord_MeshRow;
 StructuredBuffer<LightRow> gRecord_LightRow;
 // ---- visibility ----
 // ---- lights ----
+import LightRoots;
+import LightCluster;
+import LocalLightTypes;
+StructuredBuffer<LightClusterRoot> gRoot_LightClusterRoot;
+StructuredBuffer<LightDebugRoot> gRoot_LightDebugRoot;
+StructuredBuffer<ClusterRecord> gRecord_ClusterRecord;
+StructuredBuffer<LocalLightParams> gRecord_LocalLightParams;
+StructuredBuffer<LightClusterParams> gRecord_LightClusterParams;
+StructuredBuffer<DebugParams> gRecord_DebugParams;
 // ---- post ----
 // ---- temporal ----
 
