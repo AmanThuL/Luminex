@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Require the Renderer validation cases in a Catch2 tracker test listing."""
+"""Require Renderer and ordinary-buffer validation cases in a Catch2 tracker listing."""
 
 from __future__ import annotations
 
@@ -11,11 +11,12 @@ from pathlib import Path
 REQUIRED_CASES = (
     "the minimal frame runs four frames under the validation tracker",
     "the display read can be culled and restored under the tracker",
+    "ordinary graph buffer writes order in-place reads across paced frames",
 )
 
 
 class TrackerInventoryError(ValueError):
-    """The listing cannot establish that both required tracker cases are present."""
+    """The listing cannot establish that every required tracker case is present."""
 
 
 def check_inventory(inventory: object) -> int:
@@ -54,7 +55,7 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, UnicodeError, json.JSONDecodeError, TrackerInventoryError) as exc:
         print(f"tracker inventory check failed: {exc}", file=sys.stderr)
         return 1
-    print(f"tracker inventory check passed ({count} cases, both required Renderer cases)")
+    print(f"tracker inventory check passed ({count} cases, all required validation cases)")
     return 0
 
 

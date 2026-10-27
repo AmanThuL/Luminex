@@ -66,7 +66,7 @@ SyncPoint bufferSync(BufferUse use, PassKind kind) {
     case BufferUse::StorageRead:
         return {shaderStage(kind), A::ShaderRead, L::Undefined};
     case BufferUse::StorageWrite:
-        return {shaderStage(kind), A::ShaderWrite, L::Undefined};
+        return {shaderStage(kind), A::ShaderRead | A::ShaderWrite, L::Undefined};
     case BufferUse::CopySource:
         return {S::Copy, A::CopyRead, L::Undefined};
     case BufferUse::CopyDestination:

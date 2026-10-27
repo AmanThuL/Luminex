@@ -226,6 +226,7 @@
       ],
       "privateHeaders": [
         "Tests/Support/BrdfOracle.h",
+        "Tests/Support/BufferReadWriteGraphSupport.h",
         "Tests/Support/DisplayTransformOracle.h",
         "Tests/Support/EngineSceneTestSupport.h",
         "Tests/Support/EngineTestSupport.h",

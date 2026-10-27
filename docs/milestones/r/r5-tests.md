@@ -294,3 +294,7 @@ frame-arena and opaque adapter reads remain outside public handle-based observat
 
 Source-derived final target:1278unit/103ordinaryGPU/9tracker, Release1269pass/9trackerSKIP. Arithmetic is1258+14+6unit,58+51−8deferred−1retired+2Off+1paced-copyGPU. Full-source GPU
 delta is+2. Binary discovery and runtime results are separate evidence; these targets alone claim no run.
+
+`ordinary graph buffer writes order in-place reads across paced frames` adds one tracker/unit: four paced in-place frames retain logical Write with physical Read|Write.
+The existing copy-to-compute GPU case keeps all assertions and adds final words (+0GPU). Null proves tracking, not arithmetic; texture lowering and all19goldens stay.
+Source target:1279unit/103ordinaryGPU/10tracker. Release skips the new tracker before device creation; actual discovery and Metal arithmetic remain separate evidence.
