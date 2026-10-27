@@ -1,15 +1,5 @@
 // Raw reversed depth, nearest-expanded over the active rectangle; white is near and black far.
-struct HzbDebugViewParams
-{
-    uint level;
-    uint activeWidth;
-    uint activeHeight;
-    uint padding;
-    uint outputWidth;
-    uint outputHeight;
-    uint padding2;
-    uint padding3;
-};
+import OcclusionRoots;
 [[vk::binding(0, 0)]]
 Texture2D<float> gPyramid : register(t0);
 [[vk::binding(0, 0)]]

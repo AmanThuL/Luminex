@@ -7,9 +7,11 @@
 #include "Render/Common/GraphResources.h"
 #include "Render/Common/StageSetup.h"
 #include "Render/Passes/Occlusion/HzbFrameData.h"
+#include "Render/Passes/Occlusion/OcclusionRoots.h"
 #include "Render/Passes/Occlusion/OcclusionReference.h"
 #include "Render/Renderer/Renderer.h"
 #include <algorithm>
+#include <bit>
 #ifndef LMX_PENDING_VISIBILITY
 namespace lmx::render {
 //======================================================================================================================
@@ -111,13 +113,13 @@ void Renderer::declareOcclusion(RenderGraph& graph, rojoRHI::CommandList& comman
     PassDesc pass;
     pass.color = ColorAttachment{.handle = display, .load = LoadOp::Load, .store = StoreOp::Store};
     pass.textureReads.push_back(pyramid);
-    const std::array<uint32_t, 8> params =
+    const HzbDebugViewParams params = std::bit_cast<HzbDebugViewParams>(
         buildHzbDebugParams({.requestedLevel = uint32_t(view.hzbDebugLevel),
                              .levelCount = m_occlusionSource.levelCount,
                              .activeWidth = m_occlusionSource.activeWidth,
                              .activeHeight = m_occlusionSource.activeHeight,
                              .outputWidth = m_width,
-                             .outputHeight = m_height});
+                             .outputHeight = m_height}));
     graph.addPass("lmx.pass.hzb.debug", std::move(pass),
                   [this, &commands, pyramid, params](const PassResources& resources) {
                       commands.bindPipeline(*m_hzbDebugPipeline);

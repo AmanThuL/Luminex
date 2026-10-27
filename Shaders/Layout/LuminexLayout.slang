@@ -23,6 +23,25 @@ StructuredBuffer<MaterialRow> gRecord_MaterialRow;
 StructuredBuffer<MeshRow> gRecord_MeshRow;
 StructuredBuffer<LightRow> gRecord_LightRow;
 // ---- visibility ----
+import VisibilityRoots;
+import OcclusionRoots;
+StructuredBuffer<VisibilityClassifyRoot> gRoot_VisibilityClassifyRoot;
+StructuredBuffer<VisibilityOcclusionRoot> gRoot_VisibilityOcclusionRoot;
+StructuredBuffer<VisibilityScanRoot> gRoot_VisibilityScanRoot;
+StructuredBuffer<VisibilityEmitRoot> gRoot_VisibilityEmitRoot;
+StructuredBuffer<HzbReduceRoot> gRoot_HzbReduceRoot;
+StructuredBuffer<HzbPublishRoot> gRoot_HzbPublishRoot;
+StructuredBuffer<HzbDebugRoot> gRoot_HzbDebugRoot;
+StructuredBuffer<OcclusionReferenceRoot> gRoot_OcclusionReferenceRoot;
+StructuredBuffer<CandidateRecord> gRecord_CandidateRecord;
+StructuredBuffer<RunRecord> gRecord_RunRecord;
+StructuredBuffer<ChunkRecord> gRecord_ChunkRecord;
+StructuredBuffer<VisibilityViewParams> gRecord_VisibilityViewParams;
+StructuredBuffer<VisibilityParams> gRecord_VisibilityParams;
+StructuredBuffer<OcclusionParams> gRecord_OcclusionParams;
+StructuredBuffer<HzbReduceParams> gRecord_HzbReduceParams;
+StructuredBuffer<HzbDebugViewParams> gRecord_HzbDebugViewParams;
+StructuredBuffer<ReferenceParams> gRecord_ReferenceParams;
 // ---- lights ----
 import LightRoots;
 import LightCluster;

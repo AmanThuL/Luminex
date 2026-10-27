@@ -1,10 +1,6 @@
 // Emits every projection field for exact comparison with the ordered CPU oracle.
+import VisibilityOracleRoots;
 import Occlusion;
-struct ProbeBounds
-{
-    float4 minimum;
-    float4 maximum;
-};
 [[vk::binding(0, 0)]]
 StructuredBuffer<ProbeBounds> gBounds : register(t0);
 [[vk::binding(1, 0)]]

@@ -3,6 +3,7 @@
 /// @brief Renders direct candidate IDs and joins retired geometry visibility observations.
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Passes/Occlusion/OcclusionReference.h"
+#include "Render/Passes/Occlusion/OcclusionRoots.h"
 #include "Core/Diagnostics/Assert.h"
 #include "Engine/Gpu/GpuOwned.h"
 #include "Render/Common/DrawEncoding.h"
@@ -15,15 +16,6 @@
 #include <unordered_map>
 
 namespace lmx::render {
-namespace {
-struct ReferenceParams {
-    glm::mat4 viewProjection;
-    uint32_t instanceRow;
-    uint32_t padding[3]{};
-};
-static_assert(sizeof(ReferenceParams) == 80);
-static_assert(offsetof(ReferenceParams, instanceRow) == 64);
-} // namespace
 
 //======================================================================================================================
 lmx::Result<std::unique_ptr<OcclusionReference>>

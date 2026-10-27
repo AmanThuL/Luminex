@@ -1,3 +1,4 @@
+#include "Support/VisibilityOracleRoots.h"
 #include "Render/Passes/Occlusion/Occlusion.h"
 #include "Support/GpuTestSupport.h"
 #include <bit>
@@ -9,10 +10,7 @@ using namespace lmx::render;
 using namespace rojoRHI;
 
 namespace {
-struct ProbeBounds {
-    glm::vec4 minimum;
-    glm::vec4 maximum;
-};
+using lmx::test::ProbeBounds;
 static_assert(sizeof(ProbeBounds) == 32);
 //======================================================================================================================
 void compareProbe(lmx::engine::GpuContext& gpu, ComputePipeline& pipeline,

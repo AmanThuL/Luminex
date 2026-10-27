@@ -1,4 +1,5 @@
 // Independent candidate selector and byte ID output, sharing only scene transforms and alpha coverage.
+import OcclusionRoots;
 import AlphaMask;
 import SceneTables;
 
@@ -11,14 +12,6 @@ struct Vertex
 };
 [[vk::binding(0, 0)]]
 StructuredBuffer<Vertex> gVertices : register(t0);
-struct ReferenceParams
-{
-    float4x4 viewProjection;
-    uint instanceRow;
-    uint padding0;
-    uint padding1;
-    uint padding2;
-};
 [[vk::binding(1, 0)]]
 ConstantBuffer<ReferenceParams> gReference : register(b1);
 [[vk::binding(5, 0)]]

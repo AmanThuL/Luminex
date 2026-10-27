@@ -19,15 +19,13 @@ All original SCENE sources, shaders and independent tests are active. The eight 
 | `Tests/Render/Passes/Occlusion/GpuHzbTests.cpp` | 0 | 1 | 0 |
 | `Tests/Render/Passes/Occlusion/GpuOcclusionProbeTests.cpp` | 0 | 1 | 0 |
 | `Tests/Render/Passes/Occlusion/GpuOcclusionReferenceTests.cpp` | 0 | 4 | 0 |
-| `Tests/Render/Passes/Occlusion/GpuOcclusionTests.cpp` | 0 | 5 | 0 |
 | `Tests/Render/Passes/Occlusion/HzbTests.cpp` | 2 | 0 | 0 |
 | `Tests/Render/Passes/Visibility/GpuDisabledInstanceTests.cpp` | 0 | 2 | 0 |
-| `Tests/Render/Passes/Visibility/GpuVisibilityContributionTests.cpp` | 0 | 2 | 0 |
 | `Tests/Render/Passes/Visibility/GpuVisibilityGraphTests.cpp` | 0 | 2 | 0 |
 | `Tests/Render/Passes/Visibility/GpuVisibilityRailTests.cpp` | 0 | 2 | 0 |
-| `Tests/Render/Passes/Visibility/GpuVisibilityTests.cpp` | 0 | 3 | 0 |
+| `Tests/Render/Passes/Visibility/GpuVisibilityTests.cpp` | 0 | 1 | 0 |
 | `Tests/Render/Passes/Visibility/GpuVisibilityWorkTests.cpp` | 0 | 6 | 0 |
-| `Tests/Render/Renderer/RendererCaptureLayoutTests.cpp` | 3 | 0 | 0 |
+| `Tests/Render/Renderer/RendererCaptureLayoutTests.cpp` | 2 | 0 | 0 |
 | `Tests/App/Model/Performance/MeasurementSampleTests.cpp` | 1 | 0 | 0 |
 
 ### LIGHTS
@@ -39,6 +37,7 @@ All original SCENE sources, shaders and independent tests are active. The eight 
 | `Tests/Render/Passes/LocalLights/GpuLocalLightTests.cpp` | 0 | 1 | 0 |
 | `Tests/Render/Passes/LocalLights/GpuRendererLightingTests.cpp` | 0 | 7 | 0 |
 | `Tests/Render/Passes/LocalLights/RenderZeroLightInvariantTests.cpp` | 1 | 0 | 0 |
+| `Tests/Render/Passes/LocalLights/LightCaptureLayoutTests.cpp` | 1 | 0 | 0 |
 
 ### POST
 
@@ -54,6 +53,9 @@ All original SCENE sources, shaders and independent tests are active. The eight 
 | `Tests/App/Model/Graph/GpuGraphInspectorTests.cpp` | 0 | 2 | 0 |
 | `Tests/Render/Passes/Temporal/GpuExposureTemporalTests.cpp` | 0 | 1 | 0 |
 | `Tests/Render/Passes/Temporal/GpuSelectionOutlineTemporalTests.cpp` | 0 | 1 | 0 |
+| `Tests/Render/Passes/Temporal/GpuOcclusionTemporalTests.cpp` | 0 | 5 | 0 |
+| `Tests/Render/Passes/Temporal/GpuVisibilityContributionTemporalTests.cpp` | 0 | 2 | 0 |
+| `Tests/Render/Passes/Temporal/GpuVisibilityTemporalTests.cpp` | 0 | 2 | 0 |
 | `Tests/Render/Passes/Temporal/GpuTemporalAccumulationTests.cpp` | 0 | 8 | 0 |
 | `Tests/Render/Passes/Temporal/GpuTemporalHistoryTests.cpp` | 0 | 6 | 0 |
 | `Tests/Render/Passes/Temporal/GpuTemporalMotionTests.cpp` | 0 | 10 | 0 |
@@ -72,39 +74,37 @@ The original seventh case, "a manual temporal frame records the EV edit and the 
 
 Bloom restores all three original cases in `Tests/Render/Passes/Bloom/GpuBloomTests.cpp` and adds "a one-mip bloom output remains sampled threshold data". Actual Null discovery lists all four with their `[gpu]` tags; numerical bodies are unexecuted in this source preparation. The new case uses the real Bloom and Display owners at tiny extents with nonzero threshold output and zero intensity. Source roots carry exact mip storage views; final output alone is sampled. Full native red/green, per-mip tracker stress, Renderer integration and POST acceptance remain separate. Layout reflection or returned-root registration does not close Z13.actual submitted consumption under #145/P6.9. Selection restores seven original cases in `Tests/Render/Passes/SelectionOutline/GpuSelectionOutlineTests.cpp` with their original names, tags, sections and numerical assertions. The complete eighth case, "selection presentation leaves ordinary display scene color and temporal history untouched", moves to `Tests/Render/Passes/Temporal/GpuSelectionOutlineTemporalTests.cpp`; its four Native TAA frames, jitter, history equality, age and positive outline checks remain intact. The shared v2 fixture has both actual source consumers. The nine pool constructor transports use the owning `GpuContext` rather than its device handle. Compilation and native evidence are recorded separately; the Temporal case remains excluded from ordinary discovery and execution until its family returns. The editor target starts in its actual creation state and ends in the sampled UI state. Same-extent replacement allocates successfully before forgetting the previous state; failure retains the old owner. Seven original Metal numerical cases, editor selected/rejected/disabled and resize/window lifecycle, and the planned Selection tracker cases remain pending. Source roots, reflected layout and returned-root registration do not prove submitted pipeline/root/draw consumption: P/B/M remain distinct from C, and Z13.actual under #145/P6.9 remains open. Renderer POST activation, Z03/Z11 POST-dependent obligations, image gates and the fixed smoke/performance gates remain separate.
 
+### Visibility and occlusion layout source coverage
+
+Nine complete Raw cases move with their original translation-unit helpers to the three Temporal files above. Their names, tags, sections, frames, assertions and oracle math remain intact and excluded. The complete scene-lighting/cluster capture case moves to `LightCaptureLayoutTests.cpp`, explicitly excluded with LIGHTS; the other two renderer capture cases stay under VISIBILITY. These ownership transfers change no baseline case totals.
+
+Eight production address roots and their actual table/frame values feed both real App and Tests layout probes. Three test-oracle roots and the actual readback/bounds values feed only Tests, preserving the existing private-header boundary. Every applicable field is checked against the available Metal, SPIR-V and HLSL reflection. Layout compilation and CPU evidence are recorded separately from native acceptance and later caller ports.
+
+The existing visibility capacity case adds the 23/24/47/48/72-byte boundaries. Exactly two physical argument-buffer carriers change from 2000 to 2400 bytes; both logical 100-argument predicates remain. The builder divides by the public indexed-indirect argument type. The original HZB eight-word builder API, body and both existing cases stay unchanged. The named HZB debug payload is owned by the real header; its existing renderer initializer remains source-only, guarded and excluded. Actual caller instantiation, bytes, upload and submitted consumption remain open before activation.
+
+Visibility, occlusion and LightCapture numerical bodies remain excluded. No layout probe establishes submitted consumption under #145, and no runtime bindings, atomics, readbacks, pipeline math or family activation return in this layout preparation.
+
 ## Totals
 
 The measured phase-A baseline is **1256 CPU / 229 ordinary GPU** cases. Two retained detached-window CLI cases make the full-source equivalent **1258 CPU / 229 ordinary GPU**. Excluded: **26 CPU / 177 GPU**. Kept: **1232 CPU / 52 GPU**. Thus 1232+26=1258 CPU and 52+177=229 GPU. The excluded files also contain 1 hidden diagnostic case; it is outside the ordinary totals.
 
-All nine pure FrameData families/tests remain compiled, as do the three checkpoint cases and the direct graph dump goldens. HzbTests needs hzbLayout from excluded HzbStage; the four shadow-fit cases are active with ShadowStage. VisibilityTablesTests and VisibilityTests are active with the draw submission builder; their original seven names and tags remain. The mixed inspector file needs Native TAA history alternation and waits for TEMPORAL. The shared frame-declaration file requires bloom transients and waits for POST. Mixed
-scene pixel files wait for SCENE. Their complete registered file inventories are counted above; assertions are unchanged.
+All nine pure FrameData families/tests remain compiled, as do the three checkpoint cases and the direct graph dump goldens. HzbTests needs hzbLayout from excluded HzbStage; the four shadow-fit cases are active with ShadowStage. VisibilityTablesTests and VisibilityTests are active with the draw submission builder; their original seven names and tags remain. The mixed inspector file needs Native TAA history alternation and waits for TEMPORAL. The shared frame-declaration file requires bloom transients and waits for POST. Mixed scene pixel files wait for SCENE. Their complete registered file inventories are counted above; assertions are unchanged.
 
-The two added retained cases in `Tests/App/Model/Options/AppOptionsTests.cpp` are "--open-window opens a detached tool window" and "--open-window rejects unknown names and headless
-runs". The measured excluded-file inventories above remain unchanged.
+The two added retained cases in `Tests/App/Model/Options/AppOptionsTests.cpp` are "--open-window opens a detached tool window" and "--open-window rejects unknown names and headless runs". The measured excluded-file inventories above remain unchanged.
 
-The original seven-case CaptureSchemaTests file was split without changing a case block: four generic schema API cases remain kept, and three full-renderer registration cases move
-to RendererCaptureLayoutTests under VISIBILITY. That family returns after SCENE and LIGHTS, when all required layouts are available. The three moved cases were selected by exact
-names in the original full binary; their new file tag did not exist in that inventory.
+The original seven-case CaptureSchemaTests file was split without changing a case block: four generic schema API cases remain kept, and three full-renderer registration cases move to RendererCaptureLayoutTests under VISIBILITY. That family returns after SCENE and LIGHTS, when all required layouts are available. The three moved cases were selected by exact names in the original full binary; their new file tag did not exist in that inventory.
 
 MeasurementSampleTests requires real declaration candidates and GPU-classifier counters before retirement, so its unchanged case waits for VISIBILITY after SCENE returns.
 
 ## GPU owner and error conversion
 
-The error cases `gpuError maps InvalidDesc to InvalidArgument and keeps the message` and `gpuError maps creation failures to Gpu and DeviceUnsupported to Unsupported` become
-`gpuError keeps v2 error messages` and `gpuError maps driver failures to Gpu and Unsupported to Unsupported`. RojoRHI no longer returns InvalidDesc: invalid interface descriptors
-are fatal misuse. All four real categories preserve messages; Unsupported maps to Unsupported and the other three map to Gpu. No fictitious descriptor error is kept to satisfy the
-old assertion.
+The error cases `gpuError maps InvalidDesc to InvalidArgument and keeps the message` and `gpuError maps creation failures to Gpu and DeviceUnsupported to Unsupported` become `gpuError keeps v2 error messages` and `gpuError maps driver failures to Gpu and Unsupported to Unsupported`. RojoRHI no longer returns InvalidDesc: invalid interface descriptors are fatal misuse. All four real categories preserve messages; Unsupported maps to Unsupported and the other three map to Gpu. No fictitious descriptor error is kept to satisfy the old assertion.
 
-The four existing EngineGpuOwnerTests cases retain their names and run as `[engine][device]` against the configured backend because handles replace subclass stubs. Descriptor/label
-and move identity assertions remain; readback buffer memory replaces obsolete descriptor booleans. Deferred release is checked after actual frame-slot recycling rather than
-immediate destruction. Additional owner cases cover reset/move exactly-once retirement and immutable color/depth creation layout, underlying mip/layer metadata and storage-view
-presence. Existing Engine capture facade assertions keep field names, offsets and size; schema version 2 replaces the removed numeric slot assertion with explicit
-no-slot/no-page-channel assertions. The generic capture suite moves and converts separately with its resource/root-window coverage.
+The four existing EngineGpuOwnerTests cases retain their names and run as `[engine][device]` against the configured backend because handles replace subclass stubs. Descriptor/label and move identity assertions remain; readback buffer memory replaces obsolete descriptor booleans. Deferred release is checked after actual frame-slot recycling rather than immediate destruction. Additional owner cases cover reset/move exactly-once retirement and immutable color/depth creation layout, underlying mip/layer metadata and storage-view presence. Existing Engine capture facade assertions keep field names, offsets and size; schema version 2 replaces the removed numeric slot assertion with explicit no-slot/no-page-channel assertions. The generic capture suite moves and converts separately with its resource/root-window coverage.
 
 ## Scene upload conversion
 
-The case `toTextureMips points each level at its payload offset with its row pitch` becomes `toTextureData points each level at its payload offset with its row pitch`, matching the
-byte-span upload adapter. Payload identity, level order and row pitches remain asserted; exact byte-span sizes and zero bytesPerImage for these 2D subresources are also checked.
+The case `toTextureMips points each level at its payload offset with its row pitch` becomes `toTextureData points each level at its payload offset with its row pitch`, matching the byte-span upload adapter. Payload identity, level order and row pitches remain asserted; exact byte-span sizes and zero bytesPerImage for these 2D subresources are also checked.
 This is a rename with no case-count change.
 
 ## Preserving readback coverage

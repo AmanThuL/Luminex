@@ -48,6 +48,7 @@ local pending_families = {
         tests = {
             "Tests/Render/Passes/LocalLights/Gpu*.cpp",
             "Tests/Render/Passes/LocalLights/RenderZeroLightInvariantTests.cpp",
+            "Tests/Render/Passes/LocalLights/LightCaptureLayoutTests.cpp",
         },
         shaders = {
             "Shaders/Passes/LocalLights/LightClusterCount.slang",

@@ -88,6 +88,23 @@ function lmx_configure_shader_library(target)
             "MeshRow=lmx::engine::MeshRow",
             "LightRow=lmx::engine::LightRow",
             -- ---- visibility ----
+            "VisibilityClassifyRoot=lmx::render::VisibilityClassifyRoot",
+            "VisibilityOcclusionRoot=lmx::render::VisibilityOcclusionRoot",
+            "VisibilityScanRoot=lmx::render::VisibilityScanRoot",
+            "VisibilityEmitRoot=lmx::render::VisibilityEmitRoot",
+            "HzbReduceRoot=lmx::render::HzbReduceRoot",
+            "HzbPublishRoot=lmx::render::HzbPublishRoot",
+            "HzbDebugRoot=lmx::render::HzbDebugRoot",
+            "OcclusionReferenceRoot=lmx::render::OcclusionReferenceRoot",
+            "CandidateRecord=lmx::render::CandidateRecord",
+            "RunRecord=lmx::render::RunRecord",
+            "ChunkRecord=lmx::render::ChunkRecord",
+            "VisibilityViewParams=lmx::render::VisibilityViewParams",
+            "VisibilityParams=lmx::render::VisibilityParams",
+            "OcclusionParams=lmx::render::OcclusionParams",
+            "HzbReduceParams=lmx::render::HzbReduceParams",
+            "HzbDebugViewParams=lmx::render::HzbDebugViewParams",
+            "ReferenceParams=lmx::render::ReferenceParams",
             -- ---- lights ----
             "LightClusterRoot=lmx::render::LightClusterRoot",
             "LightDebugRoot=lmx::render::LightDebugRoot",
@@ -127,7 +144,9 @@ function lmx_configure_shader_library(target)
                           "Render/Passes/Bloom/BloomRoots.h",
                           "Render/Passes/Bloom/BloomFrameData.h",
                           "Render/Passes/SelectionOutline/SelectionOutlineRoots.h",
-                          "Render/Passes/SelectionOutline/SelectionOutlineFrameData.h")
+                          "Render/Passes/SelectionOutline/SelectionOutlineFrameData.h",
+                          "Render/Passes/Visibility/VisibilityRoots.h",
+                          "Render/Passes/Occlusion/OcclusionRoots.h")
     elseif kind == "tests" then
         target:values_set("slang.layout_probe", path.join(repository_root, "Shaders/Layout/TestLayout.slang"))
         local layout_map = {
@@ -142,6 +161,28 @@ function lmx_configure_shader_library(target)
             "SceneTableAbiRoot=lmx::test::SceneTableAbiRoot",
             "ShadowSmokeUniforms=lmx::test::ShadowSmokeUniforms",
             -- ---- visibility ----
+            "VisibilityClassifyRoot=lmx::render::VisibilityClassifyRoot",
+            "VisibilityOcclusionRoot=lmx::render::VisibilityOcclusionRoot",
+            "VisibilityScanRoot=lmx::render::VisibilityScanRoot",
+            "VisibilityEmitRoot=lmx::render::VisibilityEmitRoot",
+            "HzbReduceRoot=lmx::render::HzbReduceRoot",
+            "HzbPublishRoot=lmx::render::HzbPublishRoot",
+            "HzbDebugRoot=lmx::render::HzbDebugRoot",
+            "OcclusionReferenceRoot=lmx::render::OcclusionReferenceRoot",
+            "CandidateRecord=lmx::render::CandidateRecord",
+            "RunRecord=lmx::render::RunRecord",
+            "ChunkRecord=lmx::render::ChunkRecord",
+            "VisibilityViewParams=lmx::render::VisibilityViewParams",
+            "VisibilityParams=lmx::render::VisibilityParams",
+            "OcclusionParams=lmx::render::OcclusionParams",
+            "HzbReduceParams=lmx::render::HzbReduceParams",
+            "HzbDebugViewParams=lmx::render::HzbDebugViewParams",
+            "ReferenceParams=lmx::render::ReferenceParams",
+            "HzbDepthRoot=lmx::test::HzbDepthRoot",
+            "HzbReadbackRoot=lmx::test::HzbReadbackRoot",
+            "OcclusionProbeRoot=lmx::test::OcclusionProbeRoot",
+            "ReadbackParams=lmx::test::ReadbackParams",
+            "ProbeBounds=lmx::test::ProbeBounds",
             -- ---- lights ----
             "LightClusterRoot=lmx::render::LightClusterRoot",
             "LightDebugRoot=lmx::render::LightDebugRoot",
@@ -184,7 +225,10 @@ function lmx_configure_shader_library(target)
                           "Render/Passes/Bloom/BloomRoots.h",
                           "Render/Passes/Bloom/BloomFrameData.h",
                           "Render/Passes/SelectionOutline/SelectionOutlineRoots.h",
-                          "Render/Passes/SelectionOutline/SelectionOutlineFrameData.h")
+                          "Render/Passes/SelectionOutline/SelectionOutlineFrameData.h",
+                          "Render/Passes/Visibility/VisibilityRoots.h",
+                          "Render/Passes/Occlusion/OcclusionRoots.h",
+                          "Support/VisibilityOracleRoots.h")
     end
     local entries = lmx_shader_entries(kind)
     target:values_set("lmx.shader.entries", table.unpack(entries))

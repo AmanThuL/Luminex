@@ -13,7 +13,7 @@ TEST_CASE("visibility params size capacities from the buffers and pick the layou
           "[render][visibility]") {
     const VisibilityParams sparse = buildVisibilityParams({.dense = false,
                                                            .rowBufferBytes = 4000,
-                                                           .argumentBufferBytes = 2000,
+                                                           .argumentBufferBytes = 2400,
                                                            .stateCapacity = 64,
                                                            .candidateCount = 33});
     CHECK(sparse.layout == 0u);
@@ -26,13 +26,19 @@ TEST_CASE("visibility params size capacities from the buffers and pick the layou
     CHECK(sparse.padding[1] == 0u);
 
     CHECK(buildVisibilityParams({.dense = true}).layout == 1u);
+
+    CHECK(buildVisibilityParams({.argumentBufferBytes = 23}).argumentCapacity == 0u);
+    CHECK(buildVisibilityParams({.argumentBufferBytes = 24}).argumentCapacity == 1u);
+    CHECK(buildVisibilityParams({.argumentBufferBytes = 47}).argumentCapacity == 1u);
+    CHECK(buildVisibilityParams({.argumentBufferBytes = 48}).argumentCapacity == 2u);
+    CHECK(buildVisibilityParams({.argumentBufferBytes = 72}).argumentCapacity == 3u);
 }
 
 //======================================================================================================================
 TEST_CASE("visibility params cap each capacity by its override and never raise one",
           "[render][visibility]") {
     const VisibilityParamsInputs base{.rowBufferBytes = 4000,
-                                      .argumentBufferBytes = 2000,
+                                      .argumentBufferBytes = 2400,
                                       .stateCapacity = 64,
                                       .capacityOverride = std::array<uint32_t, 3>{10, 1000, 8}};
     const VisibilityParams params = buildVisibilityParams(base);

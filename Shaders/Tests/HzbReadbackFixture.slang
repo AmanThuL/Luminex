@@ -1,10 +1,4 @@
-struct ReadbackParams
-{
-    uint width;
-    uint height;
-    uint level;
-    uint offset;
-};
+import VisibilityOracleRoots;
 [[vk::binding(0, 0)]]
 Texture2D<float> gSource : register(t0);
 [[vk::binding(0, 0)]]
