@@ -18,6 +18,8 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <cmath>
 #include <cstddef>
 #include <string>
 #include <utility>
@@ -91,6 +93,24 @@ float vendorRenderScale(float scale, const engine::UpscalerSupportInfo& support)
 }
 
 //======================================================================================================================
+FrameExtents vendorRenderExtents(uint32_t outputWidth, uint32_t outputHeight, float scale,
+                                 const engine::UpscalerSupportInfo& support) {
+    FrameExtents extents =
+        renderExtentsForScale(outputWidth, outputHeight, vendorRenderScale(scale, support));
+    if (!support.available) {
+        return extents;
+    }
+    // Computed in double, the precision declare() checks the minimum in.
+    const auto smallest = [&](uint32_t output) {
+        const double content = std::ceil(static_cast<double>(support.minInputScale) * output);
+        return static_cast<uint32_t>(std::clamp(content, 1.0, static_cast<double>(output)));
+    };
+    extents.renderWidth = std::max(extents.renderWidth, smallest(outputWidth));
+    extents.renderHeight = std::max(extents.renderHeight, smallest(outputHeight));
+    return extents;
+}
+
+//======================================================================================================================
 bool vendorHistoryReset(HistoryResetReason reason, ReconstructionMode previousMode,
                         bool recreated) {
     return reason != HistoryResetReason::None ||
@@ -121,6 +141,12 @@ rojoRHI::UpscalerDesc vendorUpscalerDesc(uint32_t width, uint32_t height, std::s
 }
 
 namespace temporal_detail {
+
+//======================================================================================================================
+void VendorCreationProbe::reset() {
+    refuse.store(false, std::memory_order_relaxed);
+    attempts.store(0, std::memory_order_relaxed);
+}
 
 //======================================================================================================================
 VendorCreationProbe& vendorCreationProbe() {
@@ -179,8 +205,8 @@ ReconstructionSelection VendorTemporalScaler::prepare(ReconstructionMode request
     }
     const std::string label = "lmx.temporal.vendor.scaler " + std::string(support.name);
     auto& probe = temporal_detail::vendorCreationProbe();
-    ++probe.attempts;
-    if (probe.refuse) {
+    probe.attempts.fetch_add(1, std::memory_order_relaxed);
+    if (probe.refuse.load(std::memory_order_relaxed)) {
         return fail(lmx::Error{ErrorCode::Gpu, "creation refused by the test probe"});
     }
     // Inputs are allocated at the output extent, so the upscaler's input is its output; its
@@ -306,8 +332,8 @@ GraphTexture VendorTemporalScaler::declare(RenderGraph& graph, rojoRHI::CommandL
                                            const TemporalInputs& inputs) {
     LMX_ASSERT(m_scaler, "vendor scaler must be prepared before declaration");
     // v2 raises an input content below the scaler's range to its smallest silently, where v1
-    // refused it. The renderer clamps the scale into the range (vendorRenderScale), so a smaller
-    // content here is a renderer defect rather than a frame to reconstruct.
+    // refused it. The renderer keeps the content inside the range (vendorRenderExtents), so a
+    // smaller content here is a renderer defect rather than a frame to reconstruct.
     const float minInputScale = m_gpu.upscalerSupport().minInputScale;
     LMX_ASSERT(static_cast<double>(inputs.extents.renderWidth) >=
                        static_cast<double>(minInputScale) * inputs.extents.outputWidth &&

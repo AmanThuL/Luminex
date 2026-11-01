@@ -11,7 +11,12 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
+#include <cstddef>
+#include <fstream>
+#include <regex>
+#include <sstream>
 #include <string>
+#include <string_view>
 
 namespace {
 using namespace lmx::render;
@@ -30,8 +35,9 @@ SceneView vendorView(ReconstructionMode mode) {
 //======================================================================================================================
 // One declared and executed device frame with its own transient pool, so each upscaler records at
 // most one upscale per frame (VU-rojo-upscale-0008). The dump is the executed frame's record. The
-// display target is exported rather than presented: the frame leaves it as a shader read, which a
-// presentation transition would contradict, and the App presents its drawable instead.
+// display target is exported rather than presented: the renderer gives it a shader-read final use,
+// and RenderGraph::lowerPhysical refuses a texture with both a final use and a presentation sink.
+// The App presents its drawable instead.
 std::string declaredFrame(lmx::engine::GpuContext& gpu, Renderer& renderer, const SceneView& view) {
     auto frame = gpu.beginFrame();
     std::string dump;
@@ -55,6 +61,47 @@ std::string declaredFrame(lmx::engine::GpuContext& gpu, Renderer& renderer, cons
     return dump;
 }
 
+//======================================================================================================================
+// Masks the byte counts the device chooses -- transient offsets, sizes and alignments and the pool
+// totals -- keeping every lifetime, unused resource and aliasing decision of the dump.
+std::string maskDeviceBytes(const std::string& dump) {
+    const auto transients = dump.find("\ntransients\n");
+    if (transients == std::string::npos) {
+        return dump;
+    }
+    static const std::regex kBytes(R"(\b(offset|size|align|requested|high-water|saved) \d+)");
+    return dump.substr(0, transients) + std::regex_replace(dump.substr(transients), kBytes, "$1 *");
+}
+
+//======================================================================================================================
+// Compares a dump with a golden file after masking both, writing the unmasked dump beside the
+// golden on a mismatch.
+void requireMatchesMaskedGolden(const std::string& dump, std::string_view name) {
+    const std::string path = lmx::test::goldenPath(name);
+    std::ifstream file(path, std::ios::binary);
+    INFO("golden file: " + path);
+    REQUIRE(file.good());
+    std::ostringstream expected;
+    expected << file.rdbuf();
+    const std::string masked = maskDeviceBytes(dump);
+    if (maskDeviceBytes(expected.str()) != masked) {
+        std::ofstream(path + ".actual", std::ios::binary | std::ios::trunc) << dump;
+        INFO("actual output written to: " + path + ".actual");
+        INFO("--- actual ---\n" + dump);
+    }
+    REQUIRE(maskDeviceBytes(expected.str()) == masked);
+}
+
+//======================================================================================================================
+size_t occurrences(std::string_view text, std::string_view needle) {
+    size_t count = 0;
+    for (auto at = text.find(needle); at != std::string_view::npos;
+         at = text.find(needle, at + needle.size())) {
+        ++count;
+    }
+    return count;
+}
+
 // Restores the vendor creation probe whatever way a case leaves.
 struct ProbeReset {
     ProbeReset();
@@ -63,12 +110,12 @@ struct ProbeReset {
 
 //======================================================================================================================
 ProbeReset::ProbeReset() {
-    vendorCreationProbe() = {};
+    vendorCreationProbe().reset();
 }
 
 //======================================================================================================================
 ProbeReset::~ProbeReset() {
-    vendorCreationProbe() = {};
+    vendorCreationProbe().reset();
 }
 
 //======================================================================================================================
@@ -109,7 +156,9 @@ TEST_CASE("vendor temporal policy preserves native modes and translates units",
     narrower.maxInputScale = 0.9f;
     REQUIRE(vendorRenderScale(0.5f, narrower) == Catch::Approx(0.6f));
     REQUIRE(vendorRenderScale(1.0f, narrower) == Catch::Approx(0.9f));
-    const auto params = vendorTemporalParams({160, 90, 320, 180}, {0.25f, -0.125f});
+    const auto params = vendorTemporalParams(
+        {.renderWidth = 160, .renderHeight = 90, .outputWidth = 320, .outputHeight = 180},
+        {0.25f, -0.125f});
     REQUIRE(params.motionScaleX == -160.0f);
     REQUIRE(params.motionScaleY == -90.0f);
     REQUIRE(params.jitterX == 0.25f);
@@ -123,6 +172,50 @@ TEST_CASE("vendor temporal policy preserves native modes and translates units",
     REQUIRE(desc.input.width == 320);
     REQUIRE(desc.output.height == 180);
     REQUIRE(desc.flags == rojoRHI::UpscalerFlags::ReversedDepth);
+}
+
+//======================================================================================================================
+// Rounding the clamped scale to the nearest pixel can land half a pixel below a device minimum
+// above kMinRenderScale; the extents rise to the smallest content that meets it, and stay exactly
+// renderExtentsForScale's where the minimum is at most kMinRenderScale, as on Metal and Null.
+TEST_CASE("vendor render extents never fall below the scaler minimum",
+          "[render][temporal][vendor]") {
+    const lmx::engine::UpscalerSupportInfo strict{
+        .available = true, .minInputScale = 0.6f, .maxInputScale = 1.0f, .name = "strict"};
+    const FrameExtents raised = vendorRenderExtents(64, 64, 0.5f, strict);
+    REQUIRE(renderExtentsForScale(64, 64, 0.6f).renderWidth == 38);
+    REQUIRE(raised.renderWidth == 39);
+    REQUIRE(raised.renderHeight == 39);
+    REQUIRE(raised.outputWidth == 64);
+    for (uint32_t output = 1; output <= 300; ++output) {
+        CAPTURE(output);
+        for (const float scale : {0.5f, 0.6f, 0.61f, 0.75f, 1.0f}) {
+            CAPTURE(scale);
+            const FrameExtents extents = vendorRenderExtents(output, output + 7, scale, strict);
+            REQUIRE(static_cast<double>(extents.renderWidth) >=
+                    static_cast<double>(strict.minInputScale) * output);
+            REQUIRE(static_cast<double>(extents.renderHeight) >=
+                    static_cast<double>(strict.minInputScale) * (output + 7));
+            REQUIRE(extents.renderWidth <= output);
+        }
+    }
+    for (const float minimum : {0.5f, 1.0f / 3.0f}) {
+        CAPTURE(minimum);
+        const lmx::engine::UpscalerSupportInfo support{
+            .available = true, .minInputScale = minimum, .maxInputScale = 1.0f, .name = "wide"};
+        for (uint32_t output = 1; output <= 300; ++output) {
+            CAPTURE(output);
+            for (int step = 0; step <= 50; ++step) {
+                const float scale = kMinRenderScale + static_cast<float>(step) * 0.01f;
+                CAPTURE(scale);
+                const FrameExtents expected =
+                    renderExtentsForScale(output, output + 1, vendorRenderScale(scale, support));
+                const FrameExtents actual = vendorRenderExtents(output, output + 1, scale, support);
+                REQUIRE(actual.renderWidth == expected.renderWidth);
+                REQUIRE(actual.renderHeight == expected.renderHeight);
+            }
+        }
+    }
 }
 
 //======================================================================================================================
@@ -188,17 +281,17 @@ TEST_CASE("vendor declarations keep separate histories and record their inputs",
     const auto dump = declaredFrame(*gpu, **renderer, view);
     REQUIRE((*renderer)->temporalStatus().lastReset == HistoryResetReason::None);
     REQUIRE((*renderer)->temporalStatus().vendorReset);
-    REQUIRE(dump.find("external \"lmx.pass.temporal.vendor\"") != std::string::npos);
+    // One external pass, the frame's one upscale.
+    REQUIRE(occurrences(dump, "external \"lmx.pass.temporal.vendor\"") == 1);
     REQUIRE(dump.find("lmx.pass.temporal.resolve") == std::string::npos);
     REQUIRE(dump.find("lmx.pass.temporal.upscale") == std::string::npos);
     REQUIRE(dump.find("lmx.pass.temporal.commit") == std::string::npos);
-    // The upscale's input content is the frame's render extent (vendorTemporalParams).
+    // The upscale's input content is the frame's render extent (vendorTemporalParams), and its
+    // reset flag the one vendorReset() reports.
     REQUIRE(vendorCreationProbe().attempts == 1);
     REQUIRE((*renderer)->temporalStatus().extents.renderWidth == 64);
-    // The golden stops before the transient placements, whose sizes and alignments are the
-    // device's own and differ between backends.
-    lmx::test::requireMatchesGolden(dump.substr(0, dump.find("\ntransients\n") + 1),
-                                    "frame-temporal-vendor.txt");
+    // Transient placements and pool totals are the device's own and differ between backends.
+    requireMatchesMaskedGolden(dump, "frame-temporal-vendor.txt");
     view.temporal.renderScale = 0.5f;
     declaredFrame(*gpu, **renderer, view);
     REQUIRE_FALSE((*renderer)->temporalStatus().vendorReset);

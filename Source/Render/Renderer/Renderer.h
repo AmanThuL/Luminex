@@ -248,8 +248,10 @@ private:
     // allocations answer to kMotionFormat and kReactiveFormat rather than to the scene targets'.
     lmx::Result<TemporalTargets> createTemporalTargets(uint32_t width, uint32_t height) const;
     // Adopts the attachments and both temporal slot pairs that resize() allocated, forgetting the
-    // outgoing identities' state entries and seeding the replacements'. It cannot fail, which is
-    // what lets resize() allocate everything first and commit it all at once.
+    // outgoing identities' state entries and seeding the replacements'. It reports no error and
+    // allocates no GPU object -- only the state table's own storage, which throws as any
+    // allocation does -- which is what lets resize() allocate everything first and commit it all
+    // at once.
     void adoptTemporalTargets(TemporalTargets targets, TemporalSlots slots);
 
     engine::GpuContext& m_gpu;

@@ -136,3 +136,12 @@ transitions
   before p19 texture r2 mips[0..] layers[0..] ShaderRead -> RenderTarget
   before p6 texture r4 mips[0..] layers[0..] RenderTarget -> ShaderRead
   before p6 texture r2 mips[0..] layers[0..] RenderTarget -> RenderTarget
+transients
+  r12 unused
+  r13 passes p4..p5 offset 0 size 16384 align 16384
+  r14 passes p4..p5 offset 16384 size 16384 align 16384
+  r15 passes p4..p5 offset 32768 size 16384 align 16384
+  r17 passes p10..p18 offset 49152 size 16384 align 16384
+  r18 passes p15..p19 offset 65536 size 16384 align 16384
+memory
+  pooling on requested 81920 high-water 81920 saved 0

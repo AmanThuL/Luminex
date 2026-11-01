@@ -56,7 +56,10 @@ RendererFrameState Renderer::deriveFrameState(const engine::Camera& camera, cons
 
     // Both extents of the frame. Every render-extent target keeps its output-extent allocation and
     // is used through an origin-anchored active rectangle, so a scale change allocates nothing.
-    const FrameExtents extents = renderExtentsForScale(m_width, m_height, renderScale);
+    const FrameExtents extents =
+        vendorTemporal
+            ? vendorRenderExtents(m_width, m_height, renderScale, m_gpu.upscalerSupport())
+            : renderExtentsForScale(m_width, m_height, renderScale);
     const bool upscaled = extents.renderWidth != m_width || extents.renderHeight != m_height;
     const FrameSignature signature{.sceneGeneration = view.temporal.sceneGeneration,
                                    .extents = extents,

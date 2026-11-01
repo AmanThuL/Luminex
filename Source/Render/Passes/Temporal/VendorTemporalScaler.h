@@ -7,6 +7,7 @@
 #include "Core/Diagnostics/Result.h"
 #include "Render/Passes/Temporal/TemporalResolve.h"
 
+#include <atomic>
 #include <cstdint>
 #include <string_view>
 
@@ -14,6 +15,13 @@ namespace lmx::render {
 
 /// Clamps input/output scale into the engine and supported vendor intervals.
 float vendorRenderScale(float scale, const engine::UpscalerSupportInfo& support);
+
+/// The extents of a vendor frame: renderExtentsForScale() at vendorRenderScale(), with each axis
+/// raised to ceil(minInputScale * output) where rounding to the nearest pixel fell below it, which
+/// happens only when the device's minimum exceeds kMinRenderScale. Without vendor support the
+/// scale passes through unclamped.
+FrameExtents vendorRenderExtents(uint32_t outputWidth, uint32_t outputHeight, float scale,
+                                 const engine::UpscalerSupportInfo& support);
 
 /// Vendor history resets independently of the engine's interchangeable color/depth histories.
 bool vendorHistoryReset(HistoryResetReason reason, ReconstructionMode previousMode, bool recreated);
@@ -32,13 +40,17 @@ namespace temporal_detail {
 /// A test-only seam over vendor scaler creation, which a real device offers no way to refuse.
 /// While `refuse` is set, every creation the adapter attempts fails as a backend refusal would,
 /// without calling Device::createUpscaler; `attempts` counts every attempt, refused or not.
-/// Production code never writes it; a test that does restores the default before it returns.
+/// Production code only reads `refuse` and counts; a test that sets it calls reset() before it
+/// returns. Both fields are relaxed atomics, so renderers on several threads may count at once.
 struct VendorCreationProbe {
-    bool refuse = false;   ///< Fail each attempt instead of creating the upscaler.
-    uint32_t attempts = 0; ///< Creations attempted since the probe was last reset.
+    std::atomic<bool> refuse = false;   ///< Fail each attempt instead of creating the upscaler.
+    std::atomic<uint32_t> attempts = 0; ///< Creations attempted since the last reset().
+
+    /// Restores the default: creations proceed and the count is zero.
+    void reset();
 };
 
-/// The process-wide probe, read and written on the renderer thread only.
+/// The process-wide probe.
 VendorCreationProbe& vendorCreationProbe();
 
 } // namespace temporal_detail
