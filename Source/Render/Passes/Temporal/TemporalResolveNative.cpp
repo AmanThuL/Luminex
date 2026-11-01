@@ -86,7 +86,7 @@ void TemporalResolve::declareReconstruction(
     // Declared on a reset frame too: the kernel is told through `historyValid` not to read it,
     // and declaring the same set either way is what keeps one pass shape for both.
     resolveDesc.shaderTextureReads.push_back(inputs.history);
-    resolveDesc.shaderBufferReads.push_back(inputs.exposure);
+    resolveDesc.bufferReads.push_back(inputs.exposure);
     resolveDesc.textureWrites.push_back(inputs.colorSlot);
     if (rejectionWanted) {
         resolveDesc.textureWrites.push_back(outputs.rejection);

@@ -51,7 +51,7 @@ GraphTexture TemporalResolve::declareVendorHistory(RenderGraph& graph,
                                             "lmx.render.temporalReprojected");
     ComputePassDesc desc;
     desc.shaderTextureReads = {inputs.depth, inputs.previousDepth, inputs.motion, inputs.history};
-    desc.shaderBufferReads = {inputs.exposure};
+    desc.bufferReads = {inputs.exposure};
     desc.textureWrites = {target};
     const auto params =
         buildTemporalUpscaleParams({.extents = inputs.extents,
