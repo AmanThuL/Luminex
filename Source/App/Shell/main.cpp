@@ -362,9 +362,6 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         }
 
         const lmx::Stopwatch measurementEncode;
-        // The dynamic-resolution controller's attribution is by frame number, so this frame's
-        // number is recorded as soon as it exists -- right after the beginFrame() that assigns it.
-        shell->controllerDeclared(gpu.frameNumber());
         (*renderer)->timeSeconds = timeSeconds;
 
         // This frame will be declared (the drawable was acquired above), so the scene's animation
@@ -392,8 +389,19 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         // loop lives entirely on the GPU timeline.
         view.exposureReset = shell->consumeExposureReset();
 
-        lmx::render::FrameDeclaration frame(transientPool, **renderer, commands, shell->camera(),
-                                            view, shell->poolingEnabled());
+        lmx::render::FrameDeclaration frame(transientPool, commands, shell->poolingEnabled());
+        if (auto declared = frame.declare(**renderer, shell->camera(), view); !declared) {
+            LMX_LOG_ERROR("frame declaration failed: {}", declared.error().message);
+            gpu.submitAndEndFrame(gpuFrame);
+            joinRetiredTimings();
+            if (capturingThisFrame) {
+                gpu.waitForFrame(gpuFrame.number);
+                gpu.endCapture();
+            }
+            gpu.waitIdle();
+            return 1;
+        }
+        shell->controllerDeclared(gpu.frameNumber());
         shell->retireVisibility(**renderer);
         shell->retireLighting(**renderer);
         shell->observeDeclaration(**renderer, gpu.frameNumber());
@@ -454,7 +462,14 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         if (shell->measurementNeedsRetirementWait()) {
             gpu.waitIdle();
             (*renderer)->drainVisibilityAfterIdle();
-            (*renderer)->drainLightingAfterIdle();
+            if (auto retired = (*renderer)->drainLightingAfterIdle(); !retired) {
+                LMX_LOG_ERROR("lighting retirement failed: {}", retired.error().message);
+                if (capturingThisFrame) {
+                    gpu.waitForFrame(gpuFrame.number);
+                    gpu.endCapture();
+                }
+                return 1;
+            }
             shell->retireVisibility(**renderer);
             shell->retireLighting(**renderer);
         }
@@ -500,7 +515,10 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
     // Establish one explicit idle boundary before dependent resources unwind.
     gpu.waitIdle();
     (*renderer)->drainVisibilityAfterIdle();
-    (*renderer)->drainLightingAfterIdle();
+    if (auto retired = (*renderer)->drainLightingAfterIdle(); !retired) {
+        LMX_LOG_ERROR("lighting retirement failed: {}", retired.error().message);
+        return 1;
+    }
     shell->retireVisibility(**renderer);
     shell->retireLighting(**renderer);
 

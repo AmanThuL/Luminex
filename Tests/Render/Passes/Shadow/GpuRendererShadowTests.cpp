@@ -56,7 +56,12 @@ TEST_CASE("renderer shadows a floating cube onto the ground", "[gpu]") {
 
     auto gpuFrame2 = gpu->beginFrame();
     auto& commands = gpuFrame2.commands;
-    (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, *gpu));
+    const auto renderResult =
+        (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, *gpu));
+    if (!renderResult)
+        gpu->submitAndEndFrame(gpuFrame2);
+    INFO(errorOf(renderResult));
+    REQUIRE(renderResult.has_value());
     gpu->submitAndEndFrame(gpuFrame2);
     gpu->waitIdle();
 
@@ -411,7 +416,11 @@ TEST_CASE("renderer applies the chosen directional caster and leaves none or dis
                 view.exposureReset = true;
                 view.exposureAdaptUpStopsPerSecond = 0;
                 view.exposureAdaptDownStopsPerSecond = 0;
-                (*renderer)->render(commands, camera, view);
+                const auto renderResult = (*renderer)->render(commands, camera, view);
+                if (!renderResult)
+                    gpu->submitAndEndFrame(gpuFrame4);
+                INFO(errorOf(renderResult));
+                REQUIRE(renderResult.has_value());
                 gpu->submitAndEndFrame(gpuFrame4);
                 gpu->waitIdle();
                 std::vector<uint8_t> pixels(size_t{kSceneProbeSize} * kSceneProbeSize * 4);

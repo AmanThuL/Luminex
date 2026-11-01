@@ -5,7 +5,6 @@
 
 #pragma once
 
-#ifndef LMX_PENDING_POST
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Gpu/GpuContext.h"
 #include "Render/Graph/RenderGraph.h"
@@ -37,11 +36,9 @@ private:
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_bloomThresholdLibrary;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_bloomDownsampleLibrary;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_bloomUpsampleLibrary;
-    engine::GpuOwned<rojoRHI::ComputePipeline> m_bloomThresholdPipeline;
-    engine::GpuOwned<rojoRHI::ComputePipeline> m_bloomDownsamplePipeline;
-    engine::GpuOwned<rojoRHI::ComputePipeline> m_bloomUpsamplePipeline;
+    engine::GpuOwned<rojoRHI::Pipeline> m_bloomThresholdPipeline;
+    engine::GpuOwned<rojoRHI::Pipeline> m_bloomDownsamplePipeline;
+    engine::GpuOwned<rojoRHI::Pipeline> m_bloomUpsamplePipeline;
 };
 
 } // namespace lmx::render
-
-#endif

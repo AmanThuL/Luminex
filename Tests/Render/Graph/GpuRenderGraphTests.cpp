@@ -1,3 +1,4 @@
+#include "Support/BufferReadWriteGraphSupport.h"
 #include "Support/GpuTestSupport.h"
 
 #include "App/Model/Graph/FrameRecordRing.h"
@@ -130,6 +131,30 @@ TEST_CASE("a graph-declared copy pass feeds a graph-declared compute pass", "[gp
     for (uint32_t index = 0; index < kElements; ++index) {
         INFO("element " + std::to_string(index));
         REQUIRE(values[index] == kFilledElement + kBias);
+    }
+
+    // Ordinary writes also order a read of the same bytes. Four paced frames wrap the three
+    // command slots; only the first frame fills, so every later add must see the prior add.
+    const auto inPlace = lmx::test::runBufferReadWriteGraph(*gpu);
+    std::vector<uint32_t> inPlaceValues(lmx::test::kBufferReadWriteElements);
+    const auto inPlaceBytes = lmx::render::readbackNow(
+        *gpu, inPlace.buffer,
+        {Stage::ComputeShader, Access::ShaderRead | Access::ShaderWrite, Layout::Undefined},
+        {0, lmx::test::kBufferReadWriteBytes});
+    INFO(errorOf(inPlaceBytes));
+    REQUIRE(inPlaceBytes.has_value());
+    std::memcpy(inPlaceValues.data(), inPlaceBytes->data(), lmx::test::kBufferReadWriteBytes);
+    for (uint32_t index = 0; index < lmx::test::kBufferReadWriteElements; ++index) {
+        CAPTURE(index);
+        REQUIRE(inPlaceValues[index] ==
+                lmx::test::kBufferReadWriteFill +
+                    lmx::test::kBufferReadWriteFrames * lmx::test::kBufferReadWriteBias);
+    }
+    for (uint32_t ordinal = 0; ordinal < lmx::test::kBufferReadWriteFrames; ++ordinal) {
+        CAPTURE(ordinal);
+        REQUIRE(inPlace.records[ordinal].frameId == inPlace.submittedFrames[ordinal]);
+        if (ordinal != 0)
+            REQUIRE(inPlace.submittedFrames[ordinal] == inPlace.submittedFrames[ordinal - 1] + 1);
     }
 }
 

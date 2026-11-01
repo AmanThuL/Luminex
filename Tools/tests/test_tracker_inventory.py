@@ -27,13 +27,21 @@ class TrackerInventoryTests(unittest.TestCase):
     def test_both_supported_listing_versions(self) -> None:
         for version in (1, 2):
             with self.subTest(version=version):
-                self.assertEqual(check_inventory(inventory(version)), 3)
+                self.assertEqual(check_inventory(inventory(version)), len(REQUIRED_CASES) + 1)
 
     def test_version_two_optional_listing_details_are_not_required(self) -> None:
         value = inventory()
         for case in value["listings"]["tests"]:
             case["tags"] = ["tracker"]
-        self.assertEqual(check_inventory(value), 3)
+        self.assertEqual(check_inventory(value), len(REQUIRED_CASES) + 1)
+
+    def test_missing_in_place_buffer_case_fails(self) -> None:
+        value = inventory()
+        name = "ordinary graph buffer writes order in-place reads across paced frames"
+        value["listings"]["tests"] = [case for case in value["listings"]["tests"]
+                                       if case["name"] != name]
+        with self.assertRaisesRegex(TrackerInventoryError, name):
+            check_inventory(value)
 
     def test_either_missing_renderer_case_fails_even_with_alias(self) -> None:
         for required in REQUIRED_CASES:
@@ -51,7 +59,7 @@ class TrackerInventoryTests(unittest.TestCase):
             check_inventory(value)
 
     def test_duplicate_required_cases_fail(self) -> None:
-        for index in (0, 1):
+        for index in range(len(REQUIRED_CASES)):
             with self.subTest(index=index):
                 value = inventory()
                 value["listings"]["tests"].append(copy.deepcopy(value["listings"]["tests"][index]))
@@ -106,7 +114,7 @@ class TrackerInventoryTests(unittest.TestCase):
     def test_main_validates_producer_file(self) -> None:
         result, out, err = self.run_main(json.dumps(inventory()))
         self.assertEqual(result, 0)
-        self.assertIn("3 cases", out)
+        self.assertIn(f"{len(REQUIRED_CASES) + 1} cases", out)
         self.assertEqual(err, "")
 
     def test_invalid_json_fails_without_success_message(self) -> None:

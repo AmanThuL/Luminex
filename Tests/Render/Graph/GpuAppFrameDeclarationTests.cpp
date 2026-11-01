@@ -23,7 +23,7 @@ TEST_CASE("FrameDeclaration preserves headless rendering and retains its caller-
     using namespace lmx::render;
 
     auto gpu = createTestGpu();
-    TransientPool pool(gpu->device());
+    TransientPool pool(*gpu);
     auto reference = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(reference));
     REQUIRE(reference.has_value());
@@ -53,26 +53,38 @@ TEST_CASE("FrameDeclaration preserves headless rendering and retains its caller-
     for (uint32_t index = 0; index < 5; ++index) {
         auto referenceCommandsFrame = gpu->beginFrame();
         auto& referenceCommands = referenceCommandsFrame.commands;
-        (*reference)->render(referenceCommands, camera, lmx::test::prepareSceneView(view, *gpu));
+        const auto renderResult =
+            (*reference)
+                ->render(referenceCommands, camera, lmx::test::prepareSceneView(view, *gpu));
+        if (!renderResult)
+            gpu->submitAndEndFrame(referenceCommandsFrame);
+        INFO(errorOf(renderResult));
+        REQUIRE(renderResult.has_value());
         gpu->submitAndEndFrame(referenceCommandsFrame);
         gpu->waitIdle();
         std::vector<uint8_t> expected(size_t{kSize} * kSize * 4);
         {
-            const auto readbackBytes = lmx::render::readbackNow(
-                *gpu, (*reference)->colorTarget(), lmx::render::TextureUse::RenderTarget);
-            std::memcpy(expected.data(), readbackBytes.data(), expected.size());
+            const auto readbackBytes = lmx::render::readbackNow(*gpu, (*reference)->colorTarget(),
+                                                                (*reference)->textureStates());
+            INFO(errorOf(readbackBytes));
+            REQUIRE(readbackBytes.has_value());
+            std::memcpy(expected.data(), readbackBytes->data(), expected.size());
         }
 
         auto commandsFrame = gpu->beginFrame();
         auto& commands = commandsFrame.commands;
-        const uint64_t frameId = gpu->frameNumber();
+        const uint64_t frameId = commandsFrame.number;
         if (index == 0) {
             firstSharedFrame = frameId;
         }
         const bool poolingEnabled = index % 2 == 0;
         const auto prepared = view.prepare(*gpu);
-        lmx::render::FrameDeclaration frame(pool, **shared, commands, camera, prepared,
-                                            poolingEnabled);
+        lmx::render::FrameDeclaration frame(pool, commands, poolingEnabled);
+        const auto declared = frame.declare(**shared, camera, prepared);
+        if (!declared)
+            gpu->submitAndEndFrame(commandsFrame);
+        INFO(errorOf(declared));
+        REQUIRE(declared.has_value());
         frame.graph().exportTexture(frame.displayColor());
         records.retain(frame.execute());
         gpu->submitAndEndFrame(commandsFrame);
@@ -80,9 +92,11 @@ TEST_CASE("FrameDeclaration preserves headless rendering and retains its caller-
 
         std::vector<uint8_t> actual(expected.size());
         {
-            const auto readbackBytes = lmx::render::readbackNow(
-                *gpu, (*shared)->colorTarget(), lmx::render::TextureUse::RenderTarget);
-            std::memcpy(actual.data(), readbackBytes.data(), actual.size());
+            const auto readbackBytes = lmx::render::readbackNow(*gpu, (*shared)->colorTarget(),
+                                                                (*shared)->textureStates());
+            INFO(errorOf(readbackBytes));
+            REQUIRE(readbackBytes.has_value());
+            std::memcpy(actual.data(), readbackBytes->data(), actual.size());
         }
         REQUIRE(actual == expected);
         const lmx::app::RetainedFrame* retained = records.find(frameId);

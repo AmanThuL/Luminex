@@ -193,7 +193,8 @@ TEST_CASE("the mapping table matches the design rows", "[render][graph]") {
     REQUIRE(bufferSync(BufferUse::ShaderRead, PassKind::Raster).stage ==
             (S::VertexShader | S::FragmentShader));
     REQUIRE(bufferSync(BufferUse::StorageRead, PassKind::Compute).access == A::ShaderRead);
-    REQUIRE(bufferSync(BufferUse::StorageWrite, PassKind::Compute).access == A::ShaderWrite);
+    REQUIRE(bufferSync(BufferUse::StorageWrite, PassKind::Compute).access ==
+            (A::ShaderRead | A::ShaderWrite));
     REQUIRE(bufferSync(BufferUse::CopySource, PassKind::Copy).access == A::CopyRead);
     REQUIRE(bufferSync(BufferUse::CopyDestination, PassKind::Copy).access == A::CopyWrite);
     REQUIRE(bufferSync(BufferUse::IndirectArgument, PassKind::Raster).stage == S::IndirectArgs);
@@ -542,7 +543,7 @@ TEST_CASE("aliased buffers retain prior write accesses in a global dependency", 
                 if (const auto* buffer = std::get_if<LoweredBufferBarrier>(&entry);
                     buffer && buffer->alias) {
                     REQUIRE(buffer->from.stage == S::ComputeShader);
-                    REQUIRE(buffer->from.access == A::ShaderWrite);
+                    REQUIRE(buffer->from.access == (A::ShaderRead | A::ShaderWrite));
                     found = true;
                 }
             }

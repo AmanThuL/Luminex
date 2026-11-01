@@ -444,7 +444,11 @@ TEST_CASE("MaterialLab document's known-colour patches round-trip the display tr
     }
     view.boundingSphere = {14.0f, 0.75f, 0.0f, 5.0f};
 
-    (*renderer)->render(commands, camera, view);
+    const auto renderResult = (*renderer)->render(commands, camera, view);
+    if (!renderResult)
+        gpu->submitAndEndFrame(gpuFrame3);
+    INFO(errorOf(renderResult));
+    REQUIRE(renderResult.has_value());
     gpu->submitAndEndFrame(gpuFrame3);
     gpu->waitIdle();
 
@@ -592,7 +596,11 @@ TEST_CASE("MaterialLab document's mip probe converges to mid-gray under strong m
     }
     view.boundingSphere = {probe->position.x, probe->position.y, probe->position.z, 2.0f};
 
-    (*renderer)->render(commands, camera, view);
+    const auto renderResult = (*renderer)->render(commands, camera, view);
+    if (!renderResult)
+        gpu->submitAndEndFrame(gpuFrame4);
+    INFO(errorOf(renderResult));
+    REQUIRE(renderResult.has_value());
     gpu->submitAndEndFrame(gpuFrame4);
     gpu->waitIdle();
 

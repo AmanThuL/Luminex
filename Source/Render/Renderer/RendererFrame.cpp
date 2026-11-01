@@ -5,9 +5,7 @@
 
 #include "Core/Diagnostics/Assert.h"
 #include "Engine/Gpu/GpuContext.h"
-#ifndef LMX_PENDING_POST
 #include "Render/Passes/Exposure/ExposureStage.h"
-#endif
 
 #ifndef LMX_PENDING_TEMPORAL
 #include "Render/Passes/Temporal/VendorTemporalScaler.h"
@@ -30,7 +28,6 @@ RendererFrameState Renderer::deriveFrameState(const engine::Camera& camera, cons
                "SceneView::boundingSphere needs a positive radius -- it is what the shadow "
                "frustum is fitted to");
 
-#ifndef LMX_PENDING_POST
     if (view.autoExposureEnabled) {
         LMX_ASSERT(view.exposureLowPercentile >= 0.0f &&
                        view.exposureLowPercentile < view.exposureHighPercentile &&
@@ -43,7 +40,6 @@ RendererFrameState Renderer::deriveFrameState(const engine::Camera& camera, cons
                        view.exposureAdaptDownStopsPerSecond >= 0.0f,
                    "SceneView exposure adaptation rates must not be negative");
     }
-#endif
 
 #ifndef LMX_PENDING_TEMPORAL
     const bool temporalEnabled = view.temporal.enabled;
@@ -240,20 +236,14 @@ RendererFrameImports Renderer::importFrameResources(RenderGraph& graph,
     // manual temporal frame states the same thing for the same reason: its seed dispatch below
     // overwrites what the previous frame's seed wrote. Manual with temporal off imports it plainly:
     // no declared pass touches it, so there is no edge to state.
-#ifndef LMX_PENDING_POST
     const bool exposureWrittenByEarlierFrame = view.autoExposureEnabled || view.temporal.enabled;
     const GraphBuffer exposureImport =
         exposureWrittenByEarlierFrame
-            ? graph.importBuffer(m_exposureStage->bufferOwner().rhi(), "lmx.render.exposureBuffer",
+            ? graph.importBuffer(m_exposureStage->bufferOwner(), "lmx.render.exposureBuffer",
                                  BufferUse::StorageWrite)
-            : graph.importBuffer(m_exposureStage->bufferOwner().rhi(), "lmx.render.exposureBuffer");
+            : graph.importBuffer(m_exposureStage->bufferOwner(), "lmx.render.exposureBuffer");
     const GraphBuffer exposureCurrent =
         m_exposureStage->declareSeed(graph, commands, view, exposureImport);
-#else
-    const GraphBuffer exposureCurrent =
-        graph.importBuffer(m_standIns.exposure, "lmx.render.exposureBuffer");
-#endif
-
     std::vector<GraphBuffer> sceneBuffers;
     if (view.tables.vertices) {
         LMX_ASSERT(view.tables.indices && view.tables.meshes && view.tables.instances &&

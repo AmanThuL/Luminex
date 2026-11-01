@@ -60,7 +60,11 @@ render::ReadbackTicket submitOffTables(engine::GpuContext& gpu, engine::Scene& s
     view.bloomEnabled = false;
     view.temporal.enabled = false;
     view.localLightMode = engine::LocalLightMode::Off;
-    renderer.render(commands, engine::Camera{}, view);
+    const auto renderResult = renderer.render(commands, engine::Camera{}, view);
+    if (!renderResult)
+        gpu.submitAndEndFrame(gpuFrame);
+    INFO(errorOf(renderResult));
+    REQUIRE(renderResult.has_value());
     auto snapshot =
         render::recordReadback(gpu, commands, renderer.colorTarget(), renderer.textureStates());
     gpu.submitAndEndFrame(gpuFrame);

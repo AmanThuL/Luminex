@@ -1,4 +1,5 @@
 #include "Support/GpuTestSupport.h"
+#include "Support/LocalLightOracleRoots.h"
 
 #include "Engine/Lights/LocalLight.h"
 #include "Engine/Lights/LocalLightMath.h"
@@ -21,27 +22,7 @@ namespace {
 
 using namespace lmx;
 
-// Mirrors Shaders/Tests/PunctualLightOracle.slang's PunctualSample. Each glm::vec3 is followed by a
-// scalar so both sides see the same 16-byte-aligned structured-buffer stride.
-struct PunctualSample {
-    engine::LightRow light;
-    glm::vec3 position{0.0f};
-    float pad0 = 0.0f;
-    glm::vec3 normal{0.0f};
-    float pad1 = 0.0f;
-    glm::vec3 toEye{0.0f};
-    float pad2 = 0.0f;
-    glm::vec3 baseColour{0.0f};
-    float metallic = 0.0f;
-    glm::vec3 f0{0.0f};
-    float alpha = 0.0f;
-};
-static_assert(sizeof(PunctualSample) == 144);
-static_assert(offsetof(PunctualSample, position) == 64);
-static_assert(offsetof(PunctualSample, normal) == 80);
-static_assert(offsetof(PunctualSample, toEye) == 96);
-static_assert(offsetof(PunctualSample, baseColour) == 112);
-static_assert(offsetof(PunctualSample, f0) == 128);
+using lmx::test::PunctualSample;
 
 // How one sample is allowed to differ from the CPU mirror. The three kinds are not a convenience:
 // they record which zeros the light model actually promises, and a case declares its kind here

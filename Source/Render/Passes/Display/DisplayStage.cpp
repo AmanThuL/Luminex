@@ -84,9 +84,8 @@ void DisplayStage::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
     // sink through this pass, so dead-pass culling drops threshold/downsample/upsample together
     // when it is off (spec 10) -- the same pattern the exposure passes above use.
     if (bloomEnabled) {
-        displayDesc.textureReads.push_back(TextureUseDesc(
-            bloomResult, rojoRHI::SubresourceRange{
-                             .baseMip = 0, .mipCount = 1, .baseLayer = 0, .layerCount = 1}));
+        displayDesc.textureReads.push_back(
+            TextureUseDesc(bloomResult, rojoRHI::SubresourceRange{.baseMip = 0, .mipCount = 1}));
     }
     // The fullscreen triangle covers every pixel, so the clear only states an attachment load
     // action the RHI requires; no fragment reads what it wrote.

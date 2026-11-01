@@ -44,9 +44,7 @@
 #include "App/Shell/NativeMenu.h"
 #include "Engine/Gpu/GpuContext.h"
 #include "Engine/View/Camera.h"
-#ifndef LMX_PENDING_POST
 #include "Render/Passes/SelectionOutline/SelectionOutline.h"
-#endif
 #include "Render/Passes/Temporal/ResolutionController.h"
 #include "Render/Renderer/Renderer.h"
 #include "Scenes/SceneLibrary.h"
@@ -401,9 +399,7 @@ private:
     MetricsContextRevision m_metricsContextRevision;
 
     std::vector<engine::DrawItem> m_drawItems;
-#ifndef LMX_PENDING_POST
     std::unique_ptr<render::SelectionOutline> m_selectionOutline;
-#endif
     bool m_showSelectionOutline = true;
     bool m_frameSelectionRequested = false;
     bool m_viewportUsable = false;

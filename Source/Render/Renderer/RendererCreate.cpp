@@ -4,13 +4,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Render/Common/StageSetup.h"
-#ifndef LMX_PENDING_POST
 #include "Render/Passes/Bloom/BloomStage.h"
-#endif
 #include "Render/Passes/Display/DisplayStage.h"
-#ifndef LMX_PENDING_POST
 #include "Render/Passes/Exposure/ExposureStage.h"
-#endif
 
 #ifndef LMX_PENDING_VISIBILITY
 #include "Render/Passes/Occlusion/OcclusionReference.h"
@@ -131,7 +127,6 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
     }
     self->m_displayStage = std::move(*displayStage);
 
-#ifndef LMX_PENDING_POST
     auto exposureStage = ExposureStage::create(gpu, cpuReadback);
     if (!exposureStage) {
         return std::unexpected(exposureStage.error());
@@ -143,7 +138,6 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
         return std::unexpected(bloomStage.error());
     }
     self->m_bloomStage = std::move(*bloomStage);
-#endif
 
     // The shadow map transitions from depth attachment to sampled texture each frame.
     {

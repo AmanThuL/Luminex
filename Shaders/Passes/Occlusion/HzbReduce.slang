@@ -1,13 +1,6 @@
 // Exact reversed-Z minimum reduction. Source level addresses the whole sampled texture;
+import OcclusionRoots;
 // destination is a one-mip storage view. Odd edge children outside the active rectangle do not exist.
-struct HzbReduceParams
-{
-    uint sourceWidth;
-    uint sourceHeight;
-    uint destinationWidth;
-    uint destinationHeight;
-    uint sourceLevel;
-};
 [[vk::binding(0, 0)]]
 Texture2D<float> gSource : register(t0);
 [[vk::binding(1, 0)]]

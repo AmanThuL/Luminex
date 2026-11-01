@@ -1,4 +1,5 @@
 #include "Support/GpuTestSupport.h"
+#include "Support/VisibilityOracleRoots.h"
 
 #include "Core/Math/Scalar.h"
 #include "Render/Passes/Occlusion/HzbStage.h"
@@ -8,12 +9,7 @@
 #include <format>
 
 namespace {
-struct ReadbackParams {
-    uint32_t width;
-    uint32_t height;
-    uint32_t level;
-    uint32_t offset;
-};
+using lmx::test::ReadbackParams;
 static_assert(sizeof(ReadbackParams) == 16);
 
 //======================================================================================================================

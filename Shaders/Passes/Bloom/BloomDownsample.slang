@@ -3,43 +3,35 @@
 // for. Run once per mip transition -- Renderer.cpp declares one pass per level, because dispatches
 // within one compute pass carry no ordering guarantee and each level depends on the one before it.
 //
-// Slots: storage texture 0 source mip (read), 1 destination mip (write); buffer 0 params.
+// The address root carries this dispatch's parameters and exact mip view indices.
 
-struct BloomDownsampleParams
-{
-    uint srcWidth;
-    uint srcHeight;
-    uint dstWidth;
-    uint dstHeight;
-};
-
-[[vk::binding(0, 0)]]
-RWTexture2D<float4> gSrc : register(u0); // → MSL [[texture(0)]]
-
-[[vk::binding(1, 0)]]
-RWTexture2D<float4> gDst : register(u1); // → MSL [[texture(1)]]
-
-[[vk::binding(0, 0)]]
-ConstantBuffer<BloomDownsampleParams> gParams : register(b0); // → MSL [[buffer(0)]]
+import RojoRHI;
+import BloomRoots;
 
 //======================================================================================================================
-float4 loadClamped(uint2 coord, uint2 extent)
+float4 loadClamped(RWTexture2D<float4> source, uint2 coord, uint2 extent)
 {
-    return gSrc[min(coord, extent - uint2(1, 1))];
+    return source[min(coord, extent - uint2(1, 1))];
 }
 
 [shader("compute")]
 [numthreads(8, 8, 1)]
 void computeBloomDownsample(uint3 tid: SV_DispatchThreadID)
 {
-    if (tid.x >= gParams.dstWidth || tid.y >= gParams.dstHeight)
+    let root = rojoRHI::root<BloomDownsampleRoot>();
+    let params = rojoRHI::load<BloomDownsampleParams>(root.paramsAddr, 0);
+    let source = rojoRHI::rwTexture2D<float4>(root.source);
+    let destination = rojoRHI::rwTexture2D<float4>(root.destination);
+    if (tid.x >= params.dstWidth || tid.y >= params.dstHeight)
     {
         return;
     }
 
-    uint2 srcExtent = uint2(gParams.srcWidth, gParams.srcHeight);
+    uint2 srcExtent = uint2(params.srcWidth, params.srcHeight);
     uint2 base = tid.xy * 2u;
-    float4 sum = loadClamped(base, srcExtent) + loadClamped(base + uint2(1, 0), srcExtent) +
-                loadClamped(base + uint2(0, 1), srcExtent) + loadClamped(base + uint2(1, 1), srcExtent);
-    gDst[tid.xy] = sum * 0.25;
+    float4 sum = loadClamped(source, base, srcExtent) +
+                loadClamped(source, base + uint2(1, 0), srcExtent) +
+                loadClamped(source, base + uint2(0, 1), srcExtent) +
+                loadClamped(source, base + uint2(1, 1), srcExtent);
+    destination[tid.xy] = sum * 0.25;
 }

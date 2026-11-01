@@ -8,6 +8,7 @@
 #include "Render/Common/DrawEncoding.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Common/StageSetup.h"
+#include "Render/Passes/Occlusion/OcclusionRoots.h"
 #include <algorithm>
 #include <cstddef>
 #include <format>
@@ -15,15 +16,6 @@
 #include <unordered_map>
 
 namespace lmx::render {
-namespace {
-struct ReferenceParams {
-    glm::mat4 viewProjection;
-    uint32_t instanceRow;
-    uint32_t padding[3]{};
-};
-static_assert(sizeof(ReferenceParams) == 80);
-static_assert(offsetof(ReferenceParams, instanceRow) == 64);
-} // namespace
 
 //======================================================================================================================
 lmx::Result<std::unique_ptr<OcclusionReference>>

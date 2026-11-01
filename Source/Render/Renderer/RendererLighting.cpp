@@ -15,30 +15,36 @@
 namespace lmx::render {
 
 //======================================================================================================================
-LightClusterOutputs Renderer::prepareLighting(RenderGraph& graph, rojoRHI::CommandList& commands,
-                                              const SceneView& view,
-                                              std::optional<GraphBuffer> lights,
-                                              const FrameExtents& extents,
-                                              const CameraFrameState& cameraState) {
+lmx::Result<LightClusterOutputs>
+Renderer::prepareLighting(RenderGraph& graph, rojoRHI::CommandList& commands, const SceneView& view,
+                          std::optional<GraphBuffer> lights, const FrameExtents& extents,
+                          const CameraFrameState& cameraState) {
     const uint64_t frame = m_gpu.frameNumber();
     // beginFrame has paced this slot; read its previous contents before any new GPU write.
-    if (frame >= 3)
-        retireLightingThrough(frame - 3);
+    if (frame >= 3) {
+        auto retired = retireLightingThrough(frame - 3);
+        if (!retired)
+            return std::unexpected(retired.error());
+    }
+    const auto effective =
+        view.tables.liveLightCount == 0 ? engine::LocalLightMode::Off : view.localLightMode;
+    if (effective == engine::LocalLightMode::Clustered) {
+        LMX_ASSERT(lights.has_value(), "clustered lighting requires the imported scene light rows");
+        if (!m_lightClusters) {
+            auto stage = LightClusterStage::create(m_gpu);
+            if (!stage)
+                return std::unexpected(stage.error());
+            m_lightClusters = std::move(*stage);
+        }
+    }
     m_lightingStatus = {.requested = view.localLightMode,
-                        .effective = view.tables.liveLightCount == 0 ? engine::LocalLightMode::Off
-                                                                     : view.localLightMode,
+                        .effective = effective,
                         .frameNumber = frame,
                         .sceneGeneration = view.temporal.sceneGeneration,
                         .liveLightCount = view.tables.liveLightCount,
                         .checkEnabled = view.lightCheck};
     LightClusterOutputs output;
     if (m_lightingStatus.effective == engine::LocalLightMode::Clustered) {
-        LMX_ASSERT(lights.has_value(), "clustered lighting requires the imported scene light rows");
-        if (!m_lightClusters) {
-            auto stage = LightClusterStage::create(m_gpu);
-            LMX_ASSERT(stage.has_value(), stage.error().message);
-            m_lightClusters = std::move(*stage);
-        }
         output = m_lightClusters->declare(
             graph, commands,
             {.clustered = true,
@@ -75,7 +81,7 @@ LightClusterOutputs Renderer::prepareLighting(RenderGraph& graph, rojoRHI::Comma
 }
 
 //======================================================================================================================
-void Renderer::retireLightingThrough(uint64_t frame) {
+lmx::Result<void> Renderer::retireLightingThrough(uint64_t frame) {
     std::vector<RetiredLightClusters> clusters;
     if (m_lightClusters) {
         m_lightClusters->retireThrough(frame);
@@ -108,6 +114,7 @@ void Renderer::retireLightingThrough(uint64_t frame) {
                 m_lightingStatus = status;
             m_retiredLighting.push_back(status);
         });
+    return {};
 }
 
 } // namespace lmx::render

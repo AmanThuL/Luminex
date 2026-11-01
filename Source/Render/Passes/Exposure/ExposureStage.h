@@ -5,7 +5,6 @@
 
 #pragma once
 
-#ifndef LMX_PENDING_POST
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Gpu/GpuBuffer.h"
 #include "Engine/Gpu/GpuContext.h"
@@ -43,13 +42,11 @@ private:
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_histogramLibrary;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_exposureResolveLibrary;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_exposureSeedLibrary;
-    engine::GpuOwned<rojoRHI::ComputePipeline> m_histogramPipeline;
-    engine::GpuOwned<rojoRHI::ComputePipeline> m_exposureResolvePipeline;
-    engine::GpuOwned<rojoRHI::ComputePipeline> m_exposureSeedPipeline;
+    engine::GpuOwned<rojoRHI::Pipeline> m_histogramPipeline;
+    engine::GpuOwned<rojoRHI::Pipeline> m_exposureResolvePipeline;
+    engine::GpuOwned<rojoRHI::Pipeline> m_exposureSeedPipeline;
     engine::GpuBuffer m_histogramBuffer;
     engine::GpuBuffer m_exposureBuffer;
 };
 
 } // namespace lmx::render
-
-#endif

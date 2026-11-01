@@ -160,8 +160,12 @@ TEST_CASE("renderer draws per-object uniforms in one pass", "[gpu]") {
 
     auto gpuFrame1 = gpu->beginFrame();
     auto& commands = gpuFrame1.commands;
-    (*renderer)->render(commands, sceneCamera(),
-                        lmx::test::prepareSceneView(litSceneView(items), *gpu));
+    const auto renderResult = (*renderer)->render(
+        commands, sceneCamera(), lmx::test::prepareSceneView(litSceneView(items), *gpu));
+    if (!renderResult)
+        gpu->submitAndEndFrame(gpuFrame1);
+    INFO(errorOf(renderResult));
+    REQUIRE(renderResult.has_value());
     gpu->submitAndEndFrame(gpuFrame1);
     gpu->waitIdle();
 
@@ -211,8 +215,12 @@ TEST_CASE("renderer depth test beats draw order", "[gpu]") {
     for (size_t i = 0; i < orderings.size(); ++i) {
         auto gpuFrame2 = gpu->beginFrame();
         auto& commands = gpuFrame2.commands;
-        (*renderer)->render(commands, sceneCamera(),
-                            lmx::test::prepareSceneView(litSceneView(orderings[i]), *gpu));
+        const auto renderResult = (*renderer)->render(
+            commands, sceneCamera(), lmx::test::prepareSceneView(litSceneView(orderings[i]), *gpu));
+        if (!renderResult)
+            gpu->submitAndEndFrame(gpuFrame2);
+        INFO(errorOf(renderResult));
+        REQUIRE(renderResult.has_value());
         gpu->submitAndEndFrame(gpuFrame2);
         gpu->waitIdle();
         {
@@ -282,8 +290,12 @@ TEST_CASE("renderer scene survives a barrier into a sampling pass", "[gpu]") {
     auto gpuFrame3 = gpu->beginFrame();
     auto& commands = gpuFrame3.commands;
     const std::array<FixtureDrawItem, 2> items = twoCubeScene(*cube);
-    (*renderer)->render(commands, sceneCamera(),
-                        lmx::test::prepareSceneView(litSceneView(items), *gpu));
+    const auto renderResult = (*renderer)->render(
+        commands, sceneCamera(), lmx::test::prepareSceneView(litSceneView(items), *gpu));
+    if (!renderResult)
+        gpu->submitAndEndFrame(gpuFrame3);
+    INFO(errorOf(renderResult));
+    REQUIRE(renderResult.has_value());
     // The pass below is encoded by hand, so it declared no read the graph could order.
     auto& states = (*renderer)->textureStates();
     std::vector<TextureBarrier> sourceBarriers;
@@ -373,7 +385,12 @@ TEST_CASE("a wireframe SceneView leaves the interior of a face unfilled", "[gpu]
         view.wireframe = wireframe;
         auto gpuFrame4 = gpu->beginFrame();
         auto& commands = gpuFrame4.commands;
-        (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, *gpu));
+        const auto renderResult =
+            (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, *gpu));
+        if (!renderResult)
+            gpu->submitAndEndFrame(gpuFrame4);
+        INFO(errorOf(renderResult));
+        REQUIRE(renderResult.has_value());
         gpu->submitAndEndFrame(gpuFrame4);
         gpu->waitIdle();
         {
@@ -456,7 +473,12 @@ TEST_CASE("the sky pass fills the background behind the scene", "[gpu]") {
 
     auto gpuFrame5 = gpu->beginFrame();
     auto& commands = gpuFrame5.commands;
-    (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, *gpu));
+    const auto renderResult =
+        (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, *gpu));
+    if (!renderResult)
+        gpu->submitAndEndFrame(gpuFrame5);
+    INFO(errorOf(renderResult));
+    REQUIRE(renderResult.has_value());
     gpu->submitAndEndFrame(gpuFrame5);
     gpu->waitIdle();
 
@@ -507,7 +529,12 @@ TEST_CASE("scene pass timings name the active Off frame after slot retirement", 
     view.bloomEnabled = false;
     view.localLightMode = lmx::engine::LocalLightMode::Off;
     auto rendered = gpu->beginFrame();
-    (*renderer)->render(rendered.commands, sceneCamera(), lmx::test::prepareSceneView(view, *gpu));
+    const auto renderResult = (*renderer)->render(rendered.commands, sceneCamera(),
+                                                  lmx::test::prepareSceneView(view, *gpu));
+    if (!renderResult)
+        gpu->submitAndEndFrame(rendered);
+    INFO(errorOf(renderResult));
+    REQUIRE(renderResult.has_value());
     const uint64_t measured = rendered.number;
     gpu->submitAndEndFrame(rendered);
     std::vector<lmx::engine::PassTiming> timings;
@@ -583,8 +610,13 @@ TEST_CASE("a joined pass samples the scene colour the graph rendered", "[gpu]") 
     auto& commands = gpuFrame8.commands;
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
-    const lmx::render::GraphTexture sceneColor = (*renderer)->declarePasses(
-        graph, commands, sceneCamera(), lmx::test::prepareSceneView(view, *gpu));
+    const auto declared = (*renderer)->declarePasses(graph, commands, sceneCamera(),
+                                                     lmx::test::prepareSceneView(view, *gpu));
+    if (!declared)
+        gpu->submitAndEndFrame(gpuFrame8);
+    INFO(errorOf(declared));
+    REQUIRE(declared.has_value());
+    const lmx::render::GraphTexture sceneColor = *declared;
     const lmx::render::GraphTexture copyTarget =
         graph.importTexture(destination->ref(), "destination");
 

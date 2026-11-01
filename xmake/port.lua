@@ -48,6 +48,7 @@ local pending_families = {
         tests = {
             "Tests/Render/Passes/LocalLights/Gpu*.cpp",
             "Tests/Render/Passes/LocalLights/RenderZeroLightInvariantTests.cpp",
+            "Tests/Render/Passes/LocalLights/LightCaptureLayoutTests.cpp",
         },
         shaders = {
             "Shaders/Passes/LocalLights/LightClusterCount.slang",
@@ -57,30 +58,6 @@ local pending_families = {
         },
         testShaders = {
             "Shaders/Tests/PunctualLightOracle.slang",
-        },
-    },
-    {
-        family = "POST",
-        sources = {
-            "Source/Render/Passes/Exposure/ExposureStage.cpp",
-            "Source/Render/Passes/Bloom/BloomStage.cpp",
-            "Source/Render/Passes/SelectionOutline/SelectionOutline.cpp",
-        },
-        tests = {
-            "Tests/Render/Passes/Bloom/Gpu*.cpp",
-            "Tests/Render/Passes/Exposure/Gpu*.cpp",
-            "Tests/Render/Passes/SelectionOutline/Gpu*.cpp",
-            "Tests/Render/Graph/GpuAppFrameDeclarationTests.cpp",
-        },
-        shaders = {
-            "Shaders/Passes/Exposure/ExposureSeed.slang",
-            "Shaders/Passes/Exposure/ExposureResolve.slang",
-            "Shaders/Passes/Exposure/HistogramAccumulate.slang",
-            "Shaders/Passes/Bloom/BloomThreshold.slang",
-            "Shaders/Passes/Bloom/BloomDownsample.slang",
-            "Shaders/Passes/Bloom/BloomUpsample.slang",
-            "Shaders/Passes/SelectionOutline/SelectionMask.slang",
-            "Shaders/Passes/SelectionOutline/SelectionOutline.slang",
         },
     },
     {

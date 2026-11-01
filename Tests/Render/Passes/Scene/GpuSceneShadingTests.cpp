@@ -93,7 +93,12 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
     REQUIRE((*scene)->prepareFrame(gpu->frameNumber()));
     std::vector<lmx::engine::DrawItem> items;
     const auto view = lmx::render::buildSceneView(**scene, items, false);
-    (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, *gpu));
+    const auto renderResult =
+        (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, *gpu));
+    if (!renderResult)
+        gpu->submitAndEndFrame(gpuFrame1);
+    INFO(errorOf(renderResult));
+    REQUIRE(renderResult.has_value());
     auto& states = (*renderer)->textureStates();
     std::vector<TextureBarrier> depthBarriers;
     for (const auto& entry :
@@ -270,7 +275,12 @@ TEST_CASE("MaterialLab's sphere grid conserves energy in a white furnace", "[gpu
     Camera camera;
     camera.position = {0.0f, 0.0f, 12.0f};
 
-    (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, *gpu));
+    const auto renderResult =
+        (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, *gpu));
+    if (!renderResult)
+        gpu->submitAndEndFrame(gpuFrame2);
+    INFO(errorOf(renderResult));
+    REQUIRE(renderResult.has_value());
     gpu->submitAndEndFrame(gpuFrame2);
     gpu->waitIdle();
 
@@ -391,7 +401,12 @@ TEST_CASE("dielectric and conductor probes match a CPU BRDF reference at pinned 
 
         auto gpuFrame3 = gpu->beginFrame();
         auto& commands = gpuFrame3.commands;
-        (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, *gpu));
+        const auto renderResult =
+            (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, *gpu));
+        if (!renderResult)
+            gpu->submitAndEndFrame(gpuFrame3);
+        INFO(errorOf(renderResult));
+        REQUIRE(renderResult.has_value());
         gpu->submitAndEndFrame(gpuFrame3);
         gpu->waitIdle();
 

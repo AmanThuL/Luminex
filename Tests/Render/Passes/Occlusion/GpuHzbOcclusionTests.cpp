@@ -1,4 +1,5 @@
 #include "Support/GpuTestSupport.h"
+#include "Support/VisibilityOracleRoots.h"
 
 #include "Core/Math/Scalar.h"
 #include "Render/Passes/Occlusion/HzbStage.h"
@@ -10,17 +11,9 @@
 #include <format>
 
 namespace {
-struct HzbProbeBounds {
-    glm::vec4 minimum;
-    glm::vec4 maximum;
-};
+using lmx::test::HzbProbeBounds;
 static_assert(sizeof(HzbProbeBounds) == 32);
-struct HzbReadParams {
-    uint32_t width;
-    uint32_t height;
-    uint32_t level;
-    uint32_t offset;
-};
+using lmx::test::HzbReadParams;
 static_assert(sizeof(HzbReadParams) == 16);
 
 //======================================================================================================================

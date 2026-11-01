@@ -33,6 +33,26 @@
       "file": "Tests/Engine/Asset/Document/SceneDocumentContentTests.cpp",
       "header": "Source/Engine/Asset/Document/SceneDocumentSaveInternal.h",
       "reason": "Inject rename failures to verify rollback of new geometry and PNG companions."
+    },
+    {
+      "file": "Tests/Render/Passes/Bloom/GpuBloomTests.cpp",
+      "header": "Source/Render/Passes/Bloom/BloomStage.h",
+      "reason": "Exercise the actual bloom owner and one-mip sampled threshold output through the graph."
+    },
+    {
+      "file": "Tests/Render/Passes/Bloom/GpuBloomTests.cpp",
+      "header": "Source/Render/Passes/Display/DisplayStage.h",
+      "reason": "Verify actual display sampling of the bloom owner's one-mip threshold output and zero-intensity branch."
+    },
+    {
+      "file": "Tests/Render/Passes/Exposure/ExposureTrackerTests.cpp",
+      "header": "Source/Render/Passes/Exposure/ExposureStage.h",
+      "reason": "Exercise the production exposure owner and feedback frontiers across paced frames."
+    },
+    {
+      "file": "Tests/Render/Passes/Bloom/BloomTrackerTests.cpp",
+      "header": "Source/Render/Passes/Bloom/BloomStage.h",
+      "reason": "Exercise production bloom declarations, sampled output and mip/alias reuse across paced frames."
     }
   ],
   "units": {
@@ -226,6 +246,7 @@
       ],
       "privateHeaders": [
         "Tests/Support/BrdfOracle.h",
+        "Tests/Support/BufferReadWriteGraphSupport.h",
         "Tests/Support/DisplayTransformOracle.h",
         "Tests/Support/EngineSceneTestSupport.h",
         "Tests/Support/EngineTestSupport.h",
@@ -235,10 +256,13 @@
         "Tests/Support/GpuTemporalTestSupport.h",
         "Tests/Support/GpuTestSupport.h",
         "Tests/Support/GraphTestSupport.h",
+        "Tests/Support/LocalLightOracleRoots.h",
+        "Tests/Support/VisibilityOracleRoots.h",
         "Tests/Support/OracleRoots.h",
         "Tests/Support/RenderGraphTestSupport.h",
         "Tests/Support/SceneTableTestSupport.h",
         "Tests/Support/SceneDocumentTestSupport.h",
+        "Tests/Support/SelectionOutlineTestSupport.h",
         "Tests/Support/TestGpu.h",
         "Tests/Support/TrackerFrameSupport.h",
         "Tests/Support/SceneDocumentFixtures.h",

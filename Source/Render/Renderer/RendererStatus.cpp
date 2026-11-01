@@ -4,9 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Core/Diagnostics/Assert.h"
-#ifndef LMX_PENDING_POST
 #include "Render/Passes/Exposure/ExposureStage.h"
-#endif
 #include "Render/Renderer/RendererInternal.h"
 #ifndef LMX_PENDING_VISIBILITY
 #include "Render/Passes/Occlusion/OcclusionReference.h"
@@ -117,11 +115,7 @@ const engine::GpuTexture* Renderer::historyTexture() {
 
 //======================================================================================================================
 const engine::GpuBuffer& Renderer::exposureBufferOwner() {
-#ifndef LMX_PENDING_POST
     return m_exposureStage->bufferOwner();
-#else
-    return m_standIns.exposure;
-#endif
 }
 
 //======================================================================================================================
@@ -166,10 +160,11 @@ std::vector<LightingStatus> Renderer::takeRetiredLighting() {
 }
 
 //======================================================================================================================
-void Renderer::drainLightingAfterIdle() {
+lmx::Result<void> Renderer::drainLightingAfterIdle() {
 #ifndef LMX_PENDING_LIGHTS
-    retireLightingThrough(std::numeric_limits<uint64_t>::max());
+    return retireLightingThrough(std::numeric_limits<uint64_t>::max());
 #else
+    return {};
 #endif
 }
 

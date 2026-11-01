@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "Core/Diagnostics/Result.h"
 #include "Render/Graph/RenderGraph.h"
 
 #include <cstdint>
@@ -31,35 +32,50 @@ struct SceneView;
 ///
 /// This object never begins or ends a device frame, joins timings, waits, or presents. The caller
 /// appends its UI and present sink, or exports displayColor for headless readback, then executes
-/// once. Pool rotation, renderer declarations, and execution are common to both paths.
+/// once after declare succeeds. A failed declaration exposes no graph or output and cannot be
+/// retried. Pool rotation, renderer declarations, and execution are common to both paths.
 class FrameDeclaration {
 public:
-    /// Rotates the retired transient slot, applies pooling policy, and declares renderer passes.
-    /// The renderer, commands, camera, and view are borrowed until execute finishes.
-    FrameDeclaration(TransientPool& pool, Renderer& renderer, rojoRHI::CommandList& commands,
-                     const engine::Camera& camera, const SceneView& view, bool poolingEnabled);
+    /// Rotates the retired transient slot and applies pooling policy without declaring passes.
+    /// The pool and commands are borrowed until this object is destroyed.
+    FrameDeclaration(TransientPool& pool, rojoRHI::CommandList& commands, bool poolingEnabled);
 
     /// Frames cannot duplicate graph declarations or their single execution boundary.
     FrameDeclaration(const FrameDeclaration&) = delete;
     /// Frames cannot replace an existing declaration by assignment.
     FrameDeclaration& operator=(const FrameDeclaration&) = delete;
 
-    /// The graph to append application passes and sinks to; asserts after execution.
+    /// Frames cannot transfer a graph whose callbacks borrow their declaration state.
+    FrameDeclaration(FrameDeclaration&&) = delete;
+    /// Frames cannot replace their borrowed command list or declaration state.
+    FrameDeclaration& operator=(FrameDeclaration&&) = delete;
+
+    /// Attempts renderer declaration exactly once, preserving any causal creation or retirement
+    /// error. Success permits graph access and execution; failure leaves both unavailable.
+    /// The renderer, camera, view, and every borrowed scene input remain valid through execute.
+    lmx::Result<void> declare(Renderer& renderer, const engine::Camera& camera,
+                              const SceneView& view);
+
+    /// The graph to append application passes and sinks to, only after successful declaration and
+    /// before execution. Other lifecycle states are misuse.
     RenderGraph& graph();
 
-    /// The final display-transformed image, to sample for UI or export for readback.
-    GraphTexture displayColor() const { return m_displayColor; }
+    /// The successfully declared display image, to sample for UI or export for readback.
+    /// Access before declaration succeeds or after it fails is misuse.
+    GraphTexture displayColor() const;
 
     /// Executes exactly once and returns the accepted record under this device frame's number.
     /// Graph validation failure is programmer error; motion commit remains the caller's boundary.
     CompiledFrameRecord execute();
 
 private:
+    enum class State : uint8_t { Undeclared, Failed, Declared, Executed };
+
     rojoRHI::CommandList& m_commands;
     uint64_t m_frameId;
     RenderGraph m_graph;
     GraphTexture m_displayColor;
-    bool m_executed = false;
+    State m_state = State::Undeclared;
 };
 
 } // namespace lmx::render

@@ -2,18 +2,8 @@
 import Lighting;
 import LocalLights;
 import SceneTables;
+import LightRoots;
 
-struct DebugParams
-{
-    float4x4 inverseViewProjection;
-    uint mode;
-    uint rowCount;
-    uint activeWidth;
-    uint activeHeight;
-    uint outputWidth;
-    uint outputHeight;
-    float sliceDepth[25];
-};
 [[vk::binding(0, 0)]] ConstantBuffer<DebugParams> gParams;
 [[vk::binding(1, 0)]] StructuredBuffer<LightRow> gLights;
 [[vk::binding(2, 0)]] StructuredBuffer<ClusterRecord> gGrid;
