@@ -1,6 +1,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file RendererTemporal.cpp
-/// @brief Creates temporal targets and replaces slot states through resize.
+/// @brief Allocates temporal targets and adopts them, with their slot states, through resize.
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Render/Renderer/RendererInternal.h"
@@ -10,7 +10,6 @@
 #include "Render/Common/Formats.h"
 #include "Render/Passes/Temporal/TemporalResolve.h"
 
-#include <array>
 #include <utility>
 
 namespace lmx::render {
@@ -30,15 +29,16 @@ void seedTemporalSlot(TextureStateTable& states, const engine::GpuTexture& textu
 } // namespace
 
 //======================================================================================================================
-lmx::Result<void> Renderer::createTemporalTargets() {
-    LMX_ASSERT(m_width > 0 && m_height > 0,
+lmx::Result<Renderer::TemporalTargets> Renderer::createTemporalTargets(uint32_t width,
+                                                                       uint32_t height) const {
+    LMX_ASSERT(width > 0 && height > 0,
                "Renderer::createTemporalTargets: the render extent must be non-empty");
 
     // Sampled as well as rendered into: the resolve reads motion, and a GPU test compares it
     // against an arithmetic oracle through a staged copy rather than against a picture.
     auto motion =
         engine::GpuTexture::create(m_gpu.device(), {.format = kMotionFormat,
-                                                    .extent = {m_width, m_height, 1},
+                                                    .extent = {width, height, 1},
                                                     .usage = rojoRHI::TextureUsage::RenderTarget |
                                                              rojoRHI::TextureUsage::Sampled,
                                                     .label = "lmx.render.motion"});
@@ -50,53 +50,41 @@ lmx::Result<void> Renderer::createTemporalTargets() {
     // writes it as an ordinary attachment.
     auto reactive =
         engine::GpuTexture::create(m_gpu.device(), {.format = kReactiveFormat,
-                                                    .extent = {m_width, m_height, 1},
+                                                    .extent = {width, height, 1},
                                                     .usage = rojoRHI::TextureUsage::RenderTarget |
                                                              rojoRHI::TextureUsage::Sampled,
                                                     .label = "lmx.render.reactive"});
     if (!reactive) {
         return std::unexpected(reactive.error());
     }
-
-    // Both start as their own attachment write leaves them, the scene pass's.
-    seedReplacement(m_textureStates, m_motion, *motion, TextureUse::RenderTarget);
-    seedReplacement(m_textureStates, m_reactive, *reactive, TextureUse::RenderTarget);
-    m_motion = std::move(*motion);
-    m_reactive = std::move(*reactive);
-    return {};
+    return TemporalTargets{std::move(*motion), std::move(*reactive)};
 }
 
 //======================================================================================================================
-lmx::Result<void> Renderer::resizeTemporalSlots() {
-    // The outgoing identities, depth then colour per slot. The stage holds none before its first
-    // resize, which create() performs through this function.
-    const bool replacing = m_temporalResolve->depthBytes() > 0;
-    std::array<rojoRHI::Texture, 4> outgoing{};
-    if (replacing) {
+void Renderer::adoptTemporalTargets(TemporalTargets targets, TemporalSlots slots) {
+    // Both attachments start as their own attachment write leaves them, the scene pass's.
+    seedReplacement(m_textureStates, m_motion, targets.motion, TextureUse::RenderTarget);
+    seedReplacement(m_textureStates, m_reactive, targets.reactive, TextureUse::RenderTarget);
+    m_motion = std::move(targets.motion);
+    m_reactive = std::move(targets.reactive);
+
+    // The outgoing slots' entries go with them. The stage holds none before its first adoption,
+    // which create() performs through resize().
+    if (m_temporalResolve->depthBytes() > 0) {
         for (uint32_t slot = 0; slot < 2; ++slot) {
-            outgoing[slot] = m_temporalResolve->depthTexture(slot).rhi();
-            outgoing[2 + slot] = m_temporalResolve->colorTexture(slot).rhi();
+            m_textureStates.forget(m_temporalResolve->depthTexture(slot).rhi());
+            m_textureStates.forget(m_temporalResolve->colorTexture(slot).rhi());
         }
     }
-    auto slots = m_temporalResolve->resize(m_width, m_height);
-    if (!slots) {
-        return std::unexpected(slots.error());
-    }
-    // The outgoing entries go with their slots. The slots' contents went with the old textures,
-    // and the extent change resets history anyway: a colour slot starts as the commit copy leaves
-    // it, a depth slot as sampled.
-    if (replacing) {
-        for (const rojoRHI::Texture texture : outgoing) {
-            m_textureStates.forget(texture);
-        }
-    }
+    m_temporalResolve->adoptSlots(std::move(slots));
+    // The slots' contents went with the old textures, and the extent change resets history anyway:
+    // a colour slot starts as the commit copy leaves it, a depth slot as sampled.
     for (uint32_t slot = 0; slot < 2; ++slot) {
         seedTemporalSlot(m_textureStates, m_temporalResolve->colorTexture(slot),
                          TextureUse::CopyDestination);
         seedTemporalSlot(m_textureStates, m_temporalResolve->depthTexture(slot),
                          TextureUse::ShaderRead);
     }
-    return {};
 }
 
 } // namespace lmx::render

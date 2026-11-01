@@ -264,11 +264,11 @@ lmx::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(engine::Gp
 }
 
 //======================================================================================================================
-lmx::Result<void> TemporalResolve::resize(uint32_t width, uint32_t height) {
-    LMX_ASSERT(width > 0 && height > 0, "TemporalResolve::resize: the extent must be non-empty");
+lmx::Result<TemporalSlots> TemporalResolve::allocateSlots(uint32_t width, uint32_t height) const {
+    LMX_ASSERT(width > 0 && height > 0,
+               "TemporalResolve::allocateSlots: the extent must be non-empty");
 
-    engine::GpuTexture depth[2];
-    engine::GpuTexture color[2];
+    TemporalSlots slots{.width = width, .height = height};
     static constexpr const char* kDepthLabels[2] = {"lmx.render.sceneDepth0",
                                                     "lmx.render.sceneDepth1"};
     static constexpr const char* kColorLabels[2] = {"lmx.render.historyColor0",
@@ -300,19 +300,23 @@ lmx::Result<void> TemporalResolve::resize(uint32_t width, uint32_t height) {
         if (!colorTexture) {
             return std::unexpected(colorTexture.error());
         }
-        depth[slot] = std::move(*depthTexture);
-        color[slot] = std::move(*colorTexture);
+        slots.depth[slot] = std::move(*depthTexture);
+        slots.color[slot] = std::move(*colorTexture);
     }
+    return slots;
+}
 
-    // Swap the targets only after every allocation succeeds.
+//======================================================================================================================
+void TemporalResolve::adoptSlots(TemporalSlots slots) {
+    LMX_ASSERT(slots.width > 0 && slots.height > 0,
+               "TemporalResolve::adoptSlots: the slots must come from allocateSlots()");
     for (uint32_t slot = 0; slot < 2; ++slot) {
-        m_depth[slot] = std::move(depth[slot]);
-        m_color[slot] = std::move(color[slot]);
+        m_depth[slot] = std::move(slots.depth[slot]);
+        m_color[slot] = std::move(slots.color[slot]);
     }
     m_vendor->invalidateOutput();
-    m_width = width;
-    m_height = height;
-    return {};
+    m_width = slots.width;
+    m_height = slots.height;
 }
 
 //======================================================================================================================

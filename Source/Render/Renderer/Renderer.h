@@ -93,7 +93,8 @@ public:
                                                          uint32_t height, bool cpuReadback = false);
 
     /// Recreates the scene targets -- and the motion and history targets alongside them -- at the
-    /// new size. The shadow map is fixed-size and untouched.
+    /// new size. The shadow map is fixed-size and untouched. Every replacement is allocated before
+    /// any is adopted, so a failed allocation leaves the renderer entirely at its old extent.
     /// The caller guarantees the GPU is idle (Device::waitIdle) first: frames still in flight hold
     /// the old textures in their residency set and their encoders, and dropping them here would
     /// free memory the GPU is reading.
@@ -236,17 +237,20 @@ private:
                           GraphTexture depth, GraphTexture& display);
 #endif
 
-    // Creates the motion and reactive attachments at the current extent, replacing any pair
-    // already held. Called from resize() -- and so from create(), which resizes once -- so both
-    // exist for every frame whether or not it declares the temporal path.
-    //
-    // Its own function rather than resize()'s body because the two allocations answer to
-    // kMotionFormat and kReactiveFormat rather than to the scene targets'.
-    lmx::Result<void> createTemporalTargets();
-    // Replaces both temporal slot pairs at the current extent. The outgoing slots' state entries
-    // are forgotten and the replacements seeded only once every allocation has succeeded, so a
-    // failed resize leaves the old slots and their entries exactly as they were.
-    lmx::Result<void> resizeTemporalSlots();
+    // The motion and reactive attachments at one extent, allocated but not yet adopted.
+    struct TemporalTargets {
+        engine::GpuTexture motion;
+        engine::GpuTexture reactive;
+    };
+    // Allocates the motion and reactive attachments at `width` x `height`. resize() -- and so
+    // create(), which resizes once -- calls it, so both exist for every frame whether or not it
+    // declares the temporal path. Its own function rather than resize()'s body because the two
+    // allocations answer to kMotionFormat and kReactiveFormat rather than to the scene targets'.
+    lmx::Result<TemporalTargets> createTemporalTargets(uint32_t width, uint32_t height) const;
+    // Adopts the attachments and both temporal slot pairs that resize() allocated, forgetting the
+    // outgoing identities' state entries and seeding the replacements'. It cannot fail, which is
+    // what lets resize() allocate everything first and commit it all at once.
+    void adoptTemporalTargets(TemporalTargets targets, TemporalSlots slots);
 
     engine::GpuContext& m_gpu;
     // render()'s own pool for bloom's transients, since a caller without a graph of its own (the

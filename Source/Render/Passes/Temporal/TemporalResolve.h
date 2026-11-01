@@ -14,6 +14,7 @@
 #include "Render/Passes/Temporal/TemporalHistory.h"
 #include <rojoRHI/RHI.h>
 
+#include <array>
 #include <cstdint>
 #include <memory>
 
@@ -34,6 +35,15 @@ ReconstructionSelection resolveReconstruction(ReconstructionMode requested,
                                               bool creationFailed = false);
 
 class VendorTemporalScaler;
+
+/// Both history slot pairs at one extent, allocated by TemporalResolve::allocateSlots() and not yet
+/// adopted, so a resize can allocate everything it needs before it commits any of it.
+struct TemporalSlots {
+    std::array<engine::GpuTexture, 2> depth; ///< Depth owners of slots 0 and 1.
+    std::array<engine::GpuTexture, 2> color; ///< Colour-history owners of slots 0 and 1.
+    uint32_t width = 0;                      ///< Extent every slot was allocated at.
+    uint32_t height = 0;                     ///< Extent every slot was allocated at.
+};
 
 /// Everything one temporal frame hands the reconstruction stage. Graph handles are this frame's
 /// versions; values are this frame's, with the previous frame's where the algorithm needs both.
@@ -139,12 +149,17 @@ public:
     /// Non-assignable, on the copy constructor's terms.
     TemporalResolve& operator=(const TemporalResolve&) = delete;
 
-    /// Recreates both slot pairs at the new extent, replacing any already held. The caller
-    /// guarantees the GPU is idle first, on Renderer::resize()'s terms.
-    lmx::Result<void> resize(uint32_t width, uint32_t height);
+    /// Allocates both slot pairs at a new extent without touching the pairs already held, so a
+    /// failure leaves the stage exactly as it was.
+    lmx::Result<TemporalSlots> allocateSlots(uint32_t width, uint32_t height) const;
 
-    /// Borrows the depth owner of slot 0 or 1 until resize replaces both pairs. A temporal frame
-    /// renders into its slot and the next frame samples it as the previous depth.
+    /// Replaces both slot pairs with `slots` and retires the vendor scaler with the old output
+    /// extent. It cannot fail; the caller guarantees the GPU is idle first, on Renderer::resize()'s
+    /// terms.
+    void adoptSlots(TemporalSlots slots);
+
+    /// Borrows the depth owner of slot 0 or 1 until adoptSlots() replaces both pairs. A temporal
+    /// frame renders into its slot and the next frame samples it as the previous depth.
     const engine::GpuTexture& depthTexture(uint32_t slot) const;
     /// Borrows the colour-history owner of slot 0 or 1 on depthTexture() lifetime terms. It holds
     /// that frame's output whichever reconstruction mode produced it.

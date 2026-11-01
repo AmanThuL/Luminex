@@ -280,33 +280,32 @@ lmx::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
     if (!color) {
         return std::unexpected(color.error());
     }
-    // Allocate every retained target before committing state. Failed creation keeps each old
-    // identity and frontier; successful replacements begin from their own creation layout.
+    // The temporal targets follow the scene targets' extent, under the same caller idle guarantee
+    // this function already requires. The histories' contents are dropped with the old textures,
+    // which the extent change makes a reset anyway (HistoryResetReason::ExtentChanged). Depth is
+    // among them: it ping-pongs by temporal frame parity, so the stage owns both slots of it.
+    auto temporalTargets = createTemporalTargets(width, height);
+    if (!temporalTargets) {
+        return std::unexpected(temporalTargets.error());
+    }
+    auto temporalSlots = m_temporalResolve->allocateSlots(width, height);
+    if (!temporalSlots) {
+        return std::unexpected(temporalSlots.error());
+    }
+
+    // Every allocation above succeeded, so commit them all at once: a failure before this point
+    // leaves the renderer entirely at its old extent, with every old identity and state entry.
+    // Successful replacements begin from their own creation layout.
     seedReplacement(m_textureStates, m_hdrColor, *hdrColor, TextureUse::ShaderRead);
     seedReplacement(m_textureStates, m_color, *color, TextureUse::ShaderRead);
     m_hdrColor = std::move(*hdrColor);
     m_color = std::move(*color);
     m_width = width;
     m_height = height;
-
-    // The temporal targets follow the scene targets' extent, under the same caller idle guarantee
-    // this function already requires. The histories' contents are dropped with the old textures,
-    // which the extent change makes a reset anyway (HistoryResetReason::ExtentChanged). Depth is
-    // among them: it ping-pongs by temporal frame parity, so the stage owns both slots of it.
-    {
-        auto targets = createTemporalTargets();
-        if (!targets) {
-            return std::unexpected(targets.error());
-        }
-    }
-    {
-        auto slots = resizeTemporalSlots();
-        if (!slots) {
-            return std::unexpected(slots.error());
-        }
-    }
+    adoptTemporalTargets(std::move(*temporalTargets), std::move(*temporalSlots));
 
 #ifndef LMX_PENDING_VISIBILITY
+    // The occlusion pyramid is not part of the commit: it resizes after it, on its own terms.
     if (m_hzbStage) {
         {
             auto result = m_hzbStage->resize(width, height, m_textureStates);
