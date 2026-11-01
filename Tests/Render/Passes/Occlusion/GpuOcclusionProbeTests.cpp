@@ -1,6 +1,6 @@
-#include "Support/VisibilityOracleRoots.h"
 #include "Render/Passes/Occlusion/Occlusion.h"
 #include "Support/GpuTestSupport.h"
+#include "Support/VisibilityOracleRoots.h"
 #include <bit>
 #include <cmath>
 #include <cstring>

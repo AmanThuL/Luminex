@@ -7,8 +7,8 @@
 #include "Render/Common/GraphResources.h"
 #include "Render/Common/StageSetup.h"
 #include "Render/Passes/Occlusion/HzbFrameData.h"
-#include "Render/Passes/Occlusion/OcclusionRoots.h"
 #include "Render/Passes/Occlusion/OcclusionReference.h"
+#include "Render/Passes/Occlusion/OcclusionRoots.h"
 #include "Render/Renderer/Renderer.h"
 #include <algorithm>
 #include <bit>

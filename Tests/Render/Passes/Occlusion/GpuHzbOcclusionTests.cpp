@@ -1,5 +1,5 @@
-#include "Support/VisibilityOracleRoots.h"
 #include "Support/GpuTestSupport.h"
+#include "Support/VisibilityOracleRoots.h"
 
 #include "Core/Math/Scalar.h"
 #include "Render/Passes/Occlusion/HzbStage.h"

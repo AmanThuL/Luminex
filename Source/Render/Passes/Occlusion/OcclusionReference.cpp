@@ -3,12 +3,12 @@
 /// @brief Renders direct candidate IDs and joins retired geometry visibility observations.
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Passes/Occlusion/OcclusionReference.h"
-#include "Render/Passes/Occlusion/OcclusionRoots.h"
 #include "Core/Diagnostics/Assert.h"
 #include "Engine/Gpu/GpuOwned.h"
 #include "Render/Common/DrawEncoding.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Common/StageSetup.h"
+#include "Render/Passes/Occlusion/OcclusionRoots.h"
 #include <algorithm>
 #include <cstddef>
 #include <format>
