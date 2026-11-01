@@ -237,7 +237,7 @@ VendorTemporalPacked VendorTemporalScaler::declarePack(RenderGraph& graph,
         makeTexture(rojoRHI::Format::R16Float, "lmx.render.vendorExposure", 1, 1)};
     ComputePassDesc desc;
     desc.shaderTextureReads = {inputs.motion, inputs.reactive};
-    desc.shaderBufferReads = {inputs.exposure};
+    desc.bufferReads = {inputs.exposure};
     desc.textureWrites = {packed.motion, packed.reactive, packed.exposure};
     graph.addComputePass(
         "lmx.pass.temporal.vendor.pack", std::move(desc),
