@@ -34,6 +34,8 @@ using A = rojoRHI::Access;
 using L = rojoRHI::Layout;
 
 constexpr rojoRHI::SubresourceRange kMip0{0, 1, 0, 1};
+// Mip 0 over every layer, the range BloomStage and DisplayStage declare to the graph.
+constexpr rojoRHI::SubresourceRange kDeclaredMip0{.baseMip = 0, .mipCount = 1};
 constexpr S kRasterShaderStages = S::VertexShader | S::FragmentShader;
 constexpr S kAllShaderStages = kRasterShaderStages | S::ComputeShader;
 constexpr render::TextureState kStorageWrite{S::ComputeShader, A::ShaderWrite, L::ShaderWrite};
@@ -136,7 +138,7 @@ void requireBloomUse(const render::DebugPass& pass, uint32_t resource, uint32_t 
     const auto count = std::ranges::count_if(pass.uses, [=](const render::DebugUse& use) {
         return use.resource == resource && use.version == version && use.role == role &&
                use.range.baseMip == mip && use.range.mipCount == 1 && use.range.baseLayer == 0 &&
-               use.range.layerCount == 1;
+               use.range.layerCount == rojoRHI::kAllLayers;
     });
     REQUIRE(count == 1);
 }
@@ -408,7 +410,7 @@ void runBloomTrackerPath(const BloomPath& path) {
             if (!enabled)
                 continue;
             render::PassDesc sampleDesc{.color = render::ColorAttachment{.handle = targetVersion}};
-            sampleDesc.textureReads.emplace_back(returned[call], kMip0);
+            sampleDesc.textureReads.emplace_back(returned[call], kDeclaredMip0);
             graph.addPass(kSampleLabels[call], std::move(sampleDesc),
                           [&commands, &samples, call, sampled = returned[call],
                            pipeline](const render::PassResources& resources) {

@@ -180,8 +180,7 @@ GraphTexture BloomStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
                                                          .storageWrite = true},
                                                         "lmx.render.bloomChain");
 
-    static constexpr rojoRHI::SubresourceRange kBloomMip0{
-        .baseMip = 0, .mipCount = 1, .baseLayer = 0, .layerCount = 1};
+    static constexpr rojoRHI::SubresourceRange kBloomMip0{.baseMip = 0, .mipCount = 1};
     ComputePassDesc thresholdDesc;
     thresholdDesc.shaderTextureReads.push_back(displayInput);
     thresholdDesc.textureWrites.push_back(TextureUseDesc(bloomChain, kBloomMip0));
@@ -228,10 +227,8 @@ GraphTexture BloomStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
     for (uint32_t level = 1; level < bloomMipCount; ++level) {
         const BloomDownsampleParams params =
             buildBloomDownsampleParams(bloomWidth, bloomHeight, level);
-        const rojoRHI::SubresourceRange srcRange{
-            .baseMip = level - 1, .mipCount = 1, .baseLayer = 0, .layerCount = 1};
-        const rojoRHI::SubresourceRange dstRange{
-            .baseMip = level, .mipCount = 1, .baseLayer = 0, .layerCount = 1};
+        const rojoRHI::SubresourceRange srcRange{.baseMip = level - 1, .mipCount = 1};
+        const rojoRHI::SubresourceRange dstRange{.baseMip = level, .mipCount = 1};
 
         ComputePassDesc downsampleDesc;
         downsampleDesc.textureReads.push_back(TextureUseDesc(bloomChainVersion, srcRange));
@@ -291,10 +288,8 @@ GraphTexture BloomStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
             const bool smallFromChain = level == bloomMipCount - 2;
             const BloomUpsampleParams params =
                 buildBloomUpsampleParams(bloomWidth, bloomHeight, level);
-            const rojoRHI::SubresourceRange baseRange{
-                .baseMip = level, .mipCount = 1, .baseLayer = 0, .layerCount = 1};
-            const rojoRHI::SubresourceRange smallRange{
-                .baseMip = level + 1, .mipCount = 1, .baseLayer = 0, .layerCount = 1};
+            const rojoRHI::SubresourceRange baseRange{.baseMip = level, .mipCount = 1};
+            const rojoRHI::SubresourceRange smallRange{.baseMip = level + 1, .mipCount = 1};
 
             ComputePassDesc upsampleDesc;
             upsampleDesc.textureReads.push_back(TextureUseDesc(bloomChainFinal, baseRange));
