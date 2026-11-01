@@ -13,7 +13,9 @@ REQUIRED_CASES = (
     "the display read can be culled and restored under the tracker",
     "ordinary graph buffer writes order in-place reads across paced frames",
     "exposure feedback resets and leaves manual Off without stale accesses under the tracker",
+    "exposure transitions through the renderer under the tracker",
     "bloom toggles preserve odd and tiny mip frontiers under the tracker",
+    "bloom toggles and resizes through the renderer under the tracker",
     "selection visible rejected and disabled paths preserve actual consumers under the tracker",
     "selection replacement and resize preserve target generations under the tracker",
 )

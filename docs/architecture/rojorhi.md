@@ -24,10 +24,11 @@ policy. See the [component build](../../RojoRHI/AGENTS.md) for standalone comman
 
 On this integration branch, `xmake/port.lua` selects a shadow → scene/sky/IBL → exposure →
 bloom → display → UI frame. SCENE and POST have returned; VISIBILITY, LIGHTS and TEMPORAL remain
-pending, and BENCH keeps FrameDataBench dormant. The retained stage algorithms in the
-[frame walkthrough](frame-pipeline.md) describe those families, not the active subset. Screenshots retain neutral lighting metadata; headless
-and editor measurement report lighting diagnostics unavailable while LIGHTS is pending.
-Minimal-frame timings do not establish full-renderer parity or cost acceptance.
+pending, and BENCH keeps FrameDataBench dormant. The [frame walkthrough](frame-pipeline.md)
+describes every family: its SCENE and POST stages run here, while the VISIBILITY, LIGHTS and
+TEMPORAL stages it describes are retained but not built. Screenshots retain neutral lighting
+metadata; headless and editor measurement report lighting diagnostics unavailable while LIGHTS is
+pending. Partial-frame timings do not establish full-renderer parity or cost acceptance.
 
 ## Public interface
 

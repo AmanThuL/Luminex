@@ -6,6 +6,7 @@
 #include "Render/Passes/Exposure/ExposureStage.h"
 #include "Support/ExposureBloomTestSupport.h"
 #include "Support/TestGpu.h"
+#include "Support/TrackerFrameSupport.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -299,4 +300,66 @@ TEST_CASE("exposure feedback resets and leaves manual Off without stale accesses
 #else
     runExposureFeedbackFrames();
 #endif
+}
+
+namespace {
+struct RendererExposureFrame {
+    bool automatic;
+    bool reset;
+    bool temporalFlag;
+};
+
+// Auto reset, steady auto, manual Off, two manual temporal seeds, consecutive auto resets and a
+// steady auto frame: every change of the Renderer's prior-use choice for the exposure import.
+constexpr std::array<RendererExposureFrame, 8> kRendererExposureFrames{{{true, true, false},
+                                                                        {true, false, false},
+                                                                        {false, false, false},
+                                                                        {false, false, true},
+                                                                        {false, false, true},
+                                                                        {true, true, false},
+                                                                        {true, true, false},
+                                                                        {true, false, false}}};
+
+//======================================================================================================================
+bool exposurePassScheduled(const lmx::render::CompiledFrameRecord& record, std::string_view label) {
+    const auto found =
+        std::ranges::find(record.debug.passes, label, &lmx::render::DebugPass::label);
+    if (found == record.debug.passes.end())
+        return false;
+    const auto index = static_cast<uint32_t>(found - record.debug.passes.begin());
+    return std::ranges::find(record.debug.schedule.passes, index) !=
+           record.debug.schedule.passes.end();
+}
+} // namespace
+
+//======================================================================================================================
+TEST_CASE("exposure transitions through the renderer under the tracker",
+          "[render][device][tracker]") {
+    lmx::test::runTrackedFrames(
+        "material-lab",
+        {.frames = static_cast<uint32_t>(kRendererExposureFrames.size()),
+         .perFrame =
+             [](lmx::render::SceneView& view, uint32_t frame) {
+                 const auto& state = kRendererExposureFrames[frame];
+                 // The temporal stage is pending, so the flag only selects the manual seed and
+                 // the Renderer's prior-use import; reconstruction stays off.
+                 view.temporal.enabled = state.temporalFlag;
+                 view.localLightMode = lmx::engine::LocalLightMode::Off;
+                 view.classifyMode = lmx::render::ClassifyMode::Cpu;
+                 view.occlusionEnabled = false;
+                 view.autoExposureEnabled = state.automatic;
+                 view.exposureReset = state.reset;
+                 view.exposureEv = static_cast<float>(frame % 3) - 1.0f;
+                 REQUIRE_FALSE(view.items.empty());
+             },
+         .inspect =
+             [](const lmx::render::CompiledFrameRecord& record, uint32_t frame) {
+                 const auto& state = kRendererExposureFrames[frame];
+                 const bool seeds = state.automatic ? state.reset : state.temporalFlag;
+                 REQUIRE(exposurePassScheduled(record, "lmx.pass.exposure.seed") == seeds);
+                 REQUIRE(exposurePassScheduled(record, "lmx.pass.exposure.histogram") ==
+                         state.automatic);
+                 REQUIRE(exposurePassScheduled(record, "lmx.pass.exposure.resolve") ==
+                         state.automatic);
+             }});
 }

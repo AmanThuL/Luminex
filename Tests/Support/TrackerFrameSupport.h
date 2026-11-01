@@ -13,6 +13,7 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <utility>
@@ -26,6 +27,10 @@ struct TrackedFrameOptions {
     uint32_t frames = 4;
     std::function<void(render::SceneView&, uint32_t frame)> perFrame;
     std::function<bool(uint32_t frame)> readDisplay;
+    // Extents the renderer is resized to, after an idle wait, before the given frame.
+    std::function<std::optional<std::pair<uint32_t, uint32_t>>(uint32_t frame)> resizeBefore;
+    // Observes each submitted frame's compiled record.
+    std::function<void(const render::CompiledFrameRecord&, uint32_t frame)> inspect;
 };
 
 //======================================================================================================================
@@ -82,10 +87,18 @@ inline void runTrackedFrames(std::string_view sceneId, const TrackedFrameOptions
 
     std::vector<engine::DrawItem> items;
     uint64_t lastSubmitted = 0;
-    const auto displayTexture = renderer->colorTarget().rhi();
     auto& states = renderer->textureStates();
     for (uint32_t ordinal = 0; ordinal < options.frames; ++ordinal) {
         CAPTURE(ordinal);
+        if (options.resizeBefore) {
+            if (const auto extent = options.resizeBefore(ordinal)) {
+                gpu->waitIdle();
+                const auto resized = renderer->resize(extent->first, extent->second);
+                INFO(errorOf(resized));
+                REQUIRE(resized.has_value());
+            }
+        }
+        const auto displayTexture = renderer->colorTarget().rhi();
         auto frame = gpu->beginFrame();
         if (scene) {
             auto prepared = scene->prepareFrame(frame.number);
@@ -138,6 +151,8 @@ inline void runTrackedFrames(std::string_view sceneId, const TrackedFrameOptions
 
         REQUIRE(record.frameId == frame.number);
         REQUIRE(frame.number == uint64_t{ordinal} + 1);
+        if (options.inspect)
+            options.inspect(record, ordinal);
         const auto displayPass =
             std::ranges::find(record.debug.passes, "lmx.pass.display", &render::DebugPass::label);
         REQUIRE(displayPass != record.debug.passes.end());

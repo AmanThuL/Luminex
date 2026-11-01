@@ -8,6 +8,7 @@
 #include "Support/ExposureBloomTestSupport.h"
 #include "Support/OracleRoots.h"
 #include "Support/TestGpu.h"
+#include "Support/TrackerFrameSupport.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -549,4 +550,55 @@ TEST_CASE("bloom toggles preserve odd and tiny mip frontiers under the tracker",
     for (const auto& path : kPaths)
         runBloomTrackerPath(path);
 #endif
+}
+
+namespace {
+struct RendererBloomFrame {
+    std::optional<std::pair<uint32_t, uint32_t>> resize;
+    bool enabled;
+    // Scheduled bloom passes: threshold plus one downsample and one upsample per further mip.
+    size_t passes;
+};
+
+// 64x64 gives a four-level chain, 37x23 a three-level odd chain, and 3x2 a one-mip chain that
+// returns its threshold output directly; the second 3x2 resize replaces targets at equal extents.
+const std::array<RendererBloomFrame, 9> kRendererBloomFrames{{{std::nullopt, true, 9},
+                                                              {std::nullopt, false, 0},
+                                                              {std::pair{37u, 23u}, true, 7},
+                                                              {std::nullopt, true, 7},
+                                                              {std::pair{3u, 2u}, true, 1},
+                                                              {std::nullopt, false, 0},
+                                                              {std::pair{3u, 2u}, true, 1},
+                                                              {std::pair{64u, 64u}, false, 0},
+                                                              {std::nullopt, true, 9}}};
+
+//======================================================================================================================
+size_t scheduledBloomPasses(const lmx::render::CompiledFrameRecord& record) {
+    return static_cast<size_t>(
+        std::ranges::count_if(record.debug.schedule.passes, [&](uint32_t index) {
+            return record.debug.passes[index].label.starts_with("lmx.pass.bloom.");
+        }));
+}
+} // namespace
+
+//======================================================================================================================
+TEST_CASE("bloom toggles and resizes through the renderer under the tracker",
+          "[render][device][tracker]") {
+    lmx::test::runTrackedFrames(
+        "material-lab",
+        {.frames = static_cast<uint32_t>(kRendererBloomFrames.size()),
+         .perFrame =
+             [](lmx::render::SceneView& view, uint32_t frame) {
+                 view.temporal.enabled = false;
+                 view.localLightMode = lmx::engine::LocalLightMode::Off;
+                 view.classifyMode = lmx::render::ClassifyMode::Cpu;
+                 view.occlusionEnabled = false;
+                 view.bloomEnabled = kRendererBloomFrames[frame].enabled;
+                 REQUIRE_FALSE(view.items.empty());
+             },
+         .resizeBefore = [](uint32_t frame) { return kRendererBloomFrames[frame].resize; },
+         .inspect =
+             [](const lmx::render::CompiledFrameRecord& record, uint32_t frame) {
+                 REQUIRE(scheduledBloomPasses(record) == kRendererBloomFrames[frame].passes);
+             }});
 }
