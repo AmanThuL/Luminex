@@ -552,28 +552,30 @@ TEST_CASE("bloom upsample reconstructs ramps across even odd and single-axis ext
                     smallPixels[offset + 3] = halfPow2(0);
                 }
             }
+            // Initial data leaves a texture in Layout::ShaderRead, which RojoRHI permits only with
+            // Sampled usage; the dispatch still reads both inputs through their storage views.
             const TextureData smallMip{.bytes = std::as_bytes(std::span{smallPixels}),
                                        .bytesPerRow = uint64_t{probe.smallWidth} * 8};
-            auto small =
-                lmx::engine::GpuTexture::create(gpu->device(),
-                                                {.format = Format::RGBA16Float,
-                                                 .extent = {probe.smallWidth, probe.smallHeight, 1},
-                                                 .usage = TextureUsage::Storage,
-                                                 .label = "lmx.test.filteredBloomSmall"},
-                                                std::span{&smallMip, 1}, {.storageMips = true});
+            auto small = lmx::engine::GpuTexture::create(
+                gpu->device(),
+                {.format = Format::RGBA16Float,
+                 .extent = {probe.smallWidth, probe.smallHeight, 1},
+                 .usage = TextureUsage::Sampled | TextureUsage::Storage,
+                 .label = "lmx.test.filteredBloomSmall"},
+                std::span{&smallMip, 1}, {.storageMips = true});
             INFO(errorOf(small));
             REQUIRE(small.has_value());
             std::vector<uint16_t> basePixels(size_t{probe.dstWidth} * probe.dstHeight * 4,
                                              halfPow2(-3));
             const TextureData baseMip{.bytes = std::as_bytes(std::span{basePixels}),
                                       .bytesPerRow = uint64_t{probe.dstWidth} * 8};
-            auto base =
-                lmx::engine::GpuTexture::create(gpu->device(),
-                                                {.format = Format::RGBA16Float,
-                                                 .extent = {probe.dstWidth, probe.dstHeight, 1},
-                                                 .usage = TextureUsage::Storage,
-                                                 .label = "lmx.test.filteredBloomBase"},
-                                                std::span{&baseMip, 1}, {.storageMips = true});
+            auto base = lmx::engine::GpuTexture::create(
+                gpu->device(),
+                {.format = Format::RGBA16Float,
+                 .extent = {probe.dstWidth, probe.dstHeight, 1},
+                 .usage = TextureUsage::Sampled | TextureUsage::Storage,
+                 .label = "lmx.test.filteredBloomBase"},
+                std::span{&baseMip, 1}, {.storageMips = true});
             INFO(errorOf(base));
             REQUIRE(base.has_value());
             auto dst =
