@@ -64,13 +64,6 @@ local pending_families = {
         },
     },
     {
-        family = "TEMPORAL",
-        tests = {
-            "Tests/Render/Passes/Temporal/GpuVendorTemporalTests.cpp",
-            "Tests/Render/Passes/Temporal/RenderVendorTemporalTests.cpp",
-        },
-    },
-    {
         family = "BENCH",
         sources = {
             "Benchmarks/FrameData/*.cpp",

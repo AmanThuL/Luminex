@@ -7,6 +7,9 @@
 #include "Core/Diagnostics/Result.h"
 #include "Render/Passes/Temporal/TemporalResolve.h"
 
+#include <cstdint>
+#include <string_view>
+
 namespace lmx::render {
 
 /// Clamps input/output scale into the engine and supported vendor intervals.
@@ -18,6 +21,27 @@ bool vendorHistoryReset(HistoryResetReason reason, ReconstructionMode previousMo
 /// Converts engine UV motion and NDC jitter to pixel motion-to-previous and texture-space jitter,
 /// with the render extent as the active input content. Textures and the reset flag stay unset.
 rojoRHI::UpscaleParams vendorTemporalParams(const FrameExtents& extents, glm::vec2 jitterPixels);
+
+/// The MetalFX upscaler the adapter creates at a `width` x `height` output: input equal to output,
+/// because only the active content shrinks with the render scale, and reversed depth as a creation
+/// flag. Scene-linear colour needs no HDR flag on MetalFX. `label` must outlive the creation call.
+rojoRHI::UpscalerDesc vendorUpscalerDesc(uint32_t width, uint32_t height, std::string_view label);
+
+namespace temporal_detail {
+
+/// A test-only seam over vendor scaler creation, which a real device offers no way to refuse.
+/// While `refuse` is set, every creation the adapter attempts fails as a backend refusal would,
+/// without calling Device::createUpscaler; `attempts` counts every attempt, refused or not.
+/// Production code never writes it; a test that does restores the default before it returns.
+struct VendorCreationProbe {
+    bool refuse = false;   ///< Fail each attempt instead of creating the upscaler.
+    uint32_t attempts = 0; ///< Creations attempted since the probe was last reset.
+};
+
+/// The process-wide probe, read and written on the renderer thread only.
+VendorCreationProbe& vendorCreationProbe();
+
+} // namespace temporal_detail
 
 /// Translated, graph-owned signals read by the vendor pass after the packing dispatch.
 struct VendorTemporalPacked {

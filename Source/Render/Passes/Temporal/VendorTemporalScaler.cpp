@@ -112,6 +112,25 @@ rojoRHI::UpscaleParams vendorTemporalParams(const FrameExtents& extents, glm::ve
 }
 
 //======================================================================================================================
+rojoRHI::UpscalerDesc vendorUpscalerDesc(uint32_t width, uint32_t height, std::string_view label) {
+    return {.kind = rojoRHI::UpscalerKind::MetalFX,
+            .input = {width, height},
+            .output = {width, height},
+            .flags = rojoRHI::UpscalerFlags::ReversedDepth,
+            .label = label};
+}
+
+namespace temporal_detail {
+
+//======================================================================================================================
+VendorCreationProbe& vendorCreationProbe() {
+    static VendorCreationProbe probe;
+    return probe;
+}
+
+} // namespace temporal_detail
+
+//======================================================================================================================
 ReconstructionSelection VendorTemporalScaler::prepare(ReconstructionMode requested, uint32_t width,
                                                       uint32_t height) {
     const auto support = m_gpu.upscalerSupport();
@@ -159,16 +178,15 @@ ReconstructionSelection VendorTemporalScaler::prepare(ReconstructionMode request
         m_historyPipeline = std::move(*pipeline);
     }
     const std::string label = "lmx.temporal.vendor.scaler " + std::string(support.name);
-    // Inputs are allocated at the output extent and only their active content shrinks with the
-    // render scale, so the upscaler's input is its output; its content range derives from the
-    // device's support. Scene-linear colour needs no HDR flag on MetalFX.
+    auto& probe = temporal_detail::vendorCreationProbe();
+    ++probe.attempts;
+    if (probe.refuse) {
+        return fail(lmx::Error{ErrorCode::Gpu, "creation refused by the test probe"});
+    }
+    // Inputs are allocated at the output extent, so the upscaler's input is its output; its
+    // content range derives from the device's support.
     auto scaler = engine::adoptGpu(
-        m_gpu.device(),
-        m_gpu.device().createUpscaler({.kind = rojoRHI::UpscalerKind::MetalFX,
-                                       .input = {width, height},
-                                       .output = {width, height},
-                                       .flags = rojoRHI::UpscalerFlags::ReversedDepth,
-                                       .label = label}));
+        m_gpu.device(), m_gpu.device().createUpscaler(vendorUpscalerDesc(width, height, label)));
     if (!scaler) {
         return fail(scaler.error());
     }
@@ -287,6 +305,15 @@ VendorTemporalPacked VendorTemporalScaler::declarePack(RenderGraph& graph,
 GraphTexture VendorTemporalScaler::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
                                            const TemporalInputs& inputs) {
     LMX_ASSERT(m_scaler, "vendor scaler must be prepared before declaration");
+    // v2 raises an input content below the scaler's range to its smallest silently, where v1
+    // refused it. The renderer clamps the scale into the range (vendorRenderScale), so a smaller
+    // content here is a renderer defect rather than a frame to reconstruct.
+    const float minInputScale = m_gpu.upscalerSupport().minInputScale;
+    LMX_ASSERT(static_cast<double>(inputs.extents.renderWidth) >=
+                       static_cast<double>(minInputScale) * inputs.extents.outputWidth &&
+                   static_cast<double>(inputs.extents.renderHeight) >=
+                       static_cast<double>(minInputScale) * inputs.extents.outputHeight,
+               "vendor input content must not fall below the scaler's minimum input scale");
     const VendorTemporalPacked packed = declarePack(graph, commands, inputs);
     ExternalPassDesc desc;
     desc.textureReads = {inputs.sceneColor, inputs.depth, packed.motion, packed.reactive,

@@ -189,8 +189,9 @@ using lmx::render::ReconstructionMode;
 using lmx::render::TemporalDebugView;
 
 //======================================================================================================================
-// One RGBA16Float target, widened to floats. Both the colour history and the raw scene target are
-// half-precision, so a comparison between them has to speak the same units the shader wrote.
+// One RGBA16Float target at its own extent, widened to floats. Both the colour history and the raw
+// scene target are half-precision, so a comparison between them has to speak the same units the
+// shader wrote.
 //======================================================================================================================
 inline std::vector<glm::vec4> readHalf4(lmx::engine::GpuContext& gpu,
                                         const lmx::engine::GpuTexture& texture,
@@ -200,7 +201,9 @@ inline std::vector<glm::vec4> readHalf4(lmx::engine::GpuContext& gpu,
     const auto bytes = lmx::render::readbackNow(gpu, texture, current);
     INFO(errorOf(bytes));
     REQUIRE(bytes);
-    std::vector<glm::vec4> pixels(kScenarioPixels);
+    std::vector<glm::vec4> pixels(size_t{texture.desc().extent.width} *
+                                  texture.desc().extent.height);
+    REQUIRE(bytes->size() >= pixels.size() * 8);
     for (size_t i = 0; i < pixels.size(); ++i) {
         uint16_t texel[4] = {0, 0, 0, 0};
         std::memcpy(texel, bytes->data() + i * 8, sizeof(texel));
@@ -304,9 +307,13 @@ renderSequence(lmx::engine::GpuContext& gpu, Renderer& renderer, uint32_t frames
                                 ? lmx::render::TextureUse::ExternalRead
                             : rawCopy ? lmx::render::TextureUse::CopySource
                                       : lmx::render::TextureUse::ShaderRead;
-        const auto historyUse = rawCopy && view.temporal.debugView != TemporalDebugView::HistoryAge
-                                    ? lmx::render::TextureUse::CopyDestination
-                                    : lmx::render::TextureUse::ShaderRead;
+        // A vendor frame leaves its colour slot as the scaler's opaque write (its final use).
+        const auto historyUse =
+            record.status.reconstruction == ReconstructionMode::VendorTemporal
+                ? lmx::render::TextureUse::ExternalWrite
+            : rawCopy && view.temporal.debugView != TemporalDebugView::HistoryAge
+                ? lmx::render::TextureUse::CopyDestination
+                : lmx::render::TextureUse::ShaderRead;
         record.history =
             readHalf4(gpu, *renderer.historyTexture(), renderer.textureStates(), historyUse);
         record.raw = readHalf4(gpu, renderer.hdrColorTexture(), renderer.textureStates(), rawUse);
