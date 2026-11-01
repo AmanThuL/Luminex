@@ -131,6 +131,18 @@ function lmx_configure_shader_library(target)
             "MaskParams=lmx::render::MaskParams",
             "OutlineParams=lmx::render::OutlineParams",
             -- ---- temporal ----
+            "TemporalReprojectRoot=lmx::render::TemporalReprojectRoot",
+            "TemporalResolveRoot=lmx::render::TemporalResolveRoot",
+            "SpatialUpscaleRoot=lmx::render::SpatialUpscaleRoot",
+            "TemporalDebugViewRoot=lmx::render::TemporalDebugViewRoot",
+            "VendorTemporalHistoryRoot=lmx::render::VendorTemporalHistoryRoot",
+            "VendorTemporalPackRoot=lmx::render::VendorTemporalPackRoot",
+            "TemporalResolveParams=lmx::render::temporal_detail::TemporalResolveParams",
+            "TemporalUpscaleParams=lmx::render::temporal_detail::TemporalUpscaleParams",
+            "SpatialUpscaleParams=lmx::render::temporal_detail::SpatialUpscaleParams",
+            "TemporalReprojectParams=lmx::render::temporal_detail::TemporalReprojectParams",
+            "TemporalDebugViewParams=lmx::render::temporal_detail::TemporalDebugViewParams",
+            "VendorPackParams=lmx::render::temporal_detail::VendorPackParams",
         }
         target:values_set("slang.layout_map", table.unpack(layout_map))
         target:values_set("slang.layout_include", "Render/Passes/Display/DisplayRoots.h",
@@ -146,7 +158,9 @@ function lmx_configure_shader_library(target)
                           "Render/Passes/SelectionOutline/SelectionOutlineRoots.h",
                           "Render/Passes/SelectionOutline/SelectionOutlineFrameData.h",
                           "Render/Passes/Visibility/VisibilityRoots.h",
-                          "Render/Passes/Occlusion/OcclusionRoots.h")
+                          "Render/Passes/Occlusion/OcclusionRoots.h",
+                          "Render/Passes/Temporal/TemporalRoots.h",
+                          "Render/Passes/Temporal/TemporalFrameData.h")
     elseif kind == "tests" then
         target:values_set("slang.layout_probe", path.join(repository_root, "Shaders/Layout/TestLayout.slang"))
         local layout_map = {
@@ -212,6 +226,18 @@ function lmx_configure_shader_library(target)
             "MaskParams=lmx::render::MaskParams",
             "OutlineParams=lmx::render::OutlineParams",
             -- ---- temporal ----
+            "TemporalReprojectRoot=lmx::render::TemporalReprojectRoot",
+            "TemporalResolveRoot=lmx::render::TemporalResolveRoot",
+            "SpatialUpscaleRoot=lmx::render::SpatialUpscaleRoot",
+            "TemporalDebugViewRoot=lmx::render::TemporalDebugViewRoot",
+            "VendorTemporalHistoryRoot=lmx::render::VendorTemporalHistoryRoot",
+            "VendorTemporalPackRoot=lmx::render::VendorTemporalPackRoot",
+            "TemporalResolveParams=lmx::render::temporal_detail::TemporalResolveParams",
+            "TemporalUpscaleParams=lmx::render::temporal_detail::TemporalUpscaleParams",
+            "SpatialUpscaleParams=lmx::render::temporal_detail::SpatialUpscaleParams",
+            "TemporalReprojectParams=lmx::render::temporal_detail::TemporalReprojectParams",
+            "TemporalDebugViewParams=lmx::render::temporal_detail::TemporalDebugViewParams",
+            "VendorPackParams=lmx::render::temporal_detail::VendorPackParams",
         }
         target:values_set("slang.layout_map", table.unpack(layout_map))
         target:values_set("slang.layout_include", "Support/OracleRoots.h",
@@ -228,7 +254,9 @@ function lmx_configure_shader_library(target)
                           "Render/Passes/SelectionOutline/SelectionOutlineFrameData.h",
                           "Render/Passes/Visibility/VisibilityRoots.h",
                           "Render/Passes/Occlusion/OcclusionRoots.h",
-                          "Support/VisibilityOracleRoots.h")
+                          "Support/VisibilityOracleRoots.h",
+                          "Render/Passes/Temporal/TemporalRoots.h",
+                          "Render/Passes/Temporal/TemporalFrameData.h")
     end
     local entries = lmx_shader_entries(kind)
     target:values_set("lmx.shader.entries", table.unpack(entries))

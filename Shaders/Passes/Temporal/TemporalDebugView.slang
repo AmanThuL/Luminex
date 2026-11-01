@@ -5,22 +5,14 @@
 // through the same tone map and transfer the display pass applied, so it can be held beside the
 // picture it came from.
 //
-// Slots: textures 0 motion, 1 reprojection diagnostic, 2 rejection mask, 3 reprojected history,
-// 4 resolved colour; buffer 0 params.
+// The address root carries the view's parameters and the motion, reprojection diagnostic,
+// rejection, reprojected history and resolved colour views; each of the last four that the view
+// does not read is a 1x1 fallback view.
+import RojoRHI;
 import Encode;
 import Motion;
 import Tonemap;
-
-struct TemporalDebugViewParams
-{
-    uint view; // One of the kView* selectors below.
-    // The motion target is a render-extent signal while every other input and the display target
-    // are at the output extent, so the view needs both to read motion at the right texel.
-    uint renderWidth;
-    uint renderHeight;
-    uint outputWidth;
-    uint outputHeight;
-};
+import TemporalRoots;
 
 // Mirrors Source/Render/TemporalResolve.h's TemporalDebugView, whose Off never reaches this shader
 // -- the pass is not declared at all in that mode.
@@ -52,33 +44,15 @@ static const float kMotionScale = 8.0;
 static const float kErrorScale = 4.0;
 static const float3 kLuminanceWeights = float3(0.2126, 0.7152, 0.0722);
 
-[[vk::binding(0, 0)]]
-Texture2D<float2> gMotion : register(t0); // → MSL [[texture(0)]]
-
-[[vk::binding(1, 0)]]
-Texture2D<float4> gDiagnostic : register(t1); // → MSL [[texture(1)]]
-
-[[vk::binding(2, 0)]]
-Texture2D<float4> gRejection : register(t2); // → MSL [[texture(2)]]
-
-[[vk::binding(3, 0)]]
-Texture2D<float4> gReprojected : register(t3); // → MSL [[texture(3)]]
-
-[[vk::binding(4, 0)]]
-Texture2D<float4> gResolved : register(t4); // → MSL [[texture(4)]]
-
-[[vk::binding(0, 0)]]
-ConstantBuffer<TemporalDebugViewParams> gParams : register(b0); // → MSL [[buffer(0)]]
-
 // The render texel a display pixel's *centre* maps to, clamped so the last row and column of a
 // rounded render extent stay addressable. At the output extent it is the pixel itself. No jitter:
 // this view has none to apply and motion is an unjittered signal. The reprojection diagnostic and
 // the upscale kernel map the same centre and then add the frame's jitter offset, because what they
 // address is the jittered render image rather than the motion of a display pixel.
-int3 motionCoordFor(float2 pixel)
+int3 motionCoordFor(TemporalDebugViewParams params, float2 pixel)
 {
-    float2 render = float2(float(gParams.renderWidth), float(gParams.renderHeight));
-    float2 output = float2(float(gParams.outputWidth), float(gParams.outputHeight));
+    float2 render = float2(float(params.renderWidth), float(params.renderHeight));
+    float2 output = float2(float(params.outputWidth), float(params.outputHeight));
     return int3(clamp(int2((pixel + 0.5) * render / output), int2(0, 0), int2(render) - 1), 0);
 }
 
@@ -88,8 +62,9 @@ struct VSOutput
 };
 
 [shader("vertex")]
-VSOutput vertexMain(uint vid: SV_VertexID)
+VSOutput vertexMain(rojoRHI::VertexIds ids)
 {
+    uint vid = rojoRHI::vertexIndex(ids);
     // Three-vertex fullscreen triangle.
     float2 uv = float2((vid << 1) & 2, vid & 2);
     VSOutput o;
@@ -123,10 +98,17 @@ float3 rejectionColor(uint reason)
 [shader("fragment")]
 float4 fragmentMain(VSOutput input): SV_Target
 {
+    let root = rojoRHI::root<TemporalDebugViewRoot>();
+    let params = rojoRHI::load<TemporalDebugViewParams>(root.paramsAddr, 0);
+    let motionTexture = rojoRHI::texture2D<float2>(root.motion);
+    let diagnosticTexture = rojoRHI::texture2D<float4>(root.diagnostic);
+    let rejectionTexture = rojoRHI::texture2D<float4>(root.rejection);
+    let reprojectedTexture = rojoRHI::texture2D<float4>(root.reprojected);
+    let resolvedTexture = rojoRHI::texture2D<float4>(root.resolved);
     int3 coord = int3(int2(input.position.xy), 0);
-    if (gParams.view == kViewMotionVectors)
+    if (params.view == kViewMotionVectors)
     {
-        float2 motion = gMotion.Load(motionCoordFor(float2(coord.xy))).xy;
+        float2 motion = motionTexture.Load(motionCoordFor(params, float2(coord.xy))).xy;
         if (isinf(motion.x) || isinf(motion.y))
         {
             return float4(1.0, 0.0, 1.0, 1.0);
@@ -134,9 +116,9 @@ float4 fragmentMain(VSOutput input): SV_Target
         return float4(0.5 + motion * kMotionScale, 0.5, 1.0);
     }
 
-    if (gParams.view == kViewReprojectedHistory)
+    if (params.view == kViewReprojectedHistory)
     {
-        float4 reprojected = gReprojected.Load(coord);
+        float4 reprojected = reprojectedTexture.Load(coord);
         if (reprojected.a == 0.0)
         {
             // Rejected: there is no history to show, which is itself the thing to see.
@@ -145,9 +127,9 @@ float4 fragmentMain(VSOutput input): SV_Target
         return float4(linearToSrgb(pbrNeutralToneMap(reprojected.rgb)), 1.0);
     }
 
-    if (gParams.view == kViewRejectionMask)
+    if (params.view == kViewRejectionMask)
     {
-        float4 rejection = gRejection.Load(coord);
+        float4 rejection = rejectionTexture.Load(coord);
         uint code = uint(round(rejection.r * 255.0));
         float3 color = rejectionColor(code & ~kClippedBit);
         if ((code & kClippedBit) != 0u)
@@ -157,22 +139,22 @@ float4 fragmentMain(VSOutput input): SV_Target
         return float4(color, 1.0);
     }
 
-    if (gParams.view == kViewBlendWeight)
+    if (params.view == kViewBlendWeight)
     {
-        float weight = gRejection.Load(coord).g;
+        float weight = rejectionTexture.Load(coord).g;
         return float4(weight, weight, weight, 1.0);
     }
 
-    if (gParams.view == kViewHistoryAge)
+    if (params.view == kViewHistoryAge)
     {
         // The age lives in the resolved colour's alpha, so white means the pixel has accumulated a
         // full jitter period and the picture there is as converged as it is going to get.
-        float age = floor(gResolved.Load(coord).a);
+        float age = floor(resolvedTexture.Load(coord).a);
         float grey = min(age / kTemporalWarmupFrames, 1.0);
         return float4(grey, grey, grey, 1.0);
     }
 
-    float4 diagnostic = gDiagnostic.Load(coord);
+    float4 diagnostic = diagnosticTexture.Load(coord);
     if (diagnostic.a == 0.0)
     {
         // Nothing to compare against: the history fetch left the extent, or motion was undefined.

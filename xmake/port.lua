@@ -73,15 +73,6 @@ local pending_families = {
             "Tests/Render/Passes/Temporal/RenderVendorTemporalTests.cpp",
             "Tests/App/Model/Graph/GpuGraphInspectorTests.cpp",
         },
-        shaders = {
-            "Shaders/Passes/Temporal/SpatialUpscale.slang",
-            "Shaders/Passes/Temporal/TemporalDebugView.slang",
-            "Shaders/Passes/Temporal/TemporalReproject.slang",
-            "Shaders/Passes/Temporal/TemporalResolve.slang",
-            "Shaders/Passes/Temporal/TemporalUpscale.slang",
-            "Shaders/Passes/Temporal/VendorTemporalHistory.slang",
-            "Shaders/Passes/Temporal/VendorTemporalPack.slang",
-        },
     },
     {
         family = "BENCH",

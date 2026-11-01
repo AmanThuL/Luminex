@@ -74,6 +74,19 @@ StructuredBuffer<SelectionCopyRoot> gRoot_SelectionCopyRoot;
 StructuredBuffer<MaskParams> gRecord_MaskParams;
 StructuredBuffer<OutlineParams> gRecord_OutlineParams;
 // ---- temporal ----
+import TemporalRoots;
+StructuredBuffer<TemporalReprojectRoot> gRoot_TemporalReprojectRoot;
+StructuredBuffer<TemporalResolveRoot> gRoot_TemporalResolveRoot;
+StructuredBuffer<SpatialUpscaleRoot> gRoot_SpatialUpscaleRoot;
+StructuredBuffer<TemporalDebugViewRoot> gRoot_TemporalDebugViewRoot;
+StructuredBuffer<VendorTemporalHistoryRoot> gRoot_VendorTemporalHistoryRoot;
+StructuredBuffer<VendorTemporalPackRoot> gRoot_VendorTemporalPackRoot;
+StructuredBuffer<TemporalResolveParams> gRecord_TemporalResolveParams;
+StructuredBuffer<TemporalUpscaleParams> gRecord_TemporalUpscaleParams;
+StructuredBuffer<SpatialUpscaleParams> gRecord_SpatialUpscaleParams;
+StructuredBuffer<TemporalReprojectParams> gRecord_TemporalReprojectParams;
+StructuredBuffer<TemporalDebugViewParams> gRecord_TemporalDebugViewParams;
+StructuredBuffer<VendorPackParams> gRecord_VendorPackParams;
 
 void probeMain()
 {
