@@ -13,7 +13,7 @@ FrameDataBench target. It subtracts the pending source/test-shader patterns in `
 then selects files containing shader attributes. App selects DisplayTransform plus all six
 Scene/Sky and two Shadow entries. Tests adds the retained sampler/fullscreen/MRT/compute/buffer
 oracles, ShadowSmoke and SceneTableAbi. BENCH remains skipped with FrameDataQuad. VISIBILITY,
-LIGHTS, POST and TEMPORAL entries remain excluded by their exact family patterns.
+LIGHTS and TEMPORAL entries remain excluded by their exact family patterns.
 
 `RojoRHI/xmake/slang.lua` owns `rojorhi.slang` and the backend compilation/package contract.
 A Metal 4 configure requires `xcodebuild -downloadComponent MetalToolchain`: Slang emits MSL,

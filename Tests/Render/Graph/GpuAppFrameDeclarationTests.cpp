@@ -23,7 +23,7 @@ TEST_CASE("FrameDeclaration preserves headless rendering and retains its caller-
     using namespace lmx::render;
 
     auto gpu = createTestGpu();
-    TransientPool pool(gpu->device());
+    TransientPool pool(*gpu);
     auto reference = Renderer::create(*gpu, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(reference));
     REQUIRE(reference.has_value());
@@ -64,14 +64,16 @@ TEST_CASE("FrameDeclaration preserves headless rendering and retains its caller-
         gpu->waitIdle();
         std::vector<uint8_t> expected(size_t{kSize} * kSize * 4);
         {
-            const auto readbackBytes = lmx::render::readbackNow(
-                *gpu, (*reference)->colorTarget(), lmx::render::TextureUse::RenderTarget);
-            std::memcpy(expected.data(), readbackBytes.data(), expected.size());
+            const auto readbackBytes = lmx::render::readbackNow(*gpu, (*reference)->colorTarget(),
+                                                                (*reference)->textureStates());
+            INFO(errorOf(readbackBytes));
+            REQUIRE(readbackBytes.has_value());
+            std::memcpy(expected.data(), readbackBytes->data(), expected.size());
         }
 
         auto commandsFrame = gpu->beginFrame();
         auto& commands = commandsFrame.commands;
-        const uint64_t frameId = gpu->frameNumber();
+        const uint64_t frameId = commandsFrame.number;
         if (index == 0) {
             firstSharedFrame = frameId;
         }
@@ -90,9 +92,11 @@ TEST_CASE("FrameDeclaration preserves headless rendering and retains its caller-
 
         std::vector<uint8_t> actual(expected.size());
         {
-            const auto readbackBytes = lmx::render::readbackNow(
-                *gpu, (*shared)->colorTarget(), lmx::render::TextureUse::RenderTarget);
-            std::memcpy(actual.data(), readbackBytes.data(), actual.size());
+            const auto readbackBytes = lmx::render::readbackNow(*gpu, (*shared)->colorTarget(),
+                                                                (*shared)->textureStates());
+            INFO(errorOf(readbackBytes));
+            REQUIRE(readbackBytes.has_value());
+            std::memcpy(actual.data(), readbackBytes->data(), actual.size());
         }
         REQUIRE(actual == expected);
         const lmx::app::RetainedFrame* retained = records.find(frameId);

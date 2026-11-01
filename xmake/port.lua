@@ -61,18 +61,6 @@ local pending_families = {
         },
     },
     {
-        family = "POST",
-        sources = {
-        },
-        tests = {
-            "Tests/Render/Passes/Exposure/GpuRendererDisplayTests.cpp",
-            "Tests/Render/Passes/Exposure/GpuSceneTimingTests.cpp",
-            "Tests/Render/Graph/GpuAppFrameDeclarationTests.cpp",
-        },
-        shaders = {
-        },
-    },
-    {
         family = "TEMPORAL",
         sources = {
             "Source/Render/Passes/Temporal/TemporalResolve*.cpp",

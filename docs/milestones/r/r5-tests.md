@@ -39,12 +39,9 @@ All original SCENE sources, shaders and independent tests are active. The eight 
 | `Tests/Render/Passes/LocalLights/RenderZeroLightInvariantTests.cpp` | 1 | 0 | 0 |
 | `Tests/Render/Passes/LocalLights/LightCaptureLayoutTests.cpp` | 1 | 0 | 0 |
 
-### POST
+### POST returned
 
-| Test file | CPU | GPU | Hidden |
-|---|---:|---:|---:|
-| `Tests/Render/Graph/GpuAppFrameDeclarationTests.cpp` | 0 | 1 | 0 |
-| `Tests/Render/Passes/Exposure/GpuRendererDisplayTests.cpp` | 0 | 5 | 0 |
+The Renderer declares exposure seed and metering, bloom and display from their real stages; the exposure stand-in is gone and POST has no remaining manifest exclusion. The five `GpuRendererDisplayTests.cpp` cases, the `GpuAppFrameDeclarationTests.cpp` case and the twelve-row timing case below return with their original names, tags and assertions. Timing reads `GpuContext::passTimings()` after every `endFrame` and drains at most the configured frame slots until the measured frame publishes. Four `[device][render][tracker]` cases cover exposure reset/manual Off feedback, bloom odd and tiny mip chains, selection visible/rejected/disabled consumers and selection replacement/resize; `Tools/check_tracker_inventory.py` requires them. Two whole temporal cases stay with TEMPORAL.
 
 ### TEMPORAL
 
@@ -70,7 +67,7 @@ All original SCENE sources, shaders and independent tests are active. The eight 
 
 The six original standalone cases in `Tests/Render/Passes/Exposure/GpuExposureBloomTests.cpp` retain their names and `[gpu]` tags. At checkpoint `7d7979c374ba3ca7c84376ad65d049a116c28334`, the 2026-10-27 M4 Pro run passes all six on Release Metal with `MTL_DEBUG_LAYER=1`: 345 assertions and clean diagnostics. Their source and four-configuration compile evidence use both genuine generated consumers for all Exposure roots and pointed fields on Metal, SPIR-V and HLSL. This numerical checkpoint does not accept production ExposureStage/Renderer feedback or the later combined Bloom build.
 
-The original seventh case, "a manual temporal frame records the EV edit and the value before it", moves whole to `GpuExposureTemporalTests.cpp`. Its EV 0 to 2 to -1 sequence, original sections and assertions remain excluded with TEMPORAL. The shared Exposure/Bloom helper uses v2 resources; both complete active consumer TUs compile, while the temporal consumer remains excluded. Renderer POST integration and the transferred temporal case's native acceptance remain pending.
+The original seventh case, "a manual temporal frame records the EV edit and the value before it", moves whole to `GpuExposureTemporalTests.cpp`. Its EV 0 to 2 to -1 sequence, original sections and assertions remain excluded with TEMPORAL. The shared Exposure/Bloom helper uses v2 resources; both complete active consumer TUs compile, while the temporal consumer remains excluded. The transferred temporal case's native acceptance remains pending with TEMPORAL.
 
 Bloom restores all three original cases in `Tests/Render/Passes/Bloom/GpuBloomTests.cpp` and adds "a one-mip bloom output remains sampled threshold data". Actual Null discovery lists all four with their `[gpu]` tags; numerical bodies are unexecuted in this source preparation. The new case uses the real Bloom and Display owners at tiny extents with nonzero threshold output and zero intensity. Source roots carry exact mip storage views; final output alone is sampled. Full native red/green, per-mip tracker stress, Renderer integration and POST acceptance remain separate. Layout reflection or returned-root registration does not close Z13.actual submitted consumption under #145/P6.9. Selection restores seven original cases in `Tests/Render/Passes/SelectionOutline/GpuSelectionOutlineTests.cpp` with their original names, tags, sections and numerical assertions. The complete eighth case, "selection presentation leaves ordinary display scene color and temporal history untouched", moves to `Tests/Render/Passes/Temporal/GpuSelectionOutlineTemporalTests.cpp`; its four Native TAA frames, jitter, history equality, age and positive outline checks remain intact. The shared v2 fixture has both actual source consumers. The nine pool constructor transports use the owning `GpuContext` rather than its device handle. Compilation and native evidence are recorded separately; the Temporal case remains excluded from ordinary discovery and execution until its family returns. The editor target starts in its actual creation state and ends in the sampled UI state. Same-extent replacement allocates successfully before forgetting the previous state; failure retains the old owner. Seven original Metal numerical cases, editor selected/rejected/disabled and resize/window lifecycle, and the planned Selection tracker cases remain pending. Source roots, reflected layout and returned-root registration do not prove submitted pipeline/root/draw consumption: P/B/M remain distinct from C, and Z13.actual under #145/P6.9 remains open. Renderer POST activation, Z03/Z11 POST-dependent obligations, image gates and the fixed smoke/performance gates remain separate.
 
@@ -271,7 +268,7 @@ data with lighting Off, not light shading.
 | Scene table growth keeps stable rows and retires old buffers after three frames | same |
 | Scene table slots preserve each submitted transform across three-frame overlap | same |
 | alpha mask shares color depth and motion coverage | Render/Passes/Temporal/GpuAlphaMaskTemporalTests.cpp, TEMPORAL |
-| pass timings name every pass the graph ran | Render/Passes/Exposure/GpuSceneTimingTests.cpp, POST |
+| pass timings name every pass the graph ran | Render/Passes/Exposure/GpuSceneTimingTests.cpp, POST (returned) |
 
 The six Table cases retain their Raw temporal helper; Alpha retains all four sections and every history/motion/rigid/invalid/opaque check; timing retains all12 labels
 including9bloom passes. Their balanced original bodies/helper closures are byte-identical. No new skip replaces coverage. Two additive `[gpu]` oracles are `alpha mask shares color

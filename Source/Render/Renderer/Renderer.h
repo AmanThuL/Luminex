@@ -83,10 +83,9 @@ void registerUniformLayoutsForCapture();
 /// Shaders/Passes/Exposure/HistogramAccumulate.slang and the auto scene/sky pipelines read index 0.
 constexpr uint32_t kExposureBufferFloats = 2;
 
-/// Owns neutral depth and exposure inputs while their stages are unavailable.
+/// Owns neutral depth while the temporal stage is unavailable.
 struct RendererStandIns {
-    engine::GpuTexture depth;   ///< Output-sized reversed-depth attachment.
-    engine::GpuBuffer exposure; ///< Fixed applied/previous exposure pair.
+    engine::GpuTexture depth; ///< Output-sized reversed-depth attachment.
 };
 
 /// Owns frame targets and pipelines and declares the frame's render-graph passes.
@@ -204,10 +203,8 @@ public:
     /// they allocate.
     TextureStateTable& textureStates() { return m_textureStates; }
 
-    /// The persistent kExposureBufferFloats pair the frame's exposure passes keep. Created with
-    /// the renderer and never replaced, so it is never null. Readable from the CPU only when
-    /// create() was given cpuReadback -- the tests and the offscreen path; the windowed App never
-    /// reads it back, which is the whole point of keeping the feedback GPU-resident.
+    /// Borrows the exposure stage's persistent kExposureBufferFloats GPU pair. Created with the
+    /// renderer and retained across resize; diagnostic CPU reads use explicit staging copies.
     const engine::GpuBuffer& exposureBufferOwner();
 
     /// Returns the current target width in pixels.
@@ -276,11 +273,9 @@ private:
     std::unique_ptr<ShadowStage> m_shadowStage;
     std::unique_ptr<SceneStage> m_sceneStage;
 
-#ifndef LMX_PENDING_POST
     // Stage owners retain callback inputs and persistent feedback through graph execution.
     std::unique_ptr<ExposureStage> m_exposureStage;
     std::unique_ptr<BloomStage> m_bloomStage;
-#endif
     std::unique_ptr<DisplayStage> m_displayStage;
     // The scene renders into m_hdrColor and the display transform resolves it into m_color, so
     // the two always share an extent and are replaced together by resize().

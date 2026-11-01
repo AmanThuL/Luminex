@@ -43,6 +43,16 @@
       "file": "Tests/Render/Passes/Bloom/GpuBloomTests.cpp",
       "header": "Source/Render/Passes/Display/DisplayStage.h",
       "reason": "Verify actual display sampling of the bloom owner's one-mip threshold output and zero-intensity branch."
+    },
+    {
+      "file": "Tests/Render/Passes/Exposure/ExposureTrackerTests.cpp",
+      "header": "Source/Render/Passes/Exposure/ExposureStage.h",
+      "reason": "Exercise the production exposure owner and feedback frontiers across paced frames."
+    },
+    {
+      "file": "Tests/Render/Passes/Bloom/BloomTrackerTests.cpp",
+      "header": "Source/Render/Passes/Bloom/BloomStage.h",
+      "reason": "Exercise production bloom declarations, sampled output and mip/alias reuse across paced frames."
     }
   ],
   "units": {

@@ -7,13 +7,9 @@
 #include "Render/Renderer/RendererStandIns.h"
 
 #include "Core/Diagnostics/Assert.h"
-#ifndef LMX_PENDING_POST
 #include "Render/Passes/Bloom/BloomStage.h"
-#endif
 #include "Render/Passes/Display/DisplayStage.h"
-#ifndef LMX_PENDING_POST
 #include "Render/Passes/Exposure/ExposureStage.h"
-#endif
 #include "Render/Renderer/RendererInternal.h"
 
 namespace lmx::render {
@@ -112,8 +108,8 @@ lmx::Result<GraphTexture> Renderer::declarePasses(RenderGraph& graph,
          .linearSampler = m_linearSampler.get(),
          .shadowSampler = m_shadowSampler.get(),
          .iblSampler = m_iblSampler.get()});
-    [[maybe_unused]] const uint32_t sceneWidth = m_width;
-    [[maybe_unused]] const uint32_t sceneHeight = m_height;
+    const uint32_t sceneWidth = m_width;
+    const uint32_t sceneHeight = m_height;
 #ifndef LMX_PENDING_TEMPORAL
     const GraphTexture motionRead =
         state.temporalEnabled ? nextVersion(imports.motionTargetHandle) : GraphTexture{};
@@ -164,7 +160,6 @@ lmx::Result<GraphTexture> Renderer::declarePasses(RenderGraph& graph,
     const GraphTexture displayInput = sceneColorRead;
 #endif
 
-#ifndef LMX_PENDING_POST
     m_exposureStage->declareMetering(graph, commands, view,
                                      {.extents = state.extents,
                                       .sceneColorRead = sceneColorRead,
@@ -175,9 +170,6 @@ lmx::Result<GraphTexture> Renderer::declarePasses(RenderGraph& graph,
                                                             .sceneWidth = sceneWidth,
                                                             .sceneHeight = sceneHeight,
                                                             .bloomThreshold = view.bloomThreshold});
-#else
-    const GraphTexture bloomResult;
-#endif
 
 #ifndef LMX_PENDING_LIGHTS
     const bool lightDebugEnabled =
@@ -204,11 +196,7 @@ lmx::Result<GraphTexture> Renderer::declarePasses(RenderGraph& graph,
                             {.displayInput = displayInput,
                              .bloomResult = bloomResult,
                              .displayColor = displayDestination,
-#ifndef LMX_PENDING_POST
                              .bloomEnabled = view.bloomEnabled,
-#else
-                             .bloomEnabled = false,
-#endif
                              .bloomIntensity = view.bloomIntensity});
 #ifndef LMX_PENDING_LIGHTS
     if (lightDebugEnabled) {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Require Renderer and ordinary-buffer validation cases in a Catch2 tracker listing."""
+"""Require Renderer, ordinary-buffer and POST validation cases in a Catch2 tracker listing."""
 
 from __future__ import annotations
 
@@ -12,6 +12,10 @@ REQUIRED_CASES = (
     "the minimal frame runs four frames under the validation tracker",
     "the display read can be culled and restored under the tracker",
     "ordinary graph buffer writes order in-place reads across paced frames",
+    "exposure feedback resets and leaves manual Off without stale accesses under the tracker",
+    "bloom toggles preserve odd and tiny mip frontiers under the tracker",
+    "selection visible rejected and disabled paths preserve actual consumers under the tracker",
+    "selection replacement and resize preserve target generations under the tracker",
 )
 
 

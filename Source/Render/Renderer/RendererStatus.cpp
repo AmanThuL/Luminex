@@ -4,9 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Core/Diagnostics/Assert.h"
-#ifndef LMX_PENDING_POST
 #include "Render/Passes/Exposure/ExposureStage.h"
-#endif
 #include "Render/Renderer/RendererInternal.h"
 #ifndef LMX_PENDING_VISIBILITY
 #include "Render/Passes/Occlusion/OcclusionReference.h"
@@ -117,11 +115,7 @@ const engine::GpuTexture* Renderer::historyTexture() {
 
 //======================================================================================================================
 const engine::GpuBuffer& Renderer::exposureBufferOwner() {
-#ifndef LMX_PENDING_POST
     return m_exposureStage->bufferOwner();
-#else
-    return m_standIns.exposure;
-#endif
 }
 
 //======================================================================================================================
