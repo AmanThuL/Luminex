@@ -124,7 +124,7 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
     }
     self->m_displayStage = std::move(*displayStage);
 
-    auto exposureStage = ExposureStage::create(gpu, cpuReadback);
+    auto exposureStage = ExposureStage::create(gpu);
     if (!exposureStage) {
         return std::unexpected(exposureStage.error());
     }
@@ -238,7 +238,7 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
     // The reconstruction stage owns both history pairs and the passes over them, so it is built
     // before the first resize(), which is what allocates its slots at this renderer's extent.
     {
-        auto stage = TemporalResolve::create(gpu, self->m_cpuReadback);
+        auto stage = TemporalResolve::create(gpu);
         if (!stage) {
             return std::unexpected(stage.error());
         }

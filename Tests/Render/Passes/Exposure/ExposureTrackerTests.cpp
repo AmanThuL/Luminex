@@ -125,7 +125,7 @@ void requireExposureSourceState(const render::TextureStateTable& states, rojoRHI
 //======================================================================================================================
 void runExposureFeedbackFrames() {
     auto gpu = createTestGpu({.validation = true, .framesInFlight = 3});
-    auto stageResult = render::ExposureStage::create(*gpu, false);
+    auto stageResult = render::ExposureStage::create(*gpu);
     INFO(errorOf(stageResult));
     REQUIRE(stageResult.has_value());
     auto stage = std::move(*stageResult);

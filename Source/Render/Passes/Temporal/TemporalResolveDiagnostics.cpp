@@ -138,9 +138,10 @@ GraphTexture TemporalResolve::declareDebugView(RenderGraph& graph, rojoRHI::Comm
         [this, &commands, motion, diagnostic, rejection, reprojected, resolved, readsDiagnostic,
          readsRejection, readsReprojected, readsResolved, debugView,
          extents](const PassResources& resources) {
-            // A view that reads none of these carries the 1x1 fallback: every texel the shader
-            // loads lies outside it, and an out-of-bounds Load answers with zeroes -- which is the
-            // shader's own "nothing to show" for each of them.
+            // A view that reads none of these carries the 1x1 fallback, which answers zero at
+            // every texel: (0, 0) because the texture is created zeroed, and every other texel
+            // because an out-of-bounds Load answers with zeroes -- the shader's own "nothing to
+            // show" for each of them.
             const auto viewOr = [&](bool wanted, GraphTexture handle) {
                 return static_cast<uint32_t>(wanted ? resources.view(handle)
                                                     : m_viewFallback.view());

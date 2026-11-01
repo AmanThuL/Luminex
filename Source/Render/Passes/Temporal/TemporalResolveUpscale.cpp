@@ -88,6 +88,7 @@ void TemporalResolve::declareUpscale(RenderGraph& graph, rojoRHI::CommandList& c
     declareReconstruction(graph, commands, inputs,
                           {.parameters = std::as_bytes(std::span{&params, 1}),
                            .parameterAlignment = alignof(TemporalUpscaleParams),
+                           .paramsName = "TemporalUpscaleParams",
                            .pipeline = m_temporalUpscalePipeline.get(),
                            .passName = "lmx.pass.temporal.upscale",
                            .width = params.outputWidth,

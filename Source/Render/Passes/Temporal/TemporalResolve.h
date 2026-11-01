@@ -139,10 +139,10 @@ public:
 
     /// Number of successful vendor scaler creations, across output resizes.
     uint32_t vendorScalerGeneration() const;
-    /// `cpuReadback` is Renderer::create()'s flag. It selects nothing here: every history slot is
-    /// device-local, and a readback stages through a copy whatever the flag says.
-    static lmx::Result<std::unique_ptr<TemporalResolve>> create(engine::GpuContext& gpu,
-                                                                bool cpuReadback);
+    /// Creates the stage's kernels, sampler and fallback textures; allocateSlots() makes the
+    /// histories. Every history slot is device-local, so a CPU readback of one stages through a
+    /// copy.
+    static lmx::Result<std::unique_ptr<TemporalResolve>> create(engine::GpuContext& gpu);
 
     /// Non-copyable: it owns GPU targets whose identity is what the frame's imports name.
     TemporalResolve(const TemporalResolve&) = delete;
@@ -154,8 +154,8 @@ public:
     lmx::Result<TemporalSlots> allocateSlots(uint32_t width, uint32_t height) const;
 
     /// Replaces both slot pairs with `slots` and retires the vendor scaler with the old output
-    /// extent. It cannot fail; the caller guarantees the GPU is idle first, on Renderer::resize()'s
-    /// terms.
+    /// extent. It reports no error and allocates no GPU object; the caller guarantees the GPU is
+    /// idle first, on Renderer::resize()'s terms.
     void adoptSlots(TemporalSlots slots);
 
     /// Borrows the depth owner of slot 0 or 1 until adoptSlots() replaces both pairs. A temporal
@@ -290,9 +290,9 @@ private:
     // declared, so every index the kernel turns into a texture names a real storage view even on
     // the frames its writeDiagnostics bit makes it write nothing.
     engine::GpuTexture m_diagnosticFallback;
-    // The zeroed 1x1 sampled texture whose view the debug view's root carries for whichever inputs
-    // its view does not read. Every texel the shader loads lies outside it, and an out-of-bounds
-    // Load answers with zeroes.
+    // The 1x1 sampled texture whose view the debug view's root carries for whichever inputs its
+    // view does not read. Texel (0, 0) lies inside it and reads zero because the texture is created
+    // zeroed; every other texel lies outside it, where an out-of-bounds Load answers with zeroes.
     engine::GpuTexture m_viewFallback;
     uint32_t m_width = 0;
     uint32_t m_height = 0;

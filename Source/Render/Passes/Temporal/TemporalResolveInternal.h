@@ -19,6 +19,8 @@ namespace lmx::render::temporal_detail {
 struct ReconstructionDeclaration {
     std::span<const std::byte> parameters;
     uint64_t parameterAlignment;
+    // The capture name of the parameters' mirror struct; static storage.
+    std::string_view paramsName;
     rojoRHI::Pipeline pipeline;
     std::string_view passName;
     uint32_t width;

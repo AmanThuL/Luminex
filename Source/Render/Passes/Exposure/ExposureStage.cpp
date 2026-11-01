@@ -81,11 +81,8 @@ void registerExposureLayoutsForCapture() {
 } // namespace
 
 //======================================================================================================================
-lmx::Result<std::unique_ptr<ExposureStage>> ExposureStage::create(engine::GpuContext& gpu,
-                                                                  bool cpuReadback) {
+lmx::Result<std::unique_ptr<ExposureStage>> ExposureStage::create(engine::GpuContext& gpu) {
     rojoRHI::Device& device = gpu.device();
-    // Readback uses staging; the persistent feedback source always stays GPU-resident.
-    (void)cpuReadback;
     std::unique_ptr<ExposureStage> self(new ExposureStage);
 
     {

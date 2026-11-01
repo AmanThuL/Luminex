@@ -23,16 +23,17 @@ TEST_CASE("vendor packing translates invalid motion and working exposure without
                                   .bytesPerRow = 2};
     auto motion = lmx::engine::GpuTexture::create(gpu->device(),
                                                   {.format = Format::RG16Float,
-                                                   .extent = {2, 1, 1},
+                                                   .extent = {.width = 2, .height = 1, .depth = 1},
                                                    .usage = TextureUsage::Sampled,
                                                    .label = "lmx.test.vendor.pack.motion"},
                                                   std::span{&motionMip, 1});
-    auto reactive = lmx::engine::GpuTexture::create(gpu->device(),
-                                                    {.format = Format::R8Unorm,
-                                                     .extent = {2, 1, 1},
-                                                     .usage = TextureUsage::Sampled,
-                                                     .label = "lmx.test.vendor.pack.reactive"},
-                                                    std::span{&reactiveMip, 1});
+    auto reactive =
+        lmx::engine::GpuTexture::create(gpu->device(),
+                                        {.format = Format::R8Unorm,
+                                         .extent = {.width = 2, .height = 1, .depth = 1},
+                                         .usage = TextureUsage::Sampled,
+                                         .label = "lmx.test.vendor.pack.reactive"},
+                                        std::span{&reactiveMip, 1});
     const std::array<float, 2> exposurePair{4.0f, 2.0f};
     auto exposure = lmx::engine::GpuBuffer::create(
         gpu->device(), {.size = sizeof(exposurePair), .label = "lmx.test.vendor.pack.exposure"},
@@ -64,7 +65,7 @@ TEST_CASE("vendor packing translates invalid motion and working exposure without
     inputs.motion = graph.importPersistentTexture(*motion, "motion");
     inputs.reactive = graph.importPersistentTexture(*reactive, "reactive");
     inputs.exposure = graph.importBuffer(*exposure, "exposure");
-    inputs.extents = {2, 1, 2, 1};
+    inputs.extents = {.renderWidth = 2, .renderHeight = 1, .outputWidth = 2, .outputHeight = 1};
     const auto packed = adapter.declarePack(graph, commands, inputs);
     const auto output = graph.importBuffer(*readback, "readback");
     CopyPassDesc desc;
@@ -73,9 +74,10 @@ TEST_CASE("vendor packing translates invalid motion and working exposure without
     graph.addCopyPass(
         "lmx.test.vendor.pack.readback", std::move(desc), [&](const PassResources& resources) {
             const auto copy = [&](GraphTexture source, uint32_t width, uint64_t offset) {
-                commands.copyTextureToBuffer(resources.texture(source).texture,
-                                             {.extent = {width, 1, 1}}, resources.buffer(output),
-                                             {.offset = offset, .rowPitch = 256});
+                commands.copyTextureToBuffer(
+                    resources.texture(source).texture,
+                    {.offset = {}, .extent = {.width = width, .height = 1, .depth = 1}},
+                    resources.buffer(output), {.offset = offset, .rowPitch = 256});
             };
             copy(packed.motion, 2, kMotionOffset);
             copy(packed.reactive, 2, kReactiveOffset);
@@ -92,9 +94,10 @@ TEST_CASE("vendor packing translates invalid motion and working exposure without
     gpu->submitAndEndFrame(frame);
     gpu->waitIdle();
 
-    const auto bytes = lmx::render::readbackNow(*gpu, *readback,
-                                                {Stage::Copy, Access::CopyWrite, Layout::Undefined},
-                                                {0, kExposureOffset + 4});
+    const auto bytes = lmx::render::readbackNow(
+        *gpu, *readback,
+        {.stage = Stage::Copy, .access = Access::CopyWrite, .layout = Layout::Undefined},
+        {.offset = 0, .size = kExposureOffset + 4});
     INFO(errorOf(bytes));
     REQUIRE(bytes);
     std::array<uint16_t, 2> packedMotion0{};

@@ -112,7 +112,8 @@ void registerTemporalLayoutsForCapture() {
            "float4x4"},
           {"previousViewProjection", offsetof(TemporalResolveParams, previousViewProjection),
            "float4x4"},
-          {"previousNearZ", offsetof(TemporalResolveParams, previousNearZ), "float"}}});
+          {"previousNearZ", offsetof(TemporalResolveParams, previousNearZ), "float"},
+          {"pad", offsetof(TemporalResolveParams, pad), "float3"}}});
     engine::registerUniformStruct(
         {"TemporalUpscaleParams",
          sizeof(TemporalUpscaleParams),
@@ -125,6 +126,7 @@ void registerTemporalLayoutsForCapture() {
           {"previousViewProjection", offsetof(TemporalUpscaleParams, previousViewProjection),
            "float4x4"},
           {"previousNearZ", offsetof(TemporalUpscaleParams, previousNearZ), "float"},
+          {"pad", offsetof(TemporalUpscaleParams, pad), "float3"},
           {"outputWidth", offsetof(TemporalUpscaleParams, outputWidth), "uint"},
           {"outputHeight", offsetof(TemporalUpscaleParams, outputHeight), "uint"},
           {"allocatedWidth", offsetof(TemporalUpscaleParams, allocatedWidth), "uint"},
@@ -172,9 +174,7 @@ TemporalResolve::TemporalResolve(engine::GpuContext& gpu)
 TemporalResolve::~TemporalResolve() = default;
 
 //======================================================================================================================
-lmx::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(engine::GpuContext& gpu,
-                                                                      bool cpuReadback) {
-    (void)cpuReadback;
+lmx::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(engine::GpuContext& gpu) {
     rojoRHI::Device& device = gpu.device();
     auto self = std::unique_ptr<TemporalResolve>(new TemporalResolve(gpu));
 

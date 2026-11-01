@@ -42,6 +42,7 @@ void TemporalResolve::declareResolve(RenderGraph& graph, rojoRHI::CommandList& c
     declareReconstruction(graph, commands, inputs,
                           {.parameters = std::as_bytes(std::span{&params, 1}),
                            .parameterAlignment = alignof(TemporalResolveParams),
+                           .paramsName = "TemporalResolveParams",
                            .pipeline = m_resolvePipeline.get(),
                            .passName = "lmx.pass.temporal.resolve",
                            .width = width,
@@ -104,9 +105,7 @@ void TemporalResolve::declareReconstruction(
     // FrameData.h's frameData() alignment: the mirror type's own.
     const auto parameterAlignment = static_cast<uint32_t>(declaration.parameterAlignment);
     const rojoRHI::Pipeline pipeline = declaration.pipeline;
-    const std::string_view paramsName =
-        parameterSize == sizeof(temporal_detail::TemporalUpscaleParams) ? "TemporalUpscaleParams"
-                                                                        : "TemporalResolveParams";
+    const std::string_view paramsName = declaration.paramsName;
 
     const GraphTexture output = inputs.colorSlot;
     const GraphTexture rejection = outputs.rejection;
