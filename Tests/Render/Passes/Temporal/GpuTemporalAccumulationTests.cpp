@@ -505,7 +505,7 @@ TEST_CASE("switching from raw to native TAA needs no reset", "[gpu][temporal]") 
     REQUIRE((*renderer)->temporalStatus().reconstruction == ReconstructionMode::Raw);
     const uint32_t ageBeforeSwitch = (*renderer)->temporalStatus().historyAge;
     const std::vector<glm::vec4> rawCommit =
-        readHalf4(*gpu, *(*renderer)->historyTexture(), lmx::render::TextureUse::CopyDestination);
+        readHalf4(*gpu, *(*renderer)->historyTexture(), (*renderer)->textureStates());
 
     view.temporal.reconstruction = ReconstructionMode::NativeTaa;
     renderFrame(*gpu, **renderer, camera, view);
@@ -518,9 +518,9 @@ TEST_CASE("switching from raw to native TAA needs no reset", "[gpu][temporal]") 
     // The first accumulated frame is a blend, not a copy: it differs from its own raw frame, and it
     // moved toward it from what the raw commit had left in the other slot.
     const std::vector<glm::vec4> blended =
-        readHalf4(*gpu, *(*renderer)->historyTexture(), lmx::render::TextureUse::ShaderRead);
+        readHalf4(*gpu, *(*renderer)->historyTexture(), (*renderer)->textureStates());
     const std::vector<glm::vec4> raw =
-        readHalf4(*gpu, (*renderer)->hdrColorTexture(), lmx::render::TextureUse::ShaderRead);
+        readHalf4(*gpu, (*renderer)->hdrColorTexture(), (*renderer)->textureStates());
     const std::vector<uint32_t> pixels = allPixels();
     const float towardRaw = meanAbsDiff(luminances(blended), luminances(raw), pixels);
     const float rawToCommit = meanAbsDiff(luminances(raw), luminances(rawCommit), pixels);
@@ -561,9 +561,11 @@ TEST_CASE("the raw bypass matches the temporal-off picture", "[gpu][temporal]") 
         renderFrame(*gpu, **renderer, camera, view);
         std::vector<uint8_t> display(kScenarioPixels * 4);
         {
-            const auto readbackBytes = lmx::render::readbackNow(
-                *gpu, (*renderer)->colorTarget(), lmx::render::TextureUse::RenderTarget);
-            std::memcpy(display.data(), readbackBytes.data(), display.size());
+            const auto readbackBytes = lmx::render::readbackNow(*gpu, (*renderer)->colorTarget(),
+                                                                (*renderer)->textureStates());
+            INFO(errorOf(readbackBytes));
+            REQUIRE(readbackBytes.has_value());
+            std::memcpy(display.data(), readbackBytes->data(), display.size());
         }
         return display;
     };

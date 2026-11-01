@@ -111,11 +111,11 @@ SceneDraw48, Sky32, ShadowPass48 and ShadowDraw32; bound roots use pushRoot's GP
 while pointed pass roots use natural16. The 48-byte scalar VertexStorage matches all twelve
 Engine Vertex fields. Real App/Test assertion TUs consume three-target reflection.
 
-Current frames force local lights, temporal and bloom Off, CPU classification and no occlusion.
-Four Scene shader local-light contributions are neutral until LIGHTS returns; their named zero
-addresses are never loaded. Ordinary/motion twins retain MRT layouts, but Renderer cannot reach
-motion before TEMPORAL returns. Capture schema2 registers actual named roots/addresses and
-pointed layouts; existing schema1 tools reject it until the decoder migration.
+Current frames force local lights Off, CPU classification and no occlusion. Four Scene shader
+local-light contributions are neutral until LIGHTS returns; their named zero addresses are never
+loaded. Ordinary/motion twins retain MRT layouts; a temporal frame selects the motion twin with
+its RG16Float motion and R8Unorm reactive attachments. Capture schema2 registers actual named
+roots/addresses and pointed layouts; existing schema1 tools reject it until the decoder migration.
 
 ## Clustered local lighting
 

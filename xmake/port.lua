@@ -17,6 +17,8 @@ local pending_families = {
             "Tests/Render/Passes/Visibility/Gpu*.cpp",
             "Tests/Render/Passes/Occlusion/Gpu*.cpp",
             "Tests/Render/Passes/Occlusion/HzbTests.cpp",
+            "Tests/Render/Passes/Temporal/GpuOcclusionTemporalTests.cpp",
+            "Tests/Render/Passes/Temporal/GpuVisibility*TemporalTests.cpp",
             "Tests/Render/Renderer/RendererCaptureLayoutTests.cpp",
             "Tests/App/Model/Performance/MeasurementSampleTests.cpp",
         },
@@ -49,6 +51,7 @@ local pending_families = {
             "Tests/Render/Passes/LocalLights/Gpu*.cpp",
             "Tests/Render/Passes/LocalLights/RenderZeroLightInvariantTests.cpp",
             "Tests/Render/Passes/LocalLights/LightCaptureLayoutTests.cpp",
+            "Tests/Render/Passes/Temporal/GpuZeroLightHistoryTests.cpp",
         },
         shaders = {
             "Shaders/Passes/LocalLights/LightClusterCount.slang",
@@ -62,21 +65,9 @@ local pending_families = {
     },
     {
         family = "TEMPORAL",
-        sources = {
-            "Source/Render/Renderer/RendererTemporal.cpp",
-        },
         tests = {
-            "Tests/Engine/Scene/GpuSceneTableTemporalTests.cpp",
-            "Tests/Render/Passes/Temporal/GpuAlphaMaskTemporalTests.cpp",
-            "Tests/Render/Passes/Temporal/GpuExposureTemporalTests.cpp",
-            "Tests/Render/Passes/Temporal/GpuOcclusionTemporalTests.cpp",
-            "Tests/Render/Passes/Temporal/GpuSelectionOutlineTemporalTests.cpp",
-            "Tests/Render/Passes/Temporal/GpuTemporal*.cpp",
             "Tests/Render/Passes/Temporal/GpuVendorTemporalTests.cpp",
-            "Tests/Render/Passes/Temporal/GpuVisibility*TemporalTests.cpp",
-            "Tests/Render/Passes/Temporal/GpuZeroLightHistoryTests.cpp",
             "Tests/Render/Passes/Temporal/RenderVendorTemporalTests.cpp",
-            "Tests/App/Model/Graph/GpuGraphInspectorTests.cpp",
         },
     },
     {

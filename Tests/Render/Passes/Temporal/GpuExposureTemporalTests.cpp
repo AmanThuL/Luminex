@@ -62,16 +62,24 @@ TEST_CASE("a manual temporal frame records the EV edit and the value before it",
         view.temporal.enabled = temporalEnabled;
         auto commandsFrame = gpu->beginFrame();
         auto& commands = commandsFrame.commands;
-        (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, *gpu));
+        const auto rendered =
+            (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, *gpu));
         gpu->submitAndEndFrame(commandsFrame);
         gpu->waitIdle();
+        INFO(lmx::test::errorOf(rendered));
+        REQUIRE(rendered.has_value());
 
         std::array<float, lmx::render::kExposureBufferFloats> pair{};
         {
-            const auto readbackBytes =
-                lmx::render::readbackNow(*gpu, (*renderer)->exposureBufferOwner(),
-                                         lmx::render::BufferUse::StorageWrite, {0, sizeof(pair)});
-            std::memcpy(pair.data(), readbackBytes.data(), sizeof(pair));
+            const auto readbackBytes = lmx::render::readbackNow(
+                *gpu, (*renderer)->exposureBufferOwner(),
+                {rojoRHI::Stage::ComputeShader,
+                 rojoRHI::Access::ShaderRead | rojoRHI::Access::ShaderWrite,
+                 rojoRHI::Layout::Undefined},
+                {0, sizeof(pair)});
+            INFO(lmx::test::errorOf(readbackBytes));
+            REQUIRE(readbackBytes.has_value());
+            std::memcpy(pair.data(), readbackBytes->data(), sizeof(pair));
         }
         return pair;
     };

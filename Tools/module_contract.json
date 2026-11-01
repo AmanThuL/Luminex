@@ -151,7 +151,6 @@
         "Source/Render/Graph/RenderGraphInternal.h",
         "Source/Render/Passes/Temporal/TemporalResolveInternal.h",
         "Source/Render/Renderer/RendererInternal.h",
-        "Source/Render/Renderer/RendererStandIns.h",
         "Source/Render/Common/GraphResources.h",
         "Source/Render/Common/StageSetup.h",
         "Source/Render/Common/PacedSlots.h",

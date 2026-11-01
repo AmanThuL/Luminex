@@ -50,8 +50,7 @@ TEST_CASE("motion vectors reproject a moved camera", "[gpu][temporal]") {
     const lmx::render::CameraFrameState previous =
         lmx::render::buildCameraFrameState(previousCamera, extents, {});
 
-    const std::vector<uint8_t> pixels =
-        readMotion(*gpu, **renderer, lmx::render::TextureUse::RenderTarget);
+    const std::vector<uint8_t> pixels = readMotion(*gpu, **renderer);
     for (const std::pair<uint32_t, uint32_t> probe :
          {std::pair<uint32_t, uint32_t>{16, 16}, {32, 32}, {48, 40}}) {
         const glm::vec4 point =
@@ -106,8 +105,7 @@ TEST_CASE("motion vectors reproject a moved object", "[gpu][temporal]") {
     const lmx::render::CameraFrameState state =
         lmx::render::buildCameraFrameState(camera, extents, {});
 
-    const std::vector<uint8_t> pixels =
-        readMotion(*gpu, **renderer, lmx::render::TextureUse::RenderTarget);
+    const std::vector<uint8_t> pixels = readMotion(*gpu, **renderer);
     for (const std::pair<uint32_t, uint32_t> probe :
          {std::pair<uint32_t, uint32_t>{16, 16}, {32, 32}, {48, 40}}) {
         const glm::vec4 point = planePointAtPixel(camera, probe.first, probe.second, kPlaneZ);
@@ -153,8 +151,7 @@ TEST_CASE("jitter leaves a static scene's motion at zero", "[gpu][temporal]") {
     renderFrame(*gpu, **renderer, camera, view);
     renderFrame(*gpu, **renderer, camera, view);
 
-    const std::vector<uint8_t> pixels =
-        readMotion(*gpu, **renderer, lmx::render::TextureUse::RenderTarget);
+    const std::vector<uint8_t> pixels = readMotion(*gpu, **renderer);
     for (const std::pair<uint32_t, uint32_t> probe :
          {std::pair<uint32_t, uint32_t>{16, 16}, {32, 32}, {48, 40}}) {
         const glm::vec2 actual = motionAt(pixels, probe.first, probe.second);
@@ -194,8 +191,7 @@ TEST_CASE("an invalid motion class writes the sentinel", "[gpu][temporal]") {
     const Camera camera;
     renderFrame(*gpu, **renderer, camera, view);
 
-    const std::vector<uint8_t> pixels =
-        readMotion(*gpu, **renderer, lmx::render::TextureUse::RenderTarget);
+    const std::vector<uint8_t> pixels = readMotion(*gpu, **renderer);
     const glm::vec2 sentinel = motionAt(pixels, kSize / 2, kSize / 2);
     INFO("sentinel " + std::to_string(sentinel.x) + "," + std::to_string(sentinel.y));
     REQUIRE(std::isinf(sentinel.x));
@@ -240,22 +236,28 @@ TEST_CASE("the reprojection diagnostic is zero on a static scene", "[gpu][tempor
     std::vector<uint8_t> historyTexels(size_t{kSize} * kSize * 8);
     {
         const auto readbackBytes =
-            lmx::render::readbackNow(*gpu, *history, lmx::render::TextureUse::CopyDestination);
-        std::memcpy(historyTexels.data(), readbackBytes.data(), historyTexels.size());
+            lmx::render::readbackNow(*gpu, *history, (*renderer)->textureStates());
+        INFO(errorOf(readbackBytes));
+        REQUIRE(readbackBytes.has_value());
+        std::memcpy(historyTexels.data(), readbackBytes->data(), historyTexels.size());
     }
     std::vector<uint8_t> sceneTexels(historyTexels.size());
     {
         const auto readbackBytes = lmx::render::readbackNow(*gpu, (*renderer)->hdrColorTexture(),
-                                                            lmx::render::TextureUse::CopySource);
-        std::memcpy(sceneTexels.data(), readbackBytes.data(), sceneTexels.size());
+                                                            (*renderer)->textureStates());
+        INFO(errorOf(readbackBytes));
+        REQUIRE(readbackBytes.has_value());
+        std::memcpy(sceneTexels.data(), readbackBytes->data(), sceneTexels.size());
     }
     REQUIRE(historyTexels == sceneTexels);
 
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
     {
         const auto readbackBytes = lmx::render::readbackNow(*gpu, (*renderer)->colorTarget(),
-                                                            lmx::render::TextureUse::RenderTarget);
-        std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
+                                                            (*renderer)->textureStates());
+        INFO(errorOf(readbackBytes));
+        REQUIRE(readbackBytes.has_value());
+        std::memcpy(pixels.data(), readbackBytes->data(), pixels.size());
     }
     for (const std::pair<uint32_t, uint32_t> probe :
          {std::pair<uint32_t, uint32_t>{16, 16}, {32, 32}, {48, 40}}) {
@@ -333,13 +335,14 @@ TEST_CASE("the reprojection diagnostic reads motion at the sampled texel", "[gpu
     REQUIRE(status.historyValid);
     REQUIRE(status.extents.renderWidth == extents.renderWidth);
 
-    const std::vector<uint8_t> motion =
-        readMotion(*gpu, **renderer, lmx::render::TextureUse::ShaderRead);
+    const std::vector<uint8_t> motion = readMotion(*gpu, **renderer);
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
     {
         const auto readbackBytes = lmx::render::readbackNow(*gpu, (*renderer)->colorTarget(),
-                                                            lmx::render::TextureUse::RenderTarget);
-        std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
+                                                            (*renderer)->textureStates());
+        INFO(errorOf(readbackBytes));
+        REQUIRE(readbackBytes.has_value());
+        std::memcpy(pixels.data(), readbackBytes->data(), pixels.size());
     }
 
     // The view paints "nothing to compare" -- the diagnostic's alpha 0 -- flat blue, and every
@@ -436,16 +439,17 @@ TEST_CASE("TemporalLab writes motion for its animated tracks", "[gpu][temporal]"
                                                 /*wireframe=*/false);
         view.temporal.enabled = true;
         view.temporal.debugView = lmx::render::TemporalDebugView::MotionVectors;
-        (*renderer)->render(commands, camera, view);
+        const auto rendered = (*renderer)->render(commands, camera, view);
         gpu->submitAndEndFrame(commandsFrame);
         gpu->waitIdle();
+        INFO(errorOf(rendered));
+        REQUIRE(rendered.has_value());
         (*scene)->commitFrame();
         (*scene)->advanceAnimation(1.0 / 60.0);
         (*scene)->animate((*scene)->animationTime);
     }
 
-    const std::vector<uint8_t> pixels =
-        readMotion(*gpu, **renderer, lmx::render::TextureUse::ShaderRead);
+    const std::vector<uint8_t> pixels = readMotion(*gpu, **renderer);
     bool sawMotion = false;
     bool sawSentinel = false;
     for (uint32_t y = 0; y < kSize; ++y) {
@@ -534,8 +538,7 @@ TEST_CASE("a history fetch at the border does not read the opposite edge", "[gpu
     renderFrame(*gpu, **renderer, currentCamera, view);
     REQUIRE((*renderer)->temporalStatus().lastReset == lmx::render::HistoryResetReason::None);
 
-    const std::vector<uint8_t> motion =
-        readMotion(*gpu, **renderer, lmx::render::TextureUse::ShaderRead);
+    const std::vector<uint8_t> motion = readMotion(*gpu, **renderer);
     const glm::vec2 edgeMotion = motionAt(motion, kSize - 1, kSize / 2);
     INFO("edge motion " + std::to_string(edgeMotion.x) + "," + std::to_string(edgeMotion.y));
     // The fetch has to land inside the extent -- outside it the diagnostic reports nothing at all
@@ -548,8 +551,10 @@ TEST_CASE("a history fetch at the border does not read the opposite edge", "[gpu
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
     {
         const auto readbackBytes = lmx::render::readbackNow(*gpu, (*renderer)->colorTarget(),
-                                                            lmx::render::TextureUse::RenderTarget);
-        std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
+                                                            (*renderer)->textureStates());
+        INFO(errorOf(readbackBytes));
+        REQUIRE(readbackBytes.has_value());
+        std::memcpy(pixels.data(), readbackBytes->data(), pixels.size());
     }
     for (const uint32_t y : {kSize / 4, kSize / 2, 3 * kSize / 4}) {
         const Pixel pixel = pixelAt(pixels, kSize - 1, y);
@@ -597,8 +602,10 @@ TEST_CASE("subpixel diagonal motion preserves constant reprojected radiance",
     std::vector<uint8_t> stationary(size_t{kSize} * kSize * 4);
     {
         const auto readbackBytes = lmx::render::readbackNow(*gpu, (*renderer)->colorTarget(),
-                                                            lmx::render::TextureUse::RenderTarget);
-        std::memcpy(stationary.data(), readbackBytes.data(), stationary.size());
+                                                            (*renderer)->textureStates());
+        INFO(errorOf(readbackBytes));
+        REQUIRE(readbackBytes.has_value());
+        std::memcpy(stationary.data(), readbackBytes->data(), stationary.size());
     }
     const Pixel expected = pixelAt(stationary, kSize / 2, kSize / 2);
     REQUIRE(expected.r > 0);
@@ -608,16 +615,17 @@ TEST_CASE("subpixel diagonal motion preserves constant reprojected radiance",
     const float halfPixel = -kPlaneZ * std::tan(camera.fovY * 0.5f) / float(kSize);
     camera.position = {halfPixel, halfPixel, 0.0f};
     renderFrame(*gpu, **renderer, camera, view);
-    const glm::vec2 motion = motionAt(
-        readMotion(*gpu, **renderer, lmx::render::TextureUse::ShaderRead), kSize / 2, kSize / 2);
+    const glm::vec2 motion = motionAt(readMotion(*gpu, **renderer), kSize / 2, kSize / 2);
     REQUIRE(std::abs(motion.x) * float(kSize) == Catch::Approx(0.5f).margin(1e-3));
     REQUIRE(std::abs(motion.y) * float(kSize) == Catch::Approx(0.5f).margin(1e-3));
 
     std::vector<uint8_t> moving(stationary.size());
     {
         const auto readbackBytes = lmx::render::readbackNow(*gpu, (*renderer)->colorTarget(),
-                                                            lmx::render::TextureUse::RenderTarget);
-        std::memcpy(moving.data(), readbackBytes.data(), moving.size());
+                                                            (*renderer)->textureStates());
+        INFO(errorOf(readbackBytes));
+        REQUIRE(readbackBytes.has_value());
+        std::memcpy(moving.data(), readbackBytes->data(), moving.size());
     }
     const Pixel actual = pixelAt(moving, kSize / 2, kSize / 2);
     INFO(describe("stationary radiance", kSize / 2, kSize / 2, expected));
@@ -637,8 +645,8 @@ TEST_CASE("sky motion follows the camera's rotation alone", "[gpu][temporal]") {
     using namespace rojoRHI;
 
     constexpr std::array<uint8_t, 4> kSkyTexel = {0, 128, 255, 255};
-    const TextureMip skyMip{.data = kSkyTexel.data(), .bytesPerRow = 4};
-    const std::array<TextureMip, 6> skyFaces = {skyMip, skyMip, skyMip, skyMip, skyMip, skyMip};
+    const TextureData skyMip{.bytes = std::as_bytes(std::span(kSkyTexel)), .bytesPerRow = 4};
+    const std::array<TextureData, 6> skyFaces = {skyMip, skyMip, skyMip, skyMip, skyMip, skyMip};
 
     auto gpu = createTestGpu();
 
@@ -649,11 +657,11 @@ TEST_CASE("sky motion follows the camera's rotation alone", "[gpu][temporal]") {
     REQUIRE(skySphere.has_value());
 
     auto skyCubemap = lmx::engine::GpuTexture::create(gpu->device(),
-                                                      {.width = 1,
-                                                       .height = 1,
+                                                      {.type = TextureType::Cube,
                                                        .format = Format::RGBA8Unorm,
-                                                       .kind = TextureKind::Cube,
-                                                       .sampled = true,
+                                                       .extent = {1, 1, 1},
+                                                       .layers = 6,
+                                                       .usage = TextureUsage::Sampled,
                                                        .label = "lmx.test.temporalSkyCubemap"},
                                                       skyFaces);
     INFO(errorOf(skyCubemap));
@@ -682,8 +690,7 @@ TEST_CASE("sky motion follows the camera's rotation alone", "[gpu][temporal]") {
     renderFrame(*gpu, **renderer, translated, view);
 
     // Translation alone: the sphere moves with the eye, so every sky texel reprojects onto itself.
-    const std::vector<uint8_t> translationPixels =
-        readMotion(*gpu, **renderer, lmx::render::TextureUse::RenderTarget);
+    const std::vector<uint8_t> translationPixels = readMotion(*gpu, **renderer);
     for (const std::pair<uint32_t, uint32_t> probe : kProbes) {
         const glm::vec2 actual = motionAt(translationPixels, probe.first, probe.second);
         INFO("translated probe (" + std::to_string(probe.first) + "," +
@@ -702,8 +709,7 @@ TEST_CASE("sky motion follows the camera's rotation alone", "[gpu][temporal]") {
     const lmx::render::CameraFrameState previous =
         lmx::render::buildCameraFrameState(translated, extents, {});
 
-    const std::vector<uint8_t> rotationPixels =
-        readMotion(*gpu, **renderer, lmx::render::TextureUse::RenderTarget);
+    const std::vector<uint8_t> rotationPixels = readMotion(*gpu, **renderer);
     for (const std::pair<uint32_t, uint32_t> probe : kProbes) {
         const glm::vec3 direction = skyDirectionAtPixel(rotated, probe.first, probe.second);
         const glm::vec4 currentPoint{direction + rotated.position, 1.0f};

@@ -12,16 +12,13 @@
 #include "Render/Passes/Occlusion/OcclusionReference.h"
 #endif
 
-#ifndef LMX_PENDING_TEMPORAL
 #include "Render/Passes/Temporal/VendorTemporalScaler.h"
-#endif
 
 #ifndef LMX_PENDING_VISIBILITY
 #include "Render/Passes/Visibility/GpuVisibility.h"
 #endif
 #include "Render/Renderer/Renderer.h"
 #include "Render/Renderer/RendererInternal.h"
-#include "Render/Renderer/RendererStandIns.h"
 #include <chrono>
 
 #include "Core/Diagnostics/Assert.h"
@@ -238,7 +235,6 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
         self->m_iblSampler = std::move(*sampler);
     }
 
-#ifndef LMX_PENDING_TEMPORAL
     // The reconstruction stage owns both history pairs and the passes over them, so it is built
     // before the first resize(), which is what allocates its slots at this renderer's extent.
     {
@@ -248,7 +244,6 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
         }
         self->m_temporalResolve = std::move(*stage);
     }
-#endif
 
     {
         auto targets = self->resize(width, height);
@@ -285,10 +280,6 @@ lmx::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
     if (!color) {
         return std::unexpected(color.error());
     }
-    auto standIns = createRendererStandIns(m_gpu.device(), width, height);
-    if (!standIns) {
-        return std::unexpected(standIns.error());
-    }
     // Allocate every retained target before committing state. Failed creation keeps each old
     // identity and frontier; successful replacements begin from their own creation layout.
     seedReplacement(m_textureStates, m_hdrColor, *hdrColor, TextureUse::ShaderRead);
@@ -298,7 +289,6 @@ lmx::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
     m_width = width;
     m_height = height;
 
-#ifndef LMX_PENDING_TEMPORAL
     // The temporal targets follow the scene targets' extent, under the same caller idle guarantee
     // this function already requires. The histories' contents are dropped with the old textures,
     // which the extent change makes a reset anyway (HistoryResetReason::ExtentChanged). Depth is
@@ -310,30 +300,11 @@ lmx::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
         }
     }
     {
-        // The outgoing slots' entries go with them. A failed resize keeps those slots, so it puts
-        // their entries back.
-        const bool replacing = m_temporalResolve->depthBytes() > 0;
-        const TemporalSlotUses outgoing =
-            replacing ? forgetTemporalSlots(m_textureStates, *m_temporalResolve)
-                      : TemporalSlotUses{};
-        auto slots = m_temporalResolve->resize(width, height);
+        auto slots = resizeTemporalSlots();
         if (!slots) {
-            if (replacing) {
-                restoreTemporalSlots(m_textureStates, *m_temporalResolve, outgoing);
-            }
             return std::unexpected(slots.error());
         }
-        // The slots' contents went with the old textures, and the extent change resets history
-        // anyway: a colour slot starts as the commit copy leaves it, a depth slot as sampled.
-        for (uint32_t slot = 0; slot < 2; ++slot) {
-            m_textureStates.set(m_temporalResolve->colorTexture(slot).rhi(),
-                                TextureUse::CopyDestination);
-            m_textureStates.set(m_temporalResolve->depthTexture(slot).rhi(),
-                                TextureUse::ShaderRead);
-        }
     }
-
-#endif
 
 #ifndef LMX_PENDING_VISIBILITY
     if (m_hzbStage) {
@@ -345,8 +316,6 @@ lmx::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
         }
     }
 #endif
-    seedReplacement(m_textureStates, m_standIns.depth, standIns->depth, TextureUse::ShaderRead);
-    m_standIns = std::move(*standIns);
     return {};
 }
 

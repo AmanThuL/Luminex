@@ -23,10 +23,11 @@ local device. The component's own checkers run in its repository and CI, separat
 policy. See the [component build](../../RojoRHI/AGENTS.md) for standalone commands.
 
 On this integration branch, `xmake/port.lua` selects a shadow → scene/sky/IBL → exposure →
-bloom → display → UI frame. SCENE and POST have returned; VISIBILITY, LIGHTS and TEMPORAL remain
-pending, and BENCH keeps FrameDataBench dormant. The [frame walkthrough](frame-pipeline.md)
-describes every family: its SCENE and POST stages run here, while the VISIBILITY, LIGHTS and
-TEMPORAL stages it describes are retained but not built. Screenshots retain neutral lighting
+temporal reconstruction → bloom → display → UI frame. SCENE and POST have returned, and TEMPORAL
+builds its stage and Renderer integration while its vendor tests stay pending; VISIBILITY and
+LIGHTS remain pending, and BENCH keeps FrameDataBench dormant. The [frame
+walkthrough](frame-pipeline.md) describes every family: its SCENE, POST and temporal stages run
+here, while the VISIBILITY and LIGHTS stages it describes are retained but not built. Screenshots retain neutral lighting
 metadata; headless and editor measurement report lighting diagnostics unavailable while LIGHTS is
 pending. Partial-frame timings do not establish full-renderer parity or cost acceptance.
 

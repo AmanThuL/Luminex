@@ -32,9 +32,11 @@ TEST_CASE("an upscaled frame fills the display target", "[gpu][temporal]") {
     renderFrame(*gpu, **empty, temporalCamera(), temporalSceneView({}));
     std::vector<uint8_t> background(size_t{kSize} * kSize * 4);
     {
-        const auto readbackBytes = lmx::render::readbackNow(*gpu, (*empty)->colorTarget(),
-                                                            lmx::render::TextureUse::RenderTarget);
-        std::memcpy(background.data(), readbackBytes.data(), background.size());
+        const auto readbackBytes =
+            lmx::render::readbackNow(*gpu, (*empty)->colorTarget(), (*empty)->textureStates());
+        INFO(errorOf(readbackBytes));
+        REQUIRE(readbackBytes.has_value());
+        std::memcpy(background.data(), readbackBytes->data(), background.size());
     }
     const Pixel clearPixel = pixelAt(background, 0, 0);
 
@@ -64,8 +66,10 @@ TEST_CASE("an upscaled frame fills the display target", "[gpu][temporal]") {
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
     {
         const auto readbackBytes = lmx::render::readbackNow(*gpu, (*renderer)->colorTarget(),
-                                                            lmx::render::TextureUse::RenderTarget);
-        std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
+                                                            (*renderer)->textureStates());
+        INFO(errorOf(readbackBytes));
+        REQUIRE(readbackBytes.has_value());
+        std::memcpy(pixels.data(), readbackBytes->data(), pixels.size());
     }
     uint32_t clearPixels = 0;
     for (uint32_t y = 0; y < kSize; ++y) {
@@ -86,8 +90,10 @@ TEST_CASE("an upscaled frame fills the display target", "[gpu][temporal]") {
     std::vector<uint8_t> slot(size_t{kSize} * kSize * 8);
     {
         const auto readbackBytes =
-            lmx::render::readbackNow(*gpu, *history, lmx::render::TextureUse::ShaderRead);
-        std::memcpy(slot.data(), readbackBytes.data(), slot.size());
+            lmx::render::readbackNow(*gpu, *history, (*renderer)->textureStates());
+        INFO(errorOf(readbackBytes));
+        REQUIRE(readbackBytes.has_value());
+        std::memcpy(slot.data(), readbackBytes->data(), slot.size());
     }
     // Alpha is the accumulation age, and the spatial commit writes 1 for every output texel, so
     // the whole allocation carrying it is what says the pass covered the output extent.
@@ -141,8 +147,10 @@ TEST_CASE("the spatial upscale keeps a constant radiance constant", "[gpu][tempo
     std::vector<uint8_t> scene(size_t{kSize} * kSize * 8);
     {
         const auto readbackBytes = lmx::render::readbackNow(*gpu, (*renderer)->hdrColorTexture(),
-                                                            lmx::render::TextureUse::ShaderRead);
-        std::memcpy(scene.data(), readbackBytes.data(), scene.size());
+                                                            (*renderer)->textureStates());
+        INFO(errorOf(readbackBytes));
+        REQUIRE(readbackBytes.has_value());
+        std::memcpy(scene.data(), readbackBytes->data(), scene.size());
     }
     const auto texelAt = [](const std::vector<uint8_t>& bytes, uint32_t x, uint32_t y) {
         uint16_t halves[4] = {0, 0, 0, 0};
@@ -158,8 +166,10 @@ TEST_CASE("the spatial upscale keeps a constant radiance constant", "[gpu][tempo
     std::vector<uint8_t> committed(scene.size());
     {
         const auto readbackBytes =
-            lmx::render::readbackNow(*gpu, *history, lmx::render::TextureUse::ShaderRead);
-        std::memcpy(committed.data(), readbackBytes.data(), committed.size());
+            lmx::render::readbackNow(*gpu, *history, (*renderer)->textureStates());
+        INFO(errorOf(readbackBytes));
+        REQUIRE(readbackBytes.has_value());
+        std::memcpy(committed.data(), readbackBytes->data(), committed.size());
     }
     for (const std::pair<uint32_t, uint32_t> probe :
          {std::pair<uint32_t, uint32_t>{1, 1}, {kSize / 2, kSize / 2}, {kSize - 2, kSize - 2}}) {
@@ -220,8 +230,7 @@ TEST_CASE("motion at half scale matches the render-extent oracle", "[gpu][tempor
     const lmx::render::CameraFrameState state =
         lmx::render::buildCameraFrameState(camera, extents, {});
 
-    const std::vector<uint8_t> pixels =
-        readMotion(*gpu, **renderer, lmx::render::TextureUse::RenderTarget);
+    const std::vector<uint8_t> pixels = readMotion(*gpu, **renderer);
     for (const std::pair<uint32_t, uint32_t> probe :
          {std::pair<uint32_t, uint32_t>{8, 8}, {16, 16}, {24, 20}}) {
         const glm::vec4 point =
@@ -640,7 +649,7 @@ TEST_CASE("an oscillating render scale allocates nothing and does not ghost", "[
     auto taauRenderer =
         Renderer::create(*gpu, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
     REQUIRE(taauRenderer.has_value());
-    lmx::render::TransientPool transients(gpu->device());
+    lmx::render::TransientPool transients(*gpu);
     std::vector<ScenarioFrame> taau;
     std::vector<uint64_t> heapBytes;
     taau.reserve(kFrames);
@@ -658,20 +667,23 @@ TEST_CASE("an oscillating render scale allocates nothing and does not ghost", "[
         auto& commands = commandsFrame.commands;
         transients.beginFrame();
         lmx::render::RenderGraph graph(transients);
-        const lmx::render::GraphTexture display =
-            (*taauRenderer)
-                ->declarePasses(graph, commands, frameCamera,
-                                lmx::test::prepareSceneView(view, *gpu));
-        graph.exportTexture(display);
+        const auto display = (*taauRenderer)
+                                 ->declarePasses(graph, commands, frameCamera,
+                                                 lmx::test::prepareSceneView(view, *gpu));
+        if (!display)
+            gpu->submitAndEndFrame(commandsFrame);
+        INFO(errorOf(display));
+        REQUIRE(display.has_value());
+        graph.exportTexture(*display);
         const lmx::render::CompiledFrameRecord record = graph.execute(commands, gpu->frameNumber());
         gpu->submitAndEndFrame(commandsFrame);
         gpu->waitIdle();
 
         ScenarioFrame captured;
-        captured.history = readHalf4(*gpu, *(*taauRenderer)->historyTexture(),
-                                     lmx::render::TextureUse::ShaderRead);
-        captured.raw = readHalf4(*gpu, (*taauRenderer)->hdrColorTexture(),
-                                 lmx::render::TextureUse::ShaderRead);
+        captured.history =
+            readHalf4(*gpu, *(*taauRenderer)->historyTexture(), (*taauRenderer)->textureStates());
+        captured.raw =
+            readHalf4(*gpu, (*taauRenderer)->hdrColorTexture(), (*taauRenderer)->textureStates());
         captured.status = (*taauRenderer)->temporalStatus();
         taau.push_back(std::move(captured));
         heapBytes.push_back(record.debug.memory.highWater);

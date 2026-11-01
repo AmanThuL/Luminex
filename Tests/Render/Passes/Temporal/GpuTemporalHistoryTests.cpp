@@ -1,6 +1,10 @@
 #include "Support/GpuTemporalTestSupport.h"
 
+#include "Engine/Gpu/GpuOwned.h"
+#include "Render/Common/FrameData.h"
+#include "Render/Passes/Temporal/TemporalRoots.h"
 #include "Support/SceneTableTestSupport.h"
+#include <array>
 #include <cstring>
 
 using lmx::test::FixtureDrawItem;
@@ -28,13 +32,18 @@ TEST_CASE("raw history age records the sampled slot before recycling",
     view.temporal.debugView = lmx::render::TemporalDebugView::Off;
     renderFrame(*gpu, **renderer, temporalCamera(), view);
 
-    lmx::render::TransientPool transients(gpu->device());
+    lmx::render::TransientPool transients(*gpu);
     auto commandsFrame = gpu->beginFrame();
     auto& commands = commandsFrame.commands;
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
-    graph.presentTexture((*renderer)->declarePasses(graph, commands, temporalCamera(),
-                                                    lmx::test::prepareSceneView(view, *gpu)));
+    const auto display = (*renderer)->declarePasses(graph, commands, temporalCamera(),
+                                                    lmx::test::prepareSceneView(view, *gpu));
+    if (!display)
+        gpu->submitAndEndFrame(commandsFrame);
+    INFO(errorOf(display));
+    REQUIRE(display.has_value());
+    graph.presentTexture(*display);
     const auto record = graph.compileFrame(3);
     REQUIRE(record.has_value());
     bool sawRecycledSlot = false;
@@ -61,35 +70,33 @@ TEST_CASE("temporal resolve writes only enabled diagnostics", "[gpu][temporal][t
     auto library = gpu->loadShaderLibrary("TemporalResolve");
     INFO(errorOf(library));
     REQUIRE(library.has_value());
-    auto pipeline =
-        gpu->device().createComputePipeline({.library = library->get(),
-                                             .computeEntry = "computeTemporalResolve",
-                                             .threadsPerThreadgroup = {8, 8, 1},
-                                             .label = "lmx.test.diagnosticWritePipeline"});
+    auto pipeline = lmx::engine::adoptGpu(gpu->device(),
+                                          gpu->device().createPipeline(ComputePipelineDesc{
+                                              .compute = {library->get(), "computeTemporalResolve"},
+                                              .label = "lmx.test.diagnosticWritePipeline"}));
     INFO(errorOf(pipeline));
     REQUIRE(pipeline.has_value());
-    auto sampler = gpu->device().createSampler({.filter = FilterMode::Linear,
-                                                .addressMode = AddressMode::Clamp,
-                                                .label = "lmx.test.diagnosticSampler"});
+    auto sampler = lmx::engine::adoptGpu(
+        gpu->device(), gpu->device().createSampler({.filter = SamplerFilter::Linear,
+                                                    .address = SamplerAddress::ClampToEdge,
+                                                    .label = "lmx.test.diagnosticSampler"}));
     REQUIRE(sampler.has_value());
     constexpr std::array<float, 2> kExposure{1.0f, 1.0f};
     auto exposure = lmx::engine::GpuBuffer::create(
-        gpu->device(),
-        {.size = sizeof(kExposure), .storageRead = true, .label = "lmx.test.diagnosticExposure"},
-        kExposure.data());
+        gpu->device(), {.size = sizeof(kExposure), .label = "lmx.test.diagnosticExposure"},
+        std::as_bytes(std::span{kExposure}));
     REQUIRE(exposure.has_value());
 
     const auto makeTexel = [&](const std::array<uint16_t, 4>& texel, const char* label) {
-        const TextureMip mip{.data = texel.data(), .bytesPerRow = sizeof(texel)};
-        return lmx::engine::GpuTexture::create(gpu->device(),
-                                               {.width = 1,
-                                                .height = 1,
-                                                .format = Format::RGBA16Float,
-                                                .sampled = true,
-                                                .storageWrite = true,
-                                                .cpuReadback = true,
-                                                .label = label},
-                                               std::span{&mip, 1});
+        const TextureData mip{.bytes = std::as_bytes(std::span{texel}),
+                              .bytesPerRow = sizeof(texel)};
+        return lmx::engine::GpuTexture::create(
+            gpu->device(),
+            {.format = Format::RGBA16Float,
+             .extent = {1, 1, 1},
+             .usage = TextureUsage::Sampled | TextureUsage::Storage,
+             .label = label},
+            std::span{&mip, 1}, {.sampled = true, .storageMips = true});
     };
     auto input = makeTexel({0, 0, 0, 0x3c00}, "lmx.test.diagnosticInput");
     REQUIRE(input.has_value());
@@ -106,6 +113,11 @@ TEST_CASE("temporal resolve writes only enabled diagnostics", "[gpu][temporal][t
     };
     static_assert(sizeof(ResolveParams) == 160);
     constexpr std::array<uint16_t, 4> kPoison{0x4200, 0x4200, 0x4200, 0x4200};
+    // Each storage output leaves the dispatch as a compute-stage write in the storage layout,
+    // which is the exact state its readback preserves.
+    const std::array<lmx::render::TextureRangeState, 1> written{
+        {{.range = {0, 1, 0, 1},
+          .state = {Stage::ComputeShader, Access::ShaderWrite, Layout::ShaderWrite}}}};
     for (const uint32_t valid : {0u, 1u}) {
         for (const uint32_t mask : {0u, 1u, 2u, 3u}) {
             INFO("history valid " << valid << ", diagnostic mask " << mask);
@@ -117,33 +129,76 @@ TEST_CASE("temporal resolve writes only enabled diagnostics", "[gpu][temporal][t
             REQUIRE(reprojected.has_value());
             auto commandsFrame = gpu->beginFrame();
             auto& commands = commandsFrame.commands;
-            commands.beginComputePass("lmx.test.diagnosticWrites");
-            commands.bindComputePipeline(**pipeline);
-            for (uint32_t slot = 0; slot < 6; ++slot) {
-                commands.bindTexture(slot, input->rhi());
+            // Initial data leaves every output sampled; the kernel writes them as storage.
+            std::array<TextureBarrier, 3> toStorage{};
+            const std::array<const lmx::engine::GpuTexture*, 3> outputs{&*output, &*rejection,
+                                                                        &*reprojected};
+            for (size_t i = 0; i < outputs.size(); ++i) {
+                toStorage[i] = {.texture = outputs[i]->rhi(),
+                                .range = {0, 1, 0, 1},
+                                .dstStage = Stage::ComputeShader,
+                                .dstAccess = Access::ShaderWrite,
+                                .oldLayout = Layout::ShaderRead,
+                                .newLayout = Layout::ShaderWrite};
             }
-            commands.bindStorageTexture(6, output->rhi(), {}, StorageAccess::Write);
-            commands.bindStorageTexture(7, rejection->rhi(), {}, StorageAccess::Write);
-            commands.bindStorageTexture(8, reprojected->rhi(), {}, StorageAccess::Write);
-            commands.bindStorageBuffer(0, exposure->rhi(), StorageAccess::Read);
-            commands.bindFrameData(1,
-                                   ResolveParams{.historyValid = valid, .writeDiagnostics = mask});
-            commands.bindSampler(0, **sampler);
+            commands.barrier({}, {}, toStorage);
+            commands.beginScope("lmx.test.diagnosticWrites");
+            commands.setPipeline(pipeline->get());
+            const auto inputView = static_cast<uint32_t>(input->view());
+            commands.pushRoot(lmx::render::TemporalResolveRoot{
+                .paramsAddr = lmx::render::frameData(
+                    commands, ResolveParams{.historyValid = valid, .writeDiagnostics = mask}),
+                .exposureAddr = exposure->address(),
+                .sceneColor = inputView,
+                .depth = inputView,
+                .previousDepth = inputView,
+                .motion = inputView,
+                .reactive = inputView,
+                .history = inputView,
+                .output = static_cast<uint32_t>(output->storageView(0)),
+                .rejection = static_cast<uint32_t>(rejection->storageView(0)),
+                .reprojected = static_cast<uint32_t>(reprojected->storageView(0)),
+                .sampler = static_cast<uint32_t>(sampler->get())});
+#ifndef NDEBUG
+            const std::array<ResourceAccess, 5> accesses{{{.texture = input->rhi(),
+                                                           .range = {0, 1, 0, 1},
+                                                           .stage = Stage::ComputeShader,
+                                                           .access = Access::ShaderRead},
+                                                          {.texture = output->rhi(),
+                                                           .range = {0, 1, 0, 1},
+                                                           .stage = Stage::ComputeShader,
+                                                           .access = Access::ShaderWrite},
+                                                          {.texture = rejection->rhi(),
+                                                           .range = {0, 1, 0, 1},
+                                                           .stage = Stage::ComputeShader,
+                                                           .access = Access::ShaderWrite},
+                                                          {.texture = reprojected->rhi(),
+                                                           .range = {0, 1, 0, 1},
+                                                           .stage = Stage::ComputeShader,
+                                                           .access = Access::ShaderWrite},
+                                                          {.buffer = exposure->rhi(),
+                                                           .size = sizeof(kExposure),
+                                                           .stage = Stage::ComputeShader,
+                                                           .access = Access::ShaderRead}}};
+            commands.declareAccess(accesses);
+#endif
             commands.dispatch(1, 1, 1);
-            commands.endComputePass();
+            commands.endScope();
             gpu->submitAndEndFrame(commandsFrame);
             gpu->waitIdle();
             std::array<uint16_t, 4> actual{};
             {
-                const auto readbackBytes = lmx::render::readbackNow(
-                    *gpu, *rejection, lmx::render::TextureUse::StorageWrite);
-                std::memcpy(actual.data(), readbackBytes.data(), sizeof(actual));
+                const auto readbackBytes = lmx::render::readbackNow(*gpu, *rejection, written);
+                INFO(errorOf(readbackBytes));
+                REQUIRE(readbackBytes.has_value());
+                std::memcpy(actual.data(), readbackBytes->data(), sizeof(actual));
             }
             CHECK((actual != kPoison) == ((mask & 1u) != 0u));
             {
-                const auto readbackBytes = lmx::render::readbackNow(
-                    *gpu, *reprojected, lmx::render::TextureUse::StorageWrite);
-                std::memcpy(actual.data(), readbackBytes.data(), sizeof(actual));
+                const auto readbackBytes = lmx::render::readbackNow(*gpu, *reprojected, written);
+                INFO(errorOf(readbackBytes));
+                REQUIRE(readbackBytes.has_value());
+                std::memcpy(actual.data(), readbackBytes->data(), sizeof(actual));
             }
             CHECK((actual != kPoison) == ((mask & 2u) != 0u));
         }
@@ -331,14 +386,18 @@ TEST_CASE("a re-enabling frame imports motion as the last temporal frame left it
 
     view.temporal.enabled = true;
     view.temporal.debugView = lmx::render::TemporalDebugView::ReprojectionError;
-    lmx::render::TransientPool transients(gpu->device());
+    lmx::render::TransientPool transients(*gpu);
     auto commandsFrame = gpu->beginFrame();
     auto& commands = commandsFrame.commands;
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
-    const lmx::render::GraphTexture display = (*renderer)->declarePasses(
-        graph, commands, camera, lmx::test::prepareSceneView(view, *gpu));
-    graph.presentTexture(display);
+    const auto display = (*renderer)->declarePasses(graph, commands, camera,
+                                                    lmx::test::prepareSceneView(view, *gpu));
+    if (!display)
+        gpu->submitAndEndFrame(commandsFrame);
+    INFO(errorOf(display));
+    REQUIRE(display.has_value());
+    graph.presentTexture(*display);
 
     const auto record = graph.compileFrame(1);
     INFO((record.has_value() ? std::string{} : record.error().message));

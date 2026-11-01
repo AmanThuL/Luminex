@@ -31,9 +31,7 @@
 #include "Render/Passes/Shadow/ShadowStage.h"
 #include "Render/Passes/Temporal/Temporal.h"
 #include "Render/Passes/Temporal/TemporalHistory.h"
-#ifndef LMX_PENDING_TEMPORAL
 #include "Render/Passes/Temporal/TemporalResolve.h"
-#endif
 #include "Render/Renderer/DisplayDomain.h"
 #include "Render/Renderer/SceneView.h"
 #include <rojoRHI/RHI.h>
@@ -82,11 +80,6 @@ void registerUniformLayoutsForCapture();
 /// Shaders/Passes/Exposure/ExposureResolve.slang write the pair;
 /// Shaders/Passes/Exposure/HistogramAccumulate.slang and the auto scene/sky pipelines read index 0.
 constexpr uint32_t kExposureBufferFloats = 2;
-
-/// Owns neutral depth while the temporal stage is unavailable.
-struct RendererStandIns {
-    engine::GpuTexture depth; ///< Output-sized reversed-depth attachment.
-};
 
 /// Owns frame targets and pipelines and declares the frame's render-graph passes.
 class Renderer {
@@ -148,8 +141,8 @@ public:
     /// with distance). After a producing pass, a caller can invert a texel back to a view-space
     /// distance as z_view = -nearZ / d, pinning the projection's convention against real geometry.
     /// Consult textureStates() for each cell's actual layout and frontier before reading it.
-    /// Graph-declared depth shader reads use DepthStencilRead; an unused stand-in may still be
-    /// Undefined and cannot be read back preserving contents.
+    /// Graph-declared depth shader reads use DepthStencilRead; a slot no frame has rendered into
+    /// yet may still be Undefined and cannot be read back preserving contents.
     ///
     /// Depth ping-pongs by declared temporal frame parity, so this is the slot the frame just
     /// declared rendered into; a frame with temporal off renders into slot 0. Like the scene
@@ -176,7 +169,6 @@ public:
     /// Preserves a causal retirement error instead of publishing an incomplete success.
     lmx::Result<void> drainLightingAfterIdle();
 
-#ifndef LMX_PENDING_TEMPORAL
     /// The frame's motion target in kMotionFormat, allocated with the scene targets and so never
     /// null after a successful create(). Borrowed: the renderer owns it and replaces it on
     /// resize().
@@ -184,12 +176,6 @@ public:
     const engine::GpuTexture* motionTexture() const { return m_motion ? &m_motion : nullptr; }
     /// Borrows the reactive owner on motionTexture() ownership terms.
     const engine::GpuTexture* reactiveTexture() const { return m_reactive ? &m_reactive : nullptr; }
-#else
-    /// Returns no motion attachment while reconstruction is unavailable.
-    const engine::GpuTexture* motionTexture() const { return nullptr; }
-    /// Returns no reactive attachment while reconstruction is unavailable.
-    const engine::GpuTexture* reactiveTexture() const { return nullptr; }
-#endif
 
     /// The colour history slot the frame just declared wrote, in kSceneColorFormat: the resolve's
     /// output under NativeTaa and the raw copy under Raw, so it always holds that frame's output.
@@ -250,7 +236,6 @@ private:
                           GraphTexture depth, GraphTexture& display);
 #endif
 
-#ifndef LMX_PENDING_TEMPORAL
     // Creates the motion and reactive attachments at the current extent, replacing any pair
     // already held. Called from resize() -- and so from create(), which resizes once -- so both
     // exist for every frame whether or not it declares the temporal path.
@@ -258,7 +243,10 @@ private:
     // Its own function rather than resize()'s body because the two allocations answer to
     // kMotionFormat and kReactiveFormat rather than to the scene targets'.
     lmx::Result<void> createTemporalTargets();
-#endif
+    // Replaces both temporal slot pairs at the current extent. The outgoing slots' state entries
+    // are forgotten and the replacements seeded only once every allocation has succeeded, so a
+    // failed resize leaves the old slots and their entries exactly as they were.
+    lmx::Result<void> resizeTemporalSlots();
 
     engine::GpuContext& m_gpu;
     // render()'s own pool for bloom's transients, since a caller without a graph of its own (the
@@ -281,10 +269,8 @@ private:
     // the two always share an extent and are replaced together by resize().
     engine::GpuTexture m_hdrColor;
     engine::GpuTexture m_color;
-    RendererStandIns m_standIns;
     engine::GpuTexture m_shadowMap;
 
-#ifndef LMX_PENDING_TEMPORAL
     // Allocated with the scene targets and replaced by resize() like them, whether or not any
     // frame declares the temporal path: the allocation is permanent and reported through
     // TemporalStatus::historyBytes. Freeing on disable would drop memory the frames still in
@@ -295,7 +281,6 @@ private:
     // into included -- and every pass that reads or writes them. Created with the renderer and
     // resized alongside the scene targets, so its slots always share their extent.
     std::unique_ptr<TemporalResolve> m_temporalResolve;
-#endif
 
     // Roots select these owned views whenever a material or environment has no texture. White
     // preserves material factors, the flat normal preserves the tangent frame when sampled, and
@@ -309,7 +294,6 @@ private:
     engine::GpuOwned<rojoRHI::SamplerIndex> m_shadowSampler;
     engine::GpuOwned<rojoRHI::SamplerIndex> m_iblSampler;
 
-#ifndef LMX_PENDING_TEMPORAL
     // What the previous declared frame was, recorded every frame -- temporal on or off -- because
     // that is what makes re-enabling distinguishable from the first frame ever declared.
     std::optional<FrameSignature> m_previousSignature;
@@ -319,7 +303,6 @@ private:
     // historyTexture() report: m_temporalFrame % 2 on a temporal frame and 0 otherwise. Recorded
     // rather than recomputed because m_temporalFrame advances past it before declarePasses returns.
     uint32_t m_currentSlot = 0;
-#endif
     uint64_t m_declaredFrames = 0;
     TemporalStatus m_temporalStatus;
     DrawSubmission m_drawSubmission;

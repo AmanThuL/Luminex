@@ -134,9 +134,12 @@ inline glm::mat4 facingPlaneModel(float z) {
 inline void renderFrame(lmx::engine::GpuContext& gpu, Renderer& renderer, const Camera& camera,
                         const FixtureSceneView& view) {
     auto frame = gpu.beginFrame();
-    renderer.render(frame.commands, camera, lmx::test::prepareSceneView(view, gpu));
+    const auto rendered =
+        renderer.render(frame.commands, camera, lmx::test::prepareSceneView(view, gpu));
     gpu.submitAndEndFrame(frame);
     gpu.waitIdle();
+    INFO(errorOf(rendered));
+    REQUIRE(rendered.has_value());
 }
 
 //======================================================================================================================
@@ -146,8 +149,11 @@ inline void renderFrame(lmx::engine::GpuContext& gpu, Renderer& renderer, const 
 inline void renderFrameInFlight(lmx::engine::GpuContext& gpu, Renderer& renderer,
                                 const Camera& camera, const FixtureSceneView& view) {
     auto frame = gpu.beginFrame();
-    renderer.render(frame.commands, camera, lmx::test::prepareSceneView(view, gpu));
+    const auto rendered =
+        renderer.render(frame.commands, camera, lmx::test::prepareSceneView(view, gpu));
     gpu.submitAndEndFrame(frame);
+    INFO(errorOf(rendered));
+    REQUIRE(rendered.has_value());
 }
 
 //======================================================================================================================

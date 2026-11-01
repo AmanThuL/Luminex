@@ -341,8 +341,8 @@ TEST_CASE("exposure transitions through the renderer under the tracker",
          .perFrame =
              [](lmx::render::SceneView& view, uint32_t frame) {
                  const auto& state = kRendererExposureFrames[frame];
-                 // The temporal stage is pending, so the flag only selects the manual seed and
-                 // the Renderer's prior-use import; reconstruction stays off.
+                 // The flag selects the manual seed and the Renderer's prior-use import; the
+                 // frame's temporal reconstruction reads the seeded pair after the scene pass.
                  view.temporal.enabled = state.temporalFlag;
                  view.localLightMode = lmx::engine::LocalLightMode::Off;
                  view.classifyMode = lmx::render::ClassifyMode::Cpu;

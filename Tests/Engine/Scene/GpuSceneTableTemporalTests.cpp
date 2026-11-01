@@ -48,17 +48,13 @@ std::unique_ptr<render::Renderer> tableRenderer(engine::GpuContext& gpu) {
 }
 
 //======================================================================================================================
-engine::GpuBuffer submitTables(engine::GpuContext& gpu, engine::Scene& scene,
-                               render::Renderer& renderer, bool wait = true) {
-    auto snapshot = engine::GpuBuffer::create(gpu.device(),
-                                              {.size = uint64_t{kSize} * kSize * 4,
-                                               .cpuReadback = true,
-                                               .label = "lmx.test.sceneTables.frame"},
-                                              nullptr);
-    REQUIRE(snapshot.has_value());
+// One Raw temporal frame of the scene, with a preserving copy of the display target recorded on the
+// same command list after the frame's own passes, so each submitted frame keeps its own picture.
+render::ReadbackTicket submitTables(engine::GpuContext& gpu, engine::Scene& scene,
+                                    render::Renderer& renderer, bool wait = true) {
     auto gpuFrame = gpu.beginFrame();
     auto& commands = gpuFrame.commands;
-    auto prepared = scene.prepareFrame(gpu.frameNumber());
+    auto prepared = scene.prepareFrame(gpuFrame.number);
     INFO(errorOf(prepared));
     REQUIRE(prepared.has_value());
     std::vector<engine::DrawItem> items;
@@ -68,35 +64,27 @@ engine::GpuBuffer submitTables(engine::GpuContext& gpu, engine::Scene& scene,
     view.temporal.jitterEnabled = false;
     view.temporal.reconstruction = render::ReconstructionMode::Raw;
     view.temporal.sceneGeneration = scene.objects.front().id.store;
-    renderer.render(commands, engine::Camera{}, view);
-    commands.textureBarrier(renderer.colorTarget().rhi(), rojoRHI::TextureUse::RenderTarget,
-                            rojoRHI::TextureUse::CopySource);
-    commands.beginCopyPass("lmx.test.sceneTables.preserveFrame");
-    commands.copyTextureToBuffer(renderer.colorTarget().rhi(), {.width = kSize, .height = kSize},
-                                 snapshot->rhi(), {.bytesPerRow = kSize * 4});
-    commands.endCopyPass();
-    commands.textureBarrier(renderer.colorTarget().rhi(), rojoRHI::TextureUse::CopySource,
-                            rojoRHI::TextureUse::RenderTarget);
-    commands.beginRenderPass({.colorTarget = &renderer.colorTarget().rhi(),
-                              .clear = false,
-                              .label = "lmx.test.sceneTables.restoreTarget"});
-    commands.endRenderPass();
+    const auto renderResult = renderer.render(commands, engine::Camera{}, view);
+    if (!renderResult)
+        gpu.submitAndEndFrame(gpuFrame);
+    INFO(errorOf(renderResult));
+    REQUIRE(renderResult.has_value());
+    auto snapshot =
+        render::recordReadback(gpu, commands, renderer.colorTarget(), renderer.textureStates());
     gpu.submitAndEndFrame(gpuFrame);
     scene.commitFrame();
     if (wait) {
         gpu.waitIdle();
     }
-    return std::move(*snapshot);
+    return snapshot;
 }
 
 //======================================================================================================================
-std::vector<uint8_t> tablePixels(engine::GpuContext& gpu, const engine::GpuBuffer& buffer) {
+std::vector<uint8_t> tablePixels(engine::GpuContext& gpu, const render::ReadbackTicket& ticket) {
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
-    {
-        const auto bytes = lmx::render::readbackNow(
-            gpu, buffer, lmx::render::BufferUse::CopyDestination, {0, pixels.size()});
-        std::memcpy(pixels.data(), bytes.data(), pixels.size());
-    }
+    const auto resolved = render::resolve(gpu, ticket, pixels);
+    INFO(errorOf(resolved));
+    REQUIRE(resolved.has_value());
     return pixels;
 }
 
@@ -129,10 +117,11 @@ std::vector<engine::InstanceRow> instanceRows(engine::GpuContext& gpu, engine::S
     const auto tables = scene.tables();
     std::vector<engine::InstanceRow> rows(tables.instanceCount);
     {
-        const auto bytes =
-            lmx::render::readbackNow(gpu, *tables.instances, lmx::render::BufferUse::ShaderRead,
-                                     {0, rows.size() * sizeof(engine::InstanceRow)});
-        std::memcpy(rows.data(), bytes.data(), rows.size() * sizeof(engine::InstanceRow));
+        const auto bytes = lmx::render::readbackNow(gpu, *tables.instances, {},
+                                                    {0, rows.size() * sizeof(engine::InstanceRow)});
+        INFO(errorOf(bytes));
+        REQUIRE(bytes.has_value());
+        std::memcpy(rows.data(), bytes->data(), rows.size() * sizeof(engine::InstanceRow));
     }
     return rows;
 }
@@ -141,9 +130,12 @@ std::vector<engine::InstanceRow> instanceRows(engine::GpuContext& gpu, engine::S
 glm::vec2 tableMotion(engine::GpuContext& gpu, render::Renderer& renderer, float x) {
     std::vector<uint32_t> motion(size_t{kSize} * kSize);
     {
-        const auto bytes = lmx::render::readbackNow(gpu, *renderer.motionTexture(),
-                                                    lmx::render::TextureUse::RenderTarget);
-        std::memcpy(motion.data(), bytes.data(), motion.size() * sizeof(uint32_t));
+        REQUIRE(renderer.motionTexture() != nullptr);
+        const auto bytes =
+            lmx::render::readbackNow(gpu, *renderer.motionTexture(), renderer.textureStates());
+        INFO(errorOf(bytes));
+        REQUIRE(bytes.has_value());
+        std::memcpy(motion.data(), bytes->data(), motion.size() * sizeof(uint32_t));
     }
     return glm::unpackHalf2x16(motion[size_t{kSize / 2} * kSize + tablePixelX(x)]);
 }
@@ -245,7 +237,7 @@ TEST_CASE("Scene replacement rejects foreign identities while submitted scenes o
     REQUIRE(second.finalize(gpu->device()).has_value());
     second.objects[0].position.x = 0.0f;
     auto renderer = tableRenderer(*gpu);
-    std::vector<engine::GpuBuffer> frames;
+    std::vector<render::ReadbackTicket> frames;
     frames.push_back(submitTables(*gpu, *first, *renderer, false));
     frames.push_back(submitTables(*gpu, second, *renderer, false));
     REQUIRE(renderer->temporalStatus().lastReset == render::HistoryResetReason::SceneChanged);
@@ -279,7 +271,7 @@ TEST_CASE("Scene table growth keeps stable rows and retires old buffers after th
     while (scene.objects.size() <= capacity) {
         scene.addObject({.position = {0, 0, -3}, .mesh = mesh, .material = material});
     }
-    std::vector<engine::GpuBuffer> frames;
+    std::vector<render::ReadbackTicket> frames;
     frames.push_back(submitTables(*gpu, scene, *renderer, false));
     REQUIRE(renderer->temporalStatus().lastReset == render::HistoryResetReason::None);
     REQUIRE(scene.tableStats().growthEvents == 1);
@@ -317,7 +309,7 @@ TEST_CASE("Scene table slots preserve each submitted transform across three-fram
     std::array<const lmx::engine::GpuBuffer*, 3> slotBuffers{};
     std::array<float, 3> slotPositions{};
     std::array<float, 3> slotPrevious{};
-    std::vector<engine::GpuBuffer> frames;
+    std::vector<render::ReadbackTicket> frames;
     for (size_t i = 0; i < positions.size(); ++i) {
         scene.objects[0].position.x = positions[i];
         const float previous = scene.objects[0].previousModel[3].x;
@@ -344,9 +336,11 @@ TEST_CASE("Scene table slots preserve each submitted transform across three-fram
         engine::InstanceRow row{};
         REQUIRE(slotBuffers[slot]);
         {
-            const auto bytes = lmx::render::readbackNow(
-                *gpu, *slotBuffers[slot], lmx::render::BufferUse::ShaderRead, {0, sizeof(row)});
-            std::memcpy(&row, bytes.data(), sizeof(row));
+            const auto bytes =
+                lmx::render::readbackNow(*gpu, *slotBuffers[slot], {}, {0, sizeof(row)});
+            INFO(errorOf(bytes));
+            REQUIRE(bytes.has_value());
+            std::memcpy(&row, bytes->data(), sizeof(row));
         }
         REQUIRE(row.model[3].x == slotPositions[slot]);
         REQUIRE(row.previousModel[3].x == slotPrevious[slot]);
