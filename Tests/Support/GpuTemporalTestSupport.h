@@ -94,9 +94,11 @@ inline glm::vec2 motionAt(const std::vector<uint8_t>& bytes, uint32_t x, uint32_
 }
 
 //======================================================================================================================
-inline std::vector<uint8_t> readMotion(lmx::engine::GpuContext& gpu, Renderer& renderer) {
+inline std::vector<uint8_t> readMotion(lmx::engine::GpuContext& gpu, Renderer& renderer,
+                                       lmx::render::TextureUse expected) {
     const auto* motion = renderer.motionTexture();
     REQUIRE(motion != nullptr);
+    requireRecordedUse(renderer.textureStates(), *motion, expected);
     auto bytes = lmx::render::readbackNow(gpu, *motion, renderer.textureStates());
     INFO(errorOf(bytes));
     REQUIRE(bytes);
@@ -192,7 +194,9 @@ using lmx::render::TemporalDebugView;
 //======================================================================================================================
 inline std::vector<glm::vec4> readHalf4(lmx::engine::GpuContext& gpu,
                                         const lmx::engine::GpuTexture& texture,
-                                        const lmx::render::TextureStateTable& current) {
+                                        const lmx::render::TextureStateTable& current,
+                                        lmx::render::TextureUse expected) {
+    requireRecordedUse(current, texture, expected);
     const auto bytes = lmx::render::readbackNow(gpu, texture, current);
     INFO(errorOf(bytes));
     REQUIRE(bytes);
@@ -294,8 +298,20 @@ renderSequence(lmx::engine::GpuContext& gpu, Renderer& renderer, uint32_t frames
 
         ScenarioFrame record;
         record.status = renderer.temporalStatus();
-        record.history = readHalf4(gpu, *renderer.historyTexture(), renderer.textureStates());
-        record.raw = readHalf4(gpu, renderer.hdrColorTexture(), renderer.textureStates());
+        const bool rawCopy =
+            record.status.reconstruction == ReconstructionMode::Raw && !record.status.upscaled;
+        const auto rawUse = record.status.reconstruction == ReconstructionMode::VendorTemporal
+                                ? lmx::render::TextureUse::ExternalRead
+                            : rawCopy ? lmx::render::TextureUse::CopySource
+                                      : lmx::render::TextureUse::ShaderRead;
+        const auto historyUse = rawCopy && view.temporal.debugView != TemporalDebugView::HistoryAge
+                                    ? lmx::render::TextureUse::CopyDestination
+                                    : lmx::render::TextureUse::ShaderRead;
+        record.history =
+            readHalf4(gpu, *renderer.historyTexture(), renderer.textureStates(), historyUse);
+        record.raw = readHalf4(gpu, renderer.hdrColorTexture(), renderer.textureStates(), rawUse);
+        requireRecordedUse(renderer.textureStates(), renderer.colorTarget(),
+                           lmx::render::TextureUse::ShaderRead);
         auto display =
             lmx::render::readbackNow(gpu, renderer.colorTarget(), renderer.textureStates());
         INFO(errorOf(display));

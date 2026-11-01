@@ -131,6 +131,8 @@ glm::vec2 tableMotion(engine::GpuContext& gpu, render::Renderer& renderer, float
     std::vector<uint32_t> motion(size_t{kSize} * kSize);
     {
         REQUIRE(renderer.motionTexture() != nullptr);
+        requireRecordedUse(renderer.textureStates(), *renderer.motionTexture(),
+                           lmx::render::TextureUse::RenderTarget);
         const auto bytes =
             lmx::render::readbackNow(gpu, *renderer.motionTexture(), renderer.textureStates());
         INFO(errorOf(bytes));

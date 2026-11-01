@@ -56,6 +56,9 @@ std::vector<uint16_t> cutoutFrame(lmx::engine::GpuContext& gpu, Renderer& render
     REQUIRE(rendered.has_value());
     std::vector<uint16_t> pixels(kSize * kSize * 4);
     {
+        requireRecordedUse(renderer.textureStates(), renderer.hdrColorTexture(),
+                           view.temporal.enabled ? lmx::render::TextureUse::CopySource
+                                                 : lmx::render::TextureUse::ShaderRead);
         const auto readbackBytes =
             lmx::render::readbackNow(gpu, renderer.hdrColorTexture(), renderer.textureStates());
         INFO(errorOf(readbackBytes));
@@ -138,6 +141,8 @@ TEST_CASE("alpha mask shares color depth and motion coverage", "[gpu][alpha-mask
     if (view.temporal.enabled) {
         std::vector<uint16_t> history(kSize * kSize * 4);
         {
+            requireRecordedUse((*renderer)->textureStates(), *(*renderer)->historyTexture(),
+                               lmx::render::TextureUse::CopyDestination);
             const auto readbackBytes = lmx::render::readbackNow(
                 *gpu, *(*renderer)->historyTexture(), (*renderer)->textureStates());
             INFO(errorOf(readbackBytes));
@@ -147,6 +152,8 @@ TEST_CASE("alpha mask shares color depth and motion coverage", "[gpu][alpha-mask
         REQUIRE(cutoutChannel(history, 39, 3) == 1.0f);
         std::vector<uint16_t> motion(kSize * kSize * 2);
         {
+            requireRecordedUse((*renderer)->textureStates(), *(*renderer)->motionTexture(),
+                               lmx::render::TextureUse::RenderTarget);
             const auto readbackBytes = lmx::render::readbackNow(*gpu, *(*renderer)->motionTexture(),
                                                                 (*renderer)->textureStates());
             INFO(errorOf(readbackBytes));
@@ -162,6 +169,8 @@ TEST_CASE("alpha mask shares color depth and motion coverage", "[gpu][alpha-mask
             glm::translate(glm::mat4{1}, glm::vec3{-0.1f, 0, 0}) * items[0].model;
         cutoutFrame(*gpu, **renderer, view);
         {
+            requireRecordedUse((*renderer)->textureStates(), *(*renderer)->motionTexture(),
+                               lmx::render::TextureUse::RenderTarget);
             const auto readbackBytes = lmx::render::readbackNow(*gpu, *(*renderer)->motionTexture(),
                                                                 (*renderer)->textureStates());
             INFO(errorOf(readbackBytes));

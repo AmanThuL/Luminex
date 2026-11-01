@@ -32,6 +32,8 @@ TEST_CASE("an upscaled frame fills the display target", "[gpu][temporal]") {
     renderFrame(*gpu, **empty, temporalCamera(), temporalSceneView({}));
     std::vector<uint8_t> background(size_t{kSize} * kSize * 4);
     {
+        requireRecordedUse((*empty)->textureStates(), (*empty)->colorTarget(),
+                           lmx::render::TextureUse::ShaderRead);
         const auto readbackBytes =
             lmx::render::readbackNow(*gpu, (*empty)->colorTarget(), (*empty)->textureStates());
         INFO(errorOf(readbackBytes));
@@ -65,6 +67,8 @@ TEST_CASE("an upscaled frame fills the display target", "[gpu][temporal]") {
 
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
     {
+        requireRecordedUse((*renderer)->textureStates(), (*renderer)->colorTarget(),
+                           lmx::render::TextureUse::ShaderRead);
         const auto readbackBytes = lmx::render::readbackNow(*gpu, (*renderer)->colorTarget(),
                                                             (*renderer)->textureStates());
         INFO(errorOf(readbackBytes));
@@ -89,6 +93,8 @@ TEST_CASE("an upscaled frame fills the display target", "[gpu][temporal]") {
     REQUIRE(history != nullptr);
     std::vector<uint8_t> slot(size_t{kSize} * kSize * 8);
     {
+        requireRecordedUse((*renderer)->textureStates(), *history,
+                           lmx::render::TextureUse::ShaderRead);
         const auto readbackBytes =
             lmx::render::readbackNow(*gpu, *history, (*renderer)->textureStates());
         INFO(errorOf(readbackBytes));
@@ -146,6 +152,8 @@ TEST_CASE("the spatial upscale keeps a constant radiance constant", "[gpu][tempo
     // The value the plane shaded to, read out of the active rectangle the frame rasterised into.
     std::vector<uint8_t> scene(size_t{kSize} * kSize * 8);
     {
+        requireRecordedUse((*renderer)->textureStates(), (*renderer)->hdrColorTexture(),
+                           lmx::render::TextureUse::ShaderRead);
         const auto readbackBytes = lmx::render::readbackNow(*gpu, (*renderer)->hdrColorTexture(),
                                                             (*renderer)->textureStates());
         INFO(errorOf(readbackBytes));
@@ -165,6 +173,8 @@ TEST_CASE("the spatial upscale keeps a constant radiance constant", "[gpu][tempo
     REQUIRE(history != nullptr);
     std::vector<uint8_t> committed(scene.size());
     {
+        requireRecordedUse((*renderer)->textureStates(), *history,
+                           lmx::render::TextureUse::ShaderRead);
         const auto readbackBytes =
             lmx::render::readbackNow(*gpu, *history, (*renderer)->textureStates());
         INFO(errorOf(readbackBytes));
@@ -230,7 +240,8 @@ TEST_CASE("motion at half scale matches the render-extent oracle", "[gpu][tempor
     const lmx::render::CameraFrameState state =
         lmx::render::buildCameraFrameState(camera, extents, {});
 
-    const std::vector<uint8_t> pixels = readMotion(*gpu, **renderer);
+    const std::vector<uint8_t> pixels =
+        readMotion(*gpu, **renderer, lmx::render::TextureUse::RenderTarget);
     for (const std::pair<uint32_t, uint32_t> probe :
          {std::pair<uint32_t, uint32_t>{8, 8}, {16, 16}, {24, 20}}) {
         const glm::vec4 point =
@@ -681,9 +692,11 @@ TEST_CASE("an oscillating render scale allocates nothing and does not ghost", "[
 
         ScenarioFrame captured;
         captured.history =
-            readHalf4(*gpu, *(*taauRenderer)->historyTexture(), (*taauRenderer)->textureStates());
+            readHalf4(*gpu, *(*taauRenderer)->historyTexture(), (*taauRenderer)->textureStates(),
+                      lmx::render::TextureUse::ShaderRead);
         captured.raw =
-            readHalf4(*gpu, (*taauRenderer)->hdrColorTexture(), (*taauRenderer)->textureStates());
+            readHalf4(*gpu, (*taauRenderer)->hdrColorTexture(), (*taauRenderer)->textureStates(),
+                      lmx::render::TextureUse::ShaderRead);
         captured.status = (*taauRenderer)->temporalStatus();
         taau.push_back(std::move(captured));
         heapBytes.push_back(record.debug.memory.highWater);
