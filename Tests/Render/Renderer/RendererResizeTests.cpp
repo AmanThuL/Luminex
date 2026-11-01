@@ -215,6 +215,8 @@ TEST_CASE("a failed resize leaves the renderer at its old extent", "[render][dev
     REQUIRE(vendorAttempts() == attempts + 2);
     REQUIRE(renderer.temporalStatus().vendorScalerGeneration == 2);
     REQUIRE(renderer.temporalStatus().vendorReset);
+    // Destroying a texture advances its handle generation, so these stale handles cannot name the
+    // new slot textures; the state table must simply have forgotten them.
     for (const rojoRHI::Texture texture : secondSlot) {
         REQUIRE_FALSE(renderer.textureStates().logicalUse(texture).has_value());
     }
