@@ -4,18 +4,20 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Render/Passes/Temporal/TemporalResolve.h"
-#include "Render/Common/Dispatch.h"
+#include "Engine/Gpu/CaptureSchema.h"
 #include "Render/Common/Formats.h"
 #include "Render/Common/StageSetup.h"
 #include "Render/Passes/Temporal/TemporalResolveInternal.h"
+#include "Render/Passes/Temporal/TemporalRoots.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Engine/Gpu/GpuOwned.h"
 #include "Render/Passes/Temporal/VendorTemporalScaler.h"
 
-#include <glm/mat4x4.hpp>
-#include <glm/vec2.hpp>
-
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <span>
 #include <utility>
 
 namespace lmx::render {
@@ -44,12 +46,127 @@ bool sameExtents(const FrameExtents& a, const FrameExtents& b) {
            a.outputWidth == b.outputWidth && a.outputHeight == b.outputHeight;
 }
 
+//======================================================================================================================
+// Names every temporal root and parameter record in capture sidecars, field by field.
+void registerTemporalLayoutsForCapture() {
+    using temporal_detail::SpatialUpscaleParams;
+    using temporal_detail::TemporalDebugViewParams;
+    using temporal_detail::TemporalReprojectParams;
+    using temporal_detail::TemporalResolveParams;
+    using temporal_detail::TemporalUpscaleParams;
+    engine::registerUniformStruct(
+        {"TemporalReprojectRoot",
+         sizeof(TemporalReprojectRoot),
+         {{"paramsAddr", offsetof(TemporalReprojectRoot, paramsAddr), "Addr"},
+          {"history", offsetof(TemporalReprojectRoot, history), "uint"},
+          {"sceneColor", offsetof(TemporalReprojectRoot, sceneColor), "uint"},
+          {"motion", offsetof(TemporalReprojectRoot, motion), "uint"},
+          {"diagnostic", offsetof(TemporalReprojectRoot, diagnostic), "uint"},
+          {"sampler", offsetof(TemporalReprojectRoot, sampler), "uint"},
+          {"padding0", offsetof(TemporalReprojectRoot, padding0), "uint"}}});
+    engine::registerUniformStruct(
+        {"TemporalResolveRoot",
+         sizeof(TemporalResolveRoot),
+         {{"paramsAddr", offsetof(TemporalResolveRoot, paramsAddr), "Addr"},
+          {"exposureAddr", offsetof(TemporalResolveRoot, exposureAddr), "Addr"},
+          {"sceneColor", offsetof(TemporalResolveRoot, sceneColor), "uint"},
+          {"depth", offsetof(TemporalResolveRoot, depth), "uint"},
+          {"previousDepth", offsetof(TemporalResolveRoot, previousDepth), "uint"},
+          {"motion", offsetof(TemporalResolveRoot, motion), "uint"},
+          {"reactive", offsetof(TemporalResolveRoot, reactive), "uint"},
+          {"history", offsetof(TemporalResolveRoot, history), "uint"},
+          {"output", offsetof(TemporalResolveRoot, output), "uint"},
+          {"rejection", offsetof(TemporalResolveRoot, rejection), "uint"},
+          {"reprojected", offsetof(TemporalResolveRoot, reprojected), "uint"},
+          {"sampler", offsetof(TemporalResolveRoot, sampler), "uint"},
+          {"padding0", offsetof(TemporalResolveRoot, padding0), "uint"},
+          {"padding1", offsetof(TemporalResolveRoot, padding1), "uint"}}});
+    engine::registerUniformStruct(
+        {"SpatialUpscaleRoot",
+         sizeof(SpatialUpscaleRoot),
+         {{"paramsAddr", offsetof(SpatialUpscaleRoot, paramsAddr), "Addr"},
+          {"sceneColor", offsetof(SpatialUpscaleRoot, sceneColor), "uint"},
+          {"output", offsetof(SpatialUpscaleRoot, output), "uint"},
+          {"sampler", offsetof(SpatialUpscaleRoot, sampler), "uint"},
+          {"padding0", offsetof(SpatialUpscaleRoot, padding0), "uint"},
+          {"padding1", offsetof(SpatialUpscaleRoot, padding1), "uint"},
+          {"padding2", offsetof(SpatialUpscaleRoot, padding2), "uint"}}});
+    engine::registerUniformStruct(
+        {"TemporalDebugViewRoot",
+         sizeof(TemporalDebugViewRoot),
+         {{"paramsAddr", offsetof(TemporalDebugViewRoot, paramsAddr), "Addr"},
+          {"motion", offsetof(TemporalDebugViewRoot, motion), "uint"},
+          {"diagnostic", offsetof(TemporalDebugViewRoot, diagnostic), "uint"},
+          {"rejection", offsetof(TemporalDebugViewRoot, rejection), "uint"},
+          {"reprojected", offsetof(TemporalDebugViewRoot, reprojected), "uint"},
+          {"resolved", offsetof(TemporalDebugViewRoot, resolved), "uint"},
+          {"padding0", offsetof(TemporalDebugViewRoot, padding0), "uint"}}});
+    engine::registerUniformStruct(
+        {"TemporalResolveParams",
+         sizeof(TemporalResolveParams),
+         {{"width", offsetof(TemporalResolveParams, width), "uint"},
+          {"height", offsetof(TemporalResolveParams, height), "uint"},
+          {"historyValid", offsetof(TemporalResolveParams, historyValid), "uint"},
+          {"writeDiagnostics", offsetof(TemporalResolveParams, writeDiagnostics), "uint"},
+          {"inverseViewProjection", offsetof(TemporalResolveParams, inverseViewProjection),
+           "float4x4"},
+          {"previousViewProjection", offsetof(TemporalResolveParams, previousViewProjection),
+           "float4x4"},
+          {"previousNearZ", offsetof(TemporalResolveParams, previousNearZ), "float"}}});
+    engine::registerUniformStruct(
+        {"TemporalUpscaleParams",
+         sizeof(TemporalUpscaleParams),
+         {{"width", offsetof(TemporalUpscaleParams, width), "uint"},
+          {"height", offsetof(TemporalUpscaleParams, height), "uint"},
+          {"historyValid", offsetof(TemporalUpscaleParams, historyValid), "uint"},
+          {"writeDiagnostics", offsetof(TemporalUpscaleParams, writeDiagnostics), "uint"},
+          {"inverseViewProjection", offsetof(TemporalUpscaleParams, inverseViewProjection),
+           "float4x4"},
+          {"previousViewProjection", offsetof(TemporalUpscaleParams, previousViewProjection),
+           "float4x4"},
+          {"previousNearZ", offsetof(TemporalUpscaleParams, previousNearZ), "float"},
+          {"outputWidth", offsetof(TemporalUpscaleParams, outputWidth), "uint"},
+          {"outputHeight", offsetof(TemporalUpscaleParams, outputHeight), "uint"},
+          {"allocatedWidth", offsetof(TemporalUpscaleParams, allocatedWidth), "uint"},
+          {"allocatedHeight", offsetof(TemporalUpscaleParams, allocatedHeight), "uint"},
+          {"previousRenderWidth", offsetof(TemporalUpscaleParams, previousRenderWidth), "uint"},
+          {"previousRenderHeight", offsetof(TemporalUpscaleParams, previousRenderHeight), "uint"},
+          {"jitterOffset", offsetof(TemporalUpscaleParams, jitterOffset), "float2"}}});
+    engine::registerUniformStruct(
+        {"SpatialUpscaleParams",
+         sizeof(SpatialUpscaleParams),
+         {{"renderWidth", offsetof(SpatialUpscaleParams, renderWidth), "uint"},
+          {"renderHeight", offsetof(SpatialUpscaleParams, renderHeight), "uint"},
+          {"outputWidth", offsetof(SpatialUpscaleParams, outputWidth), "uint"},
+          {"outputHeight", offsetof(SpatialUpscaleParams, outputHeight), "uint"},
+          {"allocatedWidth", offsetof(SpatialUpscaleParams, allocatedWidth), "uint"},
+          {"allocatedHeight", offsetof(SpatialUpscaleParams, allocatedHeight), "uint"},
+          {"jitterOffset", offsetof(SpatialUpscaleParams, jitterOffset), "float2"}}});
+    engine::registerUniformStruct(
+        {"TemporalReprojectParams",
+         sizeof(TemporalReprojectParams),
+         {{"width", offsetof(TemporalReprojectParams, width), "uint"},
+          {"height", offsetof(TemporalReprojectParams, height), "uint"},
+          {"renderWidth", offsetof(TemporalReprojectParams, renderWidth), "uint"},
+          {"renderHeight", offsetof(TemporalReprojectParams, renderHeight), "uint"},
+          {"allocatedWidth", offsetof(TemporalReprojectParams, allocatedWidth), "uint"},
+          {"allocatedHeight", offsetof(TemporalReprojectParams, allocatedHeight), "uint"},
+          {"jitterOffset", offsetof(TemporalReprojectParams, jitterOffset), "float2"}}});
+    engine::registerUniformStruct(
+        {"TemporalDebugViewParams",
+         sizeof(TemporalDebugViewParams),
+         {{"view", offsetof(TemporalDebugViewParams, view), "uint"},
+          {"renderWidth", offsetof(TemporalDebugViewParams, renderWidth), "uint"},
+          {"renderHeight", offsetof(TemporalDebugViewParams, renderHeight), "uint"},
+          {"outputWidth", offsetof(TemporalDebugViewParams, outputWidth), "uint"},
+          {"outputHeight", offsetof(TemporalDebugViewParams, outputHeight), "uint"}}});
+}
+
 } // namespace
 
 //======================================================================================================================
-TemporalResolve::TemporalResolve(engine::GpuContext& gpu, bool cpuReadback)
-    : m_device(gpu.device()), m_vendor(std::make_unique<VendorTemporalScaler>(gpu)),
-      m_cpuReadback(cpuReadback) {}
+TemporalResolve::TemporalResolve(engine::GpuContext& gpu)
+    : m_device(gpu.device()), m_vendor(std::make_unique<VendorTemporalScaler>(gpu)) {}
 
 //======================================================================================================================
 TemporalResolve::~TemporalResolve() = default;
@@ -57,22 +174,41 @@ TemporalResolve::~TemporalResolve() = default;
 //======================================================================================================================
 lmx::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(engine::GpuContext& gpu,
                                                                       bool cpuReadback) {
+    (void)cpuReadback;
     rojoRHI::Device& device = gpu.device();
-    auto self = std::unique_ptr<TemporalResolve>(new TemporalResolve(gpu, cpuReadback));
+    auto self = std::unique_ptr<TemporalResolve>(new TemporalResolve(gpu));
 
-    {
-        auto library = gpu.loadShaderLibrary("TemporalReproject");
+    struct ComputeKernel {
+        const char* library;
+        const char* entry;
+        const char* label;
+        engine::GpuOwned<rojoRHI::ShaderLibrary>* libraryOwner;
+        engine::GpuOwned<rojoRHI::Pipeline>* pipelineOwner;
+    };
+    const std::array<ComputeKernel, 4> kernels{{
+        {"TemporalReproject", "computeTemporalReproject", "lmx.render.temporalReprojectPipeline",
+         &self->m_reprojectLibrary, &self->m_reprojectPipeline},
+        {"TemporalResolve", "computeTemporalResolve", "lmx.render.temporalResolvePipeline",
+         &self->m_resolveLibrary, &self->m_resolvePipeline},
+        {"SpatialUpscale", "computeSpatialUpscale", "lmx.render.spatialUpscalePipeline",
+         &self->m_spatialUpscaleLibrary, &self->m_spatialUpscalePipeline},
+        {"TemporalUpscale", "computeTemporalUpscale", "lmx.render.temporalUpscalePipeline",
+         &self->m_temporalUpscaleLibrary, &self->m_temporalUpscalePipeline},
+    }};
+    for (const ComputeKernel& kernel : kernels) {
+        auto library = gpu.loadShaderLibrary(kernel.library);
         if (!library) {
             return std::unexpected(library.error());
         }
-        self->m_reprojectLibrary = std::move(*library);
-    }
-    {
-        auto library = gpu.loadShaderLibrary("TemporalResolve");
-        if (!library) {
-            return std::unexpected(library.error());
+        *kernel.libraryOwner = std::move(*library);
+        auto pipeline = engine::adoptGpu(
+            device,
+            device.createPipeline(rojoRHI::ComputePipelineDesc{
+                .compute = {kernel.libraryOwner->get(), kernel.entry}, .label = kernel.label}));
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
         }
-        self->m_resolveLibrary = std::move(*library);
+        *kernel.pipelineOwner = std::move(*pipeline);
     }
     {
         auto library = gpu.loadShaderLibrary("TemporalDebugView");
@@ -80,70 +216,9 @@ lmx::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(engine::Gp
             return std::unexpected(library.error());
         }
         self->m_debugViewLibrary = std::move(*library);
-    }
-    {
-        auto library = gpu.loadShaderLibrary("SpatialUpscale");
-        if (!library) {
-            return std::unexpected(library.error());
-        }
-        self->m_spatialUpscaleLibrary = std::move(*library);
-    }
-    {
-        auto library = gpu.loadShaderLibrary("TemporalUpscale");
-        if (!library) {
-            return std::unexpected(library.error());
-        }
-        self->m_temporalUpscaleLibrary = std::move(*library);
-    }
-
-    {
-        auto pipeline = engine::adoptGpu(device.createComputePipeline(
-            {.library = self->m_reprojectLibrary.get(),
-             .computeEntry = "computeTemporalReproject",
-             .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
-             .label = "lmx.render.temporalReprojectPipeline"}));
-        if (!pipeline) {
-            return std::unexpected(pipeline.error());
-        }
-        self->m_reprojectPipeline = std::move(*pipeline);
-    }
-    {
-        auto pipeline = engine::adoptGpu(device.createComputePipeline(
-            {.library = self->m_resolveLibrary.get(),
-             .computeEntry = "computeTemporalResolve",
-             .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
-             .label = "lmx.render.temporalResolvePipeline"}));
-        if (!pipeline) {
-            return std::unexpected(pipeline.error());
-        }
-        self->m_resolvePipeline = std::move(*pipeline);
-    }
-    {
-        auto pipeline = engine::adoptGpu(device.createComputePipeline(
-            {.library = self->m_spatialUpscaleLibrary.get(),
-             .computeEntry = "computeSpatialUpscale",
-             .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
-             .label = "lmx.render.spatialUpscalePipeline"}));
-        if (!pipeline) {
-            return std::unexpected(pipeline.error());
-        }
-        self->m_spatialUpscalePipeline = std::move(*pipeline);
-    }
-    {
-        auto pipeline = engine::adoptGpu(device.createComputePipeline(
-            {.library = self->m_temporalUpscaleLibrary.get(),
-             .computeEntry = "computeTemporalUpscale",
-             .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
-             .label = "lmx.render.temporalUpscalePipeline"}));
-        if (!pipeline) {
-            return std::unexpected(pipeline.error());
-        }
-        self->m_temporalUpscalePipeline = std::move(*pipeline);
-    }
-    {
-        auto pipeline = engine::adoptGpu(device.createGraphicsPipeline(
-            fullscreenPipelineDesc(self->m_debugViewLibrary.get(), "fragmentMain", kDisplayFormat,
-                                   "lmx.render.temporalDebugViewPipeline")));
+        auto pipeline =
+            createFullscreenPipeline(device, self->m_debugViewLibrary.get(), "fragmentMain",
+                                     kDisplayFormat, "lmx.render.temporalDebugViewPipeline");
         if (!pipeline) {
             return std::unexpected(pipeline.error());
         }
@@ -151,10 +226,10 @@ lmx::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(engine::Gp
     }
 
     {
-        auto sampler =
-            engine::adoptGpu(device.createSampler({.filter = rojoRHI::FilterMode::Linear,
-                                                   .addressMode = rojoRHI::AddressMode::Clamp,
-                                                   .label = "lmx.render.temporalSampler"}));
+        auto sampler = engine::adoptGpu(
+            device, device.createSampler({.filter = rojoRHI::SamplerFilter::Linear,
+                                          .address = rojoRHI::SamplerAddress::ClampToEdge,
+                                          .label = "lmx.render.temporalSampler"}));
         if (!sampler) {
             return std::unexpected(sampler.error());
         }
@@ -163,28 +238,28 @@ lmx::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(engine::Gp
 
     {
         auto texture =
-            engine::GpuTexture::create(device, {.width = 1,
-                                                .height = 1,
-                                                .format = rojoRHI::Format::RGBA16Float,
-                                                .storageWrite = true,
-                                                .label = "lmx.render.temporalDiagnosticFallback"});
+            engine::GpuTexture::create(device,
+                                       {.format = rojoRHI::Format::RGBA16Float,
+                                        .extent = {1, 1, 1},
+                                        .usage = rojoRHI::TextureUsage::Storage,
+                                        .label = "lmx.render.temporalDiagnosticFallback"},
+                                       {}, {.sampled = false, .storageMips = true});
         if (!texture) {
             return std::unexpected(texture.error());
         }
         self->m_diagnosticFallback = std::move(*texture);
     }
     {
+        constexpr std::array<uint16_t, 4> kZeroHalf4 = {0, 0, 0, 0};
         auto texture =
-            engine::GpuTexture::create(device, {.width = 1,
-                                                .height = 1,
-                                                .format = rojoRHI::Format::RGBA16Float,
-                                                .sampled = true,
-                                                .label = "lmx.render.temporalViewFallback"});
+            createTexel(device, rojoRHI::Format::RGBA16Float, rojoRHI::TextureType::Tex2D,
+                        std::as_bytes(std::span{kZeroHalf4}), "lmx.render.temporalViewFallback");
         if (!texture) {
             return std::unexpected(texture.error());
         }
         self->m_viewFallback = std::move(*texture);
     }
+    registerTemporalLayoutsForCapture();
     return self;
 }
 
@@ -203,27 +278,25 @@ lmx::Result<void> TemporalResolve::resize(uint32_t width, uint32_t height) {
         // frame's depth and compares it against the other slot's, and a caller may sample the
         // public depth target after the graph.
         auto depthTexture =
-            engine::GpuTexture::create(m_device, {.width = width,
-                                                  .height = height,
-                                                  .format = rojoRHI::Format::D32Float,
-                                                  .renderTarget = true,
-                                                  .sampled = true,
+            engine::GpuTexture::create(m_device, {.format = rojoRHI::Format::D32Float,
+                                                  .extent = {width, height, 1},
+                                                  .usage = rojoRHI::TextureUsage::DepthStencil |
+                                                           rojoRHI::TextureUsage::Sampled,
                                                   .label = kDepthLabels[slot]});
         if (!depthTexture) {
             return std::unexpected(depthTexture.error());
         }
-        // Storage-write because the resolve writes its slot directly rather than through a copy;
-        // sampled because the next frame reprojects it. cpuReadback is what lets a test compare an
-        // accumulated frame against the raw one it was built from.
-        auto colorTexture =
-            engine::GpuTexture::create(m_device, {.width = width,
-                                                  .height = height,
-                                                  .format = rojoRHI::Format::RGBA16Float,
-                                                  .renderTarget = true,
-                                                  .sampled = true,
-                                                  .storageWrite = true,
-                                                  .cpuReadback = m_cpuReadback,
-                                                  .label = kColorLabels[slot]});
+        // Storage because the resolve writes its slot directly rather than through a copy; sampled
+        // because the next frame reprojects it; a render target because the vendor upscaler may
+        // need one for its output.
+        auto colorTexture = engine::GpuTexture::create(
+            m_device,
+            {.format = rojoRHI::Format::RGBA16Float,
+             .extent = {width, height, 1},
+             .usage = rojoRHI::TextureUsage::RenderTarget | rojoRHI::TextureUsage::Sampled |
+                      rojoRHI::TextureUsage::Storage,
+             .label = kColorLabels[slot]},
+            {}, {.sampled = true, .storageMips = true});
         if (!colorTexture) {
             return std::unexpected(colorTexture.error());
         }
@@ -259,16 +332,14 @@ const engine::GpuTexture& TemporalResolve::colorTexture(uint32_t slot) const {
 //======================================================================================================================
 GraphTexture TemporalResolve::importDepth(RenderGraph& graph, uint32_t slot) {
     static constexpr const char* kNames[2] = {"lmx.render.sceneDepth0", "lmx.render.sceneDepth1"};
-    return graph.importPersistentTexture(depthTexture(slot).rhi(), rojoRHI::Format::D32Float,
-                                         kNames[slot]);
+    return graph.importPersistentTexture(depthTexture(slot), kNames[slot]);
 }
 
 //======================================================================================================================
 GraphTexture TemporalResolve::importColor(RenderGraph& graph, uint32_t slot) {
     static constexpr const char* kNames[2] = {"lmx.render.historyColor0",
                                               "lmx.render.historyColor1"};
-    return graph.importPersistentTexture(colorTexture(slot).rhi(), rojoRHI::Format::RGBA16Float,
-                                         kNames[slot]);
+    return graph.importPersistentTexture(colorTexture(slot), kNames[slot]);
 }
 
 //======================================================================================================================

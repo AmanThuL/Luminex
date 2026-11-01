@@ -3,9 +3,12 @@
 /// @brief Translates temporal inputs and declares the capability-selected vendor kernel.
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Passes/Temporal/VendorTemporalScaler.h"
+#include "Engine/Gpu/CaptureSchema.h"
 #include "Render/Common/Dispatch.h"
+#include "Render/Common/FrameData.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Passes/Temporal/TemporalFrameData.h"
+#include "Render/Passes/Temporal/TemporalRoots.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"
@@ -14,11 +17,51 @@
 #include "Engine/Gpu/GpuOwned.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <string>
 #include <utility>
 
 namespace lmx::render {
+namespace {
+
+//======================================================================================================================
+// Names the vendor path's roots and its packing record in capture sidecars, field by field.
+void registerVendorLayoutsForCapture() {
+    using temporal_detail::VendorPackParams;
+    engine::registerUniformStruct(
+        {"VendorTemporalPackRoot",
+         sizeof(VendorTemporalPackRoot),
+         {{"paramsAddr", offsetof(VendorTemporalPackRoot, paramsAddr), "Addr"},
+          {"exposureAddr", offsetof(VendorTemporalPackRoot, exposureAddr), "Addr"},
+          {"motion", offsetof(VendorTemporalPackRoot, motion), "uint"},
+          {"reactive", offsetof(VendorTemporalPackRoot, reactive), "uint"},
+          {"packedMotion", offsetof(VendorTemporalPackRoot, packedMotion), "uint"},
+          {"packedReactive", offsetof(VendorTemporalPackRoot, packedReactive), "uint"},
+          {"exposureTexel", offsetof(VendorTemporalPackRoot, exposureTexel), "uint"},
+          {"padding0", offsetof(VendorTemporalPackRoot, padding0), "uint"},
+          {"padding1", offsetof(VendorTemporalPackRoot, padding1), "uint"},
+          {"padding2", offsetof(VendorTemporalPackRoot, padding2), "uint"}}});
+    engine::registerUniformStruct(
+        {"VendorTemporalHistoryRoot",
+         sizeof(VendorTemporalHistoryRoot),
+         {{"paramsAddr", offsetof(VendorTemporalHistoryRoot, paramsAddr), "Addr"},
+          {"exposureAddr", offsetof(VendorTemporalHistoryRoot, exposureAddr), "Addr"},
+          {"depth", offsetof(VendorTemporalHistoryRoot, depth), "uint"},
+          {"previousDepth", offsetof(VendorTemporalHistoryRoot, previousDepth), "uint"},
+          {"motion", offsetof(VendorTemporalHistoryRoot, motion), "uint"},
+          {"history", offsetof(VendorTemporalHistoryRoot, history), "uint"},
+          {"reprojected", offsetof(VendorTemporalHistoryRoot, reprojected), "uint"},
+          {"sampler", offsetof(VendorTemporalHistoryRoot, sampler), "uint"},
+          {"padding0", offsetof(VendorTemporalHistoryRoot, padding0), "uint"},
+          {"padding1", offsetof(VendorTemporalHistoryRoot, padding1), "uint"}}});
+    engine::registerUniformStruct({"VendorPackParams",
+                                   sizeof(VendorPackParams),
+                                   {{"width", offsetof(VendorPackParams, width), "uint"},
+                                    {"height", offsetof(VendorPackParams, height), "uint"}}});
+}
+
+} // namespace
 
 //======================================================================================================================
 ReconstructionSelection resolveReconstruction(ReconstructionMode requested,
@@ -55,17 +98,16 @@ bool vendorHistoryReset(HistoryResetReason reason, ReconstructionMode previousMo
 }
 
 //======================================================================================================================
-rojoRHI::TemporalScaleParams vendorTemporalParams(const FrameExtents& extents,
-                                                  glm::vec2 jitterPixels) {
+rojoRHI::UpscaleParams vendorTemporalParams(const FrameExtents& extents, glm::vec2 jitterPixels) {
     const glm::vec2 offset = jitterTexelOffset(jitterPixels);
-    return {.inputContentWidth = extents.renderWidth,
-            .inputContentHeight = extents.renderHeight,
-            .jitterOffsetX = offset.x,
-            .jitterOffsetY = offset.y,
+    // Reversed depth is the upscaler's creation flag (UpscalerFlags::ReversedDepth), not a frame
+    // value: prepare() sets it on every upscaler this adapter creates.
+    return {.inputContent = {extents.renderWidth, extents.renderHeight},
+            .jitterX = offset.x,
+            .jitterY = offset.y,
             .motionScaleX = -static_cast<float>(extents.renderWidth),
             .motionScaleY = -static_cast<float>(extents.renderHeight),
             .preExposure = 1.0f,
-            .reversedDepth = true,
             .label = "lmx.pass.temporal.vendor"};
 }
 
@@ -107,25 +149,26 @@ ReconstructionSelection VendorTemporalScaler::prepare(ReconstructionMode request
         m_historyLibrary = std::move(*library);
     }
     if (!m_historyPipeline) {
-        auto pipeline = engine::adoptGpu(m_gpu.device().createComputePipeline(
-            {.library = m_historyLibrary.get(),
-             .computeEntry = "computeVendorTemporalHistory",
-             .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
-             .label = "lmx.pipeline.temporal.vendor.history"}));
+        auto pipeline = engine::adoptGpu(
+            m_gpu.device(), m_gpu.device().createPipeline(rojoRHI::ComputePipelineDesc{
+                                .compute = {m_historyLibrary.get(), "computeVendorTemporalHistory"},
+                                .label = "lmx.pipeline.temporal.vendor.history"}));
         if (!pipeline) {
             return fail(pipeline.error());
         }
         m_historyPipeline = std::move(*pipeline);
     }
     const std::string label = "lmx.temporal.vendor.scaler " + std::string(support.name);
+    // Inputs are allocated at the output extent and only their active content shrinks with the
+    // render scale, so the upscaler's input is its output; its content range derives from the
+    // device's support. Scene-linear colour needs no HDR flag on MetalFX.
     auto scaler = engine::adoptGpu(
-        m_gpu.device().createTemporalScaler({.inputWidth = width,
-                                             .inputHeight = height,
-                                             .outputWidth = width,
-                                             .outputHeight = height,
-                                             .minInputScale = support.minInputScale,
-                                             .maxInputScale = support.maxInputScale,
-                                             .label = label}));
+        m_gpu.device(),
+        m_gpu.device().createUpscaler({.kind = rojoRHI::UpscalerKind::MetalFX,
+                                       .input = {width, height},
+                                       .output = {width, height},
+                                       .flags = rojoRHI::UpscalerFlags::ReversedDepth,
+                                       .label = label}));
     if (!scaler) {
         return fail(scaler.error());
     }
@@ -144,9 +187,9 @@ void VendorTemporalScaler::invalidateOutput() {
 }
 
 //======================================================================================================================
-rojoRHI::ComputePipeline& VendorTemporalScaler::historyPipeline() const {
+rojoRHI::Pipeline VendorTemporalScaler::historyPipeline() const {
     LMX_ASSERT(m_historyPipeline, "vendor history pipeline must be prepared before declaration");
-    return *m_historyPipeline;
+    return m_historyPipeline.get();
 }
 
 //======================================================================================================================
@@ -159,15 +202,15 @@ lmx::Result<void> VendorTemporalScaler::preparePacking() {
         m_packLibrary = std::move(*library);
     }
     if (!m_packPipeline) {
-        auto pipeline = engine::adoptGpu(m_gpu.device().createComputePipeline(
-            {.library = m_packLibrary.get(),
-             .computeEntry = "computeVendorTemporalPack",
-             .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
-             .label = "lmx.pipeline.temporal.vendor.pack"}));
+        auto pipeline = engine::adoptGpu(
+            m_gpu.device(), m_gpu.device().createPipeline(rojoRHI::ComputePipelineDesc{
+                                .compute = {m_packLibrary.get(), "computeVendorTemporalPack"},
+                                .label = "lmx.pipeline.temporal.vendor.pack"}));
         if (!pipeline) {
             return std::unexpected(pipeline.error());
         }
         m_packPipeline = std::move(*pipeline);
+        registerVendorLayoutsForCapture();
     }
     return {};
 }
@@ -194,30 +237,49 @@ VendorTemporalPacked VendorTemporalScaler::declarePack(RenderGraph& graph,
         makeTexture(rojoRHI::Format::R16Float, "lmx.render.vendorExposure", 1, 1)};
     ComputePassDesc desc;
     desc.shaderTextureReads = {inputs.motion, inputs.reactive};
-    desc.bufferReads = {inputs.exposure};
+    desc.shaderBufferReads = {inputs.exposure};
     desc.textureWrites = {packed.motion, packed.reactive, packed.exposure};
-    graph.addComputePass("lmx.pass.temporal.vendor.pack", std::move(desc),
-                         [this, &commands, inputs, packed](const PassResources& resources) {
-                             const auto texture = [&](GraphTexture handle) {
-                                 auto& result = lmx::render::texture(resources, handle);
-                                 return &result;
-                             };
-                             auto& exposure = lmx::render::buffer(resources, inputs.exposure);
-                             commands.bindComputePipeline(*m_packPipeline);
-                             commands.bindTexture(0, *texture(inputs.motion));
-                             commands.bindTexture(1, *texture(inputs.reactive));
-                             commands.bindStorageTexture(2, *texture(packed.motion), {},
-                                                         rojoRHI::StorageAccess::Write);
-                             commands.bindStorageTexture(3, *texture(packed.reactive), {},
-                                                         rojoRHI::StorageAccess::Write);
-                             commands.bindStorageTexture(4, *texture(packed.exposure), {},
-                                                         rojoRHI::StorageAccess::Write);
-                             commands.bindStorageBuffer(0, exposure, rojoRHI::StorageAccess::Read);
-                             const auto params = buildVendorPackParams(inputs.extents);
-                             commands.bindFrameData(1, params);
-                             const auto groups = dispatchGroups2D(params.width, params.height);
-                             commands.dispatch(groups[0], groups[1], 1);
-                         });
+    graph.addComputePass(
+        "lmx.pass.temporal.vendor.pack", std::move(desc),
+        [this, &commands, inputs, packed](const PassResources& resources) {
+            const auto params = buildVendorPackParams(inputs.extents);
+            const auto paramsAddress = frameData(commands, params);
+            engine::registerFrameRoot("VendorPackParams", paramsAddress);
+            commands.setPipeline(m_packPipeline.get());
+            engine::registerFrameRoot(
+                "VendorTemporalPackRoot",
+                commands.pushRoot(VendorTemporalPackRoot{
+                    .paramsAddr = paramsAddress,
+                    .exposureAddr = resources.address(inputs.exposure),
+                    .motion = static_cast<uint32_t>(resources.view(inputs.motion)),
+                    .reactive = static_cast<uint32_t>(resources.view(inputs.reactive)),
+                    .packedMotion = static_cast<uint32_t>(resources.storageView(packed.motion, 0)),
+                    .packedReactive =
+                        static_cast<uint32_t>(resources.storageView(packed.reactive, 0)),
+                    .exposureTexel =
+                        static_cast<uint32_t>(resources.storageView(packed.exposure, 0))}));
+#ifndef NDEBUG
+            const auto texture = [&](GraphTexture handle, rojoRHI::Access access) {
+                return rojoRHI::ResourceAccess{.texture = resources.texture(handle).texture,
+                                               .range = {0, 1, 0, 1},
+                                               .stage = rojoRHI::Stage::ComputeShader,
+                                               .access = access};
+            };
+            const std::array<rojoRHI::ResourceAccess, 6> accesses{
+                {texture(inputs.motion, rojoRHI::Access::ShaderRead),
+                 texture(inputs.reactive, rojoRHI::Access::ShaderRead),
+                 texture(packed.motion, rojoRHI::Access::ShaderWrite),
+                 texture(packed.reactive, rojoRHI::Access::ShaderWrite),
+                 texture(packed.exposure, rojoRHI::Access::ShaderWrite),
+                 {.buffer = resources.buffer(inputs.exposure),
+                  .size = sizeof(float),
+                  .stage = rojoRHI::Stage::ComputeShader,
+                  .access = rojoRHI::Access::ShaderRead}}};
+            commands.declareAccess(accesses);
+#endif
+            const auto groups = dispatchGroups2D(params.width, params.height);
+            commands.dispatch(groups[0], groups[1], 1);
+        });
     return {nextVersion(packed.motion), nextVersion(packed.reactive), nextVersion(packed.exposure)};
 }
 
@@ -237,17 +299,13 @@ GraphTexture VendorTemporalScaler::declare(RenderGraph& graph, rojoRHI::CommandL
     graph.addExternalPass(
         "lmx.pass.temporal.vendor", std::move(desc),
         [this, &commands, inputs, packed, params](const PassResources& resources) mutable {
-            const auto texture = [&](GraphTexture handle) {
-                auto& result = lmx::render::texture(resources, handle);
-                return &result;
-            };
-            params.color = texture(inputs.sceneColor);
-            params.depth = texture(inputs.depth);
-            params.motion = texture(packed.motion);
-            params.reactive = texture(packed.reactive);
-            params.exposure = texture(packed.exposure);
-            params.output = texture(inputs.colorSlot);
-            commands.temporalScale(*m_scaler, params);
+            params.color = resources.texture(inputs.sceneColor).texture;
+            params.depth = resources.texture(inputs.depth).texture;
+            params.motion = resources.texture(packed.motion).texture;
+            params.reactive = resources.texture(packed.reactive).texture;
+            params.exposure = resources.texture(packed.exposure).texture;
+            params.output = resources.texture(inputs.colorSlot).texture;
+            commands.upscale(m_scaler.get(), params);
         });
     const GraphTexture output = nextVersion(inputs.colorSlot);
     graph.exportTexture(output);

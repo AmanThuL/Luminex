@@ -4,8 +4,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
-#ifndef LMX_PENDING_TEMPORAL
-
 #include "Core/Diagnostics/Result.h"
 #include "Render/Passes/Temporal/TemporalResolve.h"
 
@@ -17,9 +15,9 @@ float vendorRenderScale(float scale, const engine::UpscalerSupportInfo& support)
 /// Vendor history resets independently of the engine's interchangeable color/depth histories.
 bool vendorHistoryReset(HistoryResetReason reason, ReconstructionMode previousMode, bool recreated);
 
-/// Converts engine UV motion and NDC jitter to pixel motion-to-previous and texture-space jitter.
-rojoRHI::TemporalScaleParams vendorTemporalParams(const FrameExtents& extents,
-                                                  glm::vec2 jitterPixels);
+/// Converts engine UV motion and NDC jitter to pixel motion-to-previous and texture-space jitter,
+/// with the render extent as the active input content. Textures and the reset flag stay unset.
+rojoRHI::UpscaleParams vendorTemporalParams(const FrameExtents& extents, glm::vec2 jitterPixels);
 
 /// Translated, graph-owned signals read by the vendor pass after the packing dispatch.
 struct VendorTemporalPacked {
@@ -28,7 +26,7 @@ struct VendorTemporalPacked {
     GraphTexture exposure; ///< R16Float inverse applied exposure, normalizing pre-exposed input.
 };
 
-/// Composed reconstruction kernel adapter. Its scaler lives until an output resize; render-scale
+/// Composed reconstruction kernel adapter. Its upscaler lives until an output resize; render-scale
 /// changes only change the content rectangle. A failed extent is retried only after a resize.
 class VendorTemporalScaler {
 public:
@@ -42,7 +40,7 @@ public:
     lmx::Result<void> preparePacking();
 
     /// Prepared pipeline for the engine-owned, exposure-corrected history diagnostic.
-    rojoRHI::ComputePipeline& historyPipeline() const;
+    rojoRHI::Pipeline historyPipeline() const;
 
     /// Retires the scaler and clears an extent-specific failure after a successful output resize.
     void invalidateOutput();
@@ -66,11 +64,11 @@ public:
 
 private:
     engine::GpuContext& m_gpu;
-    engine::GpuOwned<rojoRHI::TemporalScaler> m_scaler;
+    engine::GpuOwned<rojoRHI::Upscaler> m_scaler;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_packLibrary;
-    engine::GpuOwned<rojoRHI::ComputePipeline> m_packPipeline;
+    engine::GpuOwned<rojoRHI::Pipeline> m_packPipeline;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_historyLibrary;
-    engine::GpuOwned<rojoRHI::ComputePipeline> m_historyPipeline;
+    engine::GpuOwned<rojoRHI::Pipeline> m_historyPipeline;
     uint32_t m_width = 0;
     uint32_t m_height = 0;
     uint32_t m_generation = 0;
@@ -82,5 +80,3 @@ private:
 };
 
 } // namespace lmx::render
-
-#endif

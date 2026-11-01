@@ -3,33 +3,21 @@
 /// @brief Declares spatial commits and temporal upscaling at output extent.
 //----------------------------------------------------------------------------------------------------------------------
 
+#include "Engine/Gpu/CaptureSchema.h"
 #include "Render/Common/Dispatch.h"
+#include "Render/Common/FrameData.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Passes/Temporal/TemporalResolve.h"
 #include "Render/Passes/Temporal/TemporalResolveInternal.h"
+#include "Render/Passes/Temporal/TemporalRoots.h"
 
-#include "Core/Diagnostics/Assert.h"
-#include "Core/Math/Scalar.h"
-
-#include <glm/mat4x4.hpp>
-#include <glm/vec2.hpp>
-
+#include <array>
 #include <span>
 #include <utility>
 
 namespace lmx::render {
 using temporal_detail::SpatialUpscaleParams;
 using temporal_detail::TemporalUpscaleParams;
-
-namespace {
-
-// SpatialUpscale.slang's slot map.
-constexpr uint32_t kUpscaleSceneColorSlot = 0; // texture
-constexpr uint32_t kUpscaleOutputSlot = 1;     // storage texture
-constexpr uint32_t kUpscaleSamplerSlot = 0;    // sampler
-constexpr uint32_t kUpscaleParamsSlot = 0;     // buffer
-
-} // namespace
 
 //======================================================================================================================
 GraphTexture TemporalResolve::declareSpatialCommit(RenderGraph& graph,
@@ -46,17 +34,30 @@ GraphTexture TemporalResolve::declareSpatialCommit(RenderGraph& graph,
     graph.addComputePass(
         "lmx.pass.temporal.commitUpscaled", std::move(commitDesc),
         [this, &commands, sceneColor, history, params](const PassResources& resources) {
-            auto& sceneTexture = lmx::render::texture(resources, sceneColor);
-            auto& historyTexture = lmx::render::texture(resources, history);
-
-            commands.bindComputePipeline(*m_spatialUpscalePipeline);
-            commands.bindTexture(kUpscaleSceneColorSlot, sceneTexture);
-            commands.bindStorageTexture(kUpscaleOutputSlot, historyTexture, {},
-                                        rojoRHI::StorageAccess::Write);
-            // The clamped sampler: a tap of the Catmull-Rom fetch that reaches the edge of the
-            // active rectangle must answer with that edge rather than with the opposite one.
-            commands.bindSampler(kUpscaleSamplerSlot, *m_sampler);
-            commands.bindFrameData(kUpscaleParamsSlot, params);
+            const auto paramsAddress = frameData(commands, params);
+            engine::registerFrameRoot("SpatialUpscaleParams", paramsAddress);
+            commands.setPipeline(m_spatialUpscalePipeline.get());
+            engine::registerFrameRoot(
+                "SpatialUpscaleRoot",
+                commands.pushRoot(SpatialUpscaleRoot{
+                    .paramsAddr = paramsAddress,
+                    .sceneColor = static_cast<uint32_t>(resources.view(sceneColor)),
+                    .output = static_cast<uint32_t>(resources.storageView(history, 0)),
+                    // The clamped sampler: a tap of the Catmull-Rom fetch that reaches the edge
+                    // of the active rectangle must answer with that edge rather than the opposite.
+                    .sampler = static_cast<uint32_t>(m_sampler.get())}));
+#ifndef NDEBUG
+            const std::array<rojoRHI::ResourceAccess, 2> accesses{
+                {{.texture = resources.texture(sceneColor).texture,
+                  .range = {0, 1, 0, 1},
+                  .stage = rojoRHI::Stage::ComputeShader,
+                  .access = rojoRHI::Access::ShaderRead},
+                 {.texture = resources.texture(history).texture,
+                  .range = {0, 1, 0, 1},
+                  .stage = rojoRHI::Stage::ComputeShader,
+                  .access = rojoRHI::Access::ShaderWrite}}};
+            commands.declareAccess(accesses);
+#endif
             const auto groups = dispatchGroups2D(params.outputWidth, params.outputHeight);
             commands.dispatch(groups[0], groups[1], 1);
         });
@@ -87,7 +88,7 @@ void TemporalResolve::declareUpscale(RenderGraph& graph, rojoRHI::CommandList& c
     declareReconstruction(graph, commands, inputs,
                           {.parameters = std::as_bytes(std::span{&params, 1}),
                            .parameterAlignment = alignof(TemporalUpscaleParams),
-                           .pipeline = *m_temporalUpscalePipeline,
+                           .pipeline = m_temporalUpscalePipeline.get(),
                            .passName = "lmx.pass.temporal.upscale",
                            .width = params.outputWidth,
                            .height = params.outputHeight,

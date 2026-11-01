@@ -105,7 +105,6 @@ constexpr uint32_t kRejectionReasonDisoccluded = 3; ///< The previous frame saw 
 constexpr uint32_t kRejectionReasonReactive = 4;    ///< The pixel asked not to accumulate at all.
 constexpr uint32_t kRejectionClippedBit = 0x80;     ///< Flag: the neighbourhood clip moved it.
 
-#ifndef LMX_PENDING_TEMPORAL
 /// The frame's temporal reconstruction stage: the two history pairs, the pipelines that read and
 /// write them, and the passes that make one frame's picture out of the last one's.
 ///
@@ -130,9 +129,8 @@ public:
 
     /// Number of successful vendor scaler creations, across output resizes.
     uint32_t vendorScalerGeneration() const;
-    /// `cpuReadback` puts both history pairs in shared storage so Texture::readback() works, on
-    /// Renderer::create()'s terms: it is what the GPU tests and the offscreen path need, and the
-    /// windowed App leaves it false.
+    /// `cpuReadback` is Renderer::create()'s flag. It selects nothing here: every history slot is
+    /// device-local, and a readback stages through a copy whatever the flag says.
     static lmx::Result<std::unique_ptr<TemporalResolve>> create(engine::GpuContext& gpu,
                                                                 bool cpuReadback);
 
@@ -197,7 +195,7 @@ public:
     uint64_t depthBytes() const;
 
 private:
-    explicit TemporalResolve(engine::GpuContext& gpu, bool cpuReadback);
+    explicit TemporalResolve(engine::GpuContext& gpu);
 
     // The reprojection diagnostic (ADR 0013), unchanged from M6.1 but now reading the previous
     // colour slot: it measures the motion vectors and the history, and nothing downstream shades
@@ -251,39 +249,38 @@ private:
                                   const TemporalResolveOutputs& outputs, GraphTexture diagnostic,
                                   bool readsDiagnostic, GraphTexture displayResult);
 
-    rojoRHI::Device& m_device;
+    rojoRHI::Device m_device;
     std::unique_ptr<VendorTemporalScaler> m_vendor;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_reprojectLibrary;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_resolveLibrary;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_debugViewLibrary;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_spatialUpscaleLibrary;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_temporalUpscaleLibrary;
-    engine::GpuOwned<rojoRHI::ComputePipeline> m_reprojectPipeline;
-    engine::GpuOwned<rojoRHI::ComputePipeline> m_resolvePipeline;
-    engine::GpuOwned<rojoRHI::ComputePipeline> m_spatialUpscalePipeline;
-    engine::GpuOwned<rojoRHI::ComputePipeline> m_temporalUpscalePipeline;
-    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_debugViewPipeline;
+    engine::GpuOwned<rojoRHI::Pipeline> m_reprojectPipeline;
+    engine::GpuOwned<rojoRHI::Pipeline> m_resolvePipeline;
+    engine::GpuOwned<rojoRHI::Pipeline> m_spatialUpscalePipeline;
+    engine::GpuOwned<rojoRHI::Pipeline> m_temporalUpscalePipeline;
+    engine::GpuOwned<rojoRHI::Pipeline> m_debugViewPipeline;
     // Clamped, not wrapped: a history fetch lands where this frame's motion points, which for a
     // border texel is a bilinear footprint reaching past the edge. A wrapping sampler would fold
     // the opposite edge's texels into that fetch and report a difference that is an artefact of
     // the addressing rather than of the motion.
-    engine::GpuOwned<rojoRHI::Sampler> m_sampler;
+    engine::GpuOwned<rojoRHI::SamplerIndex> m_sampler;
     // Ping-pong by declared temporal frame parity. Every temporal frame renders depth into
     // m_depth[slot], reads m_depth[1 - slot] as its previous depth, and writes m_color[slot] while
     // reading m_color[1 - slot] -- so this frame's colour slot always holds this frame's output.
     engine::GpuTexture m_depth[2];
     engine::GpuTexture m_color[2];
-    // The 1x1 storage-write texture the resolve binds where a diagnostic is not declared. The
-    // argument table entry must hold a valid writable texture even on the frames the kernel's
-    // corresponding writeDiagnostics bit makes it write nothing.
+    // The 1x1 storage texture whose view the resolve's root carries where a diagnostic is not
+    // declared, so every index the kernel turns into a texture names a real storage view even on
+    // the frames its writeDiagnostics bit makes it write nothing.
     engine::GpuTexture m_diagnosticFallback;
-    // The 1x1 sampled texture the debug view binds for whichever inputs its view does not read.
-    // Every texel the shader loads lies outside it, and an out-of-bounds Load answers with zeroes.
+    // The zeroed 1x1 sampled texture whose view the debug view's root carries for whichever inputs
+    // its view does not read. Every texel the shader loads lies outside it, and an out-of-bounds
+    // Load answers with zeroes.
     engine::GpuTexture m_viewFallback;
     uint32_t m_width = 0;
     uint32_t m_height = 0;
-    bool m_cpuReadback = false;
 };
-#endif
 
 } // namespace lmx::render

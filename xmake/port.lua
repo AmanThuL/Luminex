@@ -63,13 +63,18 @@ local pending_families = {
     {
         family = "TEMPORAL",
         sources = {
-            "Source/Render/Passes/Temporal/TemporalResolve*.cpp",
-            "Source/Render/Passes/Temporal/VendorTemporalScaler.cpp",
             "Source/Render/Renderer/RendererTemporal.cpp",
         },
         tests = {
             "Tests/Engine/Scene/GpuSceneTableTemporalTests.cpp",
-            "Tests/Render/Passes/Temporal/Gpu*.cpp",
+            "Tests/Render/Passes/Temporal/GpuAlphaMaskTemporalTests.cpp",
+            "Tests/Render/Passes/Temporal/GpuExposureTemporalTests.cpp",
+            "Tests/Render/Passes/Temporal/GpuOcclusionTemporalTests.cpp",
+            "Tests/Render/Passes/Temporal/GpuSelectionOutlineTemporalTests.cpp",
+            "Tests/Render/Passes/Temporal/GpuTemporal*.cpp",
+            "Tests/Render/Passes/Temporal/GpuVendorTemporalTests.cpp",
+            "Tests/Render/Passes/Temporal/GpuVisibility*TemporalTests.cpp",
+            "Tests/Render/Passes/Temporal/GpuZeroLightHistoryTests.cpp",
             "Tests/Render/Passes/Temporal/RenderVendorTemporalTests.cpp",
             "Tests/App/Model/Graph/GpuGraphInspectorTests.cpp",
         },

@@ -3,29 +3,20 @@
 /// @brief Adapts vendor selection and declares vendor history diagnostics.
 //----------------------------------------------------------------------------------------------------------------------
 
+#include "Engine/Gpu/CaptureSchema.h"
 #include "Render/Common/Dispatch.h"
+#include "Render/Common/FrameData.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Passes/Temporal/TemporalResolve.h"
 #include "Render/Passes/Temporal/TemporalResolveInternal.h"
+#include "Render/Passes/Temporal/TemporalRoots.h"
 
-#include "Core/Diagnostics/Assert.h"
-#include "Core/Math/Scalar.h"
 #include "Render/Passes/Temporal/VendorTemporalScaler.h"
 
-#include <glm/mat4x4.hpp>
-#include <glm/vec2.hpp>
-
+#include <array>
 #include <utility>
 
 namespace lmx::render {
-using temporal_detail::kResolveDepthSlot;
-using temporal_detail::kResolveExposureSlot;
-using temporal_detail::kResolveHistorySlot;
-using temporal_detail::kResolveMotionSlot;
-using temporal_detail::kResolveParamsSlot;
-using temporal_detail::kResolvePreviousDepthSlot;
-using temporal_detail::kResolveReprojectedSlot;
-using temporal_detail::kResolveSamplerSlot;
 
 //======================================================================================================================
 ReconstructionSelection TemporalResolve::prepare(ReconstructionMode requested, uint32_t width,
@@ -60,7 +51,7 @@ GraphTexture TemporalResolve::declareVendorHistory(RenderGraph& graph,
                                             "lmx.render.temporalReprojected");
     ComputePassDesc desc;
     desc.shaderTextureReads = {inputs.depth, inputs.previousDepth, inputs.motion, inputs.history};
-    desc.bufferReads = {inputs.exposure};
+    desc.shaderBufferReads = {inputs.exposure};
     desc.textureWrites = {target};
     const auto params =
         buildTemporalUpscaleParams({.extents = inputs.extents,
@@ -73,22 +64,42 @@ GraphTexture TemporalResolve::declareVendorHistory(RenderGraph& graph,
     graph.addComputePass(
         "lmx.pass.temporal.reprojectedHistory", std::move(desc),
         [this, &commands, inputs, target, params](const PassResources& resources) {
-            const auto texture = [&](GraphTexture handle) {
-                auto& result = lmx::render::texture(resources, handle);
-                return &result;
+            const auto paramsAddress = frameData(commands, params);
+            engine::registerFrameRoot("TemporalUpscaleParams", paramsAddress);
+            commands.setPipeline(m_vendor->historyPipeline());
+            engine::registerFrameRoot(
+                "VendorTemporalHistoryRoot",
+                commands.pushRoot(VendorTemporalHistoryRoot{
+                    .paramsAddr = paramsAddress,
+                    .exposureAddr = resources.address(inputs.exposure),
+                    .depth = static_cast<uint32_t>(resources.view(inputs.depth)),
+                    .previousDepth = static_cast<uint32_t>(resources.view(inputs.previousDepth)),
+                    .motion = static_cast<uint32_t>(resources.view(inputs.motion)),
+                    .history = static_cast<uint32_t>(resources.view(inputs.history)),
+                    .reprojected = static_cast<uint32_t>(resources.storageView(target, 0)),
+                    .sampler = static_cast<uint32_t>(m_sampler.get())}));
+#ifndef NDEBUG
+            const auto read = [&](GraphTexture handle) {
+                return rojoRHI::ResourceAccess{.texture = resources.texture(handle).texture,
+                                               .range = {0, 1, 0, 1},
+                                               .stage = rojoRHI::Stage::ComputeShader,
+                                               .access = rojoRHI::Access::ShaderRead};
             };
-            auto& exposure = lmx::render::buffer(resources, inputs.exposure);
-            commands.bindComputePipeline(m_vendor->historyPipeline());
-            commands.bindTexture(kResolveDepthSlot, *texture(inputs.depth));
-            commands.bindTexture(kResolvePreviousDepthSlot, *texture(inputs.previousDepth));
-            commands.bindTexture(kResolveMotionSlot, *texture(inputs.motion));
-            commands.bindTexture(kResolveHistorySlot, *texture(inputs.history));
-            commands.bindStorageTexture(kResolveReprojectedSlot, *texture(target), {},
-                                        rojoRHI::StorageAccess::Write);
-            commands.bindStorageBuffer(kResolveExposureSlot, exposure,
-                                       rojoRHI::StorageAccess::Read);
-            commands.bindSampler(kResolveSamplerSlot, *m_sampler);
-            commands.bindFrameData(kResolveParamsSlot, params);
+            const std::array<rojoRHI::ResourceAccess, 6> accesses{
+                {read(inputs.depth),
+                 read(inputs.previousDepth),
+                 read(inputs.motion),
+                 read(inputs.history),
+                 {.texture = resources.texture(target).texture,
+                  .range = {0, 1, 0, 1},
+                  .stage = rojoRHI::Stage::ComputeShader,
+                  .access = rojoRHI::Access::ShaderWrite},
+                 {.buffer = resources.buffer(inputs.exposure),
+                  .size = 2 * sizeof(float),
+                  .stage = rojoRHI::Stage::ComputeShader,
+                  .access = rojoRHI::Access::ShaderRead}}};
+            commands.declareAccess(accesses);
+#endif
             const auto groups = dispatchGroups2D(params.outputWidth, params.outputHeight);
             commands.dispatch(groups[0], groups[1], 1);
         });

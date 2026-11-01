@@ -1,10 +1,10 @@
 #include "Support/GpuTestSupport.h"
 
-#include <cstring>
-
+#include "Render/Graph/TransientPool.h"
 #include "Render/Passes/Temporal/VendorTemporalScaler.h"
 
 #include <array>
+#include <cstring>
 
 //======================================================================================================================
 TEST_CASE("vendor packing translates invalid motion and working exposure without a scaler",
@@ -13,91 +13,103 @@ TEST_CASE("vendor packing translates invalid motion and working exposure without
     using namespace lmx::render;
     auto gpu = createTestGpu();
     VendorTemporalScaler adapter(*gpu);
-    REQUIRE(adapter.preparePacking());
+    const auto packing = adapter.preparePacking();
+    INFO(errorOf(packing));
+    REQUIRE(packing);
     const std::array<uint16_t, 4> motionBits{0x7c00, 0x7c00, 0x3400, 0xb800};
     const std::array<uint8_t, 2> reactiveBytes{64, 128};
-    const TextureMip motionMip{motionBits.data(), 8};
-    const TextureMip reactiveMip{reactiveBytes.data(), 2};
+    const TextureData motionMip{.bytes = std::as_bytes(std::span{motionBits}), .bytesPerRow = 8};
+    const TextureData reactiveMip{.bytes = std::as_bytes(std::span{reactiveBytes}),
+                                  .bytesPerRow = 2};
     auto motion = lmx::engine::GpuTexture::create(gpu->device(),
-                                                  {.width = 2,
-                                                   .height = 1,
-                                                   .format = Format::RG16Float,
-                                                   .sampled = true,
+                                                  {.format = Format::RG16Float,
+                                                   .extent = {2, 1, 1},
+                                                   .usage = TextureUsage::Sampled,
                                                    .label = "lmx.test.vendor.pack.motion"},
-                                                  {&motionMip, 1});
+                                                  std::span{&motionMip, 1});
     auto reactive = lmx::engine::GpuTexture::create(gpu->device(),
-                                                    {.width = 2,
-                                                     .height = 1,
-                                                     .format = Format::R8Unorm,
-                                                     .sampled = true,
+                                                    {.format = Format::R8Unorm,
+                                                     .extent = {2, 1, 1},
+                                                     .usage = TextureUsage::Sampled,
                                                      .label = "lmx.test.vendor.pack.reactive"},
-                                                    {&reactiveMip, 1});
-    const float exposurePair[] = {4.0f, 2.0f};
-    auto exposure = lmx::engine::GpuBuffer::create(gpu->device(),
-                                                   {.size = sizeof(exposurePair),
-                                                    .storageRead = true,
-                                                    .label = "lmx.test.vendor.pack.exposure"},
-                                                   exposurePair);
+                                                    std::span{&reactiveMip, 1});
+    const std::array<float, 2> exposurePair{4.0f, 2.0f};
+    auto exposure = lmx::engine::GpuBuffer::create(
+        gpu->device(), {.size = sizeof(exposurePair), .label = "lmx.test.vendor.pack.exposure"},
+        std::as_bytes(std::span{exposurePair}));
+    // Each copy lands at its own 512-byte offset with a 256-byte row pitch, the copy layout's
+    // alignment.
+    constexpr uint64_t kMotionOffset = 0;
+    constexpr uint64_t kReactiveOffset = 512;
+    constexpr uint64_t kExposureOffset = 1024;
     auto readback = lmx::engine::GpuBuffer::create(
-        gpu->device(), {.size = 12, .cpuReadback = true, .label = "lmx.test.vendor.pack.readback"},
-        nullptr);
+        gpu->device(), {.size = kExposureOffset + 256, .label = "lmx.test.vendor.pack.readback"});
+    INFO(errorOf(motion));
     REQUIRE(motion);
+    INFO(errorOf(reactive));
     REQUIRE(reactive);
+    INFO(errorOf(exposure));
     REQUIRE(exposure);
+    INFO(errorOf(readback));
     REQUIRE(readback);
-    auto commandsFrame = gpu->beginFrame();
-    auto& commands = commandsFrame.commands;
-    TransientPool pool(gpu->device());
+
+    TransientPool pool(*gpu);
+    auto frame = gpu->beginFrame();
+    auto& commands = frame.commands;
     pool.beginFrame();
     TextureStateTable states;
-    states.set(motion->rhi(), lmx::render::TextureUse::ShaderRead);
-    states.set(reactive->rhi(), lmx::render::TextureUse::ShaderRead);
     RenderGraph graph(pool);
     graph.bindTextureStates(states);
     TemporalInputs inputs;
-    inputs.motion = graph.importPersistentTexture(motion->rhi(), Format::RG16Float, "motion");
-    inputs.reactive = graph.importPersistentTexture(reactive->rhi(), Format::R8Unorm, "reactive");
-    inputs.exposure =
-        graph.importBuffer(exposure->rhi(), "exposure", lmx::render::BufferUse::StorageRead);
+    inputs.motion = graph.importPersistentTexture(*motion, "motion");
+    inputs.reactive = graph.importPersistentTexture(*reactive, "reactive");
+    inputs.exposure = graph.importBuffer(*exposure, "exposure");
     inputs.extents = {2, 1, 2, 1};
     const auto packed = adapter.declarePack(graph, commands, inputs);
-    const auto output =
-        graph.importBuffer(readback->rhi(), "readback", lmx::render::BufferUse::CopyDestination);
+    const auto output = graph.importBuffer(*readback, "readback");
     CopyPassDesc desc;
     desc.textureSources = {packed.motion, packed.reactive, packed.exposure};
     desc.bufferDestinations = {output};
     graph.addCopyPass(
         "lmx.test.vendor.pack.readback", std::move(desc), [&](const PassResources& resources) {
-            const auto packedMotion = resources.texture(packed.motion);
-            const auto packedReactive = resources.texture(packed.reactive);
-            const auto packedExposure = resources.texture(packed.exposure);
-            REQUIRE(packedMotion);
-            REQUIRE(packedReactive);
-            REQUIRE(packedExposure);
-            commands.copyTextureToBuffer(**packedMotion, {.width = 2, .height = 1}, readback->rhi(),
-                                         {.offset = 0, .bytesPerRow = 8});
-            commands.copyTextureToBuffer(**packedReactive, {.width = 2, .height = 1},
-                                         readback->rhi(), {.offset = 8, .bytesPerRow = 2});
-            commands.copyTextureToBuffer(**packedExposure, {.width = 1, .height = 1},
-                                         readback->rhi(), {.offset = 10, .bytesPerRow = 2});
+            const auto copy = [&](GraphTexture source, uint32_t width, uint64_t offset) {
+                commands.copyTextureToBuffer(resources.texture(source).texture,
+                                             {.extent = {width, 1, 1}}, resources.buffer(output),
+                                             {.offset = offset, .rowPitch = 256});
+            };
+            copy(packed.motion, 2, kMotionOffset);
+            copy(packed.reactive, 2, kReactiveOffset);
+            copy(packed.exposure, 1, kExposureOffset);
         });
-    graph.exportBuffer(nextVersion(output));
-    graph.execute(commands, gpu->frameNumber());
-    gpu->submitAndEndFrame(commandsFrame);
-    gpu->waitIdle();
-    std::array<uint16_t, 6> result{};
-    {
-        const auto readbackBytes = lmx::render::readbackNow(
-            *gpu, *readback, lmx::render::BufferUse::CopyDestination, {0, sizeof(result)});
-        std::memcpy(result.data(), readbackBytes.data(), sizeof(result));
+    graph.readbackBuffer(nextVersion(output));
+    const auto compiled = graph.compile();
+    if (!compiled) {
+        gpu->submitAndEndFrame(frame);
     }
-    REQUIRE(result[0] == 0);
-    REQUIRE(result[1] == 0);
-    REQUIRE(result[2] == motionBits[2]);
-    REQUIRE(result[3] == motionBits[3]);
-    const auto* bytes = reinterpret_cast<const uint8_t*>(result.data());
-    REQUIRE(bytes[8] == 255);
-    REQUIRE(bytes[9] == 128);
-    REQUIRE(result[5] == 0x3400); // Reciprocal of applied exposure 4, represented as half 0.25.
+    INFO((compiled ? std::string{} : compiled.error().message));
+    REQUIRE(compiled.has_value());
+    graph.execute(commands, gpu->frameNumber());
+    gpu->submitAndEndFrame(frame);
+    gpu->waitIdle();
+
+    const auto bytes = lmx::render::readbackNow(*gpu, *readback,
+                                                {Stage::Copy, Access::CopyWrite, Layout::Undefined},
+                                                {0, kExposureOffset + 4});
+    INFO(errorOf(bytes));
+    REQUIRE(bytes);
+    std::array<uint16_t, 2> packedMotion0{};
+    std::array<uint16_t, 2> packedMotion1{};
+    uint16_t packedExposure = 0;
+    std::memcpy(packedMotion0.data(), bytes->data() + kMotionOffset, 4);
+    std::memcpy(packedMotion1.data(), bytes->data() + kMotionOffset + 4, 4);
+    std::memcpy(&packedExposure, bytes->data() + kExposureOffset, 2);
+    REQUIRE(packedMotion0[0] == 0);
+    REQUIRE(packedMotion0[1] == 0);
+    REQUIRE(packedMotion1[0] == motionBits[2]);
+    REQUIRE(packedMotion1[1] == motionBits[3]);
+    REQUIRE((*bytes)[kReactiveOffset] == 255);
+    REQUIRE((*bytes)[kReactiveOffset + 1] == 128);
+    REQUIRE(packedExposure ==
+            0x3400); // Reciprocal of applied exposure 4, represented as half 0.25.
     REQUIRE(adapter.generation() == 0);
 }

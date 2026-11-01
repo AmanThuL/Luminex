@@ -58,10 +58,11 @@ The Renderer creates and declares the real exposure seed and metering, bloom and
 | `Tests/Render/Passes/Temporal/GpuTemporalMotionTests.cpp` | 0 | 10 | 0 |
 | `Tests/Render/Passes/Temporal/GpuTemporalTests.cpp` | 0 | 7 | 0 |
 | `Tests/Render/Passes/Temporal/GpuTemporalUpscaleTests.cpp` | 0 | 9 | 0 |
-| `Tests/Render/Passes/Temporal/GpuVendorPackTests.cpp` | 0 | 1 | 0 |
 | `Tests/Render/Passes/Temporal/GpuVendorTemporalTests.cpp` | 0 | 7 | 0 |
 | `Tests/Render/Passes/Temporal/GpuZeroLightHistoryTests.cpp` | 0 | 1 | 1 |
 | `Tests/Render/Passes/Temporal/RenderVendorTemporalTests.cpp` | 5 | 0 | 0 |
+
+The temporal stage sources (`TemporalResolve*.cpp`, `VendorTemporalScaler.cpp`) build on the address roots, with the vendor scaler on `Device::createUpscaler`; `RendererTemporal.cpp` and the Renderer integration remain pending. The one original case of `Tests/Render/Passes/Temporal/GpuVendorPackTests.cpp`, "vendor packing translates invalid motion and working exposure without a scaler" (`[gpu][temporal][vendor][pack]`), returns with its original name, tags and expected values; its readback copies each packed transient into a buffer at the copy layout's 512-byte offsets. The configured inventory is 1,285 unit cases, 128 ordinary GPU cases and 16 Debug tracker cases.
 
 ### Exposure numerical checkpoint and Bloom source coverage
 

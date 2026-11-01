@@ -3,37 +3,22 @@
 /// @brief Declares native temporal accumulation and raw history commits.
 //----------------------------------------------------------------------------------------------------------------------
 
+#include "Engine/Gpu/CaptureSchema.h"
 #include "Render/Common/Dispatch.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Passes/Temporal/TemporalResolve.h"
 #include "Render/Passes/Temporal/TemporalResolveInternal.h"
+#include "Render/Passes/Temporal/TemporalRoots.h"
 
 #include "Core/Diagnostics/Assert.h"
-#include "Core/Math/Scalar.h"
 
-#include <glm/mat4x4.hpp>
-#include <glm/vec2.hpp>
-
-#include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstring>
 #include <span>
 #include <utility>
 
 namespace lmx::render {
-using temporal_detail::kResolveDepthSlot;
-using temporal_detail::kResolveExposureSlot;
-using temporal_detail::kResolveHistorySlot;
-using temporal_detail::kResolveMotionSlot;
-using temporal_detail::kResolveOutputSlot;
-using temporal_detail::kResolveParamsSlot;
-using temporal_detail::kResolvePreviousDepthSlot;
-using temporal_detail::kResolveReactiveSlot;
-using temporal_detail::kResolveRejectionSlot;
-using temporal_detail::kResolveReprojectedSlot;
-using temporal_detail::kResolveSamplerSlot;
-using temporal_detail::kResolveSceneColorSlot;
-
 using temporal_detail::TemporalResolveParams;
 
 //======================================================================================================================
@@ -57,7 +42,7 @@ void TemporalResolve::declareResolve(RenderGraph& graph, rojoRHI::CommandList& c
     declareReconstruction(graph, commands, inputs,
                           {.parameters = std::as_bytes(std::span{&params, 1}),
                            .parameterAlignment = alignof(TemporalResolveParams),
-                           .pipeline = *m_resolvePipeline,
+                           .pipeline = m_resolvePipeline.get(),
                            .passName = "lmx.pass.temporal.resolve",
                            .width = width,
                            .height = height,
@@ -101,7 +86,7 @@ void TemporalResolve::declareReconstruction(
     // Declared on a reset frame too: the kernel is told through `historyValid` not to read it,
     // and declaring the same set either way is what keeps one pass shape for both.
     resolveDesc.shaderTextureReads.push_back(inputs.history);
-    resolveDesc.bufferReads.push_back(inputs.exposure);
+    resolveDesc.shaderBufferReads.push_back(inputs.exposure);
     resolveDesc.textureWrites.push_back(inputs.colorSlot);
     if (rejectionWanted) {
         resolveDesc.textureWrites.push_back(outputs.rejection);
@@ -116,9 +101,12 @@ void TemporalResolve::declareReconstruction(
     LMX_ASSERT(parameterSize > 0 && parameterSize <= parameters.size(),
                "temporal reconstruction parameters must fit the owned callback block");
     std::memcpy(parameters.data(), declaration.parameters.data(), parameterSize);
-    const uint64_t parameterAlignment =
-        std::max(declaration.parameterAlignment, rojoRHI::kFrameDataAlignment);
-    auto* pipeline = &declaration.pipeline;
+    // FrameData.h's frameData() alignment: the mirror type's own.
+    const auto parameterAlignment = static_cast<uint32_t>(declaration.parameterAlignment);
+    const rojoRHI::Pipeline pipeline = declaration.pipeline;
+    const std::string_view paramsName =
+        parameterSize == sizeof(temporal_detail::TemporalUpscaleParams) ? "TemporalUpscaleParams"
+                                                                        : "TemporalResolveParams";
 
     const GraphTexture output = inputs.colorSlot;
     const GraphTexture rejection = outputs.rejection;
@@ -126,49 +114,68 @@ void TemporalResolve::declareReconstruction(
     graph.addComputePass(
         declaration.passName, std::move(resolveDesc),
         [this, &commands, inputs, output, rejection, reprojected, rejectionWanted,
-         reprojectedWanted, parameters, parameterSize, parameterAlignment, pipeline, width,
-         height](const PassResources& resources) {
-            const auto bindRead = [&](uint32_t slot, GraphTexture handle) {
-                auto& texture = lmx::render::texture(resources, handle);
-                commands.bindTexture(slot, texture);
+         reprojectedWanted, parameters, parameterSize, parameterAlignment, pipeline, paramsName,
+         width, height](const PassResources& resources) {
+            const auto paramsAddress = commands.uploadFrameData(
+                std::span{parameters.data(), parameterSize}, parameterAlignment);
+            engine::registerFrameRoot(paramsName, paramsAddress);
+            commands.setPipeline(pipeline);
+            // A diagnostic the frame does not declare still gets a real storage view in its root;
+            // the kernel's writeDiagnostics bit is what keeps it from writing there.
+            const auto storageViewOr = [&](bool wanted, GraphTexture handle) {
+                return static_cast<uint32_t>(wanted ? resources.storageView(handle, 0)
+                                                    : m_diagnosticFallback.storageView(0));
             };
-            bindRead(kResolveSceneColorSlot, inputs.sceneColor);
-            bindRead(kResolveDepthSlot, inputs.depth);
-            bindRead(kResolvePreviousDepthSlot, inputs.previousDepth);
-            bindRead(kResolveMotionSlot, inputs.motion);
-            bindRead(kResolveReactiveSlot, inputs.reactive);
-            bindRead(kResolveHistorySlot, inputs.history);
-
-            auto& target = lmx::render::texture(resources, output);
-            auto& exposure = lmx::render::buffer(resources, inputs.exposure);
-
-            commands.bindComputePipeline(*pipeline);
-            commands.bindStorageTexture(kResolveOutputSlot, target, {},
-                                        rojoRHI::StorageAccess::Write);
-            // The argument table entry has to hold a writable texture even where the kernel's
-            // corresponding writeDiagnostics bit makes it write nothing.
+            engine::registerFrameRoot(
+                "TemporalResolveRoot",
+                commands.pushRoot(TemporalResolveRoot{
+                    .paramsAddr = paramsAddress,
+                    .exposureAddr = resources.address(inputs.exposure),
+                    .sceneColor = static_cast<uint32_t>(resources.view(inputs.sceneColor)),
+                    .depth = static_cast<uint32_t>(resources.view(inputs.depth)),
+                    .previousDepth = static_cast<uint32_t>(resources.view(inputs.previousDepth)),
+                    .motion = static_cast<uint32_t>(resources.view(inputs.motion)),
+                    .reactive = static_cast<uint32_t>(resources.view(inputs.reactive)),
+                    .history = static_cast<uint32_t>(resources.view(inputs.history)),
+                    .output = static_cast<uint32_t>(resources.storageView(output, 0)),
+                    .rejection = storageViewOr(rejectionWanted, rejection),
+                    .reprojected = storageViewOr(reprojectedWanted, reprojected),
+                    // Clamping keeps reconstruction taps at the active rectangle edge on that edge.
+                    .sampler = static_cast<uint32_t>(m_sampler.get())}));
+#ifndef NDEBUG
+            std::array<rojoRHI::ResourceAccess, 10> accesses{};
+            uint32_t accessCount = 0;
+            const auto read = [&](GraphTexture handle) {
+                accesses[accessCount++] = {.texture = resources.texture(handle).texture,
+                                           .range = {0, 1, 0, 1},
+                                           .stage = rojoRHI::Stage::ComputeShader,
+                                           .access = rojoRHI::Access::ShaderRead};
+            };
+            const auto write = [&](GraphTexture handle) {
+                accesses[accessCount++] = {.texture = resources.texture(handle).texture,
+                                           .range = {0, 1, 0, 1},
+                                           .stage = rojoRHI::Stage::ComputeShader,
+                                           .access = rojoRHI::Access::ShaderWrite};
+            };
+            read(inputs.sceneColor);
+            read(inputs.depth);
+            read(inputs.previousDepth);
+            read(inputs.motion);
+            read(inputs.reactive);
+            read(inputs.history);
+            write(output);
             if (rejectionWanted) {
-                auto& texture = lmx::render::texture(resources, rejection);
-                commands.bindStorageTexture(kResolveRejectionSlot, texture, {},
-                                            rojoRHI::StorageAccess::Write);
-            } else {
-                commands.bindStorageTexture(kResolveRejectionSlot, m_diagnosticFallback.rhi(), {},
-                                            rojoRHI::StorageAccess::Write);
+                write(rejection);
             }
             if (reprojectedWanted) {
-                auto& texture = lmx::render::texture(resources, reprojected);
-                commands.bindStorageTexture(kResolveReprojectedSlot, texture, {},
-                                            rojoRHI::StorageAccess::Write);
-            } else {
-                commands.bindStorageTexture(kResolveReprojectedSlot, m_diagnosticFallback.rhi(), {},
-                                            rojoRHI::StorageAccess::Write);
+                write(reprojected);
             }
-            commands.bindStorageBuffer(kResolveExposureSlot, exposure,
-                                       rojoRHI::StorageAccess::Read);
-            // Clamping keeps reconstruction taps at the active rectangle edge on that edge.
-            commands.bindSampler(kResolveSamplerSlot, *m_sampler);
-            commands.bindFrameData(kResolveParamsSlot, parameters.data(), parameterSize,
-                                   parameterAlignment);
+            accesses[accessCount++] = {.buffer = resources.buffer(inputs.exposure),
+                                       .size = 2 * sizeof(float),
+                                       .stage = rojoRHI::Stage::ComputeShader,
+                                       .access = rojoRHI::Access::ShaderRead};
+            commands.declareAccess(std::span{accesses}.first(accessCount));
+#endif
             const auto groups = dispatchGroups2D(width, height);
             commands.dispatch(groups[0], groups[1], 1);
         });
@@ -203,11 +210,9 @@ GraphTexture TemporalResolve::declareHistoryCommit(RenderGraph& graph,
     graph.addCopyPass(
         "lmx.pass.temporal.commitHistory", std::move(commitDesc),
         [&commands, sceneColor, history, width, height](const PassResources& resources) {
-            auto& sceneTexture = lmx::render::texture(resources, sceneColor);
-            auto& historyTexture = lmx::render::texture(resources, history);
-
-            const rojoRHI::TextureCopyRegion region{.width = width, .height = height};
-            commands.copyTexture(sceneTexture, region, historyTexture, region);
+            const rojoRHI::TextureRegion region{.extent = {width, height, 1}};
+            commands.copyTexture(resources.texture(sceneColor).texture, region,
+                                 resources.texture(history).texture, region);
         });
     // Nothing else in the frame consumes it -- the consumer is the next frame -- so the export is
     // what keeps the copy alive through culling.
