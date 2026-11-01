@@ -31,6 +31,8 @@ struct TrackedFrameOptions {
     std::function<std::optional<std::pair<uint32_t, uint32_t>>(uint32_t frame)> resizeBefore;
     // Observes each submitted frame's compiled record.
     std::function<void(const render::CompiledFrameRecord&, uint32_t frame)> inspect;
+    // Observes the renderer after each submitted frame, once `inspect` has run.
+    std::function<void(render::Renderer&, uint32_t frame)> inspectRenderer;
 };
 
 //======================================================================================================================
@@ -153,6 +155,8 @@ inline void runTrackedFrames(std::string_view sceneId, const TrackedFrameOptions
         REQUIRE(frame.number == uint64_t{ordinal} + 1);
         if (options.inspect)
             options.inspect(record, ordinal);
+        if (options.inspectRenderer)
+            options.inspectRenderer(*renderer, ordinal);
         const auto displayPass =
             std::ranges::find(record.debug.passes, "lmx.pass.display", &render::DebugPass::label);
         REQUIRE(displayPass != record.debug.passes.end());

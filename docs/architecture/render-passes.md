@@ -188,7 +188,9 @@ scaler and replaces only the reconstruction kernel: a packing pass translates in
 reactive weight and reciprocal applied exposure, then an external pass writes the current colour
 slot, recorded as `ExternalRead`/`ExternalWrite` with no scope opened around the external callback
 and the usual dependency, culling and transient rules otherwise unchanged. Output resize recreates
-the scaler; a scale change only moves the content rectangle. Entering vendor reconstruction, or an
+the scaler; a scale change only moves the content rectangle, which `vendorRenderExtents` keeps at
+or above the device's `minInputScale` on each axis, rounding up where the nearest pixel falls
+short, because RojoRHI raises a smaller content silently. Entering vendor reconstruction, or an
 engine reset, discards the vendor's own private history without resetting engine history on a mode
 switch, and an unsupported or failed creation falls back to Native TAA with an explicit status
 reason. Native reprojection diagnostics stay available in vendor mode: `VendorTemporalHistory.slang`
@@ -238,6 +240,7 @@ history and scene-only captures stay unchanged.
 - `Tests/Render/Passes/SelectionOutline/`: the selection-outline passes.
 - `Tests/Render/Passes/Shadow/`: `Renderer`'s shadow composition and `fitShadowOrtho`.
 - `Tests/Render/Passes/Temporal/`: temporal accumulation, history, motion, upscale, vendor pack and
-  vendor reconstruction, the resolution controller, and the zero-light history case.
+  vendor reconstruction, the resolution controller, the zero-light history case, and the native
+  slot alternation and vendor external-state cases under the validation tracker.
 - `Tests/Render/Passes/Visibility/`: CPU and GPU visibility, its contribution and graph wiring, the
   visibility rail and work cases, and visibility's row tables.
