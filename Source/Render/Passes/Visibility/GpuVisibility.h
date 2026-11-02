@@ -56,7 +56,10 @@ class GpuVisibility {
 public:
     /// Loads safe-math visibility kernels and their fixed threadgroup pipelines.
     static lmx::Result<std::unique_ptr<GpuVisibility>> create(engine::GpuContext& gpu);
-    /// Declares the four visibility passes and retains the declaration's readback context.
+    /// Declares the four visibility passes and retains the declaration's readback context. A slot
+    /// backing is reused only once every earlier declaration holding it has retired and its graph
+    /// callbacks are gone, so retire through frame N-3 before declaring frame N; otherwise the
+    /// slot is reallocated. More than 63 unretired declarations are misuse.
     Result<GpuVisibilityOutputs> declare(RenderGraph& graph, rojoRHI::CommandList& commands,
                                          const SceneView& view, const GpuVisibilityInputs& inputs,
                                          VisibilityStatus& status);
@@ -67,10 +70,15 @@ public:
     Result<PreparedVisibilityRetirement> prepareRetiredTake(uint64_t completedFrame) const;
     /// Consumes a valid prepared take from this owner and mutation epoch exactly once.
     std::vector<VisibilityStatus> commitRetiredTake(PreparedVisibilityRetirement&&) noexcept;
-    /// Reads every context whose submitted frame is at most completedFrame.
+    /// Reads every context whose submitted frame is at most completedFrame. A declaration whose
+    /// graph never recorded is dropped once its callbacks are gone, so retirement does not yield
+    /// one status per declared frame; a partly recorded one is misuse. An error publishes nothing
+    /// and keeps the failing entries, so every later retirement returns it again: callers treat it
+    /// as terminal for this owner's work.
     Result<void> retireThrough(uint64_t completedFrame);
-    /// Explicitly cancels this exact unentered, outcome-free intent, even with borrowed callbacks.
-    /// A later callback is misuse; automatic retirement instead waits for callback expiry.
+    /// Explicitly cancels this exact unentered, outcome-free intent, even with borrowed callbacks,
+    /// for a declaration whose frame failed before execution. A later callback is misuse;
+    /// automatic retirement instead waits for callback expiry.
     void discardUnrecorded(const GpuVisibilityOutputs& declaration);
     /// Releases callbacks and pending storage before dependent pipelines and libraries.
     ~GpuVisibility();

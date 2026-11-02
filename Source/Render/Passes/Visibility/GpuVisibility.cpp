@@ -21,6 +21,8 @@ namespace lmx::render {
 namespace {
 using S = rojoRHI::Stage;
 using A = rojoRHI::Access;
+// Far above the renderer's three paced frames, so only a caller that never retires reaches it.
+constexpr size_t kMaxPendingVisibility = 64;
 
 // A partial use cannot eliminate any earlier contributor to the allocation.
 //======================================================================================================================
@@ -182,6 +184,14 @@ GpuVisibility::declare(RenderGraph& graph, rojoRHI::CommandList& commands, const
     status.submission.counterBytes = 2 * kVisibilityCounterWords * sizeof(uint32_t);
     const auto rowOwner = inputs.submission.scene.rows;
     const auto argumentOwner = inputs.submission.scene.arguments;
+    // Pending entries keep only the output handles; the owners stay alive in the pass closures,
+    // which is sound because a Gpu buffer is read back through a staged copy recorded with them.
+    LMX_ASSERT(rowOwner->desc().memory == rojoRHI::Memory::Gpu &&
+                   argumentOwner->desc().memory == rojoRHI::Memory::Gpu,
+               "visibility outputs must be Gpu buffers read back through staged copies");
+    // A caller that never retires would pin every slot backing; the renderer keeps at most three.
+    LMX_ASSERT(m_pending.size() < kMaxPendingVisibility,
+               "visibility declarations require retirement of completed frames");
     auto tickets = std::make_shared<VisibilityReadbackTickets>();
     const auto callbackAnchor = std::make_shared<const uint8_t>(0);
     auto projection = std::make_shared<VisibilityDeclarationProjection>();
@@ -289,7 +299,7 @@ GpuVisibility::declare(RenderGraph& graph, rojoRHI::CommandList& commands, const
     if (history)
         history->bindDeclaration(inputs.occlusion, projection);
     const bool occlusionEnabled = view.occlusionEnabled;
-    const bool cameraPotential = tables.views[0].candidateCount != 0;
+    [[maybe_unused]] const bool cameraPotential = tables.views[0].candidateCount != 0;
     const uint64_t stateBytes = uint64_t{std::min(params.candidateCount, params.stateCapacity)} * 4;
     const uint64_t rowBytes = uint64_t{std::min(params.candidateCount, params.rowCapacity)} * 4;
     const uint64_t argumentBytes = uint64_t{std::min(runCount, params.argumentCapacity)} *
