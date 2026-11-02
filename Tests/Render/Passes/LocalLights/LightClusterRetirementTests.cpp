@@ -18,6 +18,7 @@
 namespace {
 using namespace lmx;
 using namespace lmx::render;
+using light_detail::ClusterReadbackTickets;
 using light_detail::kCounterBytes;
 using light_detail::kGridBytes;
 using light_detail::kIndexBytes;
@@ -55,6 +56,8 @@ struct RetirementFixture {
     std::unique_ptr<engine::GpuContext> gpu = test::createTestGpu();
     // Mapped sources stay alive and unmodified until their tickets resolve.
     std::vector<engine::GpuBuffer> sources;
+    // The outcome set of the most recent declaration, the exact token a discard names.
+    std::shared_ptr<ClusterReadbackTickets> lastTickets;
 
     //==================================================================================================================
     const engine::GpuBuffer& source(std::span<const std::byte> bytes) {
@@ -89,13 +92,14 @@ struct RetirementFixture {
         return std::nullopt;
     }
 
+    //==================================================================================================================
     // Records one declaration's outcomes in a real frame, through the shared outcome set the
     // stage's graph callbacks write, and returns that frame.
-    //==================================================================================================================
     uint64_t declare(LightClusterReadback& readback, const Declaration& declaration) {
         auto frame = gpu->beginFrame();
         const auto seed = static_cast<uint32_t>(frame.number);
         const auto tickets = readback.enqueue(frame.number, declaration.captureLists);
+        lastTickets = tickets;
         const auto words = counterWords(seed, declaration.assigned);
         std::vector<ClusterRecord> grid(kClusterCount);
         for (uint32_t froxel = 0; froxel < kClusterCount; ++froxel)
@@ -327,7 +331,7 @@ TEST_CASE("an unexecuted light-cluster declaration is discarded and frees its sl
         const engine::Camera camera;
         const auto declare = [&](RenderGraph& graph, rojoRHI::CommandList& commands,
                                  uint64_t frame) {
-            const auto outputs = (*stage)->declare(
+            auto outputs = (*stage)->declare(
                 graph, commands,
                 {.clustered = true,
                  .liveLightCount = 1,
@@ -341,6 +345,7 @@ TEST_CASE("an unexecuted light-cluster declaration is discarded and frees its sl
                  .frameNumber = frame,
                  .captureLists = true});
             REQUIRE(outputs.declared);
+            return outputs;
         };
 
         // The graph is declared but never executed, as when compilation fails or the frame is
@@ -348,13 +353,16 @@ TEST_CASE("an unexecuted light-cluster declaration is discarded and frees its sl
         auto frame = gpu->beginFrame();
         const uint64_t abandonedFrame = frame.number;
         RenderGraph abandoned;
-        declare(abandoned, frame.commands, abandonedFrame);
+        const auto abandonedOutputs = declare(abandoned, frame.commands, abandonedFrame);
         requireError((*stage)->retireThrough(abandonedFrame), ErrorCode::InvalidArgument,
                      "counters readback was never");
-        (*stage)->discardUnrecorded(abandonedFrame);
+        (*stage)->discardUnrecorded(abandonedOutputs);
         REQUIRE(abortDiagnostic([&] {
-                    (*stage)->discardUnrecorded(abandonedFrame);
+                    (*stage)->discardUnrecorded(abandonedOutputs);
                 }).find("pending declaration") != std::string::npos);
+        REQUIRE(abortDiagnostic([&] {
+                    (*stage)->discardUnrecorded(LightClusterOutputs{});
+                }).find("token") != std::string::npos);
         gpu->submitAndEndFrame(frame);
         REQUIRE((*stage)->retireThrough(abandonedFrame));
         REQUIRE((*stage)->takeRetired().empty());
@@ -388,14 +396,31 @@ TEST_CASE("an unexecuted light-cluster declaration is discarded and frees its sl
         const auto frame = fixture.declare(
             readback,
             {.counters = Outcome::Failed, .grid = Outcome::Absent, .indices = Outcome::Absent});
+        const auto tickets = fixture.lastTickets;
         REQUIRE(abortDiagnostic([&] {
-                    readback.discardUnrecorded(frame);
+                    readback.discardUnrecorded(tickets.get());
                 }).find("wholly unrecorded") != std::string::npos);
         requireError(readback.retireThrough(*fixture.gpu, frame), ErrorCode::Io,
                      "counter staging failed");
         REQUIRE(readback.hasPendingSlot(frame));
+        const ClusterReadbackTickets foreign;
         REQUIRE(abortDiagnostic([&] {
-                    readback.discardUnrecorded(frame + 1);
+                    readback.discardUnrecorded(&foreign);
                 }).find("pending declaration") != std::string::npos);
+    }
+    SECTION("an entered declaration cannot be discarded even before it records") {
+        RetirementFixture fixture;
+        LightClusterReadback readback;
+        const auto frame = fixture.declare(
+            readback,
+            {.counters = Outcome::Absent, .grid = Outcome::Absent, .indices = Outcome::Absent});
+        const auto tickets = fixture.lastTickets;
+        tickets->entered = true;
+        REQUIRE(abortDiagnostic([&] {
+                    readback.discardUnrecorded(tickets.get());
+                }).find("wholly unrecorded") != std::string::npos);
+        requireError(readback.retireThrough(*fixture.gpu, frame), ErrorCode::InvalidArgument,
+                     "counters readback was never");
+        REQUIRE(readback.hasPendingSlot(frame));
     }
 }
