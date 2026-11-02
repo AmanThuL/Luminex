@@ -246,13 +246,11 @@ prepareVisibilityRetirement(engine::GpuContext& gpu,
                             const std::vector<VisibilityPendingReadback>& pending,
                             const std::vector<VisibilityStatus>& retired, uint64_t completedFrame) {
     VisibilityRetirementBatch staged;
-    staged.ready = retired;
-    staged.pending.reserve(pending.size());
-    for (const auto& entry : pending) {
-        if (entry.frameNumber > completedFrame) {
-            staged.pending.push_back(entry);
+    for (size_t index = 0; index < pending.size(); ++index) {
+        const auto& entry = pending[index];
+        if (entry.frameNumber > completedFrame)
             continue;
-        }
+        staged.retiring.push_back(index);
         LMX_ASSERT(entry.tickets && entry.backing && !entry.tickets->discarded,
                    "visibility retirement: missing live declaration backing");
         const auto& tickets = *entry.tickets;
@@ -285,11 +283,13 @@ prepareVisibilityRetirement(engine::GpuContext& gpu,
         auto result = stageReadback(gpu, entry);
         if (!result)
             return std::unexpected(result.error());
-        const auto index = staged.ready.size();
+        const auto readyIndex = staged.ready.size();
         staged.ready.push_back(std::move(*result));
         if (entry.projection)
-            staged.projections.push_back({entry.projection, index, {}});
+            staged.projections.push_back({entry.projection, readyIndex, {}});
     }
+    // The commit prepends the live records into this capacity, so it cannot allocate.
+    staged.ready.reserve(retired.size() + staged.ready.size());
     return staged;
 }
 
@@ -307,8 +307,13 @@ void commitVisibilityRetirement(VisibilityRetirementBatch& staged,
         tickets->discarded = true;
     for (auto& update : staged.projections)
         std::swap(update.target->status, update.value);
-    pending.swap(staged.pending);
+    eraseRetiring(pending, staged.retiring);
+    LMX_ASSERT(staged.ready.capacity() >= retired.size() + staged.ready.size(),
+               "visibility retirement: prepared capacity cannot hold the live records");
+    staged.ready.insert(staged.ready.begin(), std::make_move_iterator(retired.begin()),
+                        std::make_move_iterator(retired.end()));
     retired.swap(staged.ready);
+    staged.ready.clear();
 }
 
 //======================================================================================================================

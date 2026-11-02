@@ -7,11 +7,13 @@
 #include "Render/Gpu/Readback.h"
 #include "Render/Passes/Visibility/VisibilityTables.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <span>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -103,19 +105,28 @@ struct VisibilityProjectionUpdate {
     VisibilityStatus value;
 };
 
+// Staged entries are named by index into the live pending vector and moved out only at commit, so
+// preparing a retirement never copies an entry that is still in flight.
 struct VisibilityRetirementBatch {
-    std::vector<VisibilityPendingReadback> pending;
+    std::vector<size_t> retiring; // Ascending pending indices that retire or are discarded.
+    // Newly retired statuses in frame order; capacity also holds the live retired records, so the
+    // commit prepends them without allocating.
     std::vector<VisibilityStatus> ready;
     std::vector<std::shared_ptr<VisibilityReadbackTickets>> discards;
     std::vector<VisibilityProjectionUpdate> projections;
 };
 
 struct ReferenceRetirementBatch {
-    std::vector<ReferencePendingReadback> pending, ready;
+    std::vector<size_t> retiring; // Ascending pending indices that retire or are discarded.
+    std::vector<ReferencePendingReadback> ready; // Live retired copy plus decoded entries, joined.
     std::vector<std::shared_ptr<DeclarationRecordingState>> discards;
     OcclusionCheckHistory history;
     std::vector<VisibilityStatus> results;
 };
+
+static_assert(std::is_nothrow_move_assignable_v<VisibilityPendingReadback> &&
+              std::is_nothrow_move_assignable_v<ReferencePendingReadback> &&
+              std::is_nothrow_move_constructible_v<VisibilityStatus>);
 
 class PreparedVisibilityRetirement {
 public:
@@ -171,6 +182,29 @@ private:
     uint64_t m_epoch = 0;
     ReferenceRetirementBatch m_batch;
 };
+
+// Removes the staged indices in one pass; moves are nothrow and the tail is only destroyed.
+template <typename T>
+void eraseRetiring(std::vector<T>& pending, std::span<const size_t> retiring) noexcept {
+    size_t next = 0;
+    size_t write = 0;
+    for (size_t read = 0; read < pending.size(); ++read) {
+        if (next < retiring.size() && retiring[next] == read) {
+            ++next;
+            continue;
+        }
+        if (write != read)
+            pending[write] = std::move(pending[read]);
+        ++write;
+    }
+    pending.erase(pending.begin() + static_cast<std::ptrdiff_t>(write), pending.end());
+}
+
+// Moves joined statuses into a prepared batch whose capacity the commit relies on.
+inline void adoptJoinedStatuses(std::vector<VisibilityStatus>& ready,
+                                std::vector<VisibilityStatus>& joined) noexcept {
+    std::ranges::move(joined, ready.begin());
+}
 
 // All Result-bearing work reads live state and writes owned value staging only.
 // Host allocation/destructor failures and fatal misuse are outside this guarantee.

@@ -309,12 +309,11 @@ Result<ReferenceRetirementBatch> prepareReferenceRetirement(
     staged.ready = retired;
     staged.history = history;
     staged.results.assign(statuses.begin(), statuses.end());
-    staged.pending.reserve(pendingEntries.size());
-    for (const auto& entry : pendingEntries) {
-        if (entry.frameNumber > completedFrame) {
-            staged.pending.push_back(entry);
+    for (size_t index = 0; index < pendingEntries.size(); ++index) {
+        const auto& entry = pendingEntries[index];
+        if (entry.frameNumber > completedFrame)
             continue;
-        }
+        staged.retiring.push_back(index);
         if (!entry.ticket || !*entry.ticket) {
             if ((entry.recording && entry.recording->entered) || !entry.callbackAnchor.expired())
                 return std::unexpected(Error{ErrorCode::InvalidArgument,
@@ -380,7 +379,7 @@ void commitReferenceRetirement(ReferenceRetirementBatch& staged,
                                OcclusionCheckHistory& history) noexcept {
     for (const auto& recording : staged.discards)
         recording->discarded = true;
-    pending.swap(staged.pending);
+    eraseRetiring(pending, staged.retiring);
     retired.swap(staged.ready);
     std::swap(history, staged.history);
 }
@@ -501,7 +500,7 @@ Result<std::vector<VisibilityStatus>> takeRetiredVisibilityWithReference(
         if (!prepared)
             return std::unexpected(prepared.error());
         reference = std::move(*prepared);
-        production->ready = std::move(reference->results);
+        adoptJoinedStatuses(production->ready, reference->results);
     } else if (std::ranges::any_of(production->ready, [](const auto& status) {
                    return status.occlusionCheckEnabled && !status.occlusionCheck.enabled;
                })) {
@@ -532,7 +531,7 @@ VisibilityRetirementAccess::finish(GpuVisibility& production, OcclusionReference
         if (!result)
             return std::unexpected(result.error());
         joined = std::move(*result);
-        prepared->m_batch.ready = std::move(joined->m_batch.results);
+        adoptJoinedStatuses(prepared->m_batch.ready, joined->m_batch.results);
     } else if (std::ranges::any_of(prepared->statuses(), [](const auto& status) {
                    return status.occlusionCheckEnabled && !status.occlusionCheck.enabled;
                })) {
