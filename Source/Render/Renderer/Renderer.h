@@ -114,6 +114,12 @@ public:
     /// `commands` -- so the graph must be executed on that same command list, and `camera`, `view`,
     /// and everything `view` borrows must outlive that call. Creation or retirement failure returns
     /// its causal error; the caller must not execute or export a failed declaration.
+    ///
+    /// A failure is not rolled back. Visibility status, occlusion source facts, temporal status and
+    /// the pyramid stage's slots advance only for a frame that declares, and an unrecorded GPU
+    /// visibility declaration is discarded; but a failure after draw submission has prepared
+    /// leaves its rows, the prefix copies it already recorded on `commands` and its recorded read
+    /// uses advanced. Every application caller treats the failure as terminal.
     lmx::Result<GraphTexture> declarePasses(RenderGraph& graph, rojoRHI::CommandList& commands,
                                             const engine::Camera& camera, const SceneView& view);
 
@@ -248,7 +254,8 @@ private:
     prepareOcclusion(RenderGraph& graph, rojoRHI::CommandList& commands,
                      const engine::Camera& camera, const SceneView& view,
                      const FrameExtents& extents, const CameraFrameState& cameraState);
-    // Declares the pyramid build, the independent reference and the debug view.
+    // Declares the independent reference, the pyramid build and the debug view. The reference's
+    // readback allocation is the only failure, and it precedes the build.
     lmx::Result<void> declareOcclusion(RenderGraph& graph, rojoRHI::CommandList& commands,
                                        const SceneView& view, GraphTexture depth,
                                        GraphTexture& display, RendererOcclusionFrame& occlusion);

@@ -157,10 +157,10 @@ lmx::Result<void> Renderer::declareOcclusion(RenderGraph& graph, rojoRHI::Comman
                                              RendererOcclusionFrame& occlusion) {
     if (!view.occlusionEnabled)
         return {};
-    const auto pyramid = m_hzbStage->declare(*occlusion.graph, depth, occlusion.current);
-    // The stage completes the facts with its allocation's output extent and level count.
-    occlusion.current = m_hzbStage->previousSource();
     if (view.occlusionCheck) {
+        // The reference's readback allocation is the frame's last fallible step. It precedes the
+        // pyramid build, so the stage advances its slots only for a frame that declares; the two
+        // share no resource, and the reference reads only facts prepareOcclusion staged.
         // Retirement joins the reference with production, so it never retires on its own here.
         const auto declared = m_occlusionReference->declareCombined(
             graph, commands, view,
@@ -172,6 +172,9 @@ lmx::Result<void> Renderer::declareOcclusion(RenderGraph& graph, rojoRHI::Comman
         if (!declared)
             return std::unexpected(declared.error());
     }
+    const auto pyramid = m_hzbStage->declare(*occlusion.graph, depth, occlusion.current);
+    // The stage completes the facts with its allocation's output extent and level count.
+    occlusion.current = m_hzbStage->previousSource();
     if (view.hzbDebugLevel < 0)
         return {};
     PassDesc pass;
