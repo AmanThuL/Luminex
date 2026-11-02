@@ -11,6 +11,7 @@
 #include "Render/Passes/Occlusion/HzbHistoryBinding.h"
 #include "Render/Passes/Occlusion/OcclusionReference.h"
 #include "Render/Passes/Occlusion/OcclusionRoots.h"
+#include "Render/Passes/Visibility/GpuVisibility.h"
 #include "Render/Renderer/Renderer.h"
 #include "Render/Renderer/RendererInternal.h"
 #include <array>
@@ -71,6 +72,14 @@ Renderer::prepareOcclusion(RenderGraph& graph, rojoRHI::CommandList& commands,
             m_hzbStage = std::move(*stage);
         }
         if (view.occlusionCheck && !m_occlusionReference) {
+            // The reference exists only beside the production owner it checks, so that owner,
+            // which prepareVisibility would otherwise create, comes first.
+            if (!m_gpuVisibility) {
+                auto visibility = GpuVisibility::create(m_gpu);
+                if (!visibility)
+                    return std::unexpected(visibility.error());
+                m_gpuVisibility = std::move(*visibility);
+            }
             auto reference = OcclusionReference::create(m_gpu);
             if (!reference)
                 return std::unexpected(reference.error());
