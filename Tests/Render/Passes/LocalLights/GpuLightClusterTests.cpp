@@ -167,27 +167,31 @@ struct ClusterRun {
 ClusterRun runClusters(lmx::engine::GpuContext& gpu, LightClusterStage& stage,
                        const std::vector<lmx::engine::LightRow>& rows,
                        const LightClusterParams& params) {
-    auto lights = gpu.device().createBuffer({.size = rows.size() * sizeof(lmx::engine::LightRow),
-                                             .storageRead = true,
-                                             .label = "lmx.test.lightCluster.rows"},
-                                            rows.data());
+    auto lights =
+        lmx::engine::GpuBuffer::create(gpu.device(),
+                                       {.size = rows.size() * sizeof(lmx::engine::LightRow),
+                                        .memory = rojoRHI::Memory::Upload,
+                                        .label = "lmx.test.lightCluster.rows"},
+                                       std::as_bytes(std::span(rows)));
     INFO(errorOf(lights));
     REQUIRE(lights);
     auto gpuFrame1 = gpu.beginFrame();
     auto& commands = gpuFrame1.commands;
     const uint64_t frame = gpu.frameNumber();
     RenderGraph graph;
-    const GraphBuffer imported = graph.importBuffer(**lights, "lmx.test.lightCluster.rows");
+    const GraphBuffer imported = graph.importBuffer(*lights, "lmx.test.lightCluster.rows");
     const auto outputs = stage.declare(
         graph, commands, inputsFrom(params, imported, liveRows(rows, params.rowCount), frame));
     REQUIRE(outputs.declared);
     const auto compiled = graph.compile();
+    if (!compiled)
+        gpu.submitAndEndFrame(gpuFrame1);
     INFO((compiled ? std::string{} : compiled.error().message));
     REQUIRE(compiled);
     graph.execute(commands, frame);
     gpu.submitAndEndFrame(gpuFrame1);
     gpu.waitIdle();
-    stage.retireThrough(frame);
+    REQUIRE(stage.retireThrough(frame));
     auto retired = stage.takeRetired();
     REQUIRE(retired.size() == 1);
     return {buildLightClusters(rows, params), std::move(retired.front())};
@@ -432,14 +436,15 @@ TEST_CASE("the stage declares nothing without clustered lights", "[gpu][light-cl
     const std::vector<lmx::engine::LightRow> rows{makePoint({0.0f, 0.0f, -2.0f}, 4.0f)};
     const auto params = makeParams(view, 1);
 
-    auto lights = gpu->device().createBuffer({.size = sizeof(lmx::engine::LightRow),
-                                              .storageRead = true,
-                                              .label = "lmx.test.lightCluster.rows"},
-                                             rows.data());
+    auto lights = lmx::engine::GpuBuffer::create(gpu->device(),
+                                                 {.size = sizeof(lmx::engine::LightRow),
+                                                  .memory = rojoRHI::Memory::Upload,
+                                                  .label = "lmx.test.lightCluster.rows"},
+                                                 std::as_bytes(std::span(rows)));
     REQUIRE(lights);
     for (const bool clustered : {false, true}) {
         RenderGraph graph;
-        const GraphBuffer imported = graph.importBuffer(**lights, "lmx.test.lightCluster.rows");
+        const GraphBuffer imported = graph.importBuffer(*lights, "lmx.test.lightCluster.rows");
         // Clustered with no live light, and one live light with the mode off: neither declares.
         auto inputs = inputsFrom(params, imported, clustered ? 0u : 1u, 0);
         inputs.clustered = clustered;
@@ -448,13 +453,15 @@ TEST_CASE("the stage declares nothing without clustered lights", "[gpu][light-cl
         const auto outputs = stage->declare(graph, commands, inputs);
         REQUIRE_FALSE(outputs.declared);
         const auto compiled = graph.compile();
+        if (!compiled)
+            gpu->submitAndEndFrame(gpuFrame2);
         INFO((compiled ? std::string{} : compiled.error().message));
         REQUIRE(compiled);
         REQUIRE(compiled->passes.empty());
         gpu->submitAndEndFrame(gpuFrame2);
         gpu->waitIdle();
     }
-    stage->retireThrough(1000);
+    REQUIRE(stage->retireThrough(1000));
     REQUIRE(stage->takeRetired().empty());
 }
 
@@ -467,12 +474,12 @@ TEST_CASE("paced cluster slots retain exact shrinking lists and raster barriers"
     auto rows = deterministicLightField(0x9E3779B97F4A7C15ull);
     const std::array<uint32_t, 6> counts{256, 192, 128, 64, 8, 1};
     std::vector<LightClusterLists> expected;
-    std::vector<std::unique_ptr<rojoRHI::Buffer>> storage;
-    auto target = gpu->device().createTexture({.width = 1,
-                                               .height = 1,
-                                               .format = rojoRHI::Format::RGBA8Unorm,
-                                               .renderTarget = true,
-                                               .label = "lmx.test.clusterRasterConsumer"});
+    std::vector<lmx::engine::GpuBuffer> storage;
+    auto target = lmx::engine::GpuTexture::create(gpu->device(),
+                                                  {.format = rojoRHI::Format::RGBA8Unorm,
+                                                   .extent = {1, 1, 1},
+                                                   .usage = rojoRHI::TextureUsage::RenderTarget,
+                                                   .label = "lmx.test.clusterRasterConsumer"});
     REQUIRE(target);
     uint32_t retiredCount = 0;
     uint64_t firstFrame = 0;
@@ -489,10 +496,11 @@ TEST_CASE("paced cluster slots retain exact shrinking lists and raster barriers"
         const auto params = makeParams(view, count);
         expected.push_back(buildLightClusters(rows, params));
         auto buffer =
-            gpu->device().createBuffer({.size = rows.size() * sizeof(lmx::engine::LightRow),
-                                        .storageRead = true,
-                                        .label = "lmx.test.shrinkingLightRows"},
-                                       rows.data());
+            lmx::engine::GpuBuffer::create(gpu->device(),
+                                           {.size = rows.size() * sizeof(lmx::engine::LightRow),
+                                            .memory = rojoRHI::Memory::Upload,
+                                            .label = "lmx.test.shrinkingLightRows"},
+                                           std::as_bytes(std::span(rows)));
         REQUIRE(buffer);
         storage.push_back(std::move(*buffer));
         auto gpuFrame3 = gpu->beginFrame();
@@ -501,22 +509,24 @@ TEST_CASE("paced cluster slots retain exact shrinking lists and raster barriers"
         if (step == 0)
             firstFrame = frame;
         if (frame >= 3) {
-            stage->retireThrough(frame - 3);
+            REQUIRE(stage->retireThrough(frame - 3));
             checkRetired();
             REQUIRE(retiredCount == (step < 3 ? 0 : step - 2));
         }
         RenderGraph graph;
         auto inputs =
-            inputsFrom(params, graph.importBuffer(*storage.back(), "lmx.test.rows"), count, frame);
+            inputsFrom(params, graph.importBuffer(storage.back(), "lmx.test.rows"), count, frame);
         inputs.shaderReadsOutputs = true;
         const auto output = stage->declare(graph, commands, inputs);
-        auto colour = graph.importTexture(**target, rojoRHI::Format::RGBA8Unorm, "lmx.test.colour");
+        auto colour = graph.importTexture(target->ref(), "lmx.test.colour");
         PassDesc consumer;
         consumer.bufferReads = {output.grid, output.indices};
         consumer.color = ColorAttachment{.handle = colour};
         graph.addPass("lmx.test.consumeLights", std::move(consumer), [](const PassResources&) {});
         graph.exportTexture(nextVersion(colour));
         const auto record = graph.compileFrame(frame);
+        if (!record)
+            gpu->submitAndEndFrame(gpuFrame3);
         REQUIRE(record);
         if (step >= 3) {
             for (const auto name : {"lmx.light.grid", "lmx.light.indices"}) {
@@ -532,7 +542,7 @@ TEST_CASE("paced cluster slots retain exact shrinking lists and raster barriers"
         ++step;
     }
     gpu->waitIdle();
-    stage->retireThrough(gpu->frameNumber());
+    REQUIRE(stage->retireThrough(gpu->frameNumber()));
     checkRetired();
     REQUIRE(retiredCount == counts.size());
 }

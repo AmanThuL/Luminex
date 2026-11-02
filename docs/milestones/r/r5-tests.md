@@ -28,7 +28,6 @@ Nine temporal-off counterparts (`[temporal-off]`) cover the occlusion and visibi
 
 | Test file | CPU | GPU | Hidden |
 |---|---:|---:|---:|
-| `Tests/Render/Passes/LocalLights/GpuLightClusterTests.cpp` | 0 | 8 | 0 |
 | `Tests/Render/Passes/LocalLights/GpuLightDebugViewTests.cpp` | 0 | 5 | 0 |
 | `Tests/Render/Passes/LocalLights/GpuLocalLightTests.cpp` | 0 | 1 | 0 |
 | `Tests/Render/Passes/LocalLights/GpuRendererLightingTests.cpp` | 0 | 7 | 0 |
@@ -36,6 +35,8 @@ Nine temporal-off counterparts (`[temporal-off]`) cover the occlusion and visibi
 | `Tests/Render/Passes/LocalLights/LightCaptureLayoutTests.cpp` | 1 | 0 | 0 |
 | `Tests/Render/Passes/Temporal/GpuZeroLightHistoryTests.cpp` | 0 | 1 | 1 |
 | `Tests/App/Model/Performance/MeasurementSampleTests.cpp` | 1 | 0 | 0 |
+
+Clustered light lists return ahead of the rest of the family. `LightClusterStage.cpp`, `LightClusterReadback.cpp` and the `LightClusterCount`, `LightClusterScan` and `LightClusterFill` entries build on the shared 48-byte `LightClusterRoot`: each kernel's root carries the addresses it reads or writes and zeros the rest, and the 272-byte parameter block is uploaded once per declaration. The three entries compile with `slang.precise_files`, v1's `LightCluster*` selection. Three paced slots own Gpu-memory shader-write grid (27,648 bytes), index (262,144), count (13,824) and counter (32) buffers. Reset, count, scan and fill keep their labels, order and logical uses, the scan stays a single thread, and in Debug each dispatch declares its true compute-shader ranges. The scan callback records the counters and, when lists are captured, the grid; the fill callback records the indices; each ticket follows the dispatch that writes it, with the compute-write frontier. `LightClusterReadback.h` is the Render-private owner of those outcomes. Retirement checks counters, then grid, then indices: a recorded failure returns unchanged, a required outcome that was never recorded or holds too few bytes is an error rather than zeros, and the index outcome is checked even when nothing was assigned. Each declaration commits on its own, so a failure leaves that declaration and every later one pending and earlier retired records in place. The eight original cases in `GpuLightClusterTests.cpp` run with their original names, tags, sections and mirror oracles; their retirement now requires the returned Result. Two new `[render][device]` cases in `LightClusterRetirementTests.cpp` cover a causal failure in each outcome and the absent, recorded-empty and short outcomes. The debug view, the punctual oracle and the Renderer and Scene integration remain pending, so `LMX_PENDING_LIGHTS` still guards the Renderer's lighting path. The configured inventory is 1,329 unit cases (25 skip in Release Metal), 209 ordinary GPU cases and 18 Debug tracker cases.
 
 ### POST returned
 
