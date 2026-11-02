@@ -301,6 +301,8 @@ TEST_CASE("disk sidecar rejects invalid UTF-8 before proposal and log queries",
     std::filesystem::create_directories(directory);
     struct Cleanup {
         std::filesystem::path path;
+
+        //==============================================================================================================
         ~Cleanup() {
             std::error_code ignored;
             std::filesystem::remove_all(path, ignored);
