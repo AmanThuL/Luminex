@@ -1,31 +1,32 @@
 // Safe-math froxel prefix sum; one thread walks the 3,456 counts so ranges, truncation and every
 // counter are a function of froxel order alone and no atomic decides the outcome.
+import RojoRHI;
+import LightRoots;
 import LightCluster;
-[[vk::binding(0, 0)]] ConstantBuffer<LightClusterParams> gParams : register(b0);
-[[vk::binding(2, 0)]] RWStructuredBuffer<uint> gCounts : register(u2);
-[[vk::binding(3, 0)]] RWStructuredBuffer<ClusterRecord> gGrid : register(u3);
-[[vk::binding(5, 0)]] RWStructuredBuffer<uint> gCounters : register(u5);
+import LocalLightTypes;
 [shader("compute")]
 [numthreads(1, 1, 1)]
 void computeMain()
 {
+    let root = rojoRHI::root<LightClusterRoot>();
+    let params = rojoRHI::load<LightClusterParams>(root.params, 0);
     uint running = 0u;
     uint candidates = 0u;
     uint droppedPerCluster = 0u;
     uint droppedGlobal = 0u;
     uint truncatedFroxels = 0u;
     uint maxCount = 0u;
-    for (uint froxel = 0u; froxel < gParams.froxelCount; ++froxel)
+    for (uint froxel = 0u; froxel < params.froxelCount; ++froxel)
     {
-        uint hits = gCounts[froxel];
-        uint kept = hits < gParams.perClusterCap ? hits : gParams.perClusterCap;
+        uint hits = rojoRHI::load<uint>(root.counts, froxel);
+        uint kept = hits < params.perClusterCap ? hits : params.perClusterCap;
         uint truncated = hits > kept ? 1u : 0u;
         candidates += hits;
         droppedPerCluster += hits - kept;
         maxCount = kept > maxCount ? kept : maxCount;
         // Ranges are granted in flat froxel order: the first froxel that does not fit takes the
         // remainder and every later froxel with intersections is truncated to nothing.
-        uint remaining = gParams.globalCapacity - running;
+        uint remaining = params.globalCapacity - running;
         uint granted = kept < remaining ? kept : remaining;
         if (granted < kept)
         {
@@ -35,14 +36,14 @@ void computeMain()
         ClusterRecord record;
         record.offset = running;
         record.count = granted | (truncated != 0u ? kClusterTruncatedBit : 0u);
-        gGrid[froxel] = record;
+        rojoRHI::store<ClusterRecord>(root.grid, froxel, record);
         truncatedFroxels += truncated;
         running += granted;
     }
-    gCounters[0] = candidates;
-    gCounters[1] = running;
-    gCounters[2] = droppedPerCluster;
-    gCounters[3] = droppedGlobal;
-    gCounters[4] = truncatedFroxels;
-    gCounters[5] = maxCount;
+    rojoRHI::store<uint>(root.counters, 0, candidates);
+    rojoRHI::store<uint>(root.counters, 1, running);
+    rojoRHI::store<uint>(root.counters, 2, droppedPerCluster);
+    rojoRHI::store<uint>(root.counters, 3, droppedGlobal);
+    rojoRHI::store<uint>(root.counters, 4, truncatedFroxels);
+    rojoRHI::store<uint>(root.counters, 5, maxCount);
 }
