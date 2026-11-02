@@ -259,6 +259,20 @@ function lmx_configure_shader_library(target)
                           "Render/Passes/Temporal/TemporalFrameData.h")
     end
     local entries = lmx_shader_entries(kind)
+    local precise_candidates = {
+        VisibilityClassify = true, VisibilityClassifyOcclusion = true,
+        VisibilityScan = true, VisibilityEmit = true, VisibilityEmitSparse = true
+    }
+    local precise_entries = {}
+    for _, file in ipairs(entries) do
+        local basename = path.basename(file)
+        if precise_candidates[basename] then
+            table.insert(precise_entries, basename)
+        end
+    end
+    if #precise_entries > 0 then
+        target:values_set("slang.precise_files", table.unpack(precise_entries))
+    end
     target:values_set("lmx.shader.entries", table.unpack(entries))
     target:add("files", table.unpack(entries))
 end

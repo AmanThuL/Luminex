@@ -53,6 +53,11 @@
       "file": "Tests/Render/Passes/Bloom/BloomTrackerTests.cpp",
       "header": "Source/Render/Passes/Bloom/BloomStage.h",
       "reason": "Exercise production bloom declarations, sampled output and mip/alias reuse across paced frames."
+    },
+    {
+      "file": "Tests/Render/Passes/Visibility/VisibilityRetirementTests.cpp",
+      "header": "Source/Render/Passes/Visibility/VisibilityRetirement.h",
+      "reason": "Exercise the actual visibility backing, ticket identities and whole-batch retirement transaction."
     }
   ],
   "units": {
@@ -154,7 +159,8 @@
         "Source/Render/Common/GraphResources.h",
         "Source/Render/Common/StageSetup.h",
         "Source/Render/Common/PacedSlots.h",
-        "Source/Render/Common/DrawEncoding.h"
+        "Source/Render/Common/DrawEncoding.h",
+        "Source/Render/Passes/Visibility/VisibilityRetirement.h"
       ]
     },
     "app-model": {

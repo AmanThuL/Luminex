@@ -2,8 +2,9 @@
 /// @file GpuVisibilityReadback.cpp
 /// @brief Decodes retired GPU states and independently verifies rows, arguments and counters.
 //----------------------------------------------------------------------------------------------------------------------
-#include "Render/Common/PacedSlots.h"
+#include "Core/Diagnostics/Assert.h"
 #include "Render/Passes/Visibility/GpuVisibility.h"
+#include "Render/Passes/Visibility/VisibilityRetirement.h"
 #include <algorithm>
 #include <numeric>
 #include <unordered_map>
@@ -32,21 +33,31 @@ VisibilityCounters decodeCounters(const uint32_t* words) {
 uint32_t difference(uint32_t actual, uint32_t expected) {
     return actual != expected ? 1u : 0u;
 }
-} // namespace
 
 //======================================================================================================================
-VisibilityStatus GpuVisibility::readback(Pending& pending) {
-    auto result = std::move(pending.status);
+Result<VisibilityStatus> stageReadback(engine::GpuContext& gpu,
+                                       const VisibilityPendingReadback& pending) {
+    auto result = pending.status;
+    auto expectedStates = pending.expected;
     result.isRetired = true;
     const auto& params = pending.params;
-    const Tickets& tickets = *pending.tickets;
-    // Resolves `ticket` into `values`; an empty ticket (a graph that never ran) leaves them zero.
-    auto resolveInto = [this](const std::optional<ReadbackTicket>& ticket, auto& values) {
-        if (ticket)
-            resolve(m_gpu, *ticket, resolveBytes(std::span(values)));
+    const VisibilityReadbackTickets& tickets = *pending.tickets;
+    auto resolveInto = [&](const std::optional<ReadbackTicket>& ticket, auto& values,
+                           rojoRHI::Buffer identity, uint64_t bytes) -> Result<void> {
+        const auto resolved = resolve(gpu, *ticket, resolveBytes(std::span(values)));
+        if (!resolved)
+            return std::unexpected(resolved.error());
+        LMX_ASSERT(ticket->frame == pending.frameNumber && ticket->buffer == identity &&
+                       ticket->texture.bits == 0 && ticket->region.offset == 0 &&
+                       ticket->region.size == bytes,
+                   "visibility retirement: ticket identity or region differs from declaration");
+        return {};
     };
     std::array<uint32_t, 2 * kVisibilityCounterWords> rawCounters{};
-    resolveInto(tickets.counters, rawCounters);
+    auto resolved = resolveInto(tickets.counters, rawCounters, pending.backing->counters.rhi(),
+                                2 * kVisibilityCounterWords * sizeof(uint32_t));
+    if (!resolved)
+        return std::unexpected(resolved.error());
     result.sceneCounters = decodeCounters(rawCounters.data());
     result.shadowCounters = decodeCounters(rawCounters.data() + kVisibilityCounterWords);
     result.submission.listBytes =
@@ -62,12 +73,23 @@ VisibilityStatus GpuVisibility::readback(Pending& pending) {
         result.checkEnabled ? std::min<uint32_t>(static_cast<uint32_t>(pending.tables.runs.size()),
                                                  params.argumentCapacity)
                             : 0);
-    if (!states.empty())
-        resolveInto(tickets.states, states);
-    if (!rows.empty())
-        resolveInto(tickets.rows, rows);
-    if (!arguments.empty())
-        resolveInto(tickets.arguments, arguments);
+    resolved = resolveInto(tickets.states, states, pending.backing->states.rhi(),
+                           uint64_t{std::min(params.candidateCount, params.stateCapacity)} * 4);
+    if (!resolved)
+        return std::unexpected(resolved.error());
+    resolved = resolveInto(tickets.rows, rows, pending.rowBuffer,
+                           uint64_t{std::min(params.candidateCount, params.rowCapacity)} * 4);
+    if (!resolved)
+        return std::unexpected(resolved.error());
+    resolved =
+        resolveInto(tickets.arguments, arguments, pending.argumentBuffer,
+                    uint64_t{std::min<uint32_t>(static_cast<uint32_t>(pending.tables.runs.size()),
+                                                params.argumentCapacity)} *
+                        sizeof(rojoRHI::DrawIndexedIndirectArgs));
+    if (!resolved)
+        return std::unexpected(resolved.error());
+    LMX_ASSERT(result.frameNumber == pending.frameNumber,
+               "visibility retirement: status frame identity differs from declaration");
     std::array<VisibilityResult*, 2> views{&result.scene, &result.shadow};
     for (uint32_t v = 0; v < 2; ++v) {
         auto& view = *views[v];
@@ -98,7 +120,7 @@ VisibilityStatus GpuVisibility::readback(Pending& pending) {
             if (found->state != VisibilityState::Rejected)
                 view.visibleItems.push_back(static_cast<uint32_t>(found - view.candidates.begin()));
             if (result.checkEnabled) {
-                auto& expected = pending.expected[absolute];
+                auto& expected = expectedStates[absolute];
                 if (found->reason == VisibilityReason::Occluded) {
                     result.stateMismatches += expected.state != VisibilityState::Visible ||
                                               found->state != VisibilityState::Rejected;
@@ -142,7 +164,7 @@ VisibilityStatus GpuVisibility::readback(Pending& pending) {
         VisibilityCounters expectedCounters;
         expectedCounters.candidates = range.candidateCount;
         for (uint32_t i = 0; i < range.candidateCount; ++i) {
-            const auto& expected = pending.expected[range.firstCandidate + i];
+            const auto& expected = expectedStates[range.firstCandidate + i];
             if (expected.reason == VisibilityReason::AuthoredOff) {
                 ++expectedCounters.disabled;
                 --expectedCounters.candidates;
@@ -163,7 +185,7 @@ VisibilityStatus GpuVisibility::readback(Pending& pending) {
             for (uint32_t i = 0; i < run.candidateCount; ++i) {
                 const uint32_t candidate = run.firstCandidate + i;
                 if (candidate < params.stateCapacity &&
-                    pending.expected[candidate].state != VisibilityState::Rejected)
+                    expectedStates[candidate].state != VisibilityState::Rejected)
                     retained.push_back(pending.tables.candidates[candidate].instanceRow);
             }
             const uint32_t available =
@@ -186,9 +208,12 @@ VisibilityStatus GpuVisibility::readback(Pending& pending) {
                 expected = {.instanceCount = 0};
             else {
                 expected.instanceCount = emitted;
-                expected.firstInstance = run.firstSlot;
+                expected.drawId = run.firstSlot;
+                expected.baseVertex = 0;
+                expected.firstInstance = 0;
             }
             const auto& actual = arguments[run.argumentIndex];
+            result.argumentMismatches += difference(actual.drawId, expected.drawId);
             result.argumentMismatches += difference(actual.indexCount, expected.indexCount);
             result.argumentMismatches += difference(actual.instanceCount, expected.instanceCount);
             result.argumentMismatches += difference(actual.firstIndex, expected.firstIndex);
@@ -213,15 +238,65 @@ VisibilityStatus GpuVisibility::readback(Pending& pending) {
     return result;
 }
 
+} // namespace
+
 //======================================================================================================================
-void GpuVisibility::retireThrough(uint64_t completedFrame) {
-    lmx::render::retireThrough(
-        m_pending, completedFrame, [](const auto& pending) { return pending.status.frameNumber; },
-        [this](auto& pending) { m_retired.push_back(readback(pending)); });
+Result<void> retireVisibilityThrough(engine::GpuContext& gpu,
+                                     std::vector<VisibilityPendingReadback>& pending,
+                                     std::vector<VisibilityStatus>& retired,
+                                     uint64_t completedFrame) {
+    struct Staged {
+        std::optional<VisibilityStatus> status;
+        std::shared_ptr<VisibilityReadbackTickets> tickets;
+        std::shared_ptr<VisibilitySlotBacking> backing;
+    };
+    std::vector<Staged> staged;
+    for (const auto& entry : pending) {
+        if (entry.frameNumber > completedFrame)
+            continue;
+        LMX_ASSERT(entry.tickets && entry.backing && !entry.tickets->discarded,
+                   "visibility retirement: missing live declaration backing");
+        const auto& tickets = *entry.tickets;
+        const uint32_t mask = uint32_t(tickets.counters.has_value()) |
+                              (uint32_t(tickets.states.has_value()) << 1) |
+                              (uint32_t(tickets.rows.has_value()) << 2) |
+                              (uint32_t(tickets.arguments.has_value()) << 3);
+        LMX_ASSERT(mask == 0 || mask == 15, "visibility retirement: partial producer outcomes");
+        if (mask == 0) {
+            LMX_ASSERT(entry.status.frameNumber == entry.frameNumber,
+                       "visibility retirement: unrecorded frame identity differs");
+            staged.push_back({std::nullopt, entry.tickets, entry.backing});
+        } else {
+            auto result = stageReadback(gpu, entry);
+            if (!result)
+                return std::unexpected(result.error());
+            staged.push_back({std::move(*result), entry.tickets, entry.backing});
+        }
+    }
+    // Reserve before publication. Keep every actual owner alive through the stable erase.
+    // This is Result rollback, not recovery from arbitrary host/destructor exceptions.
+    retired.reserve(retired.size() + staged.size());
+    for (auto& entry : staged) {
+        if (entry.status)
+            retired.push_back(std::move(*entry.status));
+        else
+            entry.tickets->discarded = true;
+    }
+    std::erase_if(pending, [completedFrame](const auto& entry) {
+        return entry.frameNumber <= completedFrame;
+    });
+    return {};
+}
+
+//======================================================================================================================
+Result<void> GpuVisibility::retireThrough(uint64_t completedFrame) {
+    return retireVisibilityThrough(m_gpu, m_pending, m_retired, completedFrame);
 }
 
 //======================================================================================================================
 std::vector<VisibilityStatus> GpuVisibility::takeRetired() {
-    return lmx::render::takeRetired(m_retired);
+    auto result = std::move(m_retired);
+    m_retired.clear();
+    return result;
 }
 } // namespace lmx::render

@@ -4,7 +4,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
-#ifndef LMX_PENDING_VISIBILITY
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Gpu/GpuBuffer.h"
 #include "Engine/Gpu/GpuContext.h"
@@ -12,10 +11,15 @@
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/Visibility/VisibilityTables.h"
 
+#include <array>
 #include <memory>
 #include <optional>
+#include <vector>
 
 namespace lmx::render {
+struct VisibilitySlotBacking;
+struct VisibilityReadbackTickets;
+struct VisibilityPendingReadback;
 /// Borrowed visibility inputs; CPU references need only survive declaration, graph handles this
 /// frame.
 struct GpuVisibilityInputs {
@@ -27,12 +31,18 @@ struct GpuVisibilityInputs {
     GraphBuffer arguments;       ///< Indirect-argument buffer version to write.
     GraphTexture pyramid{};      ///< Optional previous-frame depth pyramid.
     OcclusionParams occlusion{}; ///< Coverage and projection state for the optional pyramid.
+    std::shared_ptr<std::optional<ReadbackTicket>>
+        stateGuardReadback{};                    ///< Optional whole-state guard capture.
+    std::optional<SyncPoint> rowPhysical{};      ///< Supplied physical contributors at emit entry.
+    std::optional<SyncPoint> argumentPhysical{}; ///< Absent leaves external provenance uncertified.
 };
 
 /// Versioned GPU-produced draw inputs.
 struct GpuVisibilityOutputs {
     GraphBuffer rows;      ///< Emitted row-list version.
     GraphBuffer arguments; ///< Emitted argument-buffer version.
+    std::weak_ptr<const VisibilityReadbackTickets>
+        readbackIntent{}; ///< Exact unrecorded declaration identity.
 };
 /// Owns three paced table slots, pipelines and retained oracle snapshots.
 class GpuVisibility {
@@ -40,15 +50,18 @@ public:
     /// Loads safe-math visibility kernels and their fixed threadgroup pipelines.
     static lmx::Result<std::unique_ptr<GpuVisibility>> create(engine::GpuContext& gpu);
     /// Declares the four visibility passes and retains the declaration's readback context.
-    GpuVisibilityOutputs declare(RenderGraph& graph, rojoRHI::CommandList& commands,
-                                 const SceneView& view, const GpuVisibilityInputs& inputs,
-                                 VisibilityStatus& status);
+    Result<GpuVisibilityOutputs> declare(RenderGraph& graph, rojoRHI::CommandList& commands,
+                                         const SceneView& view, const GpuVisibilityInputs& inputs,
+                                         VisibilityStatus& status);
     /// Copies final declaration metrics after graph preparation completes.
-    void recordDeclarationStatus(const VisibilityStatus& status) {
-        m_pending.back().status = status;
-    }
+    void recordDeclarationStatus(const GpuVisibilityOutputs& declaration,
+                                 const VisibilityStatus& status);
     /// Reads every context whose submitted frame is at most completedFrame.
-    void retireThrough(uint64_t completedFrame);
+    Result<void> retireThrough(uint64_t completedFrame);
+    /// Abandons only this exact wholly unrecorded declaration; a later callback is misuse.
+    void discardUnrecorded(const GpuVisibilityOutputs& declaration);
+    /// Releases callbacks and pending storage before dependent pipelines and libraries.
+    ~GpuVisibility();
     /// Moves all newly retired records to the caller, in frame order.
     std::vector<VisibilityStatus> takeRetired();
     /// Fixture-only physical write limits; zero values are valid truncation probes.
@@ -57,40 +70,15 @@ public:
     }
 
 private:
-    explicit GpuVisibility(engine::GpuContext& gpu) : m_gpu(gpu) {}
-    struct Slot {
-        engine::GpuBuffer candidates, runs, chunks, views, states, counters;
-        std::vector<std::byte> candidateBytes, runBytes, chunkBytes, viewBytes;
-        uint32_t capacity = 0;
-        bool used = false;
-    };
-    // Recorded by the passes that write each buffer, after the write. A ticket names the buffer
-    // the frame wrote, not its owner: DrawSubmission growth move-assigns new owners into the slots
-    // the row and argument buffers came from while this frame is still pending. Pending entries
-    // and pass bodies share the tickets; their storage remains alive until its final owner releases
-    // it. A ticket stays empty when its graph pass did not execute.
-    struct Tickets {
-        std::optional<ReadbackTicket> states, counters, rows, arguments;
-    };
-    struct Pending {
-        VisibilityStatus status;
-        VisibilityTables tables;
-        VisibilityParams params;
-        std::vector<InstanceVisibility> expected;
-        std::vector<rojoRHI::DrawIndexedIndirectArgs> geometry;
-        std::shared_ptr<Tickets> tickets = std::make_shared<Tickets>();
-    };
-    lmx::Result<void> prepareSlot(Slot& slot, const VisibilityTables& tables);
-    VisibilityStatus readback(Pending& pending);
+    explicit GpuVisibility(engine::GpuContext& gpu);
+    Result<void> prepareSlot(VisibilitySlotBacking& slot, const VisibilityTables& tables);
     engine::GpuContext& m_gpu;
     std::array<engine::GpuOwned<rojoRHI::ShaderLibrary>, 5> m_libraries;
-    std::array<engine::GpuOwned<rojoRHI::ComputePipeline>, 5> m_pipelines;
+    std::array<engine::GpuOwned<rojoRHI::Pipeline>, 5> m_pipelines;
     engine::GpuBuffer m_emptyInstances, m_emptyMeshes;
-    std::array<Slot, 3> m_slots;
-    std::vector<Pending> m_pending;
+    std::array<std::shared_ptr<VisibilitySlotBacking>, 3> m_slots;
+    std::vector<VisibilityPendingReadback> m_pending;
     std::vector<VisibilityStatus> m_retired;
     std::optional<std::array<uint32_t, 3>> m_capacityOverride;
 };
 } // namespace lmx::render
-
-#endif
