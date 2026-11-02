@@ -6,6 +6,7 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 #include <optional>
 
@@ -28,5 +29,12 @@ std::optional<DecomposedTransform> decomposeTransform(const glm::mat4& world);
 
 /// Composes translation, then rotations about Y, X and Z, then scale: `T * Ry * Rx * Rz * S`.
 glm::mat4 composeTransform(const DecomposedTransform& transform);
+
+/// The rotation `glm::eulerAngleYXZ(yaw, pitch, roll)` describes, as a quaternion, in radians.
+/// Apple's `__sincosf_stret` answers differently from separate `sinf` and `cosf` for roughly one
+/// input in a hundred, and the optimizer folds adjacent sin and cos calls into it at -O1 and above
+/// but never at -O0. Calling it by name keeps the result bit-identical across build modes, which
+/// glm's own call sites cannot promise.
+glm::quat quatFromEulerYXZ(float yaw, float pitch, float roll);
 
 } // namespace lmx

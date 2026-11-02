@@ -14,9 +14,7 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
-#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/type_ptr.hpp>
-#include <glm/gtx/euler_angles.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -398,7 +396,7 @@ std::optional<RigidKey> bakedKey(const glm::mat4& world) {
     }
     const glm::vec3 radians = glm::radians(decomposed->eulerDegrees);
     return RigidKey{.translation = decomposed->position,
-                    .rotation = glm::quat_cast(glm::eulerAngleYXZ(radians.y, radians.x, radians.z)),
+                    .rotation = quatFromEulerYXZ(radians.y, radians.x, radians.z),
                     .scale = decomposed->scale};
 }
 
