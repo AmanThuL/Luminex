@@ -2,7 +2,7 @@
 
 **Status**: Implemented
 
-This retained walkthrough covers the pending full-stage frame; the [active subset](rojorhi.md#component-boundary) is shadow → scene/sky/IBL → exposure → native or vendor temporal reconstruction → bloom → display → UI, with lighting measurement unavailable. Native TAA, CPU culling, indirect submission and Clustered local lighting are the retained defaults; vendor reconstruction shares temporal inputs. The [local-light default decision](../milestones/m7/m7.5-validation.md#default-decision) follows the passed lossless-list and scoped exact-image gates; Direct remains the reference.
+This retained walkthrough covers the pending full-stage frame; the [active subset](rojorhi.md#component-boundary) is CPU or GPU visibility → shadow → scene/sky/IBL → exposure → native or vendor temporal reconstruction → bloom → display → HZB build → UI, with lighting measurement unavailable. Native TAA, CPU culling, indirect submission and Clustered local lighting are the retained defaults; vendor reconstruction shares temporal inputs. The [local-light default decision](../milestones/m7/m7.5-validation.md#default-decision) follows the passed lossless-list and scoped exact-image gates; Direct remains the reference.
 ## The frame at a glance
 
 A fresh `RenderGraph` imports targets, five geometry/material scene buffers (plus lights when live), two submission buffers, persistent histogram/exposure buffers and the drawable. Renderer composes the stages below; graph compilation

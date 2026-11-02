@@ -61,8 +61,9 @@ unmodified through resolution. Immediate `readbackNow` returns a checked byte-ve
 outside a frame. Upload/Readback mapped reads wait without consuming a frame; Gpu sources use an
 explicit copy frame. Renderer reads use its physical TextureStateTable, never creation metadata
 or a guessed RenderTarget state. Restored SceneTable image tickets preserve overlapping submitted
-frames independently of later target reuse. Pending visibility/light readback consumers return
-with their owning families.
+frames independently of later target reuse. Visibility and reference readbacks record their
+tickets inside the callbacks that write them and retire as one transaction; pending light readback
+consumers return with LIGHTS.
 
 ## Visibility and submission modes
 
