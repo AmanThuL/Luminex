@@ -22,7 +22,7 @@ lmx::Result<GraphTexture> Renderer::declarePasses(RenderGraph& graph,
     // caller declares into the same graph afterwards -- reads the uses earlier frames left.
     graph.bindTextureStates(m_textureStates);
     const RendererFrameState state = deriveFrameState(camera, view);
-#ifndef LMX_PENDING_LIGHTS
+    // The diagnostic pipeline is created before anything of this frame is declared.
     if (view.lightDebugView != engine::LightDebugView::Off &&
         view.localLightMode == engine::LocalLightMode::Clustered &&
         view.tables.liveLightCount != 0 && !m_lightDebug) {
@@ -31,15 +31,13 @@ lmx::Result<GraphTexture> Renderer::declarePasses(RenderGraph& graph,
             return std::unexpected(stage.error());
         m_lightDebug = std::move(*stage);
     }
-#endif
     const RendererFrameImports imports = importFrameResources(graph, commands, view, state);
 
-#ifndef LMX_PENDING_LIGHTS
-    const auto lightClusters = prepareLighting(graph, commands, view, imports.lightsImport,
-                                               state.extents, state.cameraState);
-    if (!lightClusters)
-        return std::unexpected(lightClusters.error());
-#endif
+    auto lighting = prepareLighting(graph, commands, view, imports.lightsImport, state.extents,
+                                    state.cameraState);
+    if (!lighting)
+        return std::unexpected(lighting.error());
+    const LightClusterOutputs& lightClusters = lighting->clusters;
 
     const auto planes =
         extractFrustumPlanes(state.temporalEnabled ? state.cameraState.viewProjectionJittered
@@ -47,13 +45,18 @@ lmx::Result<GraphTexture> Renderer::declarePasses(RenderGraph& graph,
 
     auto occlusion =
         prepareOcclusion(graph, commands, camera, view, state.extents, state.cameraState);
-    if (!occlusion)
+    if (!occlusion) {
+        // The graph will never execute, so its light-list declaration never records.
+        abandonLighting(*lighting);
         return std::unexpected(occlusion.error());
+    }
 
     auto visibility =
         prepareVisibility(graph, commands, view, planes, imports.sceneBuffers, *occlusion);
-    if (!visibility)
+    if (!visibility) {
+        abandonLighting(*lighting);
         return std::unexpected(visibility.error());
+    }
     const auto drawRows = visibility->buffers[0];
     const auto drawArguments = visibility->buffers[1];
 
@@ -67,29 +70,16 @@ lmx::Result<GraphTexture> Renderer::declarePasses(RenderGraph& graph,
                                 .lightViewProj = state.shadow.viewProj,
                                 .whiteTexture = &m_whiteTexture,
                                 .linearSampler = m_linearSampler.get()});
-#ifdef LMX_PENDING_LIGHTS
-    SceneView unlitView = view;
-    unlitView.localLightMode = engine::LocalLightMode::Off;
-#endif
     const GraphTexture sceneColorRead = m_sceneStage->declare(
-#ifndef LMX_PENDING_LIGHTS
         graph, commands, view,
-#else
-        graph, commands, unlitView,
-#endif
         {.draws = m_drawSubmission.scene(),
          .drawRows = drawRows,
          .drawArguments = drawArguments,
          .sceneBuffers = imports.sceneBuffers,
          .lights = imports.lightsImport,
-#ifndef LMX_PENDING_LIGHTS
-         .lightGrid = lightClusters->declared ? std::optional{lightClusters->grid} : std::nullopt,
+         .lightGrid = lightClusters.declared ? std::optional{lightClusters.grid} : std::nullopt,
          .lightIndices =
-             lightClusters->declared ? std::optional{lightClusters->indices} : std::nullopt,
-#else
-         .lightGrid = std::nullopt,
-         .lightIndices = std::nullopt,
-#endif
+             lightClusters.declared ? std::optional{lightClusters.indices} : std::nullopt,
          .sceneColor = imports.sceneColor,
          .sceneDepth = imports.sceneDepth,
          .shadowRead = shadowRead,
@@ -167,9 +157,8 @@ lmx::Result<GraphTexture> Renderer::declarePasses(RenderGraph& graph,
                                                             .sceneHeight = sceneHeight,
                                                             .bloomThreshold = view.bloomThreshold});
 
-#ifndef LMX_PENDING_LIGHTS
     const bool lightDebugEnabled =
-        view.lightDebugView != engine::LightDebugView::Off && lightClusters->declared;
+        view.lightDebugView != engine::LightDebugView::Off && lightClusters.declared;
     LMX_ASSERT(view.lightDebugView == engine::LightDebugView::Off ||
                    (view.localLightMode == engine::LocalLightMode::Clustered &&
                     state.debugView == TemporalDebugView::Off && view.hzbDebugLevel < 0),
@@ -185,16 +174,12 @@ lmx::Result<GraphTexture> Renderer::declarePasses(RenderGraph& graph,
                                                                .sampled = true},
                                                               "lmx.render.lightDebugSource")
                                         : imports.displayColor;
-#else
-    const GraphTexture displayDestination = imports.displayColor;
-#endif
     m_displayStage->declare(graph, commands,
                             {.displayInput = displayInput,
                              .bloomResult = bloomResult,
                              .displayColor = displayDestination,
                              .bloomEnabled = view.bloomEnabled,
                              .bloomIntensity = view.bloomIntensity});
-#ifndef LMX_PENDING_LIGHTS
     if (lightDebugEnabled) {
         LightClusterParams clusterParams;
         clusterParams.rowCount = view.tables.lightRowCount;
@@ -207,9 +192,9 @@ lmx::Result<GraphTexture> Renderer::declarePasses(RenderGraph& graph,
              .depth = nextVersion(imports.sceneDepth),
              .display = nextVersion(displayDestination),
              .output = imports.displayColor,
-             .lights = *imports.lightsImport,
-             .grid = lightClusters->grid,
-             .indices = lightClusters->indices,
+             .lights = imports.lightsImport.value(),
+             .grid = lightClusters.grid,
+             .indices = lightClusters.indices,
              .clusters = clusterParams,
              .inverseViewProjection =
                  glm::inverse(state.temporalEnabled ? state.cameraState.viewProjectionJittered
@@ -217,7 +202,6 @@ lmx::Result<GraphTexture> Renderer::declarePasses(RenderGraph& graph,
              .outputWidth = m_width,
              .outputHeight = m_height});
     }
-#endif
 
     // HZB follows every temporal depth consumer in the stable graph schedule.
     const auto declaredOcclusion = declareOcclusion(
@@ -227,11 +211,13 @@ lmx::Result<GraphTexture> Renderer::declarePasses(RenderGraph& graph,
         // unrecorded entry for retirement to drop once the abandoned graph releases its callbacks.
         if (visibility->declaration)
             m_gpuVisibility->discardUnrecorded(*visibility->declaration);
+        abandonLighting(*lighting);
         return std::unexpected(declaredOcclusion.error());
     }
 
     recordFrameStatus(state);
     commitVisibility(std::move(*visibility), std::move(*occlusion));
+    commitLighting(std::move(*lighting));
     return displayResult;
 }
 

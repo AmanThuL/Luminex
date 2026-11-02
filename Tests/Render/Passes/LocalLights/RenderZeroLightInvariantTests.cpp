@@ -1,238 +1,205 @@
-#include "Support/GraphTestSupport.h"
+//----------------------------------------------------------------------------------------------------------------------
+/// @file RenderZeroLightInvariantTests.cpp
+/// @brief Replays zero-live requested light modes against the Off frame on a configured device.
+//----------------------------------------------------------------------------------------------------------------------
+#include "Support/GpuRendererTestSupport.h"
+#include "Support/SceneTableTestSupport.h"
 
+#include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Render/Graph/GraphDump.h"
+#include "Render/Passes/Scene/SceneFrameData.h"
 #include "Render/Renderer/Renderer.h"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
+#include <cstddef>
 #include <cstring>
+#include <span>
+#include <string>
+#include <vector>
 
 namespace {
 using namespace lmx;
 
-struct InputSnapshot {
-    std::vector<std::string> operations;
-    std::vector<std::vector<std::byte>> payloads;
-    std::vector<std::byte> localParams;
+// The bytes and descriptor of one scene-owned buffer the frame's tables named. Addresses differ
+// between the two replays' scenes, so the comparison is of contents and shape, never identity.
+struct OwnedBytes {
+    uint64_t size = 0;
+    rojoRHI::Memory memory = rojoRHI::Memory::Gpu;
+    std::vector<std::byte> bytes; ///< Defined prefix; empty when the owner is not CPU-visible.
 
     //==================================================================================================================
-    bool operator==(const InputSnapshot&) const = default;
-};
-
-struct LightingCommands final : FakeCommandList {
-    InputSnapshot snapshot;
-
-    //==================================================================================================================
-    rojoRHI::GpuAddress bindFrameData(uint32_t slot, const void* data, uint64_t size,
-                                      uint64_t alignment) override {
-        snapshot.operations.push_back("uniform:" + std::to_string(slot) + ":" +
-                                      std::to_string(alignment));
-        const auto* bytes = static_cast<const std::byte*>(data);
-        snapshot.payloads.emplace_back(bytes, bytes + size);
-        if (slot == 11)
-            snapshot.localParams = snapshot.payloads.back();
-        return FakeCommandList::bindFrameData(slot, data, size, alignment);
-    }
-
-    //==================================================================================================================
-    void bindBuffer(uint32_t slot, rojoRHI::Buffer& buffer) override {
-        snapshot.operations.push_back("buffer:" + std::to_string(slot) + ":" +
-                                      std::to_string(buffer.size()));
-        auto& bytes = snapshot.payloads.emplace_back(buffer.size());
-        buffer.readback(bytes.data(), bytes.size());
-    }
-
-    //==================================================================================================================
-    void bindTexture(uint32_t slot, rojoRHI::Texture& texture,
-                     const rojoRHI::TextureViewDesc& view) override {
-        const auto& value = static_cast<FakeDevice::TextureObject&>(texture);
-        snapshot.operations.push_back("texture:" + std::to_string(slot) + ":" + value.label + ":" +
-                                      std::to_string(texture.width()) + ":" +
-                                      std::to_string(texture.height()) + ":" +
-                                      std::to_string(static_cast<int>(texture.format())) + ":" +
-                                      std::to_string(static_cast<int>(view.format)) + ":" +
-                                      std::to_string(view.range.baseMipLevel) + ":" +
-                                      std::to_string(view.range.mipLevelCount) + ":" +
-                                      std::to_string(view.range.baseArrayLayer) + ":" +
-                                      std::to_string(view.range.arrayLayerCount));
-    }
-
-    //==================================================================================================================
-    void bindStorageTexture(uint32_t slot, rojoRHI::Texture& texture,
-                            const rojoRHI::TextureViewDesc& view,
-                            rojoRHI::StorageAccess access) override {
-        snapshot.operations.push_back("storageTexture:" + std::to_string(static_cast<int>(access)));
-        bindTexture(slot, texture, view);
-    }
-
-    //==================================================================================================================
-    void bindStorageBuffer(uint32_t slot, rojoRHI::Buffer& buffer,
-                           rojoRHI::StorageAccess access) override {
-        snapshot.operations.push_back("storageBuffer:" + std::to_string(static_cast<int>(access)));
-        bindBuffer(slot, buffer);
-    }
-
-    //==================================================================================================================
-    void temporalScale(rojoRHI::TemporalScaler& scaler,
-                       const rojoRHI::TemporalScaleParams& params) override {
-        snapshot.operations.push_back("vendor:" + std::to_string(params.inputContentWidth) + ":" +
-                                      std::to_string(params.inputContentHeight) + ":" +
-                                      std::to_string(params.reset) + ":" +
-                                      std::to_string(params.reversedDepth));
-        const std::array floats{params.jitterOffsetX, params.jitterOffsetY, params.motionScaleX,
-                                params.motionScaleY, params.preExposure};
-        const auto* bytes = reinterpret_cast<const std::byte*>(floats.data());
-        snapshot.payloads.emplace_back(bytes, bytes + sizeof(floats));
-        uint32_t slot = 0;
-        for (auto* texture : {params.color, params.depth, params.motion, params.reactive,
-                              params.exposure, params.output})
-            bindTexture(slot++, *texture, {});
-        FakeCommandList::temporalScale(scaler, params);
-    }
-
-    //==================================================================================================================
-    void drawIndexed(rojoRHI::Buffer&, uint32_t count, uint32_t first) override {
-        snapshot.operations.push_back("draw:" + std::to_string(first) + ":" +
-                                      std::to_string(count));
-    }
-
-    //==================================================================================================================
-    void drawIndexedIndirect(rojoRHI::Buffer&, rojoRHI::Buffer& arguments,
-                             uint64_t offset) override {
-        snapshot.operations.push_back("indirect:" + std::to_string(offset));
-        auto& bytes = snapshot.payloads.emplace_back(arguments.size());
-        arguments.readback(bytes.data(), bytes.size());
-    }
-
-    //==================================================================================================================
-    void bindPipeline(rojoRHI::GraphicsPipeline& pipeline) override {
-        snapshot.operations.push_back("graphics:" +
-                                      static_cast<FakeGraphicsPipeline&>(pipeline).label);
-    }
-
-    //==================================================================================================================
-    void bindComputePipeline(rojoRHI::ComputePipeline& pipeline) override {
-        snapshot.operations.push_back("compute:" +
-                                      static_cast<FakeComputePipeline&>(pipeline).label);
-    }
+    bool operator==(const OwnedBytes&) const = default;
 };
 
 struct DeclaredSnapshot {
     std::string graph;
-    InputSnapshot inputs;
     render::TemporalStatus temporal;
+    std::vector<std::byte> localParams; ///< The 136 bytes the scene pass uploads for this frame.
+    std::array<OwnedBytes, 5> tables;   ///< Vertices, indices, meshes, instances, materials.
 };
 
 //======================================================================================================================
+OwnedBytes ownedBytes(const engine::GpuBuffer* buffer, uint64_t definedBytes) {
+    REQUIRE(buffer != nullptr);
+    OwnedBytes result{.size = buffer->desc().size, .memory = buffer->desc().memory};
+    if (buffer->desc().memory == rojoRHI::Memory::Upload) {
+        REQUIRE(definedBytes <= buffer->desc().size);
+        const auto* data = reinterpret_cast<const std::byte*>(buffer->cpuPointer());
+        result.bytes.assign(data, data + definedBytes);
+    }
+    return result;
+}
+
+//======================================================================================================================
+// One replay on its own device, so frame numbers and graph identities restart identically. The
+// opaque cube, the masked double-sided cube and the sky cover every scene pipeline family; the
+// high-water replay authors four disabled lights, so rows exist while none is live.
 std::vector<DeclaredSnapshot> zeroLightReplay(bool switches, bool highWater,
                                               render::ReconstructionMode reconstruction,
                                               bool temporalEnabled, float scale) {
-    FakeDevice device;
-    device.frame = 1;
-    device.deviceCaps.temporalScaler = {
-        .available = true, .minInputScale = 0.5f, .maxInputScale = 1.0f, .name = "Fake Temporal"};
-    engine::GpuContext gpu{device};
-    auto renderer = render::Renderer::create(gpu, 80, 48, false);
+    auto gpu = createTestGpu();
+    auto renderer = render::Renderer::create(*gpu, 80, 48, false);
+    INFO(errorOf(renderer));
     REQUIRE(renderer);
-    std::array<engine::InstanceRow, 2> instances{};
-    instances[1].materialRow = 1;
-    const engine::MeshRow mesh{.indexCount = 3, .vertexCount = 3};
-    std::array<engine::DrawItem, 2> items{{{.instanceRow = 0, .mesh = mesh},
-                                           {.instanceRow = 1,
-                                            .mesh = mesh,
-                                            .alphaMode = engine::AlphaMode::Mask,
-                                            .doubleSided = true}}};
-    std::array<engine::MaterialRow, 2> materials{};
-    materials[1].flags = engine::kMaterialMasked | engine::kMaterialDoubleSided;
-    const auto makeBuffer = [&device](uint64_t size, const void* data, std::string_view label) {
-        auto buffer = engine::GpuBuffer::create(device, {.size = size, .label = label}, data);
-        REQUIRE(buffer);
-        return std::move(*buffer);
-    };
-    const engine::GpuBuffer vertices = makeBuffer(3 * 64, nullptr, "test.zeroLight.vertices");
-    const engine::GpuBuffer indices =
-        makeBuffer(3 * sizeof(uint32_t), nullptr, "test.zeroLight.indices");
-    const engine::GpuBuffer meshBuffer = makeBuffer(sizeof(mesh), &mesh, "test.zeroLight.meshes");
-    const engine::GpuBuffer instanceBuffer =
-        makeBuffer(sizeof(instances), instances.data(), "test.zeroLight.instances");
-    const engine::GpuBuffer materialBuffer =
-        makeBuffer(sizeof(materials), materials.data(), "test.zeroLight.materials");
-    auto sky = engine::GpuTexture::create(device, {.width = 1,
-                                                   .height = 1,
-                                                   .format = rojoRHI::Format::RGBA8Unorm,
-                                                   .kind = rojoRHI::TextureKind::Cube,
-                                                   .sampled = true,
-                                                   .label = "test.zeroLightSky"});
+    auto cube = test::fixtureMesh(gpu->device(), engine::makeCube(), "lmx.test.zeroLight.cube");
+    REQUIRE(cube);
+    auto sphere = test::fixtureMesh(gpu->device(), engine::fromGeo(asset::makeSphere(0.5f, 8, 8)),
+                                    "lmx.test.zeroLight.sky");
+    REQUIRE(sphere);
+    constexpr std::array<uint8_t, 4> kSkyTexel = {0, 128, 255, 255};
+    const rojoRHI::TextureData skyMip{.bytes = std::as_bytes(std::span(kSkyTexel)),
+                                      .bytesPerRow = 4};
+    const std::array<rojoRHI::TextureData, 6> skyFaces{skyMip, skyMip, skyMip,
+                                                       skyMip, skyMip, skyMip};
+    auto sky = engine::GpuTexture::create(gpu->device(),
+                                          {.type = rojoRHI::TextureType::Cube,
+                                           .format = rojoRHI::Format::RGBA8Unorm,
+                                           .extent = {1, 1, 1},
+                                           .layers = 6,
+                                           .usage = rojoRHI::TextureUsage::Sampled,
+                                           .label = "lmx.test.zeroLight.skyCubemap"},
+                                          skyFaces);
     REQUIRE(sky);
-    render::SceneView view;
-    view.items = items;
+    const std::array<test::FixtureDrawItem, 2> items{{
+        {.mesh = &*cube, .model = glm::translate(glm::mat4{1.0f}, glm::vec3{-1.2f, 0.0f, 0.0f})},
+        {.mesh = &*cube,
+         .model = glm::translate(glm::mat4{1.0f}, glm::vec3{1.2f, 0.0f, 0.0f}),
+         .material = {.alphaMode = engine::AlphaMode::Mask, .doubleSided = true}},
+    }};
+    std::array<engine::LocalLight, 4> disabled{};
+    for (auto& light : disabled) {
+        light.range = 2.0f;
+        light.enabled = false;
+    }
+    test::FixtureSceneView view = litSceneView(items);
     view.visibilityEnabled = false;
-    view.skySphere = mesh;
+    view.skySphere = &*sphere;
     view.skyCubemap = &*sky;
-    view.tables = {.vertices = &vertices,
-                   .indices = &indices,
-                   .meshes = &meshBuffer,
-                   .instances = &instanceBuffer,
-                   .materials = &materialBuffer,
-                   .meshCount = 1,
-                   .instanceCount = 2,
-                   .materialCount = 2,
-                   .instanceRows = instances,
-                   .instanceCapacity = 2};
+    if (highWater)
+        view.localLights = disabled;
     view.temporal.enabled = temporalEnabled;
     view.temporal.jitterEnabled = temporalEnabled;
     view.temporal.reconstruction = reconstruction;
     view.temporal.renderScale = scale;
-    std::array<engine::LightRow, 4> emptyRows{};
-    const engine::GpuBuffer oldLightTable =
-        makeBuffer(sizeof(emptyRows), emptyRows.data(), "test.zeroLight.lights");
-    if (highWater) {
-        view.tables.lightRowCount = emptyRows.size();
-        view.tables.lightRows = emptyRows;
-        view.tables.lights = &oldLightTable;
-    }
     constexpr std::array modes{engine::LocalLightMode::Off,       engine::LocalLightMode::Direct,
                                engine::LocalLightMode::Clustered, engine::LocalLightMode::Off,
                                engine::LocalLightMode::Clustered, engine::LocalLightMode::Direct,
                                engine::LocalLightMode::Clustered, engine::LocalLightMode::Direct,
                                engine::LocalLightMode::Off};
+    const engine::Camera camera = sceneCamera();
     std::vector<DeclaredSnapshot> result;
     for (const auto requested : modes) {
         view.localLightMode = switches ? requested : engine::LocalLightMode::Off;
-        LightingCommands commands;
-        render::TransientPool pool(device);
+        auto frame = gpu->beginFrame();
+        const render::SceneView prepared = test::prepareSceneView(view, *gpu);
+        REQUIRE(prepared.tables.liveLightCount == 0);
+        REQUIRE(prepared.tables.lightRowCount == (highWater ? disabled.size() : 0));
+        render::TransientPool pool(*gpu);
         pool.beginFrame();
         render::RenderGraph graph(pool);
-        engine::Camera camera;
-        camera.position = {0.0f, 0.0f, 5.0f};
-        graph.presentTexture((*renderer)->declarePasses(graph, commands, camera, view));
-        const auto record = graph.compileFrame(device.frameNumber());
+        const auto display = (*renderer)->declarePasses(graph, frame.commands, camera, prepared);
+        if (!display)
+            gpu->submitAndEndFrame(frame);
+        INFO(errorOf(display));
+        REQUIRE(display);
+        graph.exportTexture(*display);
+        const auto record = graph.compileFrame(frame.number);
+        if (!record)
+            gpu->submitAndEndFrame(frame);
         REQUIRE(record);
-        graph.execute(commands, device.frameNumber());
+        graph.execute(frame.commands, frame.number);
+        gpu->submitAndEndFrame(frame);
+        // Contents are read only after the frame that consumed them completed.
+        gpu->waitIdle();
         const auto dump = render::dumpCompiledFrame(*record);
         CHECK(dump.find("lmx.scene.lights") == std::string::npos);
         CHECK(dump.find("lmx.pass.light.") == std::string::npos);
         CHECK(dump.find("lmx.light.") == std::string::npos);
-        REQUIRE(commands.snapshot.localParams.size() == 136);
-        std::array<uint32_t, 2> modeAndRows{};
-        std::memcpy(modeAndRows.data(), commands.snapshot.localParams.data(), sizeof(modeAndRows));
-        CHECK(modeAndRows[0] == 0);
-        CHECK(modeAndRows[1] == 0);
-        CHECK((*renderer)->lightingStatus().requested == view.localLightMode);
-        CHECK((*renderer)->lightingStatus().effective == engine::LocalLightMode::Off);
-        CHECK((*renderer)->lightingStatus().listBytes == 0);
-        CHECK((*renderer)->lightingStatus().allocatedListBytes == 0);
-        result.push_back({dump, std::move(commands.snapshot), (*renderer)->temporalStatus()});
-        device.endFrame(nullptr);
+        const auto& lighting = (*renderer)->lightingStatus();
+        CHECK(lighting.frameNumber == frame.number);
+        CHECK(lighting.requested == view.localLightMode);
+        CHECK(lighting.effective == engine::LocalLightMode::Off);
+        CHECK(lighting.listBytes == 0);
+        CHECK(lighting.allocatedListBytes == 0);
+        // The parameters the scene pass builds from this frame's inputs: Off, zero rows, and the
+        // fixed grid over the frame's own render extent.
+        const auto& temporal = (*renderer)->temporalStatus();
+        const auto params =
+            render::buildLocalLightParams({.requestedMode = view.localLightMode,
+                                           .liveLightCount = prepared.tables.liveLightCount,
+                                           .lightRowCount = prepared.tables.lightRowCount,
+                                           .hasClusters = false,
+                                           .extents = temporal.extents,
+                                           .nearZ = camera.nearZ});
+        CHECK(params.mode == 0);
+        CHECK(params.rowCount == 0);
+        const auto* paramBytes = reinterpret_cast<const std::byte*>(&params);
+        const auto& tables = prepared.tables;
+        result.push_back(
+            {.graph = dump,
+             .temporal = temporal,
+             .localParams = {paramBytes, paramBytes + sizeof(params)},
+             .tables = {
+                 ownedBytes(tables.vertices, tables.vertices->desc().size),
+                 ownedBytes(tables.indices, tables.indices->desc().size),
+                 ownedBytes(tables.meshes, uint64_t{tables.meshCount} * sizeof(engine::MeshRow)),
+                 ownedBytes(tables.instances,
+                            uint64_t{tables.instanceCount} * sizeof(engine::InstanceRow)),
+                 ownedBytes(tables.materials,
+                            uint64_t{tables.materialCount} * sizeof(engine::MaterialRow))}});
     }
+    // Every declared frame retires as Off with no list work, in frame order.
+    const auto drained = (*renderer)->drainLightingAfterIdle();
+    INFO(errorOf(drained));
+    REQUIRE(drained);
+    const auto retired = (*renderer)->takeRetiredLighting();
+    REQUIRE(retired.size() == modes.size());
+    for (size_t index = 0; index < retired.size(); ++index) {
+        CAPTURE(index);
+        CHECK(retired[index].frameNumber == uint64_t{index} + 1);
+        CHECK(retired[index].isRetired);
+        CHECK(retired[index].effective == engine::LocalLightMode::Off);
+        CHECK(retired[index].counters.assigned == 0);
+        CHECK(retired[index].listBytes == 0);
+    }
+    const auto visibility = (*renderer)->drainVisibilityAfterIdle();
+    INFO(errorOf(visibility));
+    REQUIRE(visibility);
     return result;
 }
 } // namespace
 
 //======================================================================================================================
-TEST_CASE("zero-live modes preserve graph and shader inputs across temporal cells",
-          "[render][zero-light-invariants]") {
+// Replaces v1's fake-command-list comparison of every bound input. The device replay compares
+// what a configured device can observe -- the compiled graph, the absence of every light import
+// and pass, the scene pass's local-light parameters, the scene-owned table bytes and descriptors,
+// and the temporal status -- between a replay switching requested modes and an all-Off replay,
+// across the five reconstruction cells and both high-water states. Which pointed bytes, roots and
+// pipelines each encoded command selected is not observable here.
+TEST_CASE("zero-live requested modes preserve the Off frame on a configured device",
+          "[render][device][zero-light-invariants]") {
     using namespace render;
     for (const bool highWater : {false, true}) {
         for (const auto cell : {0, 1, 2, 3, 4}) {
@@ -248,7 +215,11 @@ TEST_CASE("zero-live modes preserve graph and shader inputs across temporal cell
             for (size_t frame = 0; frame < baseline.size(); ++frame) {
                 CAPTURE(frame);
                 CHECK(switched[frame].graph == baseline[frame].graph);
-                CHECK(switched[frame].inputs == baseline[frame].inputs);
+                CHECK(switched[frame].localParams == baseline[frame].localParams);
+                for (size_t table = 0; table < baseline[frame].tables.size(); ++table) {
+                    CAPTURE(table);
+                    CHECK(switched[frame].tables[table] == baseline[frame].tables[table]);
+                }
                 const auto& actual = switched[frame].temporal;
                 const auto& expected = baseline[frame].temporal;
                 CHECK(actual.lastReset == expected.lastReset);

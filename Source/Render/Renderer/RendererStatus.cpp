@@ -6,9 +6,6 @@
 #include "Core/Diagnostics/Assert.h"
 #include "Render/Passes/Exposure/ExposureStage.h"
 #include "Render/Renderer/RendererInternal.h"
-#ifndef LMX_PENDING_LIGHTS
-#include "Render/Common/PacedSlots.h"
-#endif
 #include <algorithm>
 #include <limits>
 
@@ -96,24 +93,6 @@ const engine::GpuTexture* Renderer::historyTexture() {
 //======================================================================================================================
 const engine::GpuBuffer& Renderer::exposureBufferOwner() {
     return m_exposureStage->bufferOwner();
-}
-
-//======================================================================================================================
-std::vector<LightingStatus> Renderer::takeRetiredLighting() {
-#ifndef LMX_PENDING_LIGHTS
-    return lmx::render::takeRetired(m_retiredLighting);
-#else
-    return {};
-#endif
-}
-
-//======================================================================================================================
-lmx::Result<void> Renderer::drainLightingAfterIdle() {
-#ifndef LMX_PENDING_LIGHTS
-    return retireLightingThrough(std::numeric_limits<uint64_t>::max());
-#else
-    return {};
-#endif
 }
 
 } // namespace lmx::render

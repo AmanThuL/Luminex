@@ -71,9 +71,8 @@ void registerUniformLayoutsForCapture() {
 
     registerVisibilityLayoutsForCapture();
 
-#ifndef LMX_PENDING_LIGHTS
     LightClusterStage::registerLayoutsForCapture();
-#endif
+    LightDebugStage::registerLayoutsForCapture();
 
     SceneStage::registerPassLayoutsForCapture();
 }

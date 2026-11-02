@@ -221,14 +221,12 @@ RendererFrameImports Renderer::importFrameResources(RenderGraph& graph,
 
     // Row count is a high-water mark; only live lights justify importing the sixth table.
     std::optional<GraphBuffer> lightsImport;
-#ifndef LMX_PENDING_LIGHTS
     if (view.tables.liveLightCount > 0) {
         LMX_ASSERT(view.tables.lights != nullptr, "a live local light needs its paced light table");
         LMX_ASSERT(view.tables.lightRows.size() >= view.tables.lightRowCount,
                    "the borrowed light rows must cover every addressable row slot");
-        lightsImport = graph.importBuffer(view.tables.lights->rhi(), "lmx.scene.lights");
+        lightsImport = graph.importBuffer(*view.tables.lights, "lmx.scene.lights");
     }
-#endif
 
     return {.shadowMap = shadowMap,
             .sceneColor = sceneColor,

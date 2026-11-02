@@ -2,7 +2,7 @@
 
 **Status**: Implemented
 
-This retained walkthrough covers the pending full-stage frame; the [active subset](rojorhi.md#component-boundary) is CPU or GPU visibility → shadow → scene/sky/IBL → exposure → native or vendor temporal reconstruction → bloom → display → HZB build → UI, with lighting measurement unavailable. Native TAA, CPU culling, indirect submission and Clustered local lighting are the retained defaults; vendor reconstruction shares temporal inputs. The [local-light default decision](../milestones/m7/m7.5-validation.md#default-decision) follows the passed lossless-list and scoped exact-image gates; Direct remains the reference.
+This walkthrough covers the full-stage frame the [integration branch](rojorhi.md#component-boundary) builds: CPU or GPU visibility and clustered light lists → shadow → scene/sky/IBL with local lights → exposure → native or vendor temporal reconstruction → bloom → display → light diagnostics → HZB build → UI. Native TAA, CPU culling, indirect submission and Clustered local lighting are the retained defaults; vendor reconstruction shares temporal inputs. The [local-light default decision](../milestones/m7/m7.5-validation.md#default-decision) follows the passed lossless-list and scoped exact-image gates; Direct remains the reference.
 ## The frame at a glance
 
 A fresh `RenderGraph` imports targets, five geometry/material scene buffers (plus lights when live), two submission buffers, persistent histogram/exposure buffers and the drawable. Renderer composes the stages below; graph compilation
@@ -52,8 +52,8 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-curs
 │       │    terms only) + material emissive × instance emissiveScale, summed and pre-exposed
 │       │    direct firstEntry or indirect drawId plus instanceIndex selects visible rows and Addr tables;
 │       │    VertexStorage loads through vertices Addr, per-draw material textures and shared shadow/IBL textures
-│       │    pending LIGHTS inputs: light rows, cluster grid, indices, copied LocalLightParams (136 B)
-│       │    retained Off/Direct/Clustered loop adds point/spot terms before ambient/emissive and exposure
+│       │    ScenePassRoot lights/lightGrid/lightIndices Addr + pointed LocalLightParams (136 B)
+│       │    Off/Direct/Clustered loop adds point/spot terms before IBL/emissive and exposure
 │       ├─ reads the shadow map's written version — the graph derives the barrier from that
 │       │    declaration
 │       ├─ auto-exposure only: binds ScenePassAuto.slang/SkyAuto.slang's pipelines instead of
