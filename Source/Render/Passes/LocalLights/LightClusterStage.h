@@ -89,7 +89,15 @@ public:
     /// pending, and records already retired stay available to takeRetired.
     lmx::Result<void> retireThrough(uint64_t completedFrame);
 
-    /// Moves all newly retired records to the caller, in frame order.
+    /// Cancels the declaration of `frameNumber` when its graph will never execute (compilation
+    /// failed or the frame was abandoned), releasing its paced slot, as GpuVisibility's
+    /// discardUnrecorded does for visibility. The declaration must hold no recorded outcome; a
+    /// partly recorded one stays pending and keeps failing retirement. Executing its graph after
+    /// the discard is misuse.
+    void discardUnrecorded(uint64_t frameNumber);
+
+    /// Moves all newly retired records to the caller, in frame order. The take is destructive: a
+    /// Renderer holds taken records until its own frame join commits rather than taking again.
     std::vector<RetiredLightClusters> takeRetired();
 
 private:

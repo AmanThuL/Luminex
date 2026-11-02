@@ -28,8 +28,16 @@ using light_detail::kIndexBytes;
 
 constexpr uint32_t kThreadsPerGroup = 256;
 // Where each kernel leaves the buffers it writes, which is what a readback after it preserves.
+// The counters' two padding words are last written by the reset's copy fill; the graph's barrier
+// from that copy into the scan's shader write already orders them, so this frontier covers them.
 constexpr SyncPoint kComputeWrite{rojoRHI::Stage::ComputeShader, rojoRHI::Access::ShaderWrite,
                                   rojoRHI::Layout::Undefined};
+
+// A discarded declaration released its slot; running its passes later would race the next owner.
+//======================================================================================================================
+void requireLive(const light_detail::ClusterReadbackTickets& tickets) {
+    LMX_ASSERT(!tickets.discarded, "a discarded light-cluster declaration executed");
+}
 
 #ifndef NDEBUG
 // The six counter words the scan writes; the two padding words keep the reset's zeros.
@@ -204,6 +212,7 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rojoRHI::Comm
     graph.addComputePass(
         "lmx.pass.light.count", std::move(count),
         [=, this, &commands](const PassResources& resources) {
+            requireLive(*tickets);
             commands.setPipeline(m_pipelines[0].get());
             engine::registerFrameRoot(
                 "LightClusterRoot",
@@ -226,6 +235,7 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rojoRHI::Comm
     graph.addComputePass(
         "lmx.pass.light.scan", std::move(scan),
         [=, this, &commands](const PassResources& resources) {
+            requireLive(*tickets);
             commands.setPipeline(m_pipelines[1].get());
             engine::registerFrameRoot(
                 "LightClusterRoot",
@@ -259,6 +269,7 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rojoRHI::Comm
     graph.addComputePass(
         "lmx.pass.light.fill", std::move(fill),
         [=, this, &commands](const PassResources& resources) {
+            requireLive(*tickets);
             commands.setPipeline(m_pipelines[2].get());
             engine::registerFrameRoot(
                 "LightClusterRoot",
@@ -297,6 +308,11 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rojoRHI::Comm
 //======================================================================================================================
 lmx::Result<void> LightClusterStage::retireThrough(uint64_t completedFrame) {
     return m_readback->retireThrough(m_gpu, completedFrame);
+}
+
+//======================================================================================================================
+void LightClusterStage::discardUnrecorded(uint64_t frameNumber) {
+    m_readback->discardUnrecorded(frameNumber);
 }
 
 //======================================================================================================================
