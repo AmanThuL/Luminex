@@ -553,17 +553,6 @@ RenderGraph::prepareHzbHistory(const CompiledFrameRecord& record) const {
                                         reader.texture.handle.version, reader.declaration,
                                         reader.texture.range});
     }
-    const auto masked = [&](uint32_t pass, uint32_t ordinal, const Declaration& declaration) {
-        return std::ranges::any_of(result.masks, [&](const auto& mask) {
-            const auto& a = mask.range;
-            const auto& b = declaration.range;
-            return mask.pass == pass && mask.declaration == ordinal &&
-                   mask.resource == declaration.resource && mask.version == declaration.version &&
-                   !declaration.isWrite && declaration.role == UseRole::ShaderRead &&
-                   a.baseMip == b.baseMip && a.mipCount == b.mipCount &&
-                   a.baseLayer == b.baseLayer && a.layerCount == b.layerCount;
-        });
-    };
     for (uint32_t index = 0; index < m_resources.size(); ++index) {
         const auto& resource = m_resources[index];
         if (!resource.observerOnlyFinalUse)
@@ -575,7 +564,7 @@ RenderGraph::prepareHzbHistory(const CompiledFrameRecord& record) const {
                 const auto& declaration = declarations[ordinal];
                 if (m_resources[declaration.resource].kind == ResourceKind::Texture &&
                     m_resources[declaration.resource].texture.texture == resource.texture.texture &&
-                    !masked(pass, ordinal, declaration))
+                    !hzbMasked(result, pass, ordinal))
                     accessed = true;
             }
         }
@@ -634,19 +623,24 @@ RenderGraph::lowerCompiled(CompiledFrameRecord record,
     if (!physical) {
         return std::unexpected(std::move(physical.error()));
     }
-    frame.finalStates = finalStatesOf(frame.record.debug.schedule);
+    frame.finalStates = finalStatesOf(frame.record.debug.schedule, history);
     return frame;
 }
 
 //======================================================================================================================
 // A culled pass never reaches the GPU, so only scheduled passes count, and the last one naming the
 // texture decides. Within that pass a write wins over a read of another range: it is the use that
-// leaves the texture in a producing state, which the next frame's first access must wait on.
-std::vector<TextureFinalState> RenderGraph::finalStatesOf(const Schedule& schedule) const {
+// leaves the texture in a producing state, which the next frame's first access must wait on. A
+// history observer's read the final compile withdrew never reaches the GPU either, so it counts as
+// no use: a pyramid only such reads named records no final state the next frame could mistake for
+// a prior read.
+std::vector<TextureFinalState>
+RenderGraph::finalStatesOf(const Schedule& schedule,
+                           const graph_detail::HzbRecordingPlan& history) const {
     std::vector<TextureFinalState> states;
     for (uint32_t index = 0; index < m_resources.size(); ++index) {
         const Resource& resource = m_resources[index];
-        if (!resource.tracked) {
+        if (!resource.tracked || std::ranges::contains(history.suppressedFinalUses, index)) {
             continue;
         }
         if (resource.finalUse) {
@@ -656,7 +650,11 @@ std::vector<TextureFinalState> RenderGraph::finalStatesOf(const Schedule& schedu
         for (const uint32_t passIndex : std::views::reverse(schedule.passes)) {
             const Pass& pass = m_passes[passIndex];
             const Declaration* last = nullptr;
-            for (const Declaration& declaration : pass.declarations) {
+            for (uint32_t ordinal = 0; ordinal < pass.declarations.size(); ++ordinal) {
+                const Declaration& declaration = pass.declarations[ordinal];
+                if (hzbMasked(history, passIndex, ordinal)) {
+                    continue;
+                }
                 if (declaration.resource == index && (last == nullptr || declaration.isWrite)) {
                     last = &declaration;
                     if (declaration.isWrite) {
@@ -671,6 +669,21 @@ std::vector<TextureFinalState> RenderGraph::finalStatesOf(const Schedule& schedu
         }
     }
     return states;
+}
+
+//======================================================================================================================
+bool RenderGraph::hzbMasked(const graph_detail::HzbRecordingPlan& history, uint32_t pass,
+                            uint32_t ordinal) const {
+    const auto& declaration = m_passes[pass].declarations[ordinal];
+    return std::ranges::any_of(history.masks, [&](const auto& mask) {
+        const auto& a = mask.range;
+        const auto& b = declaration.range;
+        return mask.pass == pass && mask.declaration == ordinal &&
+               mask.resource == declaration.resource && mask.version == declaration.version &&
+               !declaration.isWrite && declaration.role == UseRole::ShaderRead &&
+               a.baseMip == b.baseMip && a.mipCount == b.mipCount && a.baseLayer == b.baseLayer &&
+               a.layerCount == b.layerCount;
+    });
 }
 
 //======================================================================================================================

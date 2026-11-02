@@ -556,7 +556,11 @@ private:
     AliasPlan planTransients(const Schedule& schedule) const;
 
     // The use each tracked texture is left in after the scheduled passes, by resource index.
-    std::vector<TextureFinalState> finalStatesOf(const Schedule& schedule) const;
+    std::vector<TextureFinalState>
+    finalStatesOf(const Schedule& schedule, const graph_detail::HzbRecordingPlan& history) const;
+    // Whether the final compile withdrew a history observer's read: the pass records no access.
+    bool hzbMasked(const graph_detail::HzbRecordingPlan& history, uint32_t pass,
+                   uint32_t ordinal) const;
 
     // The render-pass op a raster pass lowers to, carrying its attachments as declared.
     BeginRenderPassOp beginRenderPassOf(const Pass& pass) const;

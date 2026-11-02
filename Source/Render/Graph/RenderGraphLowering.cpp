@@ -239,16 +239,7 @@ GraphResult<void> RenderGraph::lowerPhysical(LoweredFrame& frame, const AliasPla
         std::vector<std::optional<TextureState>> buffers(m_resources.size());
         for (uint32_t ordinal = 0; ordinal < pass.declarations.size(); ++ordinal) {
             const auto& declaration = pass.declarations[ordinal];
-            if (std::ranges::any_of(history.masks, [&](const auto& mask) {
-                    const auto& a = mask.range;
-                    const auto& b = declaration.range;
-                    return mask.pass == passIndex && mask.declaration == ordinal &&
-                           mask.resource == declaration.resource &&
-                           mask.version == declaration.version && !declaration.isWrite &&
-                           declaration.role == UseRole::ShaderRead && a.baseMip == b.baseMip &&
-                           a.mipCount == b.mipCount && a.baseLayer == b.baseLayer &&
-                           a.layerCount == b.layerCount;
-                }))
+            if (hzbMasked(history, passIndex, ordinal))
                 continue;
             const auto index = declaration.resource;
             const auto& resource = m_resources[index];
