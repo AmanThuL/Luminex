@@ -294,7 +294,12 @@ int runOffscreen(AppOptions options) {
         // The scene's previous pose is committed only after the submitted frame has consumed it.
         gpu.waitIdle();
         session.commitFrame();
-        (*renderer)->drainVisibilityAfterIdle();
+        if (auto retired = (*renderer)->drainVisibilityAfterIdle(); !retired) {
+            LMX_LOG_ERROR("visibility retirement failed: {}", retired.error().message);
+            if (sequence)
+                writeManifest(false, retired.error().message);
+            return 1;
+        }
 #ifndef LMX_PENDING_LIGHTS
         if (auto retired = (*renderer)->drainLightingAfterIdle(); !retired) {
             LMX_LOG_ERROR("lighting retirement failed: {}", retired.error().message);

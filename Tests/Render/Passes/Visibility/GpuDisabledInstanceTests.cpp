@@ -31,14 +31,24 @@ ToggleFrame toggleFrame(engine::GpuContext& gpu, engine::Scene& scene, render::R
     view.submission = submission;
     view.occlusionEnabled = occlusion;
     view.occlusionCheck = occlusion;
-    renderer.render(commands, camera, view);
+    const auto rendered = renderer.render(commands, camera, view);
+    if (!rendered)
+        gpu.submitAndEndFrame(frame);
+    INFO(errorOf(rendered));
+    REQUIRE(rendered);
+    // Copied on the frame's own list: a separate copy frame would leave a gap in the occlusion
+    // source clock that the next toggle frame would report instead of its coverage change.
+    const auto& target = renderer.colorTarget();
+    requireRecordedUse(renderer.textureStates(), target, render::TextureUse::ShaderRead);
+    const auto colorTicket =
+        render::recordReadback(gpu, commands, target, renderer.textureStates());
     gpu.submitAndEndFrame(frame);
     scene.commitFrame();
     gpu.waitIdle();
     ToggleFrame result;
     result.visibility = renderer.visibilityStatus();
     if (classifier == render::ClassifyMode::Gpu) {
-        renderer.drainVisibilityAfterIdle();
+        REQUIRE(renderer.drainVisibilityAfterIdle());
         auto retired = renderer.takeRetiredVisibility();
         REQUIRE(retired.size() == 1);
         result.visibility = std::move(retired.front());
@@ -54,28 +64,29 @@ ToggleFrame toggleFrame(engine::GpuContext& gpu, engine::Scene& scene, render::R
         REQUIRE(check.passed());
         REQUIRE(check.falselyRejectedInstances == 0);
     }
-    const auto& target = renderer.colorTarget();
-    std::vector<uint8_t> bytes(size_t{target.desc().width} * target.desc().height * 4);
+    std::vector<uint8_t> bytes(size_t{target.desc().extent.width} * target.desc().extent.height *
+                               4);
     {
-        const auto readbackBytes =
-            lmx::render::readbackNow(gpu, target, lmx::render::TextureUse::RenderTarget);
-        std::memcpy(bytes.data(), readbackBytes.data(), bytes.size());
+        const auto resolved = render::resolve(gpu, colorTicket, bytes);
+        INFO(errorOf(resolved));
+        REQUIRE(resolved);
     }
     result.digest = sha256Hex(std::as_bytes(std::span(bytes)));
     if (const char* directory = std::getenv("LMX_DISABLED_EVIDENCE_DIR")) {
         const auto path = std::filesystem::path(directory);
         std::filesystem::create_directories(path);
-        REQUIRE(asset::writeBmp(path / (std::string(label) + ".bmp"), bytes, target.desc().width,
-                                target.desc().height));
+        REQUIRE(asset::writeBmp(path / (std::string(label) + ".bmp"), bytes,
+                                target.desc().extent.width, target.desc().extent.height));
         std::ofstream detail(path / "row-details.tsv", std::ios::app);
         const auto submissionRows = render::buildDrawSubmission(
             view, result.visibility.scene, result.visibility.shadow, submission);
         std::vector<engine::InstanceRow> uploaded(view.tables.instanceCapacity);
         {
-            const auto readbackBytes = lmx::render::readbackNow(
-                gpu, *view.tables.instances, lmx::render::BufferUse::ShaderRead,
-                {0, uploaded.size() * sizeof(uploaded[0])});
-            std::memcpy(uploaded.data(), readbackBytes.data(),
+            const auto readbackBytes = render::readbackNow(
+                gpu, *view.tables.instances, {}, {0, uploaded.size() * sizeof(uploaded[0])});
+            INFO(errorOf(readbackBytes));
+            REQUIRE(readbackBytes);
+            std::memcpy(uploaded.data(), readbackBytes->data(),
                         uploaded.size() * sizeof(uploaded[0]));
         }
         const auto vp = camera.projectionMatrix(16.0f / 9.0f) * camera.viewMatrix();
@@ -101,9 +112,9 @@ ToggleFrame toggleFrame(engine::GpuContext& gpu, engine::Scene& scene, render::R
                                       (corner & 2) ? row.worldBoundsMax.y : row.worldBoundsMin.y,
                                       (corner & 4) ? row.worldBoundsMax.z : row.worldBoundsMin.z};
                 const auto clip = vp * glm::vec4(point, 1);
-                detail << (clip.x / clip.w * 0.5f + 0.5f) * target.desc().width << ','
-                       << (0.5f - clip.y / clip.w * 0.5f) * target.desc().height << ',' << clip.w
-                       << ';';
+                detail << (clip.x / clip.w * 0.5f + 0.5f) * target.desc().extent.width << ','
+                       << (0.5f - clip.y / clip.w * 0.5f) * target.desc().extent.height << ','
+                       << clip.w << ';';
             }
             detail << '\n';
         }

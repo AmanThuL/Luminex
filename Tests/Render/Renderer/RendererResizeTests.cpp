@@ -1,3 +1,4 @@
+#include "Render/Passes/Occlusion/HzbStage.h"
 #include "Render/Passes/Temporal/VendorTemporalScaler.h"
 #include "Render/Renderer/Renderer.h"
 #include "Support/TestGpu.h"
@@ -12,6 +13,26 @@
 #include <optional>
 #include <span>
 #include <vector>
+
+namespace lmx::render {
+// Reads the renderer's occlusion pyramid pair, which no public accessor exposes.
+struct RendererResizeAccess {
+    //==================================================================================================================
+    static const HzbStage* stage(const Renderer& renderer);
+    static std::array<rojoRHI::Texture, 2> pyramids(const Renderer& renderer);
+};
+
+//======================================================================================================================
+const HzbStage* RendererResizeAccess::stage(const Renderer& renderer) {
+    return renderer.m_hzbStage.get();
+}
+
+//======================================================================================================================
+std::array<rojoRHI::Texture, 2> RendererResizeAccess::pyramids(const Renderer& renderer) {
+    const auto& allocation = *renderer.m_hzbStage->m_allocation;
+    return {allocation.textures[0].rhi(), allocation.textures[1].rhi()};
+}
+} // namespace lmx::render
 
 namespace {
 
@@ -78,6 +99,28 @@ void renderTemporalFrame(engine::GpuContext& gpu, render::Renderer& renderer,
     INFO(errorOf(rendered));
     REQUIRE(rendered.has_value());
     gpu.waitIdle();
+}
+
+//======================================================================================================================
+// Renders one empty GPU-classified frame with occlusion on and waits for it; returns the frame's
+// declared occlusion validity.
+render::OcclusionInvalidReason renderOcclusionFrame(engine::GpuContext& gpu,
+                                                    render::Renderer& renderer) {
+    render::SceneView view;
+    view.temporal.enabled = false;
+    view.classifyMode = render::ClassifyMode::Gpu;
+    view.occlusionEnabled = true;
+    engine::Camera camera;
+    camera.position = {0, 0, 5};
+    auto frame = gpu.beginFrame();
+    const auto rendered = renderer.render(frame.commands, camera, view);
+    gpu.submitAndEndFrame(frame);
+    INFO(errorOf(rendered));
+    REQUIRE(rendered.has_value());
+    gpu.waitIdle();
+    REQUIRE(renderer.drainVisibilityAfterIdle());
+    (void)renderer.takeRetiredVisibility();
+    return renderer.visibilityStatus().occlusionInvalidReason;
 }
 
 //======================================================================================================================
@@ -220,4 +263,114 @@ TEST_CASE("a failed resize leaves the renderer at its old extent", "[render][dev
     for (const rojoRHI::Texture texture : secondSlot) {
         REQUIRE_FALSE(renderer.textureStates().logicalUse(texture).has_value());
     }
+}
+
+//======================================================================================================================
+// Once a frame has created the occlusion pyramids, they are one more replacement the resize
+// prepares before it adopts anything. Failing the resize at every allocation in turn, including
+// the pyramid pair's, must leave both pyramids, their state entries and their history in place:
+// the next frame at the old extent still finds valid depth evidence.
+TEST_CASE("a failed resize leaves the occlusion pyramids and their history at the old extent",
+          "[render][device][occlusion]") {
+    auto gpu = createTestGpu();
+    // The same resize without pyramids fails at fewer allocations; the extra failures below are
+    // the pyramid pair's own.
+    const auto countFailures = [&](render::Renderer& renderer, uint32_t free) {
+        uint32_t failures = 0;
+        for (uint32_t spare = 0;; ++spare) {
+            CAPTURE(spare);
+            REQUIRE(spare < 128);
+            const auto resized = [&] {
+                const ViewHold hold(gpu->device(), free - spare);
+                REQUIRE(hold.held == free - spare);
+                return renderer.resize(80, 48);
+            }();
+            if (resized) {
+                return failures;
+            }
+            REQUIRE(resized.error().code == ErrorCode::Gpu);
+            ++failures;
+            retireFrames(*gpu);
+        }
+    };
+    uint32_t withoutPyramids = 0;
+    {
+        auto created = render::Renderer::create(*gpu, 64, 64);
+        INFO(errorOf(created));
+        REQUIRE(created.has_value());
+        retireFrames(*gpu);
+        const uint32_t free = ViewHold(gpu->device(), UINT32_MAX).held;
+        retireFrames(*gpu);
+        withoutPyramids = countFailures(**created, free);
+    }
+    retireFrames(*gpu);
+
+    auto created = render::Renderer::create(*gpu, 64, 64);
+    INFO(errorOf(created));
+    REQUIRE(created.has_value());
+    render::Renderer& renderer = **created;
+    REQUIRE(render::RendererResizeAccess::stage(renderer) == nullptr);
+    renderOcclusionFrame(*gpu, renderer);
+    REQUIRE(renderOcclusionFrame(*gpu, renderer) == render::OcclusionInvalidReason::None);
+    const auto* stage = render::RendererResizeAccess::stage(renderer);
+    REQUIRE(stage != nullptr);
+    const auto pyramids = render::RendererResizeAccess::pyramids(renderer);
+    const auto layout = stage->layout();
+    retireFrames(*gpu);
+
+    // A resize refused outright keeps the pyramids and their history. The frames that retire the
+    // held views leave a gap in the source clock, so the next frame reports that gap rather than
+    // an extent change or a missing source, and the frame after it finds valid evidence again.
+    {
+        const uint32_t free = ViewHold(gpu->device(), UINT32_MAX).held;
+        retireFrames(*gpu);
+        const auto resized = [&] {
+            const ViewHold hold(gpu->device(), free);
+            return renderer.resize(80, 48);
+        }();
+        REQUIRE_FALSE(resized.has_value());
+        retireFrames(*gpu);
+    }
+    REQUIRE(renderOcclusionFrame(*gpu, renderer) == render::OcclusionInvalidReason::SourceGap);
+    REQUIRE(renderOcclusionFrame(*gpu, renderer) == render::OcclusionInvalidReason::None);
+    REQUIRE(render::RendererResizeAccess::pyramids(renderer) == pyramids);
+    retireFrames(*gpu);
+
+    const RendererSnapshot before = snapshot(renderer, pyramids);
+    const uint32_t free = ViewHold(gpu->device(), UINT32_MAX).held;
+    retireFrames(*gpu);
+    uint32_t failures = 0;
+    for (uint32_t spare = 0;; ++spare) {
+        CAPTURE(spare);
+        REQUIRE(spare < 128);
+        const auto resized = [&] {
+            const ViewHold hold(gpu->device(), free - spare);
+            REQUIRE(hold.held == free - spare);
+            return renderer.resize(80, 48);
+        }();
+        if (resized) {
+            break;
+        }
+        REQUIRE(resized.error().code == ErrorCode::Gpu);
+        REQUIRE(snapshot(renderer, pyramids) == before);
+        REQUIRE(render::RendererResizeAccess::pyramids(renderer) == pyramids);
+        REQUIRE(stage->layout().width == layout.width);
+        REQUIRE(stage->layout().height == layout.height);
+        ++failures;
+        retireFrames(*gpu);
+    }
+    REQUIRE(failures > withoutPyramids);
+    REQUIRE(renderer.width() == 80);
+    const auto resizedLayout = render::hzbLayout(80, 48);
+    REQUIRE(stage->layout().width == resizedLayout.width);
+    REQUIRE(stage->layout().height == resizedLayout.height);
+    for (const rojoRHI::Texture texture : pyramids) {
+        REQUIRE_FALSE(renderer.textureStates().logicalUse(texture).has_value());
+    }
+    // The adopted pair starts unbuilt at the new extent: the first frame finds no valid evidence,
+    // the next uses the pyramid that frame built.
+    retireFrames(*gpu);
+    REQUIRE(renderOcclusionFrame(*gpu, renderer) != render::OcclusionInvalidReason::None);
+    REQUIRE(renderOcclusionFrame(*gpu, renderer) == render::OcclusionInvalidReason::None);
+    REQUIRE(stage->layout().width == resizedLayout.width);
 }

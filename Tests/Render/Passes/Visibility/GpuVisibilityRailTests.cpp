@@ -36,12 +36,14 @@ TEST_CASE("GPU VisibilityLab states and canonical output equal the CPU at three 
             const auto planes = render::extractFrustumPlanes(camera.projectionMatrix(16.0f / 9.0f) *
                                                              camera.viewMatrix());
             const auto expected = render::classifyView(planes, items, view.tables);
-            (*renderer)->render(commands, camera, view);
+            const auto rendered = (*renderer)->render(commands, camera, view);
             const auto declared = gpu->frameNumber();
             gpu->submitAndEndFrame(commandsFrame);
+            INFO(errorOf(rendered));
+            REQUIRE(rendered);
             world.commitFrame();
             gpu->waitIdle();
-            (*renderer)->drainVisibilityAfterIdle();
+            REQUIRE((*renderer)->drainVisibilityAfterIdle());
             const auto results = (*renderer)->takeRetiredVisibility();
             REQUIRE(results.size() == 1);
             const auto& result = results[0];
@@ -77,13 +79,15 @@ TEST_CASE("Empty GPU view and classifier switches preserve final frame diagnosti
         view.classifyMode = classifier;
         view.classifyCheck = classifier == render::ClassifyMode::Gpu;
         view.submission = render::SubmissionMode::Batched;
-        (*renderer)->render(commands, engine::Camera{}, view);
+        const auto rendered = (*renderer)->render(commands, engine::Camera{}, view);
         if (classifier == render::ClassifyMode::Gpu)
             gpuFrames.push_back(gpu->frameNumber());
         gpu->submitAndEndFrame(commandsFrame);
+        INFO(errorOf(rendered));
+        REQUIRE(rendered);
     }
     gpu->waitIdle();
-    (*renderer)->drainVisibilityAfterIdle();
+    REQUIRE((*renderer)->drainVisibilityAfterIdle());
     const auto results = (*renderer)->takeRetiredVisibility();
     REQUIRE(results.size() == gpuFrames.size());
     for (size_t i = 0; i < results.size(); ++i) {

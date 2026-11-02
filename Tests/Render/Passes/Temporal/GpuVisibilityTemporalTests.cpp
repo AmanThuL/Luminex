@@ -44,15 +44,11 @@ std::unique_ptr<render::Renderer> visibilityRenderer(engine::GpuContext& gpu) {
 }
 
 //======================================================================================================================
-engine::GpuBuffer submitVisibility(engine::GpuContext& gpu, engine::Scene& scene,
-                                   render::Renderer& renderer, render::SubmissionMode mode,
-                                   bool cull, bool wait = true) {
-    auto snapshot = engine::GpuBuffer::create(gpu.device(),
-                                              {.size = uint64_t{kSize} * kSize * 4,
-                                               .cpuReadback = true,
-                                               .label = "lmx.test.sceneTables.frame"},
-                                              nullptr);
-    REQUIRE(snapshot.has_value());
+// One frame of the scene, with a preserving copy of the display target recorded on the same command
+// list after the frame's own passes, so each submitted frame keeps its own picture.
+render::ReadbackTicket submitVisibility(engine::GpuContext& gpu, engine::Scene& scene,
+                                        render::Renderer& renderer, render::SubmissionMode mode,
+                                        bool cull, bool wait = true) {
     auto frame = gpu.beginFrame();
     auto& commands = frame.commands;
     auto prepared = scene.prepareFrame(gpu.frameNumber());
@@ -67,35 +63,28 @@ engine::GpuBuffer submitVisibility(engine::GpuContext& gpu, engine::Scene& scene
     view.temporal.jitterEnabled = false;
     view.temporal.reconstruction = render::ReconstructionMode::Raw;
     view.temporal.sceneGeneration = scene.objects.front().id.store;
-    renderer.render(commands, engine::Camera{}, view);
-    commands.textureBarrier(renderer.colorTarget().rhi(), rojoRHI::TextureUse::RenderTarget,
-                            rojoRHI::TextureUse::CopySource);
-    commands.beginCopyPass("lmx.test.sceneTables.preserveFrame");
-    commands.copyTextureToBuffer(renderer.colorTarget().rhi(), {.width = kSize, .height = kSize},
-                                 snapshot->rhi(), {.bytesPerRow = kSize * 4});
-    commands.endCopyPass();
-    commands.textureBarrier(renderer.colorTarget().rhi(), rojoRHI::TextureUse::CopySource,
-                            rojoRHI::TextureUse::RenderTarget);
-    commands.beginRenderPass({.colorTarget = &renderer.colorTarget().rhi(),
-                              .clear = false,
-                              .label = "lmx.test.sceneTables.restoreTarget"});
-    commands.endRenderPass();
+    const auto rendered = renderer.render(commands, engine::Camera{}, view);
+    if (!rendered)
+        gpu.submitAndEndFrame(frame);
+    INFO(errorOf(rendered));
+    REQUIRE(rendered.has_value());
+    auto snapshot =
+        render::recordReadback(gpu, commands, renderer.colorTarget(), renderer.textureStates());
     gpu.submitAndEndFrame(frame);
     scene.commitFrame();
     if (wait) {
         gpu.waitIdle();
     }
-    return std::move(*snapshot);
+    return snapshot;
 }
 
 //======================================================================================================================
-std::vector<uint8_t> visibilityPixels(engine::GpuContext& gpu, const engine::GpuBuffer& buffer) {
+std::vector<uint8_t> visibilityPixels(engine::GpuContext& gpu,
+                                      const render::ReadbackTicket& ticket) {
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
-    {
-        const auto readbackBytes = lmx::render::readbackNow(
-            gpu, buffer, lmx::render::BufferUse::CopyDestination, {0, pixels.size()});
-        std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
-    }
+    const auto resolved = render::resolve(gpu, ticket, pixels);
+    INFO(errorOf(resolved));
+    REQUIRE(resolved.has_value());
     return pixels;
 }
 
@@ -137,13 +126,14 @@ TEST_CASE("production visibility and submission modes preserve raster output",
     }
 }
 
+//======================================================================================================================
 TEST_CASE("visibility buffers retain four overlapping frame lists and images",
           "[gpu][visibility]") {
     auto gpu = createTestGpu();
     auto scene = visibilityScene();
     REQUIRE(scene.finalize(gpu->device()));
     auto renderer = visibilityRenderer(*gpu);
-    std::array<engine::GpuBuffer, 4> snapshots;
+    std::array<render::ReadbackTicket, 4> snapshots;
     for (uint32_t frame = 0; frame < 4; ++frame) {
         if (frame == 2) {
             const auto mesh = scene.objects[0].mesh;

@@ -6,11 +6,6 @@
 #include "Core/Diagnostics/Assert.h"
 #include "Render/Passes/Exposure/ExposureStage.h"
 #include "Render/Renderer/RendererInternal.h"
-#ifndef LMX_PENDING_VISIBILITY
-#include "Render/Passes/Occlusion/OcclusionReference.h"
-#include "Render/Passes/Visibility/GpuVisibility.h"
-#endif
-
 #ifndef LMX_PENDING_LIGHTS
 #include "Render/Common/PacedSlots.h"
 #endif
@@ -101,38 +96,6 @@ const engine::GpuTexture* Renderer::historyTexture() {
 //======================================================================================================================
 const engine::GpuBuffer& Renderer::exposureBufferOwner() {
     return m_exposureStage->bufferOwner();
-}
-
-//======================================================================================================================
-std::vector<VisibilityStatus> Renderer::takeRetiredVisibility() {
-#ifndef LMX_PENDING_VISIBILITY
-    auto results =
-        m_gpuVisibility ? m_gpuVisibility->takeRetired() : std::vector<VisibilityStatus>{};
-    if (m_occlusionReference) {
-        for (auto& result : results) {
-            m_occlusionReference->retireThrough(result.frameNumber);
-            auto checked = m_occlusionReference->check(result);
-            LMX_ASSERT(checked || !result.occlusionCheckEnabled,
-                       "enabled occlusion reference must join its retired frame");
-            if (checked)
-                result.occlusionCheck = std::move(*checked);
-        }
-    }
-    return results;
-#else
-    return {};
-#endif
-}
-
-//======================================================================================================================
-void Renderer::drainVisibilityAfterIdle() {
-#ifndef LMX_PENDING_VISIBILITY
-    if (m_occlusionReference)
-        m_occlusionReference->retireThrough(std::numeric_limits<uint64_t>::max());
-    if (m_gpuVisibility)
-        m_gpuVisibility->retireThrough(std::numeric_limits<uint64_t>::max());
-#else
-#endif
 }
 
 //======================================================================================================================

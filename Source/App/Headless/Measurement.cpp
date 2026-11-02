@@ -249,7 +249,10 @@ int runMeasurement(const AppOptions& options) {
         // The RHI publishes only its newest retired frame. Explicit serialization is required to
         // preserve every frame's timestamps; report this pacing, and exclude it from CPU encoding.
         gpu.waitIdle();
-        (*renderer)->drainVisibilityAfterIdle();
+        if (auto retired = (*renderer)->drainVisibilityAfterIdle(); !retired) {
+            run.cancel(retired.error().message);
+            break;
+        }
         if (auto retired = (*renderer)->drainLightingAfterIdle(); !retired) {
             run.cancel(retired.error().message);
             break;

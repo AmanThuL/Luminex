@@ -5,7 +5,7 @@
 #include "App/Model/Performance/MeasurementSample.h"
 #include "Render/Renderer/Renderer.h"
 #include "Render/Renderer/SceneViewBuilder.h"
-#include "Support/GraphTestSupport.h"
+#include "Support/TestGpu.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -13,14 +13,13 @@ using namespace lmx;
 
 //======================================================================================================================
 TEST_CASE("Measurement samples real declarations with mixed and disabled populations",
-          "[app][measurement][measurement-declaration]") {
+          "[app][measurement][measurement-declaration][device]") {
+    auto gpu = createTestGpu();
     for (const auto classifier : {render::ClassifyMode::Cpu, render::ClassifyMode::Gpu}) {
         for (const auto submission :
              {render::SubmissionMode::Indirect, render::SubmissionMode::Batched}) {
             for (const uint32_t enabled : {2u, 0u}) {
                 CAPTURE(classifier, submission, enabled);
-                FakeDevice device;
-                device.frame = 1;
                 engine::Scene scene;
                 scene.boundingSphere = {0, 0, 0, 2};
                 const auto mesh = scene.addMesh(engine::makeCube(), "lmx.test.measurement.cube");
@@ -29,24 +28,32 @@ TEST_CASE("Measurement samples real declarations with mixed and disabled populat
                     scene.addObject({.mesh = mesh, .material = material});
                     scene.setObjectEnabled(i, i < enabled);
                 }
-                REQUIRE(scene.finalize(device));
-                engine::GpuContext gpu{device};
-                auto renderer = render::Renderer::create(gpu, 32, 32);
+                REQUIRE(scene.finalize(gpu->device()));
+                auto renderer = render::Renderer::create(*gpu, 32, 32);
+                INFO(errorOf(renderer));
                 REQUIRE(renderer);
-                auto& commands = device.beginFrame();
-                REQUIRE(scene.prepareFrame(device.frameNumber()));
+                auto frame = gpu->beginFrame();
+                auto& commands = frame.commands;
+                REQUIRE(scene.prepareFrame(gpu->frameNumber()));
                 std::vector<engine::DrawItem> items;
                 auto view = render::buildSceneView(scene, items, false);
                 view.classifyMode = classifier;
                 view.submission = submission;
                 view.temporal.enabled = false;
                 view.localLightMode = engine::LocalLightMode::Off;
-                render::TransientPool pool(device);
+                render::TransientPool pool(*gpu);
                 pool.beginFrame();
                 render::RenderGraph graph(pool);
-                graph.exportTexture(
-                    (*renderer)->declarePasses(graph, commands, engine::Camera{}, view));
-                const auto record = graph.compileFrame(device.frameNumber());
+                const auto declared =
+                    (*renderer)->declarePasses(graph, commands, engine::Camera{}, view);
+                if (!declared)
+                    gpu->submitAndEndFrame(frame);
+                INFO(errorOf(declared));
+                REQUIRE(declared);
+                graph.exportTexture(*declared);
+                const auto record = graph.compileFrame(gpu->frameNumber());
+                if (!record)
+                    gpu->submitAndEndFrame(frame);
                 REQUIRE(record);
                 const auto& declaration = (*renderer)->visibilityStatus();
                 REQUIRE_FALSE(declaration.isRetired);
@@ -82,6 +89,11 @@ TEST_CASE("Measurement samples real declarations with mixed and disabled populat
                     }
                     CHECK(run.state() == app::MeasurementState::Draining);
                 }
+                // The sampled declaration executes and completes like any other frame.
+                graph.execute(commands, gpu->frameNumber());
+                gpu->submitAndEndFrame(frame);
+                gpu->waitIdle();
+                scene.commitFrame();
             }
         }
     }

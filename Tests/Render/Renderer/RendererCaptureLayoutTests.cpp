@@ -1,25 +1,46 @@
+#include "Engine/Gpu/CaptureSchema.h"
 #include "Render/Renderer/Renderer.h"
 #include <catch2/catch_test_macros.hpp>
 #include <filesystem>
 #include <format>
 #include <fstream>
-#include <rojoRHI/CaptureSchema.h>
+#include <initializer_list>
 #include <sstream>
-
-using rojoRHI::debug::CaptureSchema;
+#include <string>
+#include <string_view>
+#include <utility>
 
 namespace {
 
 //======================================================================================================================
-std::string writeAndRead(CaptureSchema& schema) {
+std::string writeAndRead() {
     const std::filesystem::path path = "lmx-schema-test.json";
     std::filesystem::remove(path);
-    REQUIRE(schema.writeJson(path));
+    REQUIRE(lmx::engine::writeCaptureSchema(path));
     std::ifstream in(path);
     std::stringstream text;
     text << in.rdbuf();
     std::filesystem::remove(path);
     return text.str();
+}
+
+//======================================================================================================================
+// Schema version 2 names each layout once, with no binding slot, and lists its fields in order;
+// a layout's block runs from its name to the closing bracket of its field array.
+void requireLayout(const std::string& json, std::string_view name, uint32_t size,
+                   std::initializer_list<std::pair<std::string_view, uint32_t>> fields) {
+    CAPTURE(name);
+    const auto start =
+        json.find(std::format("{{\"name\": \"{}\", \"sizeBytes\": {}, \"fields\": [", name, size));
+    REQUIRE(start != std::string::npos);
+    const auto end = json.find("]}", start);
+    REQUIRE(end != std::string::npos);
+    const auto layout = json.substr(start, end - start);
+    for (const auto& [field, offset] : fields) {
+        INFO(field);
+        REQUIRE(
+            layout.contains(std::format("\"name\": \"{}\", \"offsetBytes\": {}", field, offset)));
+    }
 }
 } // namespace
 
@@ -28,11 +49,13 @@ std::string writeAndRead(CaptureSchema& schema) {
 // needed to pin them -- which is what keeps this the test that fails first when a uniform struct
 // changes shape without the sidecar being told.
 TEST_CASE("renderer registers the four uniform struct layouts") {
-    auto& schema = rojoRHI::debug::CaptureSchema::instance();
-    schema.resetForTest();
+    lmx::engine::resetCaptureSchemaForTest();
     lmx::render::registerUniformLayoutsForCapture();
-    const std::string json = writeAndRead(schema);
-    for (const char* name : {"PassUniforms", "DrawUniforms", "ShadowPassUniforms", "SkyUniforms"}) {
+    const std::string json = writeAndRead();
+    // The per-draw uniform block became the draw root that addresses the pass root: v2 has no
+    // binding slots, so a draw's first visible row travels in SceneDrawRoot instead.
+    for (const char* name :
+         {"PassUniforms", "SceneDrawRoot", "ShadowPassUniforms", "SkyUniforms"}) {
         INFO(name);
         REQUIRE(json.find(name) != std::string::npos);
     }
@@ -59,27 +82,20 @@ TEST_CASE("renderer registers the four uniform struct layouts") {
     REQUIRE(json.find("\"previousModel\"") != std::string::npos);
     REQUIRE(json.find("\"sizeBytes\": 240") != std::string::npos);
     REQUIRE(json.find("\"sizeBytes\": 112") != std::string::npos);
-    REQUIRE(json.find("\"sizeBytes\": 16") != std::string::npos);
+    REQUIRE(json.find("\"sizeBytes\": 48") != std::string::npos);
     REQUIRE(json.find("ObjectUniforms") == std::string::npos);
     REQUIRE(json.find("AlphaMaskParams") == std::string::npos);
+    REQUIRE(json.find("DrawUniforms") == std::string::npos);
+    REQUIRE(json.find("\"slot\"") == std::string::npos);
+    REQUIRE(json.contains("\"version\": 2"));
 
-    const auto requireLayout =
-        [&](std::string_view name, uint32_t slot, uint32_t size,
-            std::initializer_list<std::pair<std::string_view, uint32_t>> fields) {
-            const auto start = json.find(
-                std::format("\"name\": \"{}\", \"slot\": {}, \"sizeBytes\": {}", name, slot, size));
-            REQUIRE(start != std::string::npos);
-            const auto end = json.find("\n    ]}", start);
-            REQUIRE(end != std::string::npos);
-            const auto layout = json.substr(start, end - start);
-            for (const auto& [field, offset] : fields) {
-                INFO(field);
-                REQUIRE(layout.find(std::format("\"name\": \"{}\", \"offsetBytes\": {}", field,
-                                                offset)) != std::string::npos);
-            }
-        };
-    requireLayout("DrawUniforms", 1, 16, {{"firstEntry", 0}});
-    requireLayout("InstanceRow", 5, 240,
+    requireLayout(json, "SceneDrawRoot", 48, {{"pass", 0}, {"firstEntry", 8}});
+    requireLayout(json, "ScenePassRoot", 112,
+                  {{"vertices", 0}, {"visibleRows", 8}, {"instances", 16}, {"materials", 24}});
+    requireLayout(json, "SkyRoot", 32, {{"vertices", 0}, {"uniforms", 8}, {"exposure", 16}});
+    requireLayout(json, "ShadowPassRoot", 48, {{"vertices", 0}, {"visibleRows", 8}});
+    requireLayout(json, "ShadowDrawRoot", 32, {{"pass", 0}});
+    requireLayout(json, "InstanceRow", 240,
                   {{"model", 0},
                    {"previousModel", 64},
                    {"normalMatrix", 128},
@@ -89,7 +105,7 @@ TEST_CASE("renderer registers the four uniform struct layouts") {
                    {"emissiveScale", 204},
                    {"worldBoundsMin", 208},
                    {"worldBoundsMax", 224}});
-    requireLayout("MaterialRow", 6, 112,
+    requireLayout(json, "MaterialRow", 112,
                   {{"uvTransform", 0},
                    {"albedo", 64},
                    {"emissive", 80},
@@ -98,7 +114,7 @@ TEST_CASE("renderer registers the four uniform struct layouts") {
                    {"occlusionStrength", 100},
                    {"alphaCutoff", 104},
                    {"flags", 108}});
-    requireLayout("MeshRow", 7, 48,
+    requireLayout(json, "MeshRow", 48,
                   {{"firstIndex", 0},
                    {"indexCount", 4},
                    {"firstVertex", 8},
@@ -109,31 +125,17 @@ TEST_CASE("renderer registers the four uniform struct layouts") {
 
 //======================================================================================================================
 TEST_CASE("capture schema pins GPU visibility storage and frame parameter records") {
-    auto& schema = CaptureSchema::instance();
-    schema.resetForTest();
+    lmx::engine::resetCaptureSchemaForTest();
     lmx::render::registerUniformLayoutsForCapture();
-    const auto json = writeAndRead(schema);
-    const auto requireLayout =
-        [&](std::string_view name, uint32_t slot, uint32_t size,
-            std::initializer_list<std::pair<std::string_view, uint32_t>> fields) {
-            CAPTURE(name);
-            const auto start = json.find(
-                std::format("\"name\": \"{}\", \"slot\": {}, \"sizeBytes\": {}", name, slot, size));
-            REQUIRE(start != std::string::npos);
-            const auto end = json.find("\n    ]}", start);
-            REQUIRE(end != std::string::npos);
-            const auto layout = json.substr(start, end - start);
-            for (const auto& [field, offset] : fields)
-                REQUIRE(layout.find(std::format("\"name\": \"{}\", \"offsetBytes\": {}", field,
-                                                offset)) != std::string::npos);
-        };
-    requireLayout("CandidateRecord", 0, 8, {{"instanceRow", 0}, {"run", 4}});
+    const auto json = writeAndRead();
+    REQUIRE(json.find("\"slot\"") == std::string::npos);
+    requireLayout(json, "CandidateRecord", 8, {{"instanceRow", 0}, {"run", 4}});
     requireLayout(
-        "RunRecord", 1, 16,
+        json, "RunRecord", 16,
         {{"firstCandidate", 0}, {"candidateCount", 4}, {"firstSlot", 8}, {"argumentIndex", 12}});
-    requireLayout("ChunkRecord", 2, 16,
+    requireLayout(json, "ChunkRecord", 16,
                   {{"run", 0}, {"firstCandidate", 4}, {"candidateCount", 8}, {"padding", 12}});
-    requireLayout("VisibilityViewParams", 5, 112,
+    requireLayout(json, "VisibilityViewParams", 112,
                   {{"planes", 0},
                    {"flags", 80},
                    {"firstCandidate", 84},
@@ -142,14 +144,14 @@ TEST_CASE("capture schema pins GPU visibility storage and frame parameter record
                    {"runCount", 96},
                    {"firstChunk", 100},
                    {"chunkCount", 104}});
-    requireLayout("VisibilityParams", 6, 32,
+    requireLayout(json, "VisibilityParams", 32,
                   {{"layout", 0},
                    {"rowCapacity", 4},
                    {"argumentCapacity", 8},
                    {"stateCapacity", 12},
                    {"candidateCount", 16},
                    {"viewCount", 20}});
-    requireLayout("VisibilityCounterWords", 8, 84,
+    requireLayout(json, "VisibilityCounterWords", 84,
                   {{"candidates", 0},
                    {"visible", 4},
                    {"rejected", 8},
@@ -169,7 +171,7 @@ TEST_CASE("capture schema pins GPU visibility storage and frame parameter record
                    {"rectTooLarge", 64},
                    {"disabled", 68},
                    {"padding", 72}});
-    requireLayout("OcclusionParams", 13, 96,
+    requireLayout(json, "OcclusionParams", 96,
                   {{"sourceRows", 0},
                    {"sourceWidth", 64},
                    {"sourceHeight", 68},
@@ -178,6 +180,12 @@ TEST_CASE("capture schema pins GPU visibility storage and frame parameter record
                    {"nearGuard", 80},
                    {"depthGuard", 84},
                    {"padding", 88}});
+    // The kernels reach those records through their address roots, which the sidecar names too.
+    requireLayout(json, "VisibilityClassifyRoot", 64,
+                  {{"candidatesAddr", 0}, {"paramsAddr", 32}, {"countsAddr", 56}});
+    requireLayout(json, "VisibilityOcclusionRoot", 80,
+                  {{"countsAddr", 56}, {"occlusionAddr", 64}, {"pyramid", 72}});
+    requireLayout(json, "VisibilityScanRoot", 48, {{"runsAddr", 0}, {"offsetsAddr", 32}});
+    requireLayout(json, "VisibilityEmitRoot", 96,
+                  {{"candidatesAddr", 0}, {"rowsAddr", 80}, {"argumentsAddr", 88}});
 }
-
-//======================================================================================================================

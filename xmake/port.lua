@@ -5,22 +5,6 @@ local port_path = path.join(repository_root, "xmake/port.lua")
 
 local pending_families = {
     {
-        family = "VISIBILITY",
-        sources = {
-            "Source/Render/Renderer/RendererOcclusion.cpp",
-        },
-        tests = {
-            "Tests/Render/Passes/Visibility/GpuDisabledInstanceTests.cpp",
-            "Tests/Render/Passes/Visibility/GpuVisibilityGraphTests.cpp",
-            "Tests/Render/Passes/Visibility/GpuVisibilityRailTests.cpp",
-            "Tests/Render/Passes/Occlusion/GpuHzbGraphTests.cpp",
-            "Tests/Render/Passes/Temporal/GpuOcclusionTemporalTests.cpp",
-            "Tests/Render/Passes/Temporal/GpuVisibility*TemporalTests.cpp",
-            "Tests/Render/Renderer/RendererCaptureLayoutTests.cpp",
-            "Tests/App/Model/Performance/MeasurementSampleTests.cpp",
-        },
-    },
-    {
         family = "LIGHTS",
         sources = {
             "Source/Render/Passes/LocalLights/LightClusterStage.cpp",
@@ -33,6 +17,7 @@ local pending_families = {
             "Tests/Render/Passes/LocalLights/RenderZeroLightInvariantTests.cpp",
             "Tests/Render/Passes/LocalLights/LightCaptureLayoutTests.cpp",
             "Tests/Render/Passes/Temporal/GpuZeroLightHistoryTests.cpp",
+            "Tests/App/Model/Performance/MeasurementSampleTests.cpp",
         },
         shaders = {
             "Shaders/Passes/LocalLights/LightClusterCount.slang",

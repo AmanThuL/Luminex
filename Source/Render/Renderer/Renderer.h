@@ -20,9 +20,7 @@
 #include "Render/Passes/LocalLights/LightDebugStage.h"
 #endif
 #include "Render/Passes/LocalLights/LightingStatus.h"
-#ifndef LMX_PENDING_VISIBILITY
 #include "Render/Passes/Occlusion/HzbStage.h"
-#endif
 
 #include "Render/Passes/Scene/DrawSubmission.h"
 
@@ -51,6 +49,8 @@ class ExposureStage;
 class GpuVisibility;
 /// Owns independent direct ID visibility validation.
 class OcclusionReference;
+/// Exposes the renderer's resize candidates to the resize atomicity test.
+struct RendererResizeAccess;
 /// Owns the renderer's bloom pipelines and transient pass declarations.
 class BloomStage;
 /// Owns the renderer's display transform and disabled-bloom fallback.
@@ -60,6 +60,10 @@ class DisplayStage;
 struct RendererFrameState;
 // Graph-local imports shared only by the renderer implementation units.
 struct RendererFrameImports;
+// Staged occlusion facts and graph bindings for one declaration.
+struct RendererOcclusionFrame;
+// Staged visibility status and draw buffers for one declaration.
+struct RendererVisibilityFrame;
 
 /// Capture tooling, not part of rendering: publishes the draw stages' uniform-block layouts
 /// (including masked variants) (name, size, every field's offset and type) through
@@ -92,9 +96,10 @@ public:
     static lmx::Result<std::unique_ptr<Renderer>> create(engine::GpuContext& gpu, uint32_t width,
                                                          uint32_t height, bool cpuReadback = false);
 
-    /// Recreates the scene targets -- and the motion and history targets alongside them -- at the
-    /// new size. The shadow map is fixed-size and untouched. Every replacement is allocated before
-    /// any is adopted, so a failed allocation leaves the renderer entirely at its old extent.
+    /// Recreates the scene targets -- and the motion and history targets and, once a frame has
+    /// enabled occlusion, both depth pyramids alongside them -- at the new size. The shadow map is
+    /// fixed-size and untouched. Every replacement is allocated before any is adopted, so a failed
+    /// allocation leaves the renderer entirely at its old extent.
     /// The caller guarantees the GPU is idle (Device::waitIdle) first: frames still in flight hold
     /// the old textures in their residency set and their encoders, and dropping them here would
     /// free memory the GPU is reading.
@@ -155,12 +160,17 @@ public:
     /// describes the frame just declared rather than the one about to be.
     TemporalStatus temporalStatus() const { return m_temporalStatus; }
 
-    /// Owned camera/shadow visibility and command statistics for the last declared frame.
+    /// Owned camera/shadow visibility and command statistics for the last successfully declared
+    /// frame. A failed declaration leaves the previous frame's status in place.
     const VisibilityStatus& visibilityStatus() const { return m_visibilityStatus; }
-    /// Takes exact-frame GPU results retired by the most recent declaration or explicit drain.
+    /// Takes exact-frame GPU results retired by the most recent declaration or explicit drain, in
+    /// frame order, each already joined with its independent occlusion reference.
     std::vector<VisibilityStatus> takeRetiredVisibility();
     /// Reads all submitted visibility results after the caller has completed Device::waitIdle.
-    void drainVisibilityAfterIdle();
+    /// A readback or reference-join error publishes nothing and is sticky: the failing frames
+    /// stay pending, so every later retirement -- this drain or the next declarePasses -- returns
+    /// the same error. Callers treat it as terminal for the renderer's visibility work.
+    lmx::Result<void> drainVisibilityAfterIdle();
 
     /// Local-light selection and context of the last declared frame.
     const LightingStatus& lightingStatus() const { return m_lightingStatus; }
@@ -217,9 +227,12 @@ private:
                                               const SceneView& view,
                                               const RendererFrameState& state);
     void recordFrameStatus(const RendererFrameState& state);
-    std::array<GraphBuffer, 2> prepareVisibility(RenderGraph& graph, rojoRHI::CommandList& commands,
-                                                 const SceneView& view, const FrustumPlanes& planes,
-                                                 std::span<const GraphBuffer> sceneBuffers);
+    lmx::Result<RendererVisibilityFrame>
+    prepareVisibility(RenderGraph& graph, rojoRHI::CommandList& commands, const SceneView& view,
+                      const FrustumPlanes& planes, std::span<const GraphBuffer> sceneBuffers,
+                      const RendererOcclusionFrame& occlusion);
+    // Publishes a fully declared frame's visibility status and occlusion facts.
+    void commitVisibility(RendererVisibilityFrame&& visibility, RendererOcclusionFrame&& occlusion);
 
 #ifndef LMX_PENDING_LIGHTS
     lmx::Result<LightClusterOutputs>
@@ -229,13 +242,16 @@ private:
     lmx::Result<void> retireLightingThrough(uint64_t frame);
 #endif
 
-#ifndef LMX_PENDING_VISIBILITY
-    GraphTexture prepareOcclusion(RenderGraph& graph, const engine::Camera& camera,
-                                  const SceneView& view, const FrameExtents& extents,
-                                  const CameraFrameState& cameraState);
-    void declareOcclusion(RenderGraph& graph, rojoRHI::CommandList& commands, const SceneView& view,
-                          GraphTexture depth, GraphTexture& display);
-#endif
+    // Creates every occlusion owner the frame needs and stages its history facts; declares no
+    // pass, so a failure leaves no live declaration behind.
+    lmx::Result<RendererOcclusionFrame>
+    prepareOcclusion(RenderGraph& graph, rojoRHI::CommandList& commands,
+                     const engine::Camera& camera, const SceneView& view,
+                     const FrameExtents& extents, const CameraFrameState& cameraState);
+    // Declares the pyramid build, the independent reference and the debug view.
+    lmx::Result<void> declareOcclusion(RenderGraph& graph, rojoRHI::CommandList& commands,
+                                       const SceneView& view, GraphTexture depth,
+                                       GraphTexture& display, RendererOcclusionFrame& occlusion);
 
     // The motion and reactive attachments at one extent, allocated but not yet adopted.
     struct TemporalTargets {
@@ -254,6 +270,7 @@ private:
     // at once.
     void adoptTemporalTargets(TemporalTargets targets, TemporalSlots slots);
 
+    friend struct RendererResizeAccess;
     engine::GpuContext& m_gpu;
     // render()'s own pool for bloom's transients, since a caller without a graph of its own (the
     // --screenshot path, most GPU tests) has no pool to hand declarePasses(); a caller building a
@@ -313,21 +330,18 @@ private:
     TemporalStatus m_temporalStatus;
     DrawSubmission m_drawSubmission;
 
-#ifndef LMX_PENDING_VISIBILITY
+    // Retirement joins m_gpuVisibility and m_occlusionReference in one transaction, so the
+    // reference exists only beside the production owner it checks.
     std::unique_ptr<GpuVisibility> m_gpuVisibility;
     std::unique_ptr<HzbStage> m_hzbStage;
     std::unique_ptr<OcclusionReference> m_occlusionReference;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_hzbDebugLibrary;
-    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_hzbDebugPipeline;
+    engine::GpuOwned<rojoRHI::Pipeline> m_hzbDebugPipeline;
+    // Facts of the pyramid the last successfully declared frame built; a failed declaration
+    // leaves them, and the two values below, at the previous frame's.
     HzbSource m_occlusionSource;
-    HzbSource m_currentOcclusionSource;
-    OcclusionParams m_occlusionParams;
-    OcclusionInvalidReason m_occlusionReason = OcclusionInvalidReason::Disabled;
-    GraphTexture m_previousPyramid;
     bool m_occlusionPreviouslyEnabled = false;
-    bool m_occlusionStrictView = false;
     std::optional<glm::mat4> m_previousOcclusionViewProjection;
-#endif
     VisibilityStatus m_visibilityStatus;
 #ifndef LMX_PENDING_LIGHTS
     std::unique_ptr<LightClusterStage> m_lightClusters;
