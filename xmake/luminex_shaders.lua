@@ -259,10 +259,25 @@ function lmx_configure_shader_library(target)
                           "Render/Passes/Temporal/TemporalFrameData.h")
     end
     local entries = lmx_shader_entries(kind)
+    -- v1 compiled Visibility*, Occlusion* except OcclusionReference, Hzb* and LightCluster*
+    -- with precise floating point; LightCluster* joins when its family is restored.
     local precise_candidates = {
         VisibilityClassify = true, VisibilityClassifyOcclusion = true,
-        VisibilityScan = true, VisibilityEmit = true, VisibilityEmitSparse = true
+        VisibilityScan = true, VisibilityEmit = true, VisibilityEmitSparse = true,
+        VisibilityDepthReadback = true,
+        HzbReduce = true, HzbPublish = true, HzbDebugView = true,
+        HzbDepthFixture = true, HzbReadbackFixture = true, OcclusionProbe = true
     }
+    -- Entries are filtered by family and kind, so a misspelt candidate must fail here.
+    local shader_files = os.files(path.join(repository_root, "Shaders/Passes/**.slang"))
+    table.join2(shader_files, os.files(path.join(repository_root, "Shaders/Tests/*.slang")))
+    local shader_basenames = {}
+    for _, file in ipairs(shader_files) do
+        shader_basenames[path.basename(file)] = true
+    end
+    for name, _ in pairs(precise_candidates) do
+        assert(shader_basenames[name], "precise shader candidate names no shader file: " .. name)
+    end
     local precise_entries = {}
     for _, file in ipairs(entries) do
         local basename = path.basename(file)
