@@ -6,6 +6,8 @@
 #include "Render/Passes/LocalLights/LightClusterReadback.h"
 #include "Render/Common/PacedSlots.h"
 
+#include "Core/Diagnostics/Assert.h"
+
 #include <algorithm>
 #include <array>
 #include <format>
@@ -137,6 +139,17 @@ Result<void> LightClusterReadback::retireThrough(engine::GpuContext& gpu, uint64
         entry = m_pending.erase(entry);
     }
     return {};
+}
+
+//======================================================================================================================
+void LightClusterReadback::discardUnrecorded(uint64_t frameNumber) {
+    const auto found = std::ranges::find(m_pending, frameNumber, &Pending::frameNumber);
+    LMX_ASSERT(found != m_pending.end(), "light-cluster discard requires a pending declaration");
+    const ClusterReadbackTickets& tickets = *found->tickets;
+    LMX_ASSERT(!tickets.counters && !tickets.grid && !tickets.indices,
+               "light-cluster discard requires a wholly unrecorded declaration");
+    found->tickets->discarded = true;
+    m_pending.erase(found);
 }
 
 //======================================================================================================================

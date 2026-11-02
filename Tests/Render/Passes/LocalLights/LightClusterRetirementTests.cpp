@@ -1,8 +1,11 @@
 #include "Render/Passes/LocalLights/LightClusterReadback.h"
 
+#include "Engine/View/Camera.h"
+#include "Support/RenderGraphTestSupport.h"
 #include "Support/TestGpu.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <glm/matrix.hpp>
 
 #include <algorithm>
 #include <array>
@@ -162,6 +165,9 @@ TEST_CASE("light-cluster retirement preserves causal errors and unconsumed frame
         FailureCase{
             "a recorded counter failure", {.counters = Outcome::Failed}, "counter staging failed"},
         FailureCase{"a recorded grid failure", {.grid = Outcome::Failed}, "grid staging failed"},
+        FailureCase{"recorded counter and grid failures report the counters first",
+                    {.counters = Outcome::Failed, .grid = Outcome::Failed},
+                    "counter staging failed"},
         FailureCase{"a recorded index failure with a defined prefix",
                     {.indices = Outcome::Failed},
                     "index staging failed"},
@@ -211,6 +217,21 @@ TEST_CASE("unexecuted light-cluster declarations never publish zero counters", "
             REQUIRE_FALSE(readback.hasPendingSlot(frame));
         REQUIRE(readback.retireThrough(*fixture.gpu, 1000));
         REQUIRE(readback.takeRetired().empty());
+    }
+    SECTION("a declaration after the completed frame stays pending") {
+        LightClusterReadback readback;
+        const auto completed = fixture.declare(readback, {});
+        const auto later = fixture.declare(readback, {.assigned = 9});
+        REQUIRE(readback.retireThrough(*fixture.gpu, completed));
+        REQUIRE_FALSE(readback.hasPendingSlot(completed));
+        REQUIRE(readback.hasPendingSlot(later));
+        auto retired = readback.takeRetired();
+        REQUIRE(retired.size() == 1);
+        requireDecoded(retired.front(), completed, true, 5);
+        REQUIRE(readback.retireThrough(*fixture.gpu, later));
+        retired = readback.takeRetired();
+        REQUIRE(retired.size() == 1);
+        requireDecoded(retired.front(), later, true, 9);
     }
     SECTION("missing or incomplete counters are an error, not zeros") {
         for (const auto counters : {Outcome::Absent, Outcome::Empty, Outcome::Short}) {
@@ -285,5 +306,96 @@ TEST_CASE("unexecuted light-cluster declarations never publish zero counters", "
         const auto retired = readback.takeRetired();
         REQUIRE(retired.size() == 1);
         requireDecoded(retired.front(), exact, true, 5);
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("an unexecuted light-cluster declaration is discarded and frees its slot",
+          "[render][device]") {
+    SECTION("a wholly unrecorded declaration is discarded and its slot recurs") {
+        auto gpu = test::createTestGpu();
+        auto stage = LightClusterStage::create(*gpu);
+        INFO(test::errorOf(stage));
+        REQUIRE(stage);
+        const std::array<engine::LightRow, 1> rows{};
+        auto lights = engine::GpuBuffer::create(gpu->device(),
+                                                {.size = sizeof(rows),
+                                                 .memory = rojoRHI::Memory::Upload,
+                                                 .label = "lmx.test.lightCluster.discard.rows"},
+                                                std::as_bytes(std::span(rows)));
+        REQUIRE(lights);
+        const engine::Camera camera;
+        const auto declare = [&](RenderGraph& graph, rojoRHI::CommandList& commands,
+                                 uint64_t frame) {
+            const auto outputs = (*stage)->declare(
+                graph, commands,
+                {.clustered = true,
+                 .liveLightCount = 1,
+                 .rowCount = 1,
+                 .lights = graph.importBuffer(*lights, "lmx.test.lightCluster.discard.rows"),
+                 .view = camera.viewMatrix(),
+                 .inverseJitteredProjection = glm::inverse(camera.projectionMatrix(16.0f / 9.0f)),
+                 .sliceDepth = clusterSliceDepths(camera.nearZ),
+                 .activeWidth = 16,
+                 .activeHeight = 9,
+                 .frameNumber = frame,
+                 .captureLists = true});
+            REQUIRE(outputs.declared);
+        };
+
+        // The graph is declared but never executed, as when compilation fails or the frame is
+        // abandoned: retirement reports it as never recorded until it is discarded.
+        auto frame = gpu->beginFrame();
+        const uint64_t abandonedFrame = frame.number;
+        RenderGraph abandoned;
+        declare(abandoned, frame.commands, abandonedFrame);
+        requireError((*stage)->retireThrough(abandonedFrame), ErrorCode::InvalidArgument,
+                     "counters readback was never");
+        (*stage)->discardUnrecorded(abandonedFrame);
+        REQUIRE(abortDiagnostic([&] {
+                    (*stage)->discardUnrecorded(abandonedFrame);
+                }).find("pending declaration") != std::string::npos);
+        gpu->submitAndEndFrame(frame);
+        REQUIRE((*stage)->retireThrough(abandonedFrame));
+        REQUIRE((*stage)->takeRetired().empty());
+
+        // Later frames retire normally, and the third reuses the abandoned paced slot.
+        uint64_t last = abandonedFrame;
+        for (uint32_t step = 0; step < 4; ++step) {
+            auto next = gpu->beginFrame();
+            last = next.number;
+            RenderGraph graph;
+            declare(graph, next.commands, next.number);
+            const auto compiled = graph.compile();
+            if (!compiled)
+                gpu->submitAndEndFrame(next);
+            INFO((compiled ? std::string{} : compiled.error().message));
+            REQUIRE(compiled);
+            graph.execute(next.commands, next.number);
+            gpu->submitAndEndFrame(next);
+            gpu->waitIdle();
+            REQUIRE((*stage)->retireThrough(last));
+            const auto retired = (*stage)->takeRetired();
+            REQUIRE(retired.size() == 1);
+            REQUIRE(retired.front().frameNumber == last);
+            REQUIRE(retired.front().grid.size() == kClusterCount);
+        }
+        REQUIRE(last >= abandonedFrame + 3);
+    }
+    SECTION("a partly recorded declaration cannot be discarded and keeps failing") {
+        RetirementFixture fixture;
+        LightClusterReadback readback;
+        const auto frame = fixture.declare(
+            readback,
+            {.counters = Outcome::Failed, .grid = Outcome::Absent, .indices = Outcome::Absent});
+        REQUIRE(abortDiagnostic([&] {
+                    readback.discardUnrecorded(frame);
+                }).find("wholly unrecorded") != std::string::npos);
+        requireError(readback.retireThrough(*fixture.gpu, frame), ErrorCode::Io,
+                     "counter staging failed");
+        REQUIRE(readback.hasPendingSlot(frame));
+        REQUIRE(abortDiagnostic([&] {
+                    readback.discardUnrecorded(frame + 1);
+                }).find("pending declaration") != std::string::npos);
     }
 }
