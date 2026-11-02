@@ -544,11 +544,12 @@ RenderGraph::prepareHzbHistory(const CompiledFrameRecord& record) const {
             if (reader.binding == observer.binding && reader.potentialCameraWork &&
                 position(reader.pass) < static_cast<decltype(firstWrite)>(schedule.size()) &&
                 position(reader.pass) >= firstWrite)
-                params.flags &= ~uint32_t{2};
+                params.flags &= ~kOcclusionHistoryValidFlag;
         result.decisions.push_back({observer.binding, params});
         for (const auto& reader : m_hzbObservers)
             if (reader.binding == observer.binding &&
-                (!reader.potentialCameraWork || (params.flags & 3u) != 3u))
+                (!reader.potentialCameraWork ||
+                 (params.flags & kOcclusionTestingFlags) != kOcclusionTestingFlags))
                 result.masks.push_back({reader.pass, reader.texture.handle.index,
                                         reader.texture.handle.version, reader.declaration,
                                         reader.texture.range});

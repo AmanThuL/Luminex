@@ -14,7 +14,8 @@ OcclusionParams makeOcclusionParams(const glm::mat4& matrix, uint32_t width, uin
     OcclusionParams result{.sourceWidth = width,
                            .sourceHeight = height,
                            .levelCount = levels,
-                           .flags = (enabled ? 1u : 0u) | (valid ? 2u : 0u)};
+                           .flags = (enabled ? kOcclusionEnabledFlag : 0u) |
+                                    (valid ? kOcclusionHistoryValidFlag : 0u)};
     for (uint32_t r = 0; r < 4; ++r)
         for (uint32_t c = 0; c < 4; ++c)
             result.sourceRows[r][c] = matrix[c][r];
@@ -23,9 +24,9 @@ OcclusionParams makeOcclusionParams(const glm::mat4& matrix, uint32_t width, uin
 //======================================================================================================================
 OcclusionProjection projectOcclusionBounds(const Aabb& bounds, const OcclusionParams& params) {
     OcclusionProjection result;
-    if (!(params.flags & 1u))
+    if (!(params.flags & kOcclusionEnabledFlag))
         return result;
-    if (!(params.flags & 2u)) {
+    if (!(params.flags & kOcclusionHistoryValidFlag)) {
         result.outcome = OcclusionOutcome::HistoryInvalid;
         return result;
     }

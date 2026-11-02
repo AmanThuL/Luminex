@@ -138,7 +138,7 @@ OcclusionParams HzbHistoryBinding::prepareRecording() const {
     const auto frame = contentFrame();
     const auto actualFrame = m_impl->graph->m_impl->actualFrame;
     if (!frame || *frame >= actualFrame || actualFrame - *frame != 1)
-        params.flags &= ~2u;
+        params.flags &= ~kOcclusionHistoryValidFlag;
     return params;
 }
 
@@ -161,7 +161,8 @@ void HzbHistoryBinding::publishRecording(const OcclusionParams& params) noexcept
     m_impl->params = params;
     for (const auto& projection : m_impl->projections) {
         projection->status.occlusionParams = params;
-        if (projection->status.occlusionEnabled && (params.flags & 2u) == 0 &&
+        if (projection->status.occlusionEnabled &&
+            (params.flags & kOcclusionHistoryValidFlag) == 0 &&
             projection->status.occlusionInvalidReason == OcclusionInvalidReason::None)
             projection->status.occlusionInvalidReason = OcclusionInvalidReason::NoSource;
     }

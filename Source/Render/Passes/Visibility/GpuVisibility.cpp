@@ -346,7 +346,8 @@ GpuVisibility::declare(RenderGraph& graph, rojoRHI::CommandList& commands, const
         access(accesses, resources, statesInput, stateBytes, A::ShaderWrite);
         access(accesses, resources, counts, uint64_t{chunkCount} * 4, A::ShaderWrite);
         counterAccess(accesses, resources, nextVersion(counters), params.candidateCount);
-        if (occlusionEnabled && cameraPotential && (effectiveOcclusion.flags & 3u) == 3u)
+        if (occlusionEnabled && cameraPotential &&
+            (effectiveOcclusion.flags & kOcclusionTestingFlags) == kOcclusionTestingFlags)
             accesses.push_back({.texture = history->sampledTexture(resources).texture,
                                 .stage = S::ComputeShader,
                                 .access = A::ShaderRead});
