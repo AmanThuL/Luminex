@@ -13,6 +13,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstring>
 #include <span>
 #include <string>
 #include <utility>
@@ -21,6 +22,12 @@ namespace lmx::render {
 namespace {
 // The parameters begin with a float4x4, which a shader pointer load reads sixteen-byte aligned.
 constexpr uint32_t kParamsAlignment = 16;
+// The scalar block is 188 bytes, but the Metal struct a whole-struct pointer load reads is padded
+// to its 16-byte alignment. The upload covers that padded size, zero-filled, so the load never
+// reads past the upload at the end of a frame-arena page.
+constexpr size_t kParamsUploadBytes =
+    (sizeof(LightDebugParams) + kParamsAlignment - 1) / kParamsAlignment * kParamsAlignment;
+static_assert(kParamsUploadBytes == 192);
 } // namespace
 
 //======================================================================================================================
@@ -90,8 +97,10 @@ GraphTexture LightDebugStage::declare(RenderGraph& graph, rojoRHI::CommandList& 
     graph.addPass(
         "lmx.pass.light.debug", std::move(pass),
         [this, &commands, inputs, params](const PassResources& resources) {
+            std::array<std::byte, kParamsUploadBytes> paramBytes{};
+            std::memcpy(paramBytes.data(), &params, sizeof(params));
             const rojoRHI::Addr paramsAddr =
-                commands.uploadFrameData(std::as_bytes(std::span{&params, 1}), kParamsAlignment);
+                commands.uploadFrameData(std::span<const std::byte>{paramBytes}, kParamsAlignment);
             engine::registerFrameRoot("LightDebugParams", paramsAddr);
             commands.setPipeline(m_pipeline.get());
             engine::registerFrameRoot(
@@ -128,7 +137,8 @@ GraphTexture LightDebugStage::declare(RenderGraph& graph, rojoRHI::CommandList& 
             if (inputs.mode == engine::LightDebugView::Overflow) {
                 accesses[count++] = textureRead(inputs.display);
             }
-            if (inputs.mode == engine::LightDebugView::Missed) {
+            // Missed walks the rows; with no addressable row it loads neither rows nor lists.
+            if (inputs.mode == engine::LightDebugView::Missed && params.rowCount != 0) {
                 accesses[count++] =
                     bufferRead(inputs.lights, uint64_t{params.rowCount} * sizeof(engine::LightRow));
                 // A froxel's range lies inside the list but its bound is a GPU value.
