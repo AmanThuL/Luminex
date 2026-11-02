@@ -29,6 +29,7 @@ struct ClusterReadbackTickets {
     std::optional<ReadbackTicket> counters; ///< Required for every declaration.
     std::optional<ReadbackTicket> grid;     ///< Required only when the lists are captured.
     std::optional<ReadbackTicket> indices;  ///< Required only when the lists are captured.
+    bool entered = false;   ///< Set by the first pass callback; an entered declaration is live.
     bool discarded = false; ///< Set by discardUnrecorded; a later callback is misuse.
 };
 
@@ -46,10 +47,11 @@ public:
     /// later one pending; a recorded failure is returned unchanged.
     Result<void> retireThrough(engine::GpuContext& gpu, uint64_t completedFrame);
 
-    /// Cancels the declaration of `frameNumber` whose graph never executed, releasing its paced
-    /// slot. It must exist and hold no recorded outcome: a partly recorded declaration is not
-    /// discardable and keeps failing retirement. Its callbacks must never run afterwards.
-    void discardUnrecorded(uint64_t frameNumber);
+    /// Cancels the exact declaration `tickets` names whose graph never executed, releasing its
+    /// paced slot. It must be pending here, unentered and hold no recorded outcome: a declaration
+    /// whose callbacks ran is not discardable and keeps failing retirement. Its callbacks must
+    /// never run afterwards.
+    void discardUnrecorded(const ClusterReadbackTickets* tickets);
 
     /// Moves all retired records to the caller; a second call returns only newer records.
     std::vector<RetiredLightClusters> takeRetired();

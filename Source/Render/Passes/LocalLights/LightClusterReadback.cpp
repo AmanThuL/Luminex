@@ -142,11 +142,13 @@ Result<void> LightClusterReadback::retireThrough(engine::GpuContext& gpu, uint64
 }
 
 //======================================================================================================================
-void LightClusterReadback::discardUnrecorded(uint64_t frameNumber) {
-    const auto found = std::ranges::find(m_pending, frameNumber, &Pending::frameNumber);
+void LightClusterReadback::discardUnrecorded(const ClusterReadbackTickets* tickets) {
+    LMX_ASSERT(tickets != nullptr, "light-cluster discard requires a live exact declaration token");
+    const auto found = std::ranges::find_if(
+        m_pending, [tickets](const Pending& entry) { return entry.tickets.get() == tickets; });
     LMX_ASSERT(found != m_pending.end(), "light-cluster discard requires a pending declaration");
-    const ClusterReadbackTickets& tickets = *found->tickets;
-    LMX_ASSERT(!tickets.counters && !tickets.grid && !tickets.indices,
+    LMX_ASSERT(!tickets->discarded && !tickets->entered && !tickets->counters && !tickets->grid &&
+                   !tickets->indices,
                "light-cluster discard requires a wholly unrecorded declaration");
     found->tickets->discarded = true;
     m_pending.erase(found);

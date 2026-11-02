@@ -21,6 +21,7 @@
 namespace lmx::render {
 namespace light_detail {
 class LightClusterReadback;
+struct ClusterReadbackTickets;
 } // namespace light_detail
 
 /// Counter storage words per paced slot: LightClusterCounters' six fields plus ABI padding.
@@ -50,6 +51,8 @@ struct LightClusterOutputs {
     GraphBuffer grid;      ///< Per-froxel `(offset, count)` records, in flat froxel order.
     GraphBuffer indices;   ///< The flat row-index list the records address.
     bool declared = false; ///< Whether the four passes were declared at all.
+    std::weak_ptr<const light_detail::ClusterReadbackTickets>
+        readbackIntent{}; ///< Exact unrecorded declaration identity, for discardUnrecorded.
 };
 
 /// One frame's readback: always the counters, plus the lists when the declaration asked for them.
@@ -89,12 +92,12 @@ public:
     /// pending, and records already retired stay available to takeRetired.
     lmx::Result<void> retireThrough(uint64_t completedFrame);
 
-    /// Cancels the declaration of `frameNumber` when its graph will never execute (compilation
-    /// failed or the frame was abandoned), releasing its paced slot, as GpuVisibility's
-    /// discardUnrecorded does for visibility. The declaration must hold no recorded outcome; a
-    /// partly recorded one stays pending and keeps failing retirement. Executing its graph after
+    /// Cancels this exact declaration when its graph will never execute (compilation failed or
+    /// the frame was abandoned), releasing its paced slot, as GpuVisibility's discardUnrecorded
+    /// does for visibility. The declaration must be unentered and hold no recorded outcome; one
+    /// whose callbacks ran stays pending and keeps failing retirement. Executing its graph after
     /// the discard is misuse.
-    void discardUnrecorded(uint64_t frameNumber);
+    void discardUnrecorded(const LightClusterOutputs& declaration);
 
     /// Moves all newly retired records to the caller, in frame order. The take is destructive: a
     /// Renderer holds taken records until its own frame join commits rather than taking again.
