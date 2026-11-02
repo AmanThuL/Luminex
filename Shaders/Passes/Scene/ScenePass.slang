@@ -3,6 +3,8 @@ import RojoRHI;
 import SceneRoots;
 import VertexStorage;
 import Lighting;
+import LocalLights;
+import LocalLightTypes;
 import SceneTables;
 import Motion;
 import Shadow;
@@ -131,7 +133,10 @@ SurfaceShading shadeSurfaceDetailed(VSOutput input)
                 ComputeDirectionalLight(gPass.lights[2], normalW, toEye, baseColor, f0, metallic,
                                         alpha);
 
-    // Local-light accumulation is unavailable until address-based light lists are supplied.
+    litColor += AccumulateLocalLights(rojoRHI::load<LocalLightParams>(pass.localLightParams, 0),
+                                      pass.lights, pass.lightGrid, pass.lightIndices,
+                                      input.position, input.positionW, normalW, toEye, baseColor,
+                                      f0, metallic, alpha);
 
     // Image-based lighting. N.V is clamped off zero because the DFG table's first column stands for
     // a half-texel inside the domain, not for the grazing limit itself.

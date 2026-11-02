@@ -43,6 +43,22 @@ class TrackerInventoryTests(unittest.TestCase):
         with self.assertRaisesRegex(TrackerInventoryError, name):
             check_inventory(value)
 
+    def test_each_missing_local_light_case_fails(self) -> None:
+        names = (
+            "local-light modes reach the scene across paced frames under the tracker",
+            "zero-live high-water light rows declare no consumers under the tracker",
+            "checked light lists retain declaration identities under the tracker",
+            "light diagnostics switch without stale consumers under the tracker",
+        )
+        for name in names:
+            with self.subTest(name=name):
+                self.assertIn(name, REQUIRED_CASES)
+                value = inventory()
+                value["listings"]["tests"] = [case for case in value["listings"]["tests"]
+                                               if case["name"] != name]
+                with self.assertRaisesRegex(TrackerInventoryError, name):
+                    check_inventory(value)
+
     def test_either_missing_renderer_case_fails_even_with_alias(self) -> None:
         for required in REQUIRED_CASES:
             with self.subTest(required=required):

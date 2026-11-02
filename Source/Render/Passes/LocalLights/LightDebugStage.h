@@ -32,6 +32,8 @@ struct LightDebugInputs {
 /// Owns the lazily requested diagnostic shader; leaves HDR and temporal history untouched.
 class LightDebugStage {
 public:
+    /// Registers the address-root and parameter layouts for capture, without a GPU device.
+    static void registerLayoutsForCapture();
     /// Loads the ordinary fast-math diagnostic shader, creates its opaque display pipeline and
     /// registers its address-root and parameter layouts for capture.
     static lmx::Result<std::unique_ptr<LightDebugStage>> create(engine::GpuContext& gpu);

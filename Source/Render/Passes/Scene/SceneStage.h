@@ -25,6 +25,7 @@
 namespace lmx::render {
 namespace scene_detail {
 struct PassUniforms;
+struct LocalLightParams;
 } // namespace scene_detail
 
 /// Frame values and Renderer-owned resources borrowed by the scene and sky pass.
@@ -35,7 +36,7 @@ struct SceneStageInputs {
     GraphBuffer drawArguments;             ///< Indirect-argument import.
     std::vector<GraphBuffer> sceneBuffers; ///< Five read-only scene pool/table imports.
     /// Read-only `lmx.scene.lights` import, present exactly when the frame has a live local light.
-    /// No local-light shader access is made while address-based light lists are unavailable.
+    /// Direct and Clustered shading load its rows; Off loads none.
     std::optional<GraphBuffer> lights;
     std::optional<GraphBuffer> lightGrid; ///< Cluster records when clustered shading is selected.
     std::optional<GraphBuffer> lightIndices; ///< Ascending light row indices paired with lightGrid.
@@ -85,7 +86,8 @@ private:
     SceneStage() = default;
 
     void draw(rojoRHI::CommandList& commands, const SceneView& view, const SceneStageInputs& inputs,
-              const scene_detail::PassUniforms& passUniforms, GraphTexture shadowRead,
+              const scene_detail::PassUniforms& passUniforms,
+              const scene_detail::LocalLightParams& localLightParams, GraphTexture shadowRead,
               GraphBuffer exposureCurrent, bool temporalEnabled,
               const CameraFrameState& cameraState, const CameraFrameState& previousCamera,
               glm::vec2 jitterNdc, const PassResources& resources);

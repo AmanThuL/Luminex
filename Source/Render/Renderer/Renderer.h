@@ -12,13 +12,8 @@
 #include "Engine/View/Camera.h"
 #include "Render/Common/Formats.h"
 #include "Render/Graph/RenderGraph.h"
-#ifndef LMX_PENDING_LIGHTS
 #include "Render/Passes/LocalLights/LightClusterStage.h"
-#endif
-
-#ifndef LMX_PENDING_LIGHTS
 #include "Render/Passes/LocalLights/LightDebugStage.h"
-#endif
 #include "Render/Passes/LocalLights/LightingStatus.h"
 #include "Render/Passes/Occlusion/HzbStage.h"
 
@@ -64,6 +59,8 @@ struct RendererFrameImports;
 struct RendererOcclusionFrame;
 // Staged visibility status and draw buffers for one declaration.
 struct RendererVisibilityFrame;
+// Staged lighting status and light lists for one declaration.
+struct RendererLightingFrame;
 
 /// Capture tooling, not part of rendering: publishes the draw stages' uniform-block layouts
 /// (including masked variants) (name, size, every field's offset and type) through
@@ -115,11 +112,12 @@ public:
     /// and everything `view` borrows must outlive that call. Creation or retirement failure returns
     /// its causal error; the caller must not execute or export a failed declaration.
     ///
-    /// A failure is not rolled back. Visibility status, occlusion source facts, temporal status and
-    /// the pyramid stage's slots advance only for a frame that declares, and an unrecorded GPU
-    /// visibility declaration is discarded; but a failure after draw submission has prepared
-    /// leaves its rows, the prefix copies it already recorded on `commands` and its recorded read
-    /// uses advanced. Every application caller treats the failure as terminal.
+    /// A failure is not rolled back. Visibility and lighting status, occlusion source facts,
+    /// temporal status and the pyramid stage's slots advance only for a frame that declares, and
+    /// unrecorded GPU visibility and light-list declarations are discarded; but a failure after
+    /// draw submission has prepared leaves its rows, the prefix copies it already recorded on
+    /// `commands` and its recorded read uses advanced. Every application caller treats the failure
+    /// as terminal.
     lmx::Result<GraphTexture> declarePasses(RenderGraph& graph, rojoRHI::CommandList& commands,
                                             const engine::Camera& camera, const SceneView& view);
 
@@ -178,12 +176,16 @@ public:
     /// the same error. Callers treat it as terminal for the renderer's visibility work.
     lmx::Result<void> drainVisibilityAfterIdle();
 
-    /// Local-light selection and context of the last declared frame.
+    /// Local-light selection and context of the last successfully declared frame; a failed
+    /// declaration leaves the previous frame's status in place.
     const LightingStatus& lightingStatus() const { return m_lightingStatus; }
-    /// Moves completed lighting contexts to the caller; consume regularly as for visibility.
+    /// Moves completed lighting contexts to the caller, in frame order; consume regularly as for
+    /// visibility. Every record reached it through a joined retirement, so taking cannot fail.
     std::vector<LightingStatus> takeRetiredLighting();
     /// Reads every submitted lighting result after the caller has completed Device::waitIdle.
-    /// Preserves a causal retirement error instead of publishing an incomplete success.
+    /// A light-list readback error publishes nothing for its frame or any later one and is
+    /// sticky: those frames stay pending, so every later retirement -- this drain or the next
+    /// declarePasses -- returns the same error. Callers treat it as terminal.
     lmx::Result<void> drainLightingAfterIdle();
 
     /// The frame's motion target in kMotionFormat, allocated with the scene targets and so never
@@ -240,13 +242,20 @@ private:
     // Publishes a fully declared frame's visibility status and occlusion facts.
     void commitVisibility(RendererVisibilityFrame&& visibility, RendererOcclusionFrame&& occlusion);
 
-#ifndef LMX_PENDING_LIGHTS
-    lmx::Result<LightClusterOutputs>
+    // Retires the frame three back, creates the cluster owner when first needed and declares this
+    // frame's light lists; publishes nothing, so a failure leaves no status or pending record.
+    lmx::Result<RendererLightingFrame>
     prepareLighting(RenderGraph& graph, rojoRHI::CommandList& commands, const SceneView& view,
                     std::optional<GraphBuffer> lights, const FrameExtents& extents,
                     const CameraFrameState& cameraState);
+    // Discards a prepared frame's unrecorded light-list declaration when the frame fails.
+    void abandonLighting(const RendererLightingFrame& lighting);
+    // Publishes a fully declared frame's lighting status and its pending retirement record.
+    void commitLighting(RendererLightingFrame&& lighting);
+    // Joins every pending status through `frame` with its retired light lists, in frame order. A
+    // cluster retirement failure keeps that status and every later one pending; records already
+    // taken from the cluster owner stay held until their status joins.
     lmx::Result<void> retireLightingThrough(uint64_t frame);
-#endif
 
     // Creates every occlusion owner the frame needs and stages its history facts; declares no
     // pass, so a failure leaves no live declaration behind.
@@ -350,15 +359,13 @@ private:
     bool m_occlusionPreviouslyEnabled = false;
     std::optional<glm::mat4> m_previousOcclusionViewProjection;
     VisibilityStatus m_visibilityStatus;
-#ifndef LMX_PENDING_LIGHTS
     std::unique_ptr<LightClusterStage> m_lightClusters;
     std::unique_ptr<LightDebugStage> m_lightDebug;
-#endif
     LightingStatus m_lightingStatus;
-#ifndef LMX_PENDING_LIGHTS
     std::vector<LightingStatus> m_pendingLighting;
     std::vector<LightingStatus> m_retiredLighting;
-#endif
+    // Taken from m_lightClusters but not yet joined with their declared status.
+    std::vector<RetiredLightClusters> m_retiredClusters;
     uint32_t m_width = 0;
     uint32_t m_height = 0;
     bool m_cpuReadback = false;

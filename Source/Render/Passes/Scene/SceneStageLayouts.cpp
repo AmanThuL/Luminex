@@ -82,6 +82,19 @@ void SceneStage::registerSceneTableLayoutsForCapture() {
                     {"spotOffset", offsetof(engine::LightRow, spotOffset), "float"},
                     {"boundCentre", offsetof(engine::LightRow, boundCentre), "float3"},
                     {"boundRadius", offsetof(engine::LightRow, boundRadius), "float"}}});
+    engine::registerUniformStruct(
+        {.name = "LocalLightParams",
+         .sizeBytes = sizeof(LocalLightParams),
+         .fields = {{"mode", offsetof(LocalLightParams, mode), "uint"},
+                    {"rowCount", offsetof(LocalLightParams, rowCount), "uint"},
+                    {"gridX", offsetof(LocalLightParams, gridX), "uint"},
+                    {"gridY", offsetof(LocalLightParams, gridY), "uint"},
+                    {"gridZ", offsetof(LocalLightParams, gridZ), "uint"},
+                    {"activeOriginX", offsetof(LocalLightParams, activeOriginX), "uint"},
+                    {"activeOriginY", offsetof(LocalLightParams, activeOriginY), "uint"},
+                    {"activeWidth", offsetof(LocalLightParams, activeWidth), "uint"},
+                    {"activeHeight", offsetof(LocalLightParams, activeHeight), "uint"},
+                    {"sliceDepth", offsetof(LocalLightParams, sliceDepth), "float[25]"}}});
 }
 
 //======================================================================================================================

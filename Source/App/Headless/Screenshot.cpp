@@ -323,7 +323,6 @@ int runOffscreen(AppOptions options) {
                 writeManifest(false, retired.error().message);
             return 1;
         }
-#ifndef LMX_PENDING_LIGHTS
         if (auto retired = (*renderer)->drainLightingAfterIdle(); !retired) {
             LMX_LOG_ERROR("lighting retirement failed: {}", retired.error().message);
             if (sequence)
@@ -346,9 +345,6 @@ int runOffscreen(AppOptions options) {
             LMX_LOG_ERROR("capture refused: {}", failure);
             return 1;
         }
-#else
-        captureLighting = {};
-#endif
         captureVisibility = (*renderer)->visibilityStatus();
         for (const auto& retired : (*renderer)->takeRetiredVisibility()) {
             if (retired.frameNumber == captureVisibility.frameNumber)

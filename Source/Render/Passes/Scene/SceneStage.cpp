@@ -56,6 +56,13 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
 
     LMX_ASSERT(inputs.lightGrid.has_value() == inputs.lightIndices.has_value(),
                "cluster grid and index list must be supplied together");
+    const LocalLightParams localLightParams = buildLocalLightParams(
+        {.requestedMode = view.localLightMode,
+         .liveLightCount = view.tables.liveLightCount,
+         .lightRowCount = view.tables.lightRowCount,
+         .hasClusters = inputs.lightGrid.has_value() && inputs.lightIndices.has_value(),
+         .extents = extents,
+         .nearZ = cameraState.nearZ});
 
     // The clear has to be the value a fragment writing that colour would have produced, or the
     // background and the geometry would disagree about what space the target holds. That means
@@ -128,11 +135,12 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
     const glm::vec2 jitterNdc{2.0f * jitterPixels.x / static_cast<float>(extents.renderWidth),
                               2.0f * jitterPixels.y / static_cast<float>(extents.renderHeight)};
     graph.addPass("lmx.pass.scene", std::move(sceneDesc),
-                  [this, &commands, view, inputs, passUniforms, shadowRead, exposureCurrent,
-                   temporalEnabled, cameraState, previousCamera,
+                  [this, &commands, view, inputs, passUniforms, localLightParams, shadowRead,
+                   exposureCurrent, temporalEnabled, cameraState, previousCamera,
                    jitterNdc](const PassResources& resources) {
-                      draw(commands, view, inputs, passUniforms, shadowRead, exposureCurrent,
-                           temporalEnabled, cameraState, previousCamera, jitterNdc, resources);
+                      draw(commands, view, inputs, passUniforms, localLightParams, shadowRead,
+                           exposureCurrent, temporalEnabled, cameraState, previousCamera, jitterNdc,
+                           resources);
                   });
 
     return nextVersion(sceneColor);

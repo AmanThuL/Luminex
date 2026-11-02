@@ -5,20 +5,6 @@ local port_path = path.join(repository_root, "xmake/port.lua")
 
 local pending_families = {
     {
-        family = "LIGHTS",
-        sources = {
-            "Source/Render/Renderer/RendererLighting.cpp",
-        },
-        tests = {
-            "Tests/Render/Passes/LocalLights/GpuRendererLightingTests.cpp",
-            "Tests/Render/Passes/LocalLights/RenderZeroLightInvariantTests.cpp",
-            "Tests/Render/Passes/LocalLights/LightCaptureLayoutTests.cpp",
-            "Tests/Render/Passes/Temporal/GpuLightDebugTemporalTests.cpp",
-            "Tests/Render/Passes/Temporal/GpuZeroLightHistoryTests.cpp",
-            "Tests/App/Model/Performance/MeasurementSampleTests.cpp",
-        },
-    },
-    {
         family = "BENCH",
         sources = {
             "Benchmarks/FrameData/*.cpp",

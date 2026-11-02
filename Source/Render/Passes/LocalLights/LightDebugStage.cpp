@@ -31,20 +31,7 @@ static_assert(kParamsUploadBytes == 192);
 } // namespace
 
 //======================================================================================================================
-lmx::Result<std::unique_ptr<LightDebugStage>> LightDebugStage::create(engine::GpuContext& gpu) {
-    rojoRHI::Device& device = gpu.device();
-    auto stage = std::unique_ptr<LightDebugStage>(new LightDebugStage);
-    auto library = gpu.loadShaderLibrary("LightDebugView");
-    if (!library) {
-        return std::unexpected(library.error());
-    }
-    stage->m_library = std::move(*library);
-    auto pipeline = createFullscreenPipeline(device, stage->m_library.get(), "fragmentMain",
-                                             kDisplayFormat, "lmx.render.lightDebugPipeline");
-    if (!pipeline) {
-        return std::unexpected(pipeline.error());
-    }
-    stage->m_pipeline = std::move(*pipeline);
+void LightDebugStage::registerLayoutsForCapture() {
     const auto field = [](std::string name, size_t offset, std::string type) {
         return engine::SchemaUniformField{.name = std::move(name),
                                           .offsetBytes = static_cast<uint32_t>(offset),
@@ -73,6 +60,24 @@ lmx::Result<std::unique_ptr<LightDebugStage>> LightDebugStage::create(engine::Gp
                     field("display", offsetof(LightDebugRoot, display), "uint"),
                     field("padding0", offsetof(LightDebugRoot, padding0), "uint"),
                     field("padding1", offsetof(LightDebugRoot, padding1), "uint")}});
+}
+
+//======================================================================================================================
+lmx::Result<std::unique_ptr<LightDebugStage>> LightDebugStage::create(engine::GpuContext& gpu) {
+    rojoRHI::Device& device = gpu.device();
+    auto stage = std::unique_ptr<LightDebugStage>(new LightDebugStage);
+    auto library = gpu.loadShaderLibrary("LightDebugView");
+    if (!library) {
+        return std::unexpected(library.error());
+    }
+    stage->m_library = std::move(*library);
+    auto pipeline = createFullscreenPipeline(device, stage->m_library.get(), "fragmentMain",
+                                             kDisplayFormat, "lmx.render.lightDebugPipeline");
+    if (!pipeline) {
+        return std::unexpected(pipeline.error());
+    }
+    stage->m_pipeline = std::move(*pipeline);
+    registerLayoutsForCapture();
     return stage;
 }
 
