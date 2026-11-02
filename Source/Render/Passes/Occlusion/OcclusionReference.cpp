@@ -452,9 +452,11 @@ OcclusionReference::prepareJoin(uint64_t completedFrame,
 
 //======================================================================================================================
 void OcclusionReference::validateJoin(const PreparedReferenceJoin& prepared) const {
-    LMX_ASSERT(prepared.m_owner == this && prepared.m_context == &m_gpu &&
-                   prepared.m_epoch == m_epoch,
-               "reference prepared join is foreign, stale, or consumed");
+    // One message per failure, so each misuse is distinguishable from the others.
+    LMX_ASSERT(prepared.m_owner != nullptr, "reference prepared join is consumed");
+    LMX_ASSERT(prepared.m_owner == this && prepared.m_context == &m_gpu,
+               "reference prepared join is foreign");
+    LMX_ASSERT(prepared.m_epoch == m_epoch, "reference prepared join is stale");
 }
 
 //======================================================================================================================

@@ -346,9 +346,11 @@ GpuVisibility::prepareRetiredTake(uint64_t completedFrame) const {
 
 //======================================================================================================================
 void GpuVisibility::validateRetiredTake(const PreparedVisibilityRetirement& prepared) const {
-    LMX_ASSERT(prepared.m_owner == this && prepared.m_context == &m_gpu &&
-                   prepared.m_epoch == m_epoch,
-               "visibility prepared take is foreign, stale, or consumed");
+    // One message per failure, so each misuse is distinguishable from the others.
+    LMX_ASSERT(prepared.m_owner != nullptr, "visibility prepared take is consumed");
+    LMX_ASSERT(prepared.m_owner == this && prepared.m_context == &m_gpu,
+               "visibility prepared take is foreign");
+    LMX_ASSERT(prepared.m_epoch == m_epoch, "visibility prepared take is stale");
 }
 
 //======================================================================================================================
