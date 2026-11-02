@@ -223,10 +223,15 @@ GpuVisibility::declare(RenderGraph& graph, rojoRHI::CommandList& commands, const
     const auto runs = graph.importBuffer(slot->runs, "lmx.draw.runs");
     const auto chunks = graph.importBuffer(slot->chunks, "lmx.draw.chunks");
     const auto views = graph.importBuffer(slot->views, "lmx.draw.views");
-    const auto states = graph.importBuffer(slot->states, "lmx.draw.states", BufferUse::StorageRead,
-                                           slot->statesPhysical);
-    const auto counters = graph.importBuffer(slot->counters, "lmx.draw.counters",
-                                             BufferUse::StorageWrite, slot->countersPhysical);
+    // A backing no recorded frame has used carries no prior use, as v1 imported a fresh slot.
+    const auto states = slot->used
+                            ? graph.importBuffer(slot->states, "lmx.draw.states",
+                                                 BufferUse::StorageRead, slot->statesPhysical)
+                            : graph.importBuffer(slot->states, "lmx.draw.states");
+    const auto counters = slot->used
+                              ? graph.importBuffer(slot->counters, "lmx.draw.counters",
+                                                   BufferUse::StorageWrite, slot->countersPhysical)
+                              : graph.importBuffer(slot->counters, "lmx.draw.counters");
     const auto chunkCount = static_cast<uint32_t>(tables.chunks.size());
     const auto runCount = static_cast<uint32_t>(tables.runs.size());
     const uint64_t chunkBytes = std::max<uint64_t>(4, uint64_t{chunkCount} * 4);
