@@ -259,29 +259,44 @@ function lmx_configure_shader_library(target)
                           "Render/Passes/Temporal/TemporalFrameData.h")
     end
     local entries = lmx_shader_entries(kind)
-    -- v1 compiled Visibility*, Occlusion* except OcclusionReference, Hzb* and LightCluster*
-    -- with precise floating point; LightCluster* joins when its family is restored.
-    local precise_candidates = {
-        VisibilityClassify = true, VisibilityClassifyOcclusion = true,
-        VisibilityScan = true, VisibilityEmit = true, VisibilityEmitSparse = true,
-        VisibilityDepthReadback = true,
-        HzbReduce = true, HzbPublish = true, HzbDebugView = true,
-        HzbDepthFixture = true, HzbReadbackFixture = true, OcclusionProbe = true
-    }
-    -- Entries are filtered by family and kind, so a misspelt candidate must fail here.
-    local shader_files = os.files(path.join(repository_root, "Shaders/Passes/**.slang"))
-    table.join2(shader_files, os.files(path.join(repository_root, "Shaders/Tests/*.slang")))
-    local shader_basenames = {}
-    for _, file in ipairs(shader_files) do
-        shader_basenames[path.basename(file)] = true
+    -- v1 compiled every Visibility*, Hzb* and LightCluster* entry, and every Occlusion* entry
+    -- except OcclusionReference, with precise floating point. The rule is v1's prefix predicate
+    -- over entry basenames, so a new entry in those families is selected without a list edit.
+    local precise_prefixes = {"Visibility", "Occlusion", "Hzb", "LightCluster"}
+    local function precise(name)
+        if name == "OcclusionReference" then
+            return false
+        end
+        for _, prefix in ipairs(precise_prefixes) do
+            if name:startswith(prefix) then
+                return true
+            end
+        end
+        return false
     end
-    for name, _ in pairs(precise_candidates) do
-        assert(shader_basenames[name], "precise shader candidate names no shader file: " .. name)
+    -- Every prefix must still name a real entry, pending families included, so a renamed family
+    -- cannot silently fall back to the default floating-point mode.
+    local all_entries = os.files(path.join(repository_root, "Shaders/Passes/**.slang"))
+    table.join2(all_entries, os.files(path.join(repository_root, "Shaders/Tests/*.slang")))
+    for _, prefix in ipairs(precise_prefixes) do
+        local matched = false
+        for _, file in ipairs(all_entries) do
+            local name = path.basename(file)
+            if name:startswith(prefix) and precise(name) then
+                local text = assert(io.readfile(file), "cannot read shader: " .. file)
+                    :gsub("/%*.-%*/", ""):gsub("//[^\n]*", "")
+                if text:find('%[%s*shader%s*%(%s*"(%w+)"%s*%)%s*%]') then
+                    matched = true
+                    break
+                end
+            end
+        end
+        assert(matched, "precise shader prefix names no shader entry: " .. prefix)
     end
     local precise_entries = {}
     for _, file in ipairs(entries) do
         local basename = path.basename(file)
-        if precise_candidates[basename] then
+        if precise(basename) then
             table.insert(precise_entries, basename)
         end
     end
