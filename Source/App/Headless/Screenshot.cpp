@@ -14,7 +14,9 @@
 #include "App/Model/Rendering/Visibility/VisibilityDiagnostics.h"
 #include "App/Model/Scene/SceneDefaults.h"
 #include "App/Model/Scene/SceneSession.h"
+#include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"
+#include "Core/Diagnostics/Result.h"
 #include "Core/Util/Parse.h"
 #include "Engine/Asset/Image/BmpImage.h"
 #include "Engine/Asset/Image/PngImage.h"
@@ -34,6 +36,7 @@
 #include <format>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -68,6 +71,16 @@ bool writeCaptureImage(const std::filesystem::path& path, const std::vector<uint
         return false;
     }
     return true;
+}
+
+//======================================================================================================================
+// Resolves a copy recorded on a captured frame's own command list into its packed BGRA bytes.
+Result<std::vector<uint8_t>> resolveCapture(engine::GpuContext& gpu,
+                                            const render::ReadbackTicket& ticket) {
+    std::vector<uint8_t> pixels(ticket.region.size);
+    if (auto resolved = render::resolve(gpu, ticket, pixels); !resolved)
+        return std::unexpected(resolved.error());
+    return pixels;
 }
 
 //======================================================================================================================
@@ -171,7 +184,8 @@ int runOffscreen(AppOptions options) {
     // The renderer dies before its frame transients and their pool, while the device is alive.
     render::TransientPool transientPool(gpu);
 
-    // Readback uses explicit copies after the rendered frame has completed.
+    // Each captured frame records a preserving copy of its display target; it resolves once the
+    // frame has completed.
     auto renderer = render::Renderer::create(gpu, kScreenshotWidth, kScreenshotHeight,
                                              /*cpuReadback=*/true);
     if (!renderer) {
@@ -229,6 +243,8 @@ int runOffscreen(AppOptions options) {
         return 1;
     }
     const uint32_t totalFrames = sequence ? sequence->warmup + frames : frames;
+    // The single screenshot's copy, recorded on the last frame and resolved after the loop.
+    std::optional<render::ReadbackTicket> finalCapture;
     for (uint32_t frame = 0; frame < totalFrames; ++frame) {
         if (sequence) {
             session.prepareSequenceFrame(frame);
@@ -286,6 +302,13 @@ int runOffscreen(AppOptions options) {
         }
         declared.graph().exportTexture(declared.displayColor());
         frameRecords.retain(declared.execute());
+        // A captured frame copies its picture on its own command list, after its passes. A copy
+        // frame of its own would consume a frame number, so the next frame's occlusion would find
+        // a gap in its source clock and the sequence's frame ids would skip one per capture.
+        std::optional<render::ReadbackTicket> capture;
+        if (sequence ? frame >= sequence->warmup : frame + 1 == totalFrames)
+            capture = render::recordReadback(gpu, commands, (*renderer)->colorTarget(),
+                                             (*renderer)->textureStates());
         if (options.dynamicResolution)
             resolutionController.declared(gpu.frameNumber());
         gpu.submitAndEndFrame(gpuFrame);
@@ -356,9 +379,7 @@ int runOffscreen(AppOptions options) {
                 const uint32_t ordinal = frame - sequence->warmup;
                 const std::string filename = std::format(
                     "frame-{:06}.{}", ordinal, captureFormatName(sequence->captureFormat));
-                const auto readback = render::readbackNow(gpu, (*renderer)->colorTarget(),
-                                                          (*renderer)->textureStates());
-                joinRetiredTimings();
+                const auto readback = resolveCapture(gpu, *capture);
                 if (!readback) {
                     writeManifest(false, readback.error().message);
                     LMX_LOG_ERROR("capture readback failed: {}", readback.error().message);
@@ -389,6 +410,8 @@ int runOffscreen(AppOptions options) {
                 }
             }
         }
+        if (capture && !sequence)
+            finalCapture = std::move(capture);
     }
     if (lightDump.is_open()) {
         lightDump.flush();
@@ -406,9 +429,8 @@ int runOffscreen(AppOptions options) {
         return writeManifest(true) ? 0 : 1;
     }
 
-    const auto readback =
-        render::readbackNow(gpu, (*renderer)->colorTarget(), (*renderer)->textureStates());
-    joinRetiredTimings();
+    LMX_ASSERT(finalCapture.has_value(), "a screenshot renders at least one frame");
+    const auto readback = resolveCapture(gpu, *finalCapture);
     if (!readback) {
         LMX_LOG_ERROR("screenshot readback failed: {}", readback.error().message);
         return 1;

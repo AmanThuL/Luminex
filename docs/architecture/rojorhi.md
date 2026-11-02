@@ -129,9 +129,9 @@ The main SDL Metal view and native window outlive context teardown.
 and before `endFrame`; `submitAndEndFrame` combines those operations for headless or skipped
 frames. `waitIdle` uses a separate empty submission and idle fence outside a frame. `endFrame`
 copies retired scope timings; App joins them immediately by their actual retired ID after every
-frame end, including private readback-copy frames. Render-owned sequence/temporal ordinals remain
-separate from these pacing IDs. Measurement drains submitted tails before validating complete
-joins; schema 5 continues to report the timed-pass sum.
+frame end. Render-owned sequence/temporal ordinals remain separate from these pacing IDs.
+Measurement drains submitted tails before validating complete joins; schema 5 continues to report
+the timed-pass sum.
 
 ## Tests
 

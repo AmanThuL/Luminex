@@ -274,7 +274,9 @@ entries with setup guidance; unavailable explicit CLI scenes fail rather than fa
 
 `--capture-sequence <directory> --frames N --warmup W` saves N frames after W unsaved frames at
 60 Hz as PNG by default (`--capture-format bmp` preserves BMP), with camera/settings/status
-metadata. Manifest v3 names display/container/UI domains and loaded document path/hash: JSON then animation bytes, immutable geometry/images through `contentHashes`. PNG carries sRGB,
+metadata. Each captured frame, and a screenshot's last frame, copies its display target on its own
+command list after its passes, so frame ids stay contiguous and occlusion keeps its history.
+Manifest v3 names display/container/UI domains and loaded document path/hash: JSON then animation bytes, immutable geometry/images through `contentHashes`. PNG carries sRGB,
 gAMA and cHRM plus `lmx:display` and `lmx:frame` text; screenshots select PNG/BMP by extension. The [offline comparison guide](../guides/temporal-comparison.md)
 covers synchronized reports and optional LDR-FLIP differences against Native TAA, not ground truth.
 
