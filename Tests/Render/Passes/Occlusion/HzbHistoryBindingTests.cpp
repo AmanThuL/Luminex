@@ -377,6 +377,7 @@ void appendHzbProbe(HzbMatrixFixture& fixture, RenderGraph& graph, HzbMatrixFram
     history->appendRead(
         graph, label, std::move(desc),
         [&, history, probe, normalRead, canonical](const PassResources& resources) {
+            (void)canonical; // Read only by the Debug access declaration below.
             auto& commands = frame.frame.commands;
             probe->params = history->recordingParams();
             probe->view = history->sampledView(resources);
@@ -395,7 +396,7 @@ void appendHzbProbe(HzbMatrixFixture& fixture, RenderGraph& graph, HzbMatrixFram
                  .size = 32,
                  .stage = rojoRHI::Stage::ComputeShader,
                  .access = rojoRHI::Access::ShaderWrite}};
-            if ((probe->params.flags & 3u) == 3u)
+            if ((probe->params.flags & kOcclusionTestingFlags) == kOcclusionTestingFlags)
                 accesses.push_back({.texture = resources.texture(canonical).texture,
                                     .stage = rojoRHI::Stage::ComputeShader,
                                     .access = rojoRHI::Access::ShaderRead});

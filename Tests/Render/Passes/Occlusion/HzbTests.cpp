@@ -55,12 +55,12 @@ TEST_CASE("R32Float sampled storage and reported attachment usage follow v2 capa
     REQUIRE(texture);
     REQUIRE(texture->view() != lmx::engine::kNoView);
     REQUIRE(texture->storageViewCount() == 1);
+    // An unreported attachment usage is fatal misuse in RojoRHI rather than a creation error, so
+    // only the reported case is exercised here.
     if (capabilities.colorAttachment) {
         desc.usage = desc.usage | TextureUsage::RenderTarget;
         auto attachment =
             lmx::engine::GpuTexture::create(gpu->device(), desc, {}, {.storageMips = true});
         REQUIRE(attachment);
-    } else {
-        REQUIRE_FALSE(capabilities.colorAttachment);
     }
 }

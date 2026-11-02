@@ -23,6 +23,10 @@ engine::GpuBuffer mappedBuffer(engine::GpuContext& gpu, uint64_t bytes) {
     return std::move(*result);
 }
 
+// The fixture's hand-built entries borrow mapped Upload buffers recorded in otherwise empty frames.
+// They exercise only retirement's host-side transaction -- staging, decoding and publication --
+// which needs no GPU work, so the cases run once, on the Null configuration hosted CI builds,
+// rather than repeating identical host logic on every device backend.
 struct RetirementFixture {
     std::unique_ptr<engine::GpuContext> gpu = createTestGpu();
     engine::GpuBuffer rows = mappedBuffer(*gpu, 4);
