@@ -198,6 +198,9 @@ GraphResult<void> RenderGraph::lowerPhysical(LoweredFrame& frame, const AliasPla
                     }
                 }
             }
+        } else if (resource.priorBufferPhysical) {
+            const auto prior = *resource.priorBufferPhysical;
+            current.buffer = {prior.stage, prior.access, L::Undefined};
         } else if (resource.priorBufferAccess) {
             auto sync = bufferSync(*resource.priorBufferAccess, PassKind::Compute);
             // A prior nominal shader use does not carry its stage provenance.

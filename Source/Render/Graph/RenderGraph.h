@@ -280,6 +280,13 @@ public:
     GraphBuffer importBuffer(const engine::GpuBuffer& buffer, std::string_view name,
                              BufferUse previousUse);
 
+    /// Imports exact recorded physical scope independently of its nominal observer use.
+    GraphBuffer importBuffer(const BufferRef& buffer, std::string_view name, BufferUse previousUse,
+                             SyncPoint previousPhysical);
+    /// Copies an owner snapshot and exact recorded buffer scope.
+    GraphBuffer importBuffer(const engine::GpuBuffer& buffer, std::string_view name,
+                             BufferUse previousUse, SyncPoint previousPhysical);
+
     /// Declares a texture the graph creates for this frame and nothing else, as version 0.
     ///
     /// Version 0 of a transient is uninitialised memory rather than contents, so naming it as
@@ -444,6 +451,7 @@ private:
         std::optional<BufferFootprints> bufferFootprints;
         std::optional<TextureUse> priorTextureAccess;
         std::optional<BufferUse> priorBufferAccess;
+        std::optional<SyncPoint> priorBufferPhysical;
         // Imported through importPersistentTexture: its terminal use is written back to the bound
         // table, from `finalUse` when the caller stated one and from its passes otherwise.
         bool tracked = false;

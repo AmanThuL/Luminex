@@ -265,6 +265,22 @@ GraphBuffer RenderGraph::importBuffer(const engine::GpuBuffer& buffer, std::stri
 }
 
 //======================================================================================================================
+GraphBuffer RenderGraph::importBuffer(const BufferRef& buffer, std::string_view name,
+                                      BufferUse previousUse, SyncPoint previousPhysical) {
+    const auto handle = importBuffer(buffer, name, previousUse);
+    m_resources[handle.index].priorBufferPhysical = previousPhysical;
+    return handle;
+}
+
+//======================================================================================================================
+GraphBuffer RenderGraph::importBuffer(const engine::GpuBuffer& buffer, std::string_view name,
+                                      BufferUse previousUse, SyncPoint previousPhysical) {
+    const auto handle = importBuffer(buffer, name, previousUse);
+    m_resources[handle.index].priorBufferPhysical = previousPhysical;
+    return handle;
+}
+
+//======================================================================================================================
 GraphTexture RenderGraph::createTexture(const TransientTextureDesc& desc, std::string_view name) {
     LMX_ASSERT(desc.kind == rojoRHI::TextureType::Tex2D || desc.kind == rojoRHI::TextureType::Cube,
                "transient textures must be 2D textures or cubes");
