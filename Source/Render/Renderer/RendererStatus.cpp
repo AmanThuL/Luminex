@@ -20,7 +20,6 @@
 namespace lmx::render {
 //======================================================================================================================
 void Renderer::recordFrameStatus(const RendererFrameState& state) {
-#ifndef LMX_PENDING_TEMPORAL
     // The frame just declared becomes the previous one. A frame the caller abandoned before
     // declaring never reaches here, so it never becomes anyone's predecessor.
     ++m_declaredFrames;
@@ -71,12 +70,6 @@ void Renderer::recordFrameStatus(const RendererFrameState& state) {
         m_temporalResolve->recordFrame(state.reconstruction);
         ++m_temporalFrame;
     }
-#else
-    ++m_declaredFrames;
-    m_temporalStatus = {};
-    m_temporalStatus.extents = state.extents;
-    m_temporalStatus.renderScale = 1.0f;
-#endif
 }
 
 //======================================================================================================================
@@ -93,24 +86,16 @@ const engine::GpuTexture& Renderer::hdrColorTexture() {
 
 //======================================================================================================================
 const engine::GpuTexture& Renderer::depthTexture() {
-#ifndef LMX_PENDING_TEMPORAL
     LMX_ASSERT(m_temporalResolve != nullptr,
                "Renderer::depthTarget: no depth target -- create() failed");
     return m_temporalResolve->depthTexture(m_currentSlot);
-#else
-    return m_standIns.depth;
-#endif
 }
 
 //======================================================================================================================
 const engine::GpuTexture* Renderer::historyTexture() {
-#ifndef LMX_PENDING_TEMPORAL
     LMX_ASSERT(m_temporalResolve != nullptr,
                "Renderer::historyTarget: no history -- create() failed");
     return &m_temporalResolve->colorTexture(m_currentSlot);
-#else
-    return nullptr;
-#endif
 }
 
 //======================================================================================================================

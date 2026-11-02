@@ -30,14 +30,18 @@ TEST_CASE("the temporal-off frame declares the pre-temporal graph", "[gpu][tempo
     const std::array<FixtureDrawItem, 1> items = {FixtureDrawItem{.mesh = &*cube}};
     const FixtureSceneView view = temporalSceneView(items);
 
-    lmx::render::TransientPool transients(gpu->device());
+    lmx::render::TransientPool transients(*gpu);
     auto commandsFrame = gpu->beginFrame();
     auto& commands = commandsFrame.commands;
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
-    const lmx::render::GraphTexture display = (*renderer)->declarePasses(
-        graph, commands, temporalCamera(), lmx::test::prepareSceneView(view, *gpu));
-    graph.presentTexture(display);
+    const auto display = (*renderer)->declarePasses(graph, commands, temporalCamera(),
+                                                    lmx::test::prepareSceneView(view, *gpu));
+    if (!display)
+        gpu->submitAndEndFrame(commandsFrame);
+    INFO(errorOf(display));
+    REQUIRE(display.has_value());
+    graph.presentTexture(*display);
 
     const auto record = graph.compileFrame(1);
     INFO((record.has_value() ? std::string{} : record.error().message));
@@ -81,14 +85,18 @@ TEST_CASE("a temporal frame declares the motion, resolve and debug view passes",
     // reprojection pass a frame with no history could not declare at all.
     renderFrame(*gpu, **renderer, temporalCamera(), view);
 
-    lmx::render::TransientPool transients(gpu->device());
+    lmx::render::TransientPool transients(*gpu);
     auto commandsFrame = gpu->beginFrame();
     auto& commands = commandsFrame.commands;
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
-    const lmx::render::GraphTexture display = (*renderer)->declarePasses(
-        graph, commands, temporalCamera(), lmx::test::prepareSceneView(view, *gpu));
-    graph.presentTexture(display);
+    const auto display = (*renderer)->declarePasses(graph, commands, temporalCamera(),
+                                                    lmx::test::prepareSceneView(view, *gpu));
+    if (!display)
+        gpu->submitAndEndFrame(commandsFrame);
+    INFO(errorOf(display));
+    REQUIRE(display.has_value());
+    graph.presentTexture(*display);
 
     const auto record = graph.compileFrame(2);
     INFO((record.has_value() ? std::string{} : record.error().message));
@@ -127,14 +135,18 @@ TEST_CASE("a raw temporal frame declares the commit copy and no resolve", "[gpu]
 
     renderFrame(*gpu, **renderer, temporalCamera(), view);
 
-    lmx::render::TransientPool transients(gpu->device());
+    lmx::render::TransientPool transients(*gpu);
     auto commandsFrame = gpu->beginFrame();
     auto& commands = commandsFrame.commands;
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
-    const lmx::render::GraphTexture display = (*renderer)->declarePasses(
-        graph, commands, temporalCamera(), lmx::test::prepareSceneView(view, *gpu));
-    graph.presentTexture(display);
+    const auto display = (*renderer)->declarePasses(graph, commands, temporalCamera(),
+                                                    lmx::test::prepareSceneView(view, *gpu));
+    if (!display)
+        gpu->submitAndEndFrame(commandsFrame);
+    INFO(errorOf(display));
+    REQUIRE(display.has_value());
+    graph.presentTexture(*display);
 
     const auto record = graph.compileFrame(2);
     INFO((record.has_value() ? std::string{} : record.error().message));
@@ -182,14 +194,18 @@ TEST_CASE("an upscaled raw temporal frame declares the spatial commit", "[gpu][t
     CHECK(status.extents.outputHeight == kSize);
     CHECK(status.renderScale == 0.5f);
 
-    lmx::render::TransientPool transients(gpu->device());
+    lmx::render::TransientPool transients(*gpu);
     auto commandsFrame = gpu->beginFrame();
     auto& commands = commandsFrame.commands;
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
-    const lmx::render::GraphTexture display = (*renderer)->declarePasses(
-        graph, commands, temporalCamera(), lmx::test::prepareSceneView(view, *gpu));
-    graph.presentTexture(display);
+    const auto display = (*renderer)->declarePasses(graph, commands, temporalCamera(),
+                                                    lmx::test::prepareSceneView(view, *gpu));
+    if (!display)
+        gpu->submitAndEndFrame(commandsFrame);
+    INFO(errorOf(display));
+    REQUIRE(display.has_value());
+    graph.presentTexture(*display);
 
     const auto record = graph.compileFrame(2);
     INFO((record.has_value() ? std::string{} : record.error().message));
@@ -238,14 +254,18 @@ TEST_CASE("an upscaled native TAA frame declares the temporal upscale", "[gpu][t
     // than the first frame after a scale change.
     renderFrame(*gpu, **renderer, temporalCamera(), view);
 
-    lmx::render::TransientPool transients(gpu->device());
+    lmx::render::TransientPool transients(*gpu);
     auto commandsFrame = gpu->beginFrame();
     auto& commands = commandsFrame.commands;
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
-    const lmx::render::GraphTexture display = (*renderer)->declarePasses(
-        graph, commands, temporalCamera(), lmx::test::prepareSceneView(view, *gpu));
-    graph.presentTexture(display);
+    const auto display = (*renderer)->declarePasses(graph, commands, temporalCamera(),
+                                                    lmx::test::prepareSceneView(view, *gpu));
+    if (!display)
+        gpu->submitAndEndFrame(commandsFrame);
+    INFO(errorOf(display));
+    REQUIRE(display.has_value());
+    graph.presentTexture(*display);
 
     const auto record = graph.compileFrame(2);
     INFO((record.has_value() ? std::string{} : record.error().message));
@@ -285,13 +305,18 @@ TEST_CASE("a scale-1 temporal frame declares no upscaling pass", "[gpu][temporal
     renderFrame(*gpu, **renderer, temporalCamera(), view);
     CHECK_FALSE((*renderer)->temporalStatus().upscaled);
 
-    lmx::render::TransientPool transients(gpu->device());
+    lmx::render::TransientPool transients(*gpu);
     auto commandsFrame = gpu->beginFrame();
     auto& commands = commandsFrame.commands;
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
-    graph.presentTexture((*renderer)->declarePasses(graph, commands, temporalCamera(),
-                                                    lmx::test::prepareSceneView(view, *gpu)));
+    const auto display = (*renderer)->declarePasses(graph, commands, temporalCamera(),
+                                                    lmx::test::prepareSceneView(view, *gpu));
+    if (!display)
+        gpu->submitAndEndFrame(commandsFrame);
+    INFO(errorOf(display));
+    REQUIRE(display.has_value());
+    graph.presentTexture(*display);
     const auto record = graph.compileFrame(2);
     REQUIRE(record.has_value());
     const std::string dump = lmx::render::dumpCompiledFrame(*record);
@@ -335,7 +360,7 @@ TEST_CASE("a scale-1 frame after a scale change declares the upscale kernel once
     view.temporal.renderScale = 0.5f;
     renderFrame(*gpu, **renderer, temporalCamera(), view);
 
-    lmx::render::TransientPool transients(gpu->device());
+    lmx::render::TransientPool transients(*gpu);
     // Declares one frame at `scale` and answers its compiled record's dump. Every call is a
     // declared temporal frame, so the order of the calls is the order of the frames.
     const auto declareDump = [&](float scale) {
@@ -344,8 +369,13 @@ TEST_CASE("a scale-1 frame after a scale change declares the upscale kernel once
         auto& commands = commandsFrame.commands;
         transients.beginFrame();
         lmx::render::RenderGraph graph(transients);
-        graph.presentTexture((*renderer)->declarePasses(graph, commands, temporalCamera(),
-                                                        lmx::test::prepareSceneView(view, *gpu)));
+        const auto display = (*renderer)->declarePasses(graph, commands, temporalCamera(),
+                                                        lmx::test::prepareSceneView(view, *gpu));
+        if (!display)
+            gpu->submitAndEndFrame(commandsFrame);
+        INFO(errorOf(display));
+        REQUIRE(display.has_value());
+        graph.presentTexture(*display);
         const auto record = graph.compileFrame(2);
         INFO((record.has_value() ? std::string{} : record.error().message));
         REQUIRE(record.has_value());

@@ -30,12 +30,11 @@ lmx::engine::MeshData cutoutQuad() {
 lmx::engine::GpuTexture cutoutTexture(Device& device) {
     const std::array<uint8_t, 16> texels{255, 255, 255, 128, 255, 255, 255, 128,
                                          255, 255, 255, 255, 255, 255, 255, 255};
-    const TextureMip mip{.data = texels.data(), .bytesPerRow = 16};
+    const TextureData mip{.bytes = std::as_bytes(std::span(texels)), .bytesPerRow = 16};
     auto texture = lmx::engine::GpuTexture::create(device,
-                                                   {.width = 4,
-                                                    .height = 1,
-                                                    .format = Format::RGBA8Unorm_sRGB,
-                                                    .sampled = true,
+                                                   {.format = Format::RGBA8Unorm_sRGB,
+                                                    .extent = {4, 1, 1},
+                                                    .usage = TextureUsage::Sampled,
                                                     .label = "lmx.test.cutout.texture"},
                                                    std::span{&mip, 1});
     INFO(errorOf(texture));
@@ -50,16 +49,21 @@ std::vector<uint16_t> cutoutFrame(lmx::engine::GpuContext& gpu, Renderer& render
     camera.position = {0, 0, 5};
     auto gpuFrame1 = gpu.beginFrame();
     auto& commands = gpuFrame1.commands;
-    renderer.render(commands, camera, lmx::test::prepareSceneView(view, gpu));
+    const auto rendered = renderer.render(commands, camera, lmx::test::prepareSceneView(view, gpu));
     gpu.submitAndEndFrame(gpuFrame1);
     gpu.waitIdle();
+    INFO(errorOf(rendered));
+    REQUIRE(rendered.has_value());
     std::vector<uint16_t> pixels(kSize * kSize * 4);
     {
+        requireRecordedUse(renderer.textureStates(), renderer.hdrColorTexture(),
+                           view.temporal.enabled ? lmx::render::TextureUse::CopySource
+                                                 : lmx::render::TextureUse::ShaderRead);
         const auto readbackBytes =
-            lmx::render::readbackNow(gpu, renderer.hdrColorTexture(),
-                                     view.temporal.enabled ? lmx::render::TextureUse::CopySource
-                                                           : lmx::render::TextureUse::ShaderRead);
-        std::memcpy(pixels.data(), readbackBytes.data(), pixels.size() * sizeof(uint16_t));
+            lmx::render::readbackNow(gpu, renderer.hdrColorTexture(), renderer.textureStates());
+        INFO(errorOf(readbackBytes));
+        REQUIRE(readbackBytes.has_value());
+        std::memcpy(pixels.data(), readbackBytes->data(), pixels.size() * sizeof(uint16_t));
     }
     return pixels;
 }
@@ -137,16 +141,24 @@ TEST_CASE("alpha mask shares color depth and motion coverage", "[gpu][alpha-mask
     if (view.temporal.enabled) {
         std::vector<uint16_t> history(kSize * kSize * 4);
         {
+            requireRecordedUse((*renderer)->textureStates(), *(*renderer)->historyTexture(),
+                               lmx::render::TextureUse::CopyDestination);
             const auto readbackBytes = lmx::render::readbackNow(
-                *gpu, *(*renderer)->historyTexture(), lmx::render::TextureUse::CopyDestination);
-            std::memcpy(history.data(), readbackBytes.data(), history.size() * sizeof(uint16_t));
+                *gpu, *(*renderer)->historyTexture(), (*renderer)->textureStates());
+            INFO(errorOf(readbackBytes));
+            REQUIRE(readbackBytes.has_value());
+            std::memcpy(history.data(), readbackBytes->data(), history.size() * sizeof(uint16_t));
         }
         REQUIRE(cutoutChannel(history, 39, 3) == 1.0f);
         std::vector<uint16_t> motion(kSize * kSize * 2);
         {
-            const auto readbackBytes = lmx::render::readbackNow(
-                *gpu, *(*renderer)->motionTexture(), lmx::render::TextureUse::RenderTarget);
-            std::memcpy(motion.data(), readbackBytes.data(), motion.size() * 2);
+            requireRecordedUse((*renderer)->textureStates(), *(*renderer)->motionTexture(),
+                               lmx::render::TextureUse::RenderTarget);
+            const auto readbackBytes = lmx::render::readbackNow(*gpu, *(*renderer)->motionTexture(),
+                                                                (*renderer)->textureStates());
+            INFO(errorOf(readbackBytes));
+            REQUIRE(readbackBytes.has_value());
+            std::memcpy(motion.data(), readbackBytes->data(), motion.size() * 2);
         }
         const size_t hole = (kSize / 2 * kSize + 25) * 2;
         const size_t solid = (kSize / 2 * kSize + 39) * 2;
@@ -157,9 +169,13 @@ TEST_CASE("alpha mask shares color depth and motion coverage", "[gpu][alpha-mask
             glm::translate(glm::mat4{1}, glm::vec3{-0.1f, 0, 0}) * items[0].model;
         cutoutFrame(*gpu, **renderer, view);
         {
-            const auto readbackBytes = lmx::render::readbackNow(
-                *gpu, *(*renderer)->motionTexture(), lmx::render::TextureUse::RenderTarget);
-            std::memcpy(motion.data(), readbackBytes.data(), motion.size() * 2);
+            requireRecordedUse((*renderer)->textureStates(), *(*renderer)->motionTexture(),
+                               lmx::render::TextureUse::RenderTarget);
+            const auto readbackBytes = lmx::render::readbackNow(*gpu, *(*renderer)->motionTexture(),
+                                                                (*renderer)->textureStates());
+            INFO(errorOf(readbackBytes));
+            REQUIRE(readbackBytes.has_value());
+            std::memcpy(motion.data(), readbackBytes->data(), motion.size() * 2);
         }
         REQUIRE(glm::unpackHalf1x16(motion[hole]) == 0.0f);
         REQUIRE(glm::unpackHalf1x16(motion[solid]) > 0.005f);

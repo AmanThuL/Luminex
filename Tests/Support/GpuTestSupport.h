@@ -77,6 +77,20 @@ inline bool channelNear(uint8_t actual, int expected, int tolerance) {
     return std::abs(int{actual} - expected) <= tolerance;
 }
 
+//======================================================================================================================
+// Requires the table to record `expected` as the texture's whole-resource use. A readback restores
+// whatever the table records rather than naming a use, so a test that expects a particular last use
+// before reading checks it here first.
+[[maybe_unused]] void requireRecordedUse(const lmx::render::TextureStateTable& states,
+                                         const lmx::engine::GpuTexture& texture,
+                                         lmx::render::TextureUse expected) {
+    const std::optional<lmx::render::TextureUse> recorded = states.logicalUse(texture.rhi());
+    INFO(std::string(texture.desc().label) + " expected " +
+         std::string(lmx::render::textureUseName(expected)) + ", recorded " +
+         (recorded ? std::string(lmx::render::textureUseName(*recorded)) : std::string("none")));
+    REQUIRE(recorded == expected);
+}
+
 inline lmx::Result<lmx::engine::GpuTexture> makeProbeTarget(lmx::engine::GpuContext& gpu,
                                                             const char* label) {
     return lmx::engine::GpuTexture::create(gpu.device(),

@@ -4,22 +4,56 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
-#ifndef LMX_PENDING_TEMPORAL
-
 #include "Core/Diagnostics/Result.h"
 #include "Render/Passes/Temporal/TemporalResolve.h"
+
+#include <atomic>
+#include <cstdint>
+#include <string_view>
 
 namespace lmx::render {
 
 /// Clamps input/output scale into the engine and supported vendor intervals.
 float vendorRenderScale(float scale, const engine::UpscalerSupportInfo& support);
 
+/// The extents of a vendor frame: renderExtentsForScale() at vendorRenderScale(), with each axis
+/// raised to ceil(minInputScale * output) where rounding to the nearest pixel fell below it, which
+/// happens only when the device's minimum exceeds kMinRenderScale. Without vendor support the
+/// scale passes through unclamped.
+FrameExtents vendorRenderExtents(uint32_t outputWidth, uint32_t outputHeight, float scale,
+                                 const engine::UpscalerSupportInfo& support);
+
 /// Vendor history resets independently of the engine's interchangeable color/depth histories.
 bool vendorHistoryReset(HistoryResetReason reason, ReconstructionMode previousMode, bool recreated);
 
-/// Converts engine UV motion and NDC jitter to pixel motion-to-previous and texture-space jitter.
-rojoRHI::TemporalScaleParams vendorTemporalParams(const FrameExtents& extents,
-                                                  glm::vec2 jitterPixels);
+/// Converts engine UV motion and NDC jitter to pixel motion-to-previous and texture-space jitter,
+/// with the render extent as the active input content. Textures and the reset flag stay unset.
+rojoRHI::UpscaleParams vendorTemporalParams(const FrameExtents& extents, glm::vec2 jitterPixels);
+
+/// The MetalFX upscaler the adapter creates at a `width` x `height` output: input equal to output,
+/// because only the active content shrinks with the render scale, and reversed depth as a creation
+/// flag. Scene-linear colour needs no HDR flag on MetalFX. `label` must outlive the creation call.
+rojoRHI::UpscalerDesc vendorUpscalerDesc(uint32_t width, uint32_t height, std::string_view label);
+
+namespace temporal_detail {
+
+/// A test-only seam over vendor scaler creation, which a real device offers no way to refuse.
+/// While `refuse` is set, every creation the adapter attempts fails as a backend refusal would,
+/// without calling Device::createUpscaler; `attempts` counts every attempt, refused or not.
+/// Production code only reads `refuse` and counts; a test that sets it calls reset() before it
+/// returns. Both fields are relaxed atomics, so renderers on several threads may count at once.
+struct VendorCreationProbe {
+    std::atomic<bool> refuse = false;   ///< Fail each attempt instead of creating the upscaler.
+    std::atomic<uint32_t> attempts = 0; ///< Creations attempted since the last reset().
+
+    /// Restores the default: creations proceed and the count is zero.
+    void reset();
+};
+
+/// The process-wide probe.
+VendorCreationProbe& vendorCreationProbe();
+
+} // namespace temporal_detail
 
 /// Translated, graph-owned signals read by the vendor pass after the packing dispatch.
 struct VendorTemporalPacked {
@@ -28,7 +62,7 @@ struct VendorTemporalPacked {
     GraphTexture exposure; ///< R16Float inverse applied exposure, normalizing pre-exposed input.
 };
 
-/// Composed reconstruction kernel adapter. Its scaler lives until an output resize; render-scale
+/// Composed reconstruction kernel adapter. Its upscaler lives until an output resize; render-scale
 /// changes only change the content rectangle. A failed extent is retried only after a resize.
 class VendorTemporalScaler {
 public:
@@ -42,7 +76,7 @@ public:
     lmx::Result<void> preparePacking();
 
     /// Prepared pipeline for the engine-owned, exposure-corrected history diagnostic.
-    rojoRHI::ComputePipeline& historyPipeline() const;
+    rojoRHI::Pipeline historyPipeline() const;
 
     /// Retires the scaler and clears an extent-specific failure after a successful output resize.
     void invalidateOutput();
@@ -66,11 +100,11 @@ public:
 
 private:
     engine::GpuContext& m_gpu;
-    engine::GpuOwned<rojoRHI::TemporalScaler> m_scaler;
+    engine::GpuOwned<rojoRHI::Upscaler> m_scaler;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_packLibrary;
-    engine::GpuOwned<rojoRHI::ComputePipeline> m_packPipeline;
+    engine::GpuOwned<rojoRHI::Pipeline> m_packPipeline;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_historyLibrary;
-    engine::GpuOwned<rojoRHI::ComputePipeline> m_historyPipeline;
+    engine::GpuOwned<rojoRHI::Pipeline> m_historyPipeline;
     uint32_t m_width = 0;
     uint32_t m_height = 0;
     uint32_t m_generation = 0;
@@ -82,5 +116,3 @@ private:
 };
 
 } // namespace lmx::render
-
-#endif

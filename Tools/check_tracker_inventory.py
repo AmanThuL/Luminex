@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Require Renderer, ordinary-buffer and POST validation cases in a Catch2 tracker listing."""
+"""Require the Renderer, buffer, POST and TEMPORAL validation cases in a Catch2 tracker listing."""
 
 from __future__ import annotations
 
@@ -18,6 +18,8 @@ REQUIRED_CASES = (
     "bloom toggles and resizes through the renderer under the tracker",
     "selection visible rejected and disabled paths preserve actual consumers under the tracker",
     "selection replacement and resize preserve target generations under the tracker",
+    "native temporal history alternates its slots across frames under the tracker",
+    "vendor temporal frames leave their slots in external states under the tracker",
 )
 
 

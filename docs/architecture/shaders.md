@@ -12,8 +12,8 @@ modules are dependencies, not standalone runtime libraries.
 FrameDataBench target. It subtracts the pending source/test-shader patterns in `xmake/port.lua`,
 then selects files containing shader attributes. App selects DisplayTransform plus all six
 Scene/Sky and two Shadow entries. Tests adds the retained sampler/fullscreen/MRT/compute/buffer
-oracles, ShadowSmoke and SceneTableAbi. BENCH remains skipped with FrameDataQuad. VISIBILITY,
-LIGHTS and TEMPORAL entries remain excluded by their exact family patterns.
+oracles, ShadowSmoke and SceneTableAbi. BENCH remains skipped with FrameDataQuad. VISIBILITY and
+LIGHTS entries remain excluded by their exact family patterns; the seven temporal entries build.
 
 `RojoRHI/xmake/slang.lua` owns `rojorhi.slang` and the backend compilation/package contract.
 A Metal 4 configure requires `xcodebuild -downloadComponent MetalToolchain`: Slang emits MSL,
@@ -65,8 +65,8 @@ firstEntry versus indirect drawId identity and use view/sampler indices. The Sce
 writes all116uint words per row for two rows, preserving every field, explicit padding and stride.
 New C++ roots align16; pushRoot supplies GPU256 alignment. Named roots/payloads feed capture
 schema2; the old decoder remains unsupported until its migration. Four local-light contribution
-sites stay neutral with unread zero addresses while LIGHTS is pending; motion entries compile but
-Renderer MRT reachability stays TEMPORAL-owned.
+sites stay neutral with unread zero addresses while LIGHTS is pending; the Renderer reaches the
+motion entries and their three-target MRT on every temporal frame.
 
 ## Shaders/Passes/<family>/
 

@@ -17,6 +17,8 @@ local pending_families = {
             "Tests/Render/Passes/Visibility/Gpu*.cpp",
             "Tests/Render/Passes/Occlusion/Gpu*.cpp",
             "Tests/Render/Passes/Occlusion/HzbTests.cpp",
+            "Tests/Render/Passes/Temporal/GpuOcclusionTemporalTests.cpp",
+            "Tests/Render/Passes/Temporal/GpuVisibility*TemporalTests.cpp",
             "Tests/Render/Renderer/RendererCaptureLayoutTests.cpp",
             "Tests/App/Model/Performance/MeasurementSampleTests.cpp",
         },
@@ -49,6 +51,7 @@ local pending_families = {
             "Tests/Render/Passes/LocalLights/Gpu*.cpp",
             "Tests/Render/Passes/LocalLights/RenderZeroLightInvariantTests.cpp",
             "Tests/Render/Passes/LocalLights/LightCaptureLayoutTests.cpp",
+            "Tests/Render/Passes/Temporal/GpuZeroLightHistoryTests.cpp",
         },
         shaders = {
             "Shaders/Passes/LocalLights/LightClusterCount.slang",
@@ -58,29 +61,6 @@ local pending_families = {
         },
         testShaders = {
             "Shaders/Tests/PunctualLightOracle.slang",
-        },
-    },
-    {
-        family = "TEMPORAL",
-        sources = {
-            "Source/Render/Passes/Temporal/TemporalResolve*.cpp",
-            "Source/Render/Passes/Temporal/VendorTemporalScaler.cpp",
-            "Source/Render/Renderer/RendererTemporal.cpp",
-        },
-        tests = {
-            "Tests/Engine/Scene/GpuSceneTableTemporalTests.cpp",
-            "Tests/Render/Passes/Temporal/Gpu*.cpp",
-            "Tests/Render/Passes/Temporal/RenderVendorTemporalTests.cpp",
-            "Tests/App/Model/Graph/GpuGraphInspectorTests.cpp",
-        },
-        shaders = {
-            "Shaders/Passes/Temporal/SpatialUpscale.slang",
-            "Shaders/Passes/Temporal/TemporalDebugView.slang",
-            "Shaders/Passes/Temporal/TemporalReproject.slang",
-            "Shaders/Passes/Temporal/TemporalResolve.slang",
-            "Shaders/Passes/Temporal/TemporalUpscale.slang",
-            "Shaders/Passes/Temporal/VendorTemporalHistory.slang",
-            "Shaders/Passes/Temporal/VendorTemporalPack.slang",
         },
     },
     {

@@ -30,7 +30,14 @@ namespace {
 using namespace lmx;
 
 constexpr uint32_t kViewCapacity = 1'000'000;
-constexpr uint32_t kFixtureViews = 22;
+// Views the fixture holds before exhaustion, the Renderer's temporal motion, reactive, slot and
+// fallback views among them. It is the one count to update when the fixture's views change:
+// exhaustion reserves the free slots greedily by descending powers of two, so it keeps one range
+// per set bit of the free count and is refused once at every power of two.
+constexpr uint32_t kFixtureViews = 31;
+constexpr uint32_t kFreeViews = kViewCapacity - kFixtureViews;
+constexpr uint32_t kExpectedRanges = static_cast<uint32_t>(std::popcount(kFreeViews));
+constexpr uint32_t kExpectedRefusals = static_cast<uint32_t>(std::bit_width(kViewCapacity));
 constexpr size_t kMaxRanges = 460;
 constexpr uint32_t kMaxReserveAttempts = 480;
 constexpr std::string_view kHeapFull = "the view heap of 1000000 slots is full";
@@ -126,10 +133,10 @@ void RangeReservations::exhaust() {
             totalSlots += count;
         }
     }
-    REQUIRE(used == 9);
-    REQUIRE(refusals == 20);
-    REQUIRE(attempts == 29);
-    REQUIRE(totalSlots == kViewCapacity - kFixtureViews);
+    REQUIRE(used == kExpectedRanges);
+    REQUIRE(refusals == kExpectedRefusals);
+    REQUIRE(attempts == kExpectedRanges + kExpectedRefusals);
+    REQUIRE(totalSlots == kFreeViews);
 }
 
 //======================================================================================================================

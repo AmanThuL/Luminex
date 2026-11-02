@@ -4,7 +4,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Render/Renderer/Renderer.h"
-#include "Render/Renderer/RendererStandIns.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Render/Passes/Bloom/BloomStage.h"
@@ -110,10 +109,8 @@ lmx::Result<GraphTexture> Renderer::declarePasses(RenderGraph& graph,
          .iblSampler = m_iblSampler.get()});
     const uint32_t sceneWidth = m_width;
     const uint32_t sceneHeight = m_height;
-#ifndef LMX_PENDING_TEMPORAL
     const GraphTexture motionRead =
         state.temporalEnabled ? nextVersion(imports.motionTargetHandle) : GraphTexture{};
-#endif
 
     // ---- Temporal reconstruction (M6.2 spec 6). The stage declares the reprojection diagnostic,
     // this frame's accumulation or its raw commit, and the debug view; this frame routes what it
@@ -121,7 +118,6 @@ lmx::Result<GraphTexture> Renderer::declarePasses(RenderGraph& graph,
     // produces, which is declared further down -- the graph's schedule is topological, so naming
     // that version here still orders the view behind its producer.
     GraphTexture displayResult = nextVersion(imports.displayColor);
-#ifndef LMX_PENDING_TEMPORAL
     TemporalResolveOutputs temporalOutputs;
     if (state.temporalEnabled) {
         TemporalInputs temporalInputs;
@@ -145,20 +141,15 @@ lmx::Result<GraphTexture> Renderer::declarePasses(RenderGraph& graph,
                                                      state.debugView, displayResult);
         displayResult = temporalOutputs.displayResult;
     }
-#endif
 
     // What bloom and the display transform read: the colour slot whenever the frame accumulated or
     // upscaled into it -- both leave the finished output-extent picture there -- and the raw
     // jittered frame otherwise. Only a Raw frame that rasterised at the output extent still reads
     // scene colour. The histogram deliberately keeps metering the raw scene colour, so metering
     // stays independent of the accumulation it corrects.
-#ifndef LMX_PENDING_TEMPORAL
     const GraphTexture displayInput = state.nativeTaa || state.vendorTemporal || state.upscaled
                                           ? temporalOutputs.resolved
                                           : sceneColorRead;
-#else
-    const GraphTexture displayInput = sceneColorRead;
-#endif
 
     m_exposureStage->declareMetering(graph, commands, view,
                                      {.extents = state.extents,

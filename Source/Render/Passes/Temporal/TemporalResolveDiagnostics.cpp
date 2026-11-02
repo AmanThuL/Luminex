@@ -3,42 +3,21 @@
 /// @brief Declares reprojection diagnostics and temporal debug display.
 //----------------------------------------------------------------------------------------------------------------------
 
+#include "Engine/Gpu/CaptureSchema.h"
 #include "Render/Common/Dispatch.h"
+#include "Render/Common/FrameData.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Passes/Temporal/TemporalResolve.h"
 #include "Render/Passes/Temporal/TemporalResolveInternal.h"
+#include "Render/Passes/Temporal/TemporalRoots.h"
 
-#include "Core/Diagnostics/Assert.h"
-#include "Core/Math/Scalar.h"
-
-#include <glm/mat4x4.hpp>
-#include <glm/vec2.hpp>
-
+#include <array>
+#include <span>
 #include <utility>
 
 namespace lmx::render {
 using temporal_detail::viewReadsRejection;
 using temporal_detail::viewReadsReprojected;
-
-namespace {
-
-// TemporalReproject.slang's slot map.
-constexpr uint32_t kReprojectHistorySlot = 0;    // texture
-constexpr uint32_t kReprojectSceneColorSlot = 1; // texture
-constexpr uint32_t kReprojectMotionSlot = 2;     // texture
-constexpr uint32_t kReprojectDiagnosticSlot = 3; // storage texture
-constexpr uint32_t kReprojectSamplerSlot = 0;    // sampler
-constexpr uint32_t kReprojectParamsSlot = 0;     // buffer
-
-// TemporalDebugView.slang's slot map, plus the view selectors its fragment branches on.
-constexpr uint32_t kDebugViewMotionSlot = 0;      // texture
-constexpr uint32_t kDebugViewDiagnosticSlot = 1;  // texture
-constexpr uint32_t kDebugViewRejectionSlot = 2;   // texture
-constexpr uint32_t kDebugViewReprojectedSlot = 3; // texture
-constexpr uint32_t kDebugViewResolvedSlot = 4;    // texture
-constexpr uint32_t kDebugViewParamsSlot = 0;      // buffer
-
-} // namespace
 
 namespace temporal_detail {
 
@@ -83,19 +62,35 @@ GraphTexture TemporalResolve::declareReprojection(RenderGraph& graph,
         [this, &commands, inputs, diagnostic,
          params = buildTemporalReprojectParams(inputs.extents, inputs.camera.jitterPixels)](
             const PassResources& resources) {
-            auto& historyTexture = lmx::render::texture(resources, inputs.history);
-            auto& sceneTexture = lmx::render::texture(resources, inputs.sceneColor);
-            auto& motionTexture = lmx::render::texture(resources, inputs.motion);
-            auto& target = lmx::render::texture(resources, diagnostic);
-
-            commands.bindComputePipeline(*m_reprojectPipeline);
-            commands.bindTexture(kReprojectHistorySlot, historyTexture);
-            commands.bindTexture(kReprojectSceneColorSlot, sceneTexture);
-            commands.bindTexture(kReprojectMotionSlot, motionTexture);
-            commands.bindStorageTexture(kReprojectDiagnosticSlot, target, {},
-                                        rojoRHI::StorageAccess::Write);
-            commands.bindSampler(kReprojectSamplerSlot, *m_sampler);
-            commands.bindFrameData(kReprojectParamsSlot, params);
+            const auto paramsAddress = frameData(commands, params);
+            engine::registerFrameRoot("TemporalReprojectParams", paramsAddress);
+            commands.setPipeline(m_reprojectPipeline.get());
+            engine::registerFrameRoot(
+                "TemporalReprojectRoot",
+                commands.pushRoot(TemporalReprojectRoot{
+                    .paramsAddr = paramsAddress,
+                    .history = static_cast<uint32_t>(resources.view(inputs.history)),
+                    .sceneColor = static_cast<uint32_t>(resources.view(inputs.sceneColor)),
+                    .motion = static_cast<uint32_t>(resources.view(inputs.motion)),
+                    .diagnostic = static_cast<uint32_t>(resources.storageView(diagnostic, 0)),
+                    .sampler = static_cast<uint32_t>(m_sampler.get())}));
+#ifndef NDEBUG
+            const auto read = [&](GraphTexture handle) {
+                return rojoRHI::ResourceAccess{.texture = resources.texture(handle).texture,
+                                               .range = {0, 1, 0, 1},
+                                               .stage = rojoRHI::Stage::ComputeShader,
+                                               .access = rojoRHI::Access::ShaderRead};
+            };
+            const std::array<rojoRHI::ResourceAccess, 4> accesses{
+                {read(inputs.history),
+                 read(inputs.sceneColor),
+                 read(inputs.motion),
+                 {.texture = resources.texture(diagnostic).texture,
+                  .range = {0, 1, 0, 1},
+                  .stage = rojoRHI::Stage::ComputeShader,
+                  .access = rojoRHI::Access::ShaderWrite}}};
+            commands.declareAccess(accesses);
+#endif
             const auto groups = dispatchGroups2D(params.width, params.height);
             commands.dispatch(groups[0], groups[1], 1);
         });
@@ -138,35 +133,51 @@ GraphTexture TemporalResolve::declareDebugView(RenderGraph& graph, rojoRHI::Comm
     const GraphTexture resolved = outputs.resolved;
     const GraphTexture motion = inputs.motion;
     const FrameExtents extents = inputs.extents;
-    graph.addPass("lmx.pass.temporal.debugView", std::move(debugDesc),
-                  [this, &commands, motion, diagnostic, rejection, reprojected, resolved,
-                   readsDiagnostic, readsRejection, readsReprojected, readsResolved, debugView,
-                   extents](const PassResources& resources) {
-                      auto& motionTexture = lmx::render::texture(resources, motion);
-
-                      commands.bindPipeline(*m_debugViewPipeline);
-                      commands.bindTexture(kDebugViewMotionSlot, motionTexture);
-                      // A view that reads none of these binds the 1x1 fallback: every texel the
-                      // shader loads lies outside it, and an out-of-bounds Load answers with zeroes
-                      // -- which is the shader's own "nothing to show" for each of them.
-                      const auto bindOptional = [&](uint32_t slot, bool wanted,
-                                                    GraphTexture handle) {
-                          if (!wanted) {
-                              commands.bindTexture(slot, m_viewFallback.rhi());
-                              return;
-                          }
-                          auto& texture = lmx::render::texture(resources, handle);
-                          commands.bindTexture(slot, texture);
-                      };
-                      bindOptional(kDebugViewDiagnosticSlot, readsDiagnostic, diagnostic);
-                      bindOptional(kDebugViewRejectionSlot, readsRejection, rejection);
-                      bindOptional(kDebugViewReprojectedSlot, readsReprojected, reprojected);
-                      bindOptional(kDebugViewResolvedSlot, readsResolved, resolved);
-
-                      const auto params = buildTemporalDebugViewParams(debugView, extents);
-                      commands.bindFrameData(kDebugViewParamsSlot, params);
-                      commands.draw(3);
-                  });
+    graph.addPass(
+        "lmx.pass.temporal.debugView", std::move(debugDesc),
+        [this, &commands, motion, diagnostic, rejection, reprojected, resolved, readsDiagnostic,
+         readsRejection, readsReprojected, readsResolved, debugView,
+         extents](const PassResources& resources) {
+            // A view that reads none of these carries the 1x1 fallback, which answers zero at
+            // every texel: (0, 0) because the texture is created zeroed, and every other texel
+            // because an out-of-bounds Load answers with zeroes -- the shader's own "nothing to
+            // show" for each of them.
+            const auto viewOr = [&](bool wanted, GraphTexture handle) {
+                return static_cast<uint32_t>(wanted ? resources.view(handle)
+                                                    : m_viewFallback.view());
+            };
+            const auto params = buildTemporalDebugViewParams(debugView, extents);
+            const auto paramsAddress = frameData(commands, params);
+            engine::registerFrameRoot("TemporalDebugViewParams", paramsAddress);
+            commands.setPipeline(m_debugViewPipeline.get());
+            engine::registerFrameRoot("TemporalDebugViewRoot",
+                                      commands.pushRoot(TemporalDebugViewRoot{
+                                          .paramsAddr = paramsAddress,
+                                          .motion = static_cast<uint32_t>(resources.view(motion)),
+                                          .diagnostic = viewOr(readsDiagnostic, diagnostic),
+                                          .rejection = viewOr(readsRejection, rejection),
+                                          .reprojected = viewOr(readsReprojected, reprojected),
+                                          .resolved = viewOr(readsResolved, resolved)}));
+#ifndef NDEBUG
+            std::array<rojoRHI::ResourceAccess, 5> accesses{};
+            uint32_t accessCount = 0;
+            const auto read = [&](bool wanted, GraphTexture handle) {
+                if (wanted) {
+                    accesses[accessCount++] = {.texture = resources.texture(handle).texture,
+                                               .range = {0, 1, 0, 1},
+                                               .stage = rojoRHI::Stage::FragmentShader,
+                                               .access = rojoRHI::Access::ShaderRead};
+                }
+            };
+            read(true, motion);
+            read(readsDiagnostic, diagnostic);
+            read(readsRejection, rejection);
+            read(readsReprojected, reprojected);
+            read(readsResolved, resolved);
+            commands.declareAccess(std::span{accesses}.first(accessCount));
+#endif
+            commands.draw(3);
+        });
     return nextVersion(displayResult);
 }
 

@@ -111,11 +111,11 @@ SceneDraw48, Sky32, ShadowPass48 and ShadowDraw32; bound roots use pushRoot's GP
 while pointed pass roots use natural16. The 48-byte scalar VertexStorage matches all twelve
 Engine Vertex fields. Real App/Test assertion TUs consume three-target reflection.
 
-Current frames force local lights, temporal and bloom Off, CPU classification and no occlusion.
-Four Scene shader local-light contributions are neutral until LIGHTS returns; their named zero
-addresses are never loaded. Ordinary/motion twins retain MRT layouts, but Renderer cannot reach
-motion before TEMPORAL returns. Capture schema2 registers actual named roots/addresses and
-pointed layouts; existing schema1 tools reject it until the decoder migration.
+Current frames force local lights Off, CPU classification and no occlusion. Four Scene shader
+local-light contributions are neutral until LIGHTS returns; their named zero addresses are never
+loaded. Ordinary/motion twins retain MRT layouts; a temporal frame selects the motion twin with
+its RG16Float motion and R8Unorm reactive attachments. Capture schema2 registers actual named
+roots/addresses and pointed layouts; existing schema1 tools reject it until the decoder migration.
 
 ## Clustered local lighting
 
@@ -188,7 +188,9 @@ scaler and replaces only the reconstruction kernel: a packing pass translates in
 reactive weight and reciprocal applied exposure, then an external pass writes the current colour
 slot, recorded as `ExternalRead`/`ExternalWrite` with no scope opened around the external callback
 and the usual dependency, culling and transient rules otherwise unchanged. Output resize recreates
-the scaler; a scale change only moves the content rectangle. Entering vendor reconstruction, or an
+the scaler; a scale change only moves the content rectangle, which `vendorRenderExtents` keeps at
+or above the device's `minInputScale` on each axis, rounding up where the nearest pixel falls
+short, because RojoRHI raises a smaller content silently. Entering vendor reconstruction, or an
 engine reset, discards the vendor's own private history without resetting engine history on a mode
 switch, and an unsupported or failed creation falls back to Native TAA with an explicit status
 reason. Native reprojection diagnostics stay available in vendor mode: `VendorTemporalHistory.slang`
@@ -238,6 +240,7 @@ history and scene-only captures stay unchanged.
 - `Tests/Render/Passes/SelectionOutline/`: the selection-outline passes.
 - `Tests/Render/Passes/Shadow/`: `Renderer`'s shadow composition and `fitShadowOrtho`.
 - `Tests/Render/Passes/Temporal/`: temporal accumulation, history, motion, upscale, vendor pack and
-  vendor reconstruction, the resolution controller, and the zero-light history case.
+  vendor reconstruction, the resolution controller, the zero-light history case, and the native
+  slot alternation and vendor external-state cases under the validation tracker.
 - `Tests/Render/Passes/Visibility/`: CPU and GPU visibility, its contribution and graph wiring, the
   visibility rail and work cases, and visibility's row tables.
