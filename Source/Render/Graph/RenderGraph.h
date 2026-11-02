@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <expected>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -27,10 +28,13 @@ namespace lmx::render {
 namespace graph_detail {
 /// Private transition-derivation state, defined with the graph implementation.
 struct TransitionState;
+struct HzbRecordingPlan;
 } // namespace graph_detail
 
 /// Validating, serial render-pass declaration graph.
 class RenderGraph;
+class HzbStage;
+class HzbHistoryBinding;
 
 /// A declaration the graph cannot honour: two passes writing one version, a read of contents
 /// nothing produces, a depth texture bound as a colour attachment. These are expected failures
@@ -416,6 +420,9 @@ public:
     PassResources passResources(const LoweredFrame& frame, uint32_t passIndex) const;
 
 private:
+    friend struct HzbGraphTestAccess;
+    friend class HzbStage;
+    friend class HzbHistoryBinding;
     enum class ResourceKind { Texture, Buffer };
 
     // One declared resource, imported or transient. The shape fields are carried here rather than
@@ -456,6 +463,7 @@ private:
         // table, from `finalUse` when the caller stated one and from its passes otherwise.
         bool tracked = false;
         std::optional<TextureUse> finalUse;
+        bool observerOnlyFinalUse = false;
     };
 
     // Where one transient sits in the frame's heap, alongside the lifetime that justified it.
@@ -559,7 +567,21 @@ private:
     void placeTransients(LoweredFrame& frame);
 
     // Independent physical access walk; never mutates shared state or queries the backend.
-    GraphResult<void> lowerPhysical(LoweredFrame& frame, const AliasPlan& plan) const;
+    GraphResult<void> lowerPhysical(LoweredFrame& frame, const AliasPlan& plan,
+                                    const graph_detail::HzbRecordingPlan& history) const;
+    GraphResult<LoweredFrame> lowerCompiled(CompiledFrameRecord record,
+                                            const graph_detail::HzbRecordingPlan& history) const;
+    graph_detail::HzbRecordingPlan prepareHzbHistory(const CompiledFrameRecord& record) const;
+    void publishHzbHistory(const graph_detail::HzbRecordingPlan& history);
+    void setHzbObserverFinalUse(GraphTexture texture);
+    struct HzbObserver {
+        std::shared_ptr<HzbHistoryBinding> binding;
+        uint32_t pass = 0;
+        TextureUseDesc texture;
+        bool potentialCameraWork = false;
+        uint32_t declaration = 0;
+    };
+    std::vector<HzbObserver> m_hzbObservers;
 
     struct Sink {
         SinkKind kind = SinkKind::Export;

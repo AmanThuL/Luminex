@@ -1,4 +1,6 @@
-#include "Support/GpuTemporalTestSupport.h"
+#include "Render/Graph/GraphDump.h"
+#include "Support/GoldenFile.h"
+#include "Support/GpuTestSupport.h"
 #include "Support/SceneDocumentTestSupport.h"
 
 #include "Engine/Scene/Scene.h"
@@ -12,12 +14,13 @@ TEST_CASE("occlusion graph roots every HZB mip and reads the immediately precedi
           "[gpu][hzb][occlusion-graph]") {
     using namespace lmx::render;
     using namespace rojoRHI;
+    using lmx::test::requireMatchesGolden;
     auto gpu = createTestGpu();
     auto scene = lmx::test::loadCatalogScene(gpu->device(), "visibility-lab", 1024);
     REQUIRE(scene);
     auto renderer = Renderer::create(*gpu, 64, 64, true);
     REQUIRE(renderer);
-    TransientPool pool(gpu->device());
+    TransientPool pool(*gpu);
     const auto camera = lmx::engine::cameraFromScene((*scene)->initialCamera);
     for (uint32_t frame = 0; frame < 2; ++frame) {
         auto gpuFrame1 = gpu->beginFrame();
@@ -31,7 +34,11 @@ TEST_CASE("occlusion graph roots every HZB mip and reads the immediately precedi
         view.bloomEnabled = false;
         pool.beginFrame();
         RenderGraph graph(pool);
-        graph.presentTexture((*renderer)->declarePasses(graph, commands, camera, view));
+        const auto declared = (*renderer)->declarePasses(graph, commands, camera, view);
+        if (!declared)
+            gpu->submitAndEndFrame(gpuFrame1);
+        REQUIRE(declared);
+        graph.presentTexture(*declared);
         const auto record = graph.compileFrame(gpu->frameNumber());
         INFO((record ? "" : record.error().message));
         REQUIRE(record);

@@ -9,6 +9,7 @@
 #include "Core/Diagnostics/Assert.h"
 #include "Render/Graph/FrameEmitter.h"
 #include "Render/Graph/GraphDump.h"
+#include "Render/Passes/Occlusion/HzbHistoryBinding.h"
 
 #include <algorithm>
 #include <format>
@@ -228,6 +229,7 @@ void RenderGraph::setFinalUse(GraphTexture handle, TextureUse use) {
                            "importPersistentTexture",
                            resource.name));
     resource.finalUse = use;
+    resource.observerOnlyFinalUse = false;
 }
 
 //======================================================================================================================
@@ -505,12 +507,105 @@ const ColorAttachment& RenderGraph::colorAttachmentOf(const Pass& pass,
 }
 
 //======================================================================================================================
+void RenderGraph::setHzbObserverFinalUse(GraphTexture handle) {
+    checkTexture(handle);
+    auto& resource = m_resources[handle.index];
+    if (!resource.finalUse) {
+        resource.finalUse = TextureUse::ShaderRead;
+        resource.observerOnlyFinalUse = true;
+    }
+}
+
+//======================================================================================================================
+graph_detail::HzbRecordingPlan
+RenderGraph::prepareHzbHistory(const CompiledFrameRecord& record) const {
+    graph_detail::HzbRecordingPlan result;
+    const auto& schedule = record.debug.schedule.passes;
+    const auto position = [&](uint32_t pass) {
+        return std::ranges::find(schedule, pass) - schedule.begin();
+    };
+    for (const auto& observer : m_hzbObservers) {
+        if (std::ranges::any_of(result.decisions, [&](const auto& decision) {
+                return decision.binding == observer.binding;
+            }))
+            continue;
+        auto params = observer.binding->prepareRecording();
+        const auto texture = observer.binding->allocationTexture();
+        auto firstWrite = static_cast<decltype(position(0))>(schedule.size());
+        for (decltype(firstWrite) i = 0; i < firstWrite; ++i)
+            for (const auto& declaration : m_passes[schedule[i]].declarations)
+                if (declaration.isWrite &&
+                    m_resources[declaration.resource].kind == ResourceKind::Texture &&
+                    m_resources[declaration.resource].texture.texture == texture) {
+                    firstWrite = i;
+                    break;
+                }
+        for (const auto& reader : m_hzbObservers)
+            if (reader.binding == observer.binding && reader.potentialCameraWork &&
+                position(reader.pass) < static_cast<decltype(firstWrite)>(schedule.size()) &&
+                position(reader.pass) >= firstWrite)
+                params.flags &= ~uint32_t{2};
+        result.decisions.push_back({observer.binding, params});
+        for (const auto& reader : m_hzbObservers)
+            if (reader.binding == observer.binding &&
+                (!reader.potentialCameraWork || (params.flags & 3u) != 3u))
+                result.masks.push_back({reader.pass, reader.texture.handle.index,
+                                        reader.texture.handle.version, reader.declaration,
+                                        reader.texture.range});
+    }
+    const auto masked = [&](uint32_t pass, uint32_t ordinal, const Declaration& declaration) {
+        return std::ranges::any_of(result.masks, [&](const auto& mask) {
+            const auto& a = mask.range;
+            const auto& b = declaration.range;
+            return mask.pass == pass && mask.declaration == ordinal &&
+                   mask.resource == declaration.resource && mask.version == declaration.version &&
+                   !declaration.isWrite && declaration.role == UseRole::ShaderRead &&
+                   a.baseMip == b.baseMip && a.mipCount == b.mipCount &&
+                   a.baseLayer == b.baseLayer && a.layerCount == b.layerCount;
+        });
+    };
+    for (uint32_t index = 0; index < m_resources.size(); ++index) {
+        const auto& resource = m_resources[index];
+        if (!resource.observerOnlyFinalUse)
+            continue;
+        bool accessed = false;
+        for (const auto pass : schedule) {
+            const auto& declarations = m_passes[pass].declarations;
+            for (uint32_t ordinal = 0; ordinal < declarations.size(); ++ordinal) {
+                const auto& declaration = declarations[ordinal];
+                if (m_resources[declaration.resource].kind == ResourceKind::Texture &&
+                    m_resources[declaration.resource].texture.texture == resource.texture.texture &&
+                    !masked(pass, ordinal, declaration))
+                    accessed = true;
+            }
+        }
+        if (!accessed)
+            result.suppressedFinalUses.push_back(index);
+    }
+    return result;
+}
+
+//======================================================================================================================
+void RenderGraph::publishHzbHistory(const graph_detail::HzbRecordingPlan& history) {
+    for (const auto& decision : history.decisions)
+        decision.binding->publishRecording(decision.params);
+}
+
+//======================================================================================================================
 GraphResult<LoweredFrame> RenderGraph::lower(uint64_t frameId) const {
     auto record = compileFrame(frameId);
     if (!record) {
         return std::unexpected(std::move(record.error()));
     }
-    LoweredFrame frame{.record = std::move(*record)};
+    const auto history = prepareHzbHistory(*record);
+    return lowerCompiled(std::move(*record), history);
+}
+
+//======================================================================================================================
+GraphResult<LoweredFrame>
+RenderGraph::lowerCompiled(CompiledFrameRecord record,
+                           const graph_detail::HzbRecordingPlan& history) const {
+    LoweredFrame frame{.record = std::move(record)};
     for (const Resource& resource : m_resources) {
         frame.resources.push_back(
             resource.transient
@@ -535,7 +630,7 @@ GraphResult<LoweredFrame> RenderGraph::lower(uint64_t frameId) const {
         }
         frame.transientLayout.placements.push_back(std::move(placement));
     }
-    auto physical = lowerPhysical(frame, plan);
+    auto physical = lowerPhysical(frame, plan, history);
     if (!physical) {
         return std::unexpected(std::move(physical.error()));
     }
@@ -613,9 +708,13 @@ BeginRenderPassOp RenderGraph::beginRenderPassOf(const Pass& pass) const {
 //======================================================================================================================
 CompiledFrameRecord RenderGraph::execute(rojoRHI::CommandList& commands, uint64_t frameId) {
     LMX_ASSERT(!m_executed, "a render graph executes only once");
-    auto frame = lower(frameId);
+    auto record = compileFrame(frameId);
+    LMX_ASSERT(record.has_value(), record.error().message);
+    const auto history = prepareHzbHistory(*record);
+    auto frame = lowerCompiled(std::move(*record), history);
     LMX_ASSERT(frame.has_value(), frame.error().message);
     placeTransients(*frame);
+    publishHzbHistory(history);
     dumpCompiledFrameIfRequested(frame->record);
     emit(*frame, commands, [this, &frame](uint32_t passIndex) {
         m_passes[passIndex].execute(passResources(*frame, passIndex));

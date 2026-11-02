@@ -2,6 +2,9 @@
 #include "Support/VisibilityOracleRoots.h"
 
 #include "Core/Math/Scalar.h"
+#include "Engine/Gpu/CaptureSchema.h"
+#include "Engine/Gpu/GpuOwned.h"
+#include "Render/Common/FrameData.h"
 #include "Render/Passes/Occlusion/HzbStage.h"
 #include "Render/Passes/Occlusion/Occlusion.h"
 
@@ -49,12 +52,12 @@ TEST_CASE("occlusion GPU results equal the CPU mirror on actual raster-built rea
     REQUIRE(stage);
     TextureStateTable states;
     REQUIRE((*stage)->resize(outputWidth, outputHeight, states));
-    auto depth = gpu->device().createTexture({.width = outputWidth,
-                                              .height = outputHeight,
-                                              .format = Format::D32Float,
-                                              .renderTarget = true,
-                                              .sampled = true,
-                                              .label = "lmx.test.hzbParity.depth"});
+    auto depth =
+        engine::GpuTexture::create(gpu->device(), {.format = rojoRHI::Format::D32Float,
+                                                   .extent = {outputWidth, outputHeight, 1},
+                                                   .usage = rojoRHI::TextureUsage::DepthStencil |
+                                                            rojoRHI::TextureUsage::Sampled,
+                                                   .label = "lmx.test.hzbParity.depth"});
     REQUIRE(depth);
     auto rasterLibrary = gpu->loadShaderLibrary("HzbDepthFixture");
     auto readLibrary = gpu->loadShaderLibrary("HzbReadbackFixture");
@@ -62,24 +65,24 @@ TEST_CASE("occlusion GPU results equal the CPU mirror on actual raster-built rea
     REQUIRE(rasterLibrary);
     REQUIRE(readLibrary);
     REQUIRE(probeLibrary);
-    auto raster = gpu->device().createGraphicsPipeline({.library = rasterLibrary->get(),
-                                                        .vertexEntry = "vertexMain",
-                                                        .fragmentEntry = "fragmentMain",
-                                                        .colorFormat = Format::Unknown,
-                                                        .depthFormat = Format::D32Float,
-                                                        .depthTestEnable = true,
-                                                        .depthWriteEnable = true,
-                                                        .cullMode = CullMode::None,
-                                                        .depthCompare = DepthCompare::Greater,
-                                                        .label = "lmx.test.hzbParity.raster"});
-    auto reader = gpu->device().createComputePipeline({.library = readLibrary->get(),
-                                                       .computeEntry = "computeMain",
-                                                       .threadsPerThreadgroup = {8, 8, 1},
-                                                       .label = "lmx.test.hzbParity.reader"});
-    auto probe = gpu->device().createComputePipeline({.library = probeLibrary->get(),
-                                                      .computeEntry = "computeMain",
-                                                      .threadsPerThreadgroup = {1, 1, 1},
-                                                      .label = "lmx.test.hzbParity.probe"});
+    auto raster = engine::adoptGpu(
+        gpu->device(), gpu->device().createPipeline(rojoRHI::GraphicsPipelineDesc{
+                           .vertex = {rasterLibrary->get(), "vertexMain"},
+                           .fragment = {rasterLibrary->get(), "fragmentMain"},
+                           .raster = {.cull = rojoRHI::CullMode::None},
+                           .depthStencil = {.depthTest = true,
+                                            .depthWrite = true,
+                                            .depthCompare = rojoRHI::CompareOp::Greater},
+                           .depthFormat = rojoRHI::Format::D32Float,
+                           .label = "lmx.test.hzbParity.raster"}));
+    auto reader = engine::adoptGpu(
+        gpu->device(),
+        gpu->device().createPipeline(rojoRHI::ComputePipelineDesc{
+            .compute = {readLibrary->get(), "computeMain"}, .label = "lmx.test.hzbParity.reader"}));
+    auto probe = engine::adoptGpu(
+        gpu->device(),
+        gpu->device().createPipeline(rojoRHI::ComputePipelineDesc{
+            .compute = {probeLibrary->get(), "computeMain"}, .label = "lmx.test.hzbParity.probe"}));
     REQUIRE(raster);
     REQUIRE(reader);
     REQUIRE(probe);
@@ -87,9 +90,11 @@ TEST_CASE("occlusion GPU results equal the CPU mirror on actual raster-built rea
     std::vector<HzbProbeBounds> inputData;
     for (const auto& box : bounds)
         inputData.push_back({glm::vec4(box.minimum, 0), glm::vec4(box.maximum, 0)});
-    auto input = gpu->device().createBuffer(
-        {.size = inputData.size() * sizeof(HzbProbeBounds), .label = "lmx.test.hzbParity.bounds"},
-        inputData.data());
+    auto input = engine::GpuBuffer::create(gpu->device(),
+                                           {.size = inputData.size() * sizeof(HzbProbeBounds),
+                                            .memory = Memory::Upload,
+                                            .label = "lmx.test.hzbParity.bounds"},
+                                           std::as_bytes(std::span(inputData)));
     REQUIRE(input);
     const uint32_t levelCount = (*stage)->layout().levelCount;
     uint32_t frame = 0;
@@ -106,19 +111,12 @@ TEST_CASE("occlusion GPU results equal the CPU mirror on actual raster-built rea
                 readParams.push_back(params);
                 readCount += params.width * params.height;
             }
-            auto readback = lmx::engine::GpuBuffer::create(gpu->device(),
-                                                           {.size = readCount * sizeof(float),
-                                                            .storageWrite = true,
-                                                            .cpuReadback = true,
-                                                            .label = "lmx.test.hzbParity.readback"},
-                                                           nullptr);
-            auto output =
-                lmx::engine::GpuBuffer::create(gpu->device(),
-                                               {.size = bounds.size() * 8 * sizeof(uint32_t),
-                                                .storageWrite = true,
-                                                .cpuReadback = true,
-                                                .label = "lmx.test.hzbParity.output"},
-                                               nullptr);
+            auto readback = lmx::engine::GpuBuffer::create(
+                gpu->device(),
+                {.size = readCount * sizeof(float), .label = "lmx.test.hzbParity.readback"});
+            auto output = lmx::engine::GpuBuffer::create(
+                gpu->device(), {.size = bounds.size() * 8 * sizeof(uint32_t),
+                                .label = "lmx.test.hzbParity.output"});
             REQUIRE(readback);
             REQUIRE(output);
             auto gpuFrame1 = gpu->beginFrame();
@@ -126,53 +124,63 @@ TEST_CASE("occlusion GPU results equal the CPU mirror on actual raster-built rea
             RenderGraph graph;
             graph.bindTextureStates(states);
             if (frame > 0) {
-                states.set(**depth, lmx::render::TextureUse::ShaderRead);
+                states.setLogicalUse(depth->rhi(), lmx::render::TextureUse::ShaderRead);
             }
             const auto depthInput =
-                frame == 0
-                    ? graph.importTexture(**depth, Format::D32Float, "lmx.test.hzbParity.depth")
-                    : graph.importPersistentTexture(**depth, Format::D32Float,
-                                                    "lmx.test.hzbParity.depth");
+                frame == 0 ? graph.importTexture(depth->ref(), "lmx.test.hzbParity.depth")
+                           : graph.importPersistentTexture(*depth, "lmx.test.hzbParity.depth");
             PassDesc rasterDesc;
-            rasterDesc.depth = DepthAttachment{.handle = depthInput, .store = StoreOp::Store};
+            rasterDesc.depth = lmx::render::DepthAttachment{.handle = depthInput,
+                                                            .store = lmx::render::StoreOp::Store};
             rasterDesc.renderAreaWidth = width;
             rasterDesc.renderAreaHeight = height;
             graph.addPass("lmx.test.hzbParity.raster", std::move(rasterDesc),
                           [&](const PassResources&) {
-                              commands.bindPipeline(**raster);
-                              commands.bindFrameData(0, masked);
+                              commands.setPipeline(raster->get());
+                              commands.pushRoot(lmx::test::HzbDepthRoot{masked, 0, 0, 0});
                               commands.draw(3);
                           });
             const auto pyramid = (*stage)->declare(
                 graph, commands, nextVersion(depthInput),
                 {.frameNumber = gpu->frameNumber(), .activeWidth = width, .activeHeight = height});
-            auto buffer = graph.importBuffer(readback->rhi(), "lmx.test.hzbParity.readback");
+            auto buffer = graph.importBuffer(*readback, "lmx.test.hzbParity.readback");
             for (const auto params : readParams) {
                 ComputePassDesc desc;
                 desc.shaderTextureReads.emplace_back(
-                    pyramid,
-                    TextureSubresourceRange{.baseMipLevel = params.level, .mipLevelCount = 1});
+                    pyramid, SubresourceRange{.baseMip = params.level, .mipCount = 1});
                 desc.bufferWrites.push_back(buffer);
                 graph.addComputePass(
                     std::format("lmx.test.hzbParity.read{}", params.level), std::move(desc),
                     [&, params, buffer](const PassResources& resources) {
                         const auto texture = resources.texture(pyramid);
                         const auto destination = resources.buffer(buffer);
-                        REQUIRE(texture);
-                        REQUIRE(destination);
-                        commands.bindComputePipeline(**reader);
-                        commands.bindTexture(0, **texture);
-                        commands.bindStorageBuffer(1, **destination, StorageAccess::Write);
-                        commands.bindFrameData(0, params);
+                        REQUIRE(texture.texture.bits != 0);
+                        REQUIRE(destination.bits != 0);
+                        commands.setPipeline(reader->get());
+                        commands.pushRoot(lmx::test::HzbReadbackRoot{
+                            frameData(commands, params), resources.address(buffer),
+                            static_cast<uint32_t>(resources.view(pyramid)), 0, 0, 0});
+#ifndef NDEBUG
+                        const std::array<ResourceAccess, 2> accesses{
+                            {{.texture = texture.texture,
+                              .range = {params.level, 1, 0, 1},
+                              .stage = Stage::ComputeShader,
+                              .access = Access::ShaderRead},
+                             {.buffer = destination,
+                              .offset = uint64_t{params.offset} * 4,
+                              .size = uint64_t{params.width} * params.height * 4,
+                              .stage = Stage::ComputeShader,
+                              .access = Access::ShaderWrite}}};
+                        commands.declareAccess(accesses);
+#endif
                         commands.dispatch(divRoundUp(params.width, 8u),
                                           divRoundUp(params.height, 8u), 1);
                     });
                 buffer = nextVersion(buffer);
             }
             graph.readbackBuffer(buffer);
-            const auto inputHandle = graph.importBuffer(**input, "lmx.test.hzbParity.bounds");
-            const auto outputHandle =
-                graph.importBuffer(output->rhi(), "lmx.test.hzbParity.output");
+            const auto inputHandle = graph.importBuffer(*input, "lmx.test.hzbParity.bounds");
+            const auto outputHandle = graph.importBuffer(*output, "lmx.test.hzbParity.output");
             const auto params =
                 makeOcclusionParams(glm::mat4(1), width, height, levelCount, true, true);
             ComputePassDesc probeDesc;
@@ -184,15 +192,31 @@ TEST_CASE("occlusion GPU results equal the CPU mirror on actual raster-built rea
                                      const auto texture = resources.texture(pyramid);
                                      const auto source = resources.buffer(inputHandle);
                                      const auto destination = resources.buffer(outputHandle);
-                                     REQUIRE(texture);
-                                     REQUIRE(source);
-                                     REQUIRE(destination);
-                                     commands.bindComputePipeline(**probe);
-                                     commands.bindTexture(0, **texture);
-                                     commands.bindBuffer(0, **source);
-                                     commands.bindStorageBuffer(1, **destination,
-                                                                StorageAccess::Write);
-                                     commands.bindFrameData(13, params);
+                                     REQUIRE(texture.texture.bits != 0);
+                                     REQUIRE(source.bits != 0);
+                                     REQUIRE(destination.bits != 0);
+                                     commands.setPipeline(probe->get());
+                                     commands.pushRoot(lmx::test::OcclusionProbeRoot{
+                                         resources.address(inputHandle),
+                                         resources.address(outputHandle),
+                                         frameData(commands, params),
+                                         static_cast<uint32_t>(resources.view(pyramid)), 0});
+#ifndef NDEBUG
+                                     const std::array<ResourceAccess, 3> accesses{
+                                         {{.texture = texture.texture,
+                                           .range = {0, levelCount, 0, 1},
+                                           .stage = Stage::ComputeShader,
+                                           .access = Access::ShaderRead},
+                                          {.buffer = source,
+                                           .size = uint64_t{bounds.size()} * sizeof(HzbProbeBounds),
+                                           .stage = Stage::ComputeShader,
+                                           .access = Access::ShaderRead},
+                                          {.buffer = destination,
+                                           .size = uint64_t{bounds.size()} * 8 * 4,
+                                           .stage = Stage::ComputeShader,
+                                           .access = Access::ShaderWrite}}};
+                                     commands.declareAccess(accesses);
+#endif
                                      commands.dispatch(static_cast<uint32_t>(bounds.size()), 1, 1);
                                  });
             graph.readbackBuffer(nextVersion(outputHandle));
@@ -205,16 +229,24 @@ TEST_CASE("occlusion GPU results equal the CPU mirror on actual raster-built rea
             std::vector<float> values(readCount);
             {
                 const auto readbackBytes =
-                    lmx::render::readbackNow(*gpu, *readback, lmx::render::BufferUse::StorageWrite,
+                    lmx::render::readbackNow(*gpu, *readback,
+                                             lmx::render::SyncPoint{rojoRHI::Stage::ComputeShader,
+                                                                    rojoRHI::Access::ShaderWrite,
+                                                                    rojoRHI::Layout::Undefined},
                                              lmx::render::wholeBuffer(*readback));
-                std::memcpy(values.data(), readbackBytes.data(), values.size() * sizeof(float));
+                REQUIRE(readbackBytes);
+                std::memcpy(values.data(), readbackBytes->data(), values.size() * sizeof(float));
             }
             std::vector<uint32_t> actual(bounds.size() * 8);
             {
                 const auto readbackBytes =
-                    lmx::render::readbackNow(*gpu, *output, lmx::render::BufferUse::StorageWrite,
+                    lmx::render::readbackNow(*gpu, *output,
+                                             lmx::render::SyncPoint{rojoRHI::Stage::ComputeShader,
+                                                                    rojoRHI::Access::ShaderWrite,
+                                                                    rojoRHI::Layout::Undefined},
                                              lmx::render::wholeBuffer(*output));
-                std::memcpy(actual.data(), readbackBytes.data(), actual.size() * sizeof(uint32_t));
+                REQUIRE(readbackBytes);
+                std::memcpy(actual.data(), readbackBytes->data(), actual.size() * sizeof(uint32_t));
             }
             std::vector<OcclusionLevel> levels;
             for (const auto read : readParams)

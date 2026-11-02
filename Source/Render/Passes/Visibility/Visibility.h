@@ -11,15 +11,22 @@
 #include "Render/Passes/Occlusion/OcclusionCheck.h"
 #include "Render/Passes/Occlusion/OcclusionHistory.h"
 #include <array>
+#include <memory>
 #include <span>
 #include <vector>
 
 namespace lmx::engine {
+class GpuContext;
 /// Candidate geometry and texture bindings supplied by SceneView.
 struct DrawItem;
 } // namespace lmx::engine
 
 namespace lmx::render {
+struct OcclusionDeclarationAssociation;
+/// Creates an opaque declaration identity shared by production and independent reference owners.
+std::shared_ptr<const OcclusionDeclarationAssociation>
+createOcclusionDeclarationAssociation(engine::GpuContext& gpu, uint64_t frame,
+                                      uint64_t sceneGeneration);
 /// Outward distance added to each normalized clipping half-space, in world units.
 constexpr float kVisibilityGuardWorldUnits = 1e-3f;
 /// Device that classifies candidate bounds.
@@ -109,6 +116,9 @@ struct SubmissionStats {
 };
 /// Renderer-owned diagnostics for the last declared frame.
 struct VisibilityStatus {
+    std::shared_ptr<const OcclusionDeclarationAssociation>
+        occlusionAssociation; ///< Exact declaration identity, independent of repeated frame
+                              ///< numbers.
     OcclusionCheckResult occlusionCheck; ///< Independent retired reference result.
     bool occlusionEnabled = false;       ///< Declaration requested previous-frame rejection.
     bool occlusionCheckEnabled = false;  ///< Independent direct reference requested.

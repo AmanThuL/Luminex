@@ -37,7 +37,7 @@ uint32_t difference(uint32_t actual, uint32_t expected) {
 //======================================================================================================================
 Result<VisibilityStatus> stageReadback(engine::GpuContext& gpu,
                                        const VisibilityPendingReadback& pending) {
-    auto result = pending.status;
+    auto result = pending.projection ? pending.projection->status : pending.status;
     auto expectedStates = pending.expected;
     result.isRetired = true;
     const auto& params = pending.params;
@@ -241,19 +241,18 @@ Result<VisibilityStatus> stageReadback(engine::GpuContext& gpu,
 } // namespace
 
 //======================================================================================================================
-Result<void> retireVisibilityThrough(engine::GpuContext& gpu,
-                                     std::vector<VisibilityPendingReadback>& pending,
-                                     std::vector<VisibilityStatus>& retired,
-                                     uint64_t completedFrame) {
-    struct Staged {
-        std::optional<VisibilityStatus> status;
-        std::shared_ptr<VisibilityReadbackTickets> tickets;
-        std::shared_ptr<VisibilitySlotBacking> backing;
-    };
-    std::vector<Staged> staged;
+Result<VisibilityRetirementBatch>
+prepareVisibilityRetirement(engine::GpuContext& gpu,
+                            const std::vector<VisibilityPendingReadback>& pending,
+                            const std::vector<VisibilityStatus>& retired, uint64_t completedFrame) {
+    VisibilityRetirementBatch staged;
+    staged.ready = retired;
+    staged.pending.reserve(pending.size());
     for (const auto& entry : pending) {
-        if (entry.frameNumber > completedFrame)
+        if (entry.frameNumber > completedFrame) {
+            staged.pending.push_back(entry);
             continue;
+        }
         LMX_ASSERT(entry.tickets && entry.backing && !entry.tickets->discarded,
                    "visibility retirement: missing live declaration backing");
         const auto& tickets = *entry.tickets;
@@ -261,42 +260,121 @@ Result<void> retireVisibilityThrough(engine::GpuContext& gpu,
                               (uint32_t(tickets.states.has_value()) << 1) |
                               (uint32_t(tickets.rows.has_value()) << 2) |
                               (uint32_t(tickets.arguments.has_value()) << 3);
-        LMX_ASSERT(mask == 0 || mask == 15, "visibility retirement: partial producer outcomes");
-        if (mask == 0) {
+        if (mask != 15) {
+            // A recorded operation's own error has priority over incomplete recording.
+            const std::array<const std::optional<ReadbackTicket>*, 4> outcomes{
+                &tickets.counters, &tickets.states, &tickets.rows, &tickets.arguments};
+            for (const auto* outcome : outcomes)
+                if (*outcome) {
+                    std::vector<uint8_t> bytes((**outcome).region.size);
+                    const auto resolved = resolve(gpu, **outcome, bytes);
+                    if (!resolved)
+                        return std::unexpected(resolved.error());
+                }
+            LMX_ASSERT(
+                mask == 0 || tickets.entered || !entry.callbackAnchor.expired(),
+                "visibility retirement: partial readback has no recording entry or callback owner");
+            if (mask != 0 || tickets.entered || !entry.callbackAnchor.expired())
+                return std::unexpected(Error{ErrorCode::InvalidArgument,
+                                             "visibility recording is incomplete or borrowed"});
             LMX_ASSERT(entry.status.frameNumber == entry.frameNumber,
                        "visibility retirement: unrecorded frame identity differs");
-            staged.push_back({std::nullopt, entry.tickets, entry.backing});
-        } else {
-            auto result = stageReadback(gpu, entry);
-            if (!result)
-                return std::unexpected(result.error());
-            staged.push_back({std::move(*result), entry.tickets, entry.backing});
+            staged.discards.push_back(entry.tickets);
+            continue;
         }
+        auto result = stageReadback(gpu, entry);
+        if (!result)
+            return std::unexpected(result.error());
+        const auto index = staged.ready.size();
+        staged.ready.push_back(std::move(*result));
+        if (entry.projection)
+            staged.projections.push_back({entry.projection, index, {}});
     }
-    // Reserve before publication. Keep every actual owner alive through the stable erase.
-    // This is Result rollback, not recovery from arbitrary host/destructor exceptions.
-    retired.reserve(retired.size() + staged.size());
-    for (auto& entry : staged) {
-        if (entry.status)
-            retired.push_back(std::move(*entry.status));
-        else
-            entry.tickets->discarded = true;
-    }
-    std::erase_if(pending, [completedFrame](const auto& entry) {
-        return entry.frameNumber <= completedFrame;
-    });
+    return staged;
+}
+
+//======================================================================================================================
+void prepareVisibilityProjections(VisibilityRetirementBatch& staged) {
+    for (auto& update : staged.projections)
+        update.value = staged.ready[update.readyIndex];
+}
+
+//======================================================================================================================
+void commitVisibilityRetirement(VisibilityRetirementBatch& staged,
+                                std::vector<VisibilityPendingReadback>& pending,
+                                std::vector<VisibilityStatus>& retired) noexcept {
+    for (const auto& tickets : staged.discards)
+        tickets->discarded = true;
+    for (auto& update : staged.projections)
+        std::swap(update.target->status, update.value);
+    pending.swap(staged.pending);
+    retired.swap(staged.ready);
+}
+
+//======================================================================================================================
+Result<void> retireVisibilityThrough(engine::GpuContext& gpu,
+                                     std::vector<VisibilityPendingReadback>& pending,
+                                     std::vector<VisibilityStatus>& retired,
+                                     uint64_t completedFrame) {
+    auto staged = prepareVisibilityRetirement(gpu, pending, retired, completedFrame);
+    if (!staged)
+        return std::unexpected(staged.error());
+    prepareVisibilityProjections(*staged);
+    commitVisibilityRetirement(*staged, pending, retired);
     return {};
 }
 
 //======================================================================================================================
+Result<PreparedVisibilityRetirement>
+GpuVisibility::prepareRetiredTake(uint64_t completedFrame) const {
+    auto batch = prepareVisibilityRetirement(m_gpu, m_pending, m_retired, completedFrame);
+    if (!batch)
+        return std::unexpected(batch.error());
+    PreparedVisibilityRetirement prepared;
+    prepared.m_owner = this;
+    prepared.m_context = &m_gpu;
+    prepared.m_epoch = m_epoch;
+    prepared.m_batch = std::move(*batch);
+    prepareVisibilityProjections(prepared.m_batch);
+    return prepared;
+}
+
+//======================================================================================================================
+void GpuVisibility::validateRetiredTake(const PreparedVisibilityRetirement& prepared) const {
+    LMX_ASSERT(prepared.m_owner == this && prepared.m_context == &m_gpu &&
+                   prepared.m_epoch == m_epoch,
+               "visibility prepared take is foreign, stale, or consumed");
+}
+
+//======================================================================================================================
+std::vector<VisibilityStatus>
+GpuVisibility::commitRetiredTake(PreparedVisibilityRetirement&& prepared) noexcept {
+    validateRetiredTake(prepared);
+    commitVisibilityRetirement(prepared.m_batch, m_pending, m_retired);
+    prepared.m_owner = nullptr;
+    ++m_epoch;
+    auto result = std::move(m_retired);
+    m_retired.clear();
+    return result;
+}
+
+//======================================================================================================================
 Result<void> GpuVisibility::retireThrough(uint64_t completedFrame) {
-    return retireVisibilityThrough(m_gpu, m_pending, m_retired, completedFrame);
+    auto staged = prepareRetiredTake(completedFrame);
+    if (!staged)
+        return std::unexpected(staged.error());
+    validateRetiredTake(*staged);
+    commitVisibilityRetirement(staged->m_batch, m_pending, m_retired);
+    staged->m_owner = nullptr;
+    ++m_epoch;
+    return {};
 }
 
 //======================================================================================================================
 std::vector<VisibilityStatus> GpuVisibility::takeRetired() {
     auto result = std::move(m_retired);
     m_retired.clear();
+    ++m_epoch;
     return result;
 }
 } // namespace lmx::render

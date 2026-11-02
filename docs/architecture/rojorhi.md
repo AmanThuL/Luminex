@@ -24,7 +24,8 @@ policy. See the [component build](../../RojoRHI/AGENTS.md) for standalone comman
 
 On this integration branch, `xmake/port.lua` selects a shadow → scene/sky/IBL → exposure →
 temporal reconstruction → bloom → display → UI frame. SCENE, POST and TEMPORAL have returned,
-native and vendor reconstruction with their tests; VISIBILITY and LIGHTS remain pending, and BENCH keeps FrameDataBench dormant. The [frame
+native and vendor reconstruction with their tests; VISIBILITY and LIGHTS remain pending (VISIBILITY's GPU
+visibility, HZB and occlusion-reference owners build with their tests; the Renderer join does not), and BENCH keeps FrameDataBench dormant. The [frame
 walkthrough](frame-pipeline.md) describes every family: its SCENE, POST and temporal stages run
 here, while the VISIBILITY and LIGHTS stages it describes are retained but not built. Screenshots retain neutral lighting
 metadata; headless and editor measurement report lighting diagnostics unavailable while LIGHTS is
@@ -55,6 +56,25 @@ Readback uses `Render/Gpu/Readback`: recorded tickets preserve causal failures, 
 states; copies restore those frontiers and de-pad rows. Buffers supply an explicit `SyncPoint`.
 Mapped Upload/Readback reads wait without consuming a copy frame; staged GPU reads require source
 lifetime until retirement. A Readback buffer is never used as a copy source.
+
+## Prepared HZB resize
+
+`HzbStage::prepareResize` creates a complete two-pyramid replacement in an opaque, move-only
+`PreparedHzbResize` tied to its creating stage, context and allocation generation. Preparation,
+abandonment and causal creation errors preserve live owners and the caller's state table. An
+initialized same-extent candidate owns no replacement textures; committing it consumes only that
+candidate. `resize` is preparation followed by commit.
+
+A changed commit validates the candidate before mutation, forgets exactly the old texture pair,
+installs both prepared owners, advances the allocation generation once and resets slot content and
+bindings. The publication buffer, published flag, publication frontier and monotonic declaration
+serial survive. Renderer resize does not yet prepare HZB with its other targets.
+
+The stage, context and device outlive prepared values and graph callbacks. Replacing an allocated
+pair requires explicit graph/callback closure and the existing idle boundary; retained binding
+references and GPU idle alone do not prove closure. Owned source/parameter copies remain readable
+after graph destruction. Initial creation and allocation inside an open frame before the first
+graph remain valid. The `[hzb-resize]` cases cover these boundaries.
 
 ## Metal 4 backend
 

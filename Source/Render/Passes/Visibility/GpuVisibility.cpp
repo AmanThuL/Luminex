@@ -8,6 +8,7 @@
 #include "Engine/Gpu/CaptureSchema.h"
 #include "Render/Common/FrameData.h"
 #include "Render/Common/StageSetup.h"
+#include "Render/Passes/Occlusion/HzbHistoryBinding.h"
 #include "Render/Passes/Visibility/VisibilityFrameData.h"
 #include "Render/Passes/Visibility/VisibilityRetirement.h"
 #include "Render/Passes/Visibility/VisibilityRoots.h"
@@ -182,11 +183,16 @@ GpuVisibility::declare(RenderGraph& graph, rojoRHI::CommandList& commands, const
     const auto rowOwner = inputs.submission.scene.rows;
     const auto argumentOwner = inputs.submission.scene.arguments;
     auto tickets = std::make_shared<VisibilityReadbackTickets>();
+    const auto callbackAnchor = std::make_shared<const uint8_t>(0);
+    auto projection = std::make_shared<VisibilityDeclarationProjection>();
+    projection->status = status;
     VisibilityPendingReadback pending{.status = status,
+                                      .projection = projection,
                                       .tables = tables,
                                       .params = params,
                                       .geometry = inputs.submission.arguments,
                                       .tickets = tickets,
+                                      .callbackAnchor = callbackAnchor,
                                       .backing = slot,
                                       .rowBuffer = rowOwner->rhi(),
                                       .argumentBuffer = argumentOwner->rhi(),
@@ -203,11 +209,15 @@ GpuVisibility::declare(RenderGraph& graph, rojoRHI::CommandList& commands, const
     m_pending.reserve(m_pending.size() + 1);
     cached = slot;
     m_pending.push_back(std::move(pending));
-    const auto check = [this, frameNumber, tickets] {
+    ++m_epoch;
+    const auto check = [this, frameNumber, tickets, callbackAnchor] {
+        (void)callbackAnchor;
         LMX_ASSERT(!tickets->discarded,
                    "visibility callback uses an explicitly discarded declaration");
         LMX_ASSERT(m_gpu.inFrame() && m_gpu.frameNumber() == frameNumber,
                    "visibility callback requires its actual declaration context and frame");
+        tickets->entered = true;
+        ++m_epoch;
     };
     const auto candidates = graph.importBuffer(slot->candidates, "lmx.draw.candidates");
     const auto runs = graph.importBuffer(slot->runs, "lmx.draw.runs");
@@ -268,84 +278,115 @@ GpuVisibility::declare(RenderGraph& graph, rojoRHI::CommandList& commands, const
         instanceBytes = view.tables.instances->desc().size;
         meshBytes = view.tables.meshes->desc().size;
     }
-    const auto pyramid = inputs.pyramid;
-    const auto occlusion = inputs.occlusion;
+    const auto history = inputs.history;
+    LMX_ASSERT(!view.occlusionEnabled || history,
+               "occlusion classification requires its history binding");
+    if (history)
+        history->bindDeclaration(inputs.occlusion, projection);
     const bool occlusionEnabled = view.occlusionEnabled;
+    const bool cameraPotential = tables.views[0].candidateCount != 0;
     const uint64_t stateBytes = uint64_t{std::min(params.candidateCount, params.stateCapacity)} * 4;
     const uint64_t rowBytes = uint64_t{std::min(params.candidateCount, params.rowCapacity)} * 4;
     const uint64_t argumentBytes = uint64_t{std::min(runCount, params.argumentCapacity)} *
                                    sizeof(rojoRHI::DrawIndexedIndirectArgs);
     ComputePassDesc classify;
     classify.shaderBufferReads = {candidates, chunks, instances, views};
-    if (occlusionEnabled)
-        classify.shaderTextureReads.push_back(pyramid);
     classify.bufferWrites = {statesInput, nextVersion(counters), counts};
-    graph.addComputePass(
-        "lmx.pass.visibility.classify", std::move(classify),
-        [=, this, &commands](const PassResources& resources) {
-            check();
-            const auto paramsAddr = frameData(commands, params);
-            engine::registerFrameRoot("VisibilityParams", paramsAddr);
-            commands.setPipeline(m_pipelines[occlusionEnabled ? 4 : 0].get());
-            const VisibilityClassifyRoot root{resources.address(candidates),
-                                              resources.address(chunks),
-                                              resources.address(instances),
-                                              resources.address(views),
-                                              paramsAddr,
-                                              resources.address(statesInput),
-                                              resources.address(nextVersion(counters)),
-                                              resources.address(counts)};
-            if (occlusionEnabled) {
-                const auto occlusionAddr = frameData(commands, occlusion);
-                engine::registerFrameRoot("OcclusionParams", occlusionAddr);
-                engine::registerFrameRoot(
-                    "VisibilityOcclusionRoot",
-                    commands.pushRoot(VisibilityOcclusionRoot{
-                        root.candidatesAddr, root.chunksAddr, root.instancesAddr, root.viewsAddr,
-                        root.paramsAddr, root.statesAddr, root.countersAddr, root.countsAddr,
-                        occlusionAddr, static_cast<uint32_t>(resources.view(pyramid)), 0}));
-            } else {
-                engine::registerFrameRoot("VisibilityClassifyRoot", commands.pushRoot(root));
-            }
+    ExecuteFn classifyExecute = [=, this, &commands](const PassResources& resources) {
+        check();
+        const auto paramsAddr = frameData(commands, params);
+        engine::registerFrameRoot("VisibilityParams", paramsAddr);
+        commands.setPipeline(m_pipelines[occlusionEnabled ? 4 : 0].get());
+        const VisibilityClassifyRoot root{resources.address(candidates),
+                                          resources.address(chunks),
+                                          resources.address(instances),
+                                          resources.address(views),
+                                          paramsAddr,
+                                          resources.address(statesInput),
+                                          resources.address(nextVersion(counters)),
+                                          resources.address(counts)};
+        const auto effectiveOcclusion = history ? history->recordingParams() : OcclusionParams{};
+        rojoRHI::Addr occlusionAddr{}, occlusionRootAddr{};
+        rojoRHI::ViewIndex pyramidView{};
+        VisibilityOcclusionRoot occlusionRoot{};
+        if (occlusionEnabled) {
+            occlusionAddr = frameData(commands, effectiveOcclusion);
+            engine::registerFrameRoot("OcclusionParams", occlusionAddr);
+            pyramidView = history->sampledView(resources);
+            occlusionRoot = {root.candidatesAddr,
+                             root.chunksAddr,
+                             root.instancesAddr,
+                             root.viewsAddr,
+                             root.paramsAddr,
+                             root.statesAddr,
+                             root.countersAddr,
+                             root.countsAddr,
+                             occlusionAddr,
+                             static_cast<uint32_t>(pyramidView),
+                             0};
+            occlusionRootAddr = commands.pushRoot(occlusionRoot);
+            engine::registerFrameRoot("VisibilityOcclusionRoot", occlusionRootAddr);
+        } else {
+            engine::registerFrameRoot("VisibilityClassifyRoot", commands.pushRoot(root));
+        }
 #ifndef NDEBUG
-            std::vector<rojoRHI::ResourceAccess> accesses;
-            access(accesses, resources, candidates,
-                   uint64_t{params.candidateCount} * sizeof(CandidateRecord), A::ShaderRead);
-            access(accesses, resources, chunks, uint64_t{chunkCount} * sizeof(ChunkRecord),
-                   A::ShaderRead);
-            access(accesses, resources, instances, params.candidateCount ? instanceBytes : 0,
-                   A::ShaderRead);
-            access(accesses, resources, views, sizeof(VisibilityViewParams) * 2, A::ShaderRead);
-            access(accesses, resources, statesInput, stateBytes, A::ShaderWrite);
-            access(accesses, resources, counts, uint64_t{chunkCount} * 4, A::ShaderWrite);
-            counterAccess(accesses, resources, nextVersion(counters), params.candidateCount);
-            if (occlusionEnabled && params.candidateCount)
-                accesses.push_back({.texture = resources.texture(pyramid).texture,
-                                    .stage = S::ComputeShader,
-                                    .access = A::ShaderRead});
-            commands.declareAccess(accesses);
+        std::vector<rojoRHI::ResourceAccess> accesses;
+        access(accesses, resources, candidates,
+               uint64_t{params.candidateCount} * sizeof(CandidateRecord), A::ShaderRead);
+        access(accesses, resources, chunks, uint64_t{chunkCount} * sizeof(ChunkRecord),
+               A::ShaderRead);
+        access(accesses, resources, instances, params.candidateCount ? instanceBytes : 0,
+               A::ShaderRead);
+        access(accesses, resources, views, sizeof(VisibilityViewParams) * 2, A::ShaderRead);
+        access(accesses, resources, statesInput, stateBytes, A::ShaderWrite);
+        access(accesses, resources, counts, uint64_t{chunkCount} * 4, A::ShaderWrite);
+        counterAccess(accesses, resources, nextVersion(counters), params.candidateCount);
+        if (occlusionEnabled && cameraPotential && (effectiveOcclusion.flags & 3u) == 3u)
+            accesses.push_back({.texture = history->sampledTexture(resources).texture,
+                                .stage = S::ComputeShader,
+                                .access = A::ShaderRead});
+        commands.declareAccess(accesses);
 #endif
-            commands.dispatch(std::max(1u, chunkCount), 1, 1);
-            if (stateBytes) {
-                if (stateBytes == slot->states.desc().size) {
-                    // Every candidate below capacity writes one word; this dispatch covers the
-                    // whole allocation.
-                    slot->statesPhysical = {S::ComputeShader, A::ShaderWrite,
-                                            rojoRHI::Layout::Undefined};
-                } else {
-                    join(slot->statesPhysical, S::ComputeShader, A::ShaderWrite);
-                }
+        if (occlusionEnabled && m_recordingObserver) {
+#ifndef NDEBUG
+            const bool accessDeclared = true;
+            const std::span<const rojoRHI::ResourceAccess> observedAccesses = accesses;
+#else
+            const bool accessDeclared = false;
+            const std::span<const rojoRHI::ResourceAccess> observedAccesses;
+#endif
+            m_recordingObserver(m_recordingObserverContext, frameNumber,
+                                std::as_bytes(std::span{&effectiveOcclusion, 1}), occlusionAddr,
+                                std::as_bytes(std::span{&occlusionRoot, 1}), occlusionRootAddr,
+                                pyramidView, accessDeclared, observedAccesses);
+        }
+        commands.dispatch(std::max(1u, chunkCount), 1, 1);
+        if (stateBytes) {
+            if (stateBytes == slot->states.desc().size) {
+                // Every candidate below capacity writes one word; this dispatch covers the
+                // whole allocation.
+                slot->statesPhysical = {S::ComputeShader, A::ShaderWrite,
+                                        rojoRHI::Layout::Undefined};
+            } else {
+                join(slot->statesPhysical, S::ComputeShader, A::ShaderWrite);
             }
-            if (params.candidateCount)
-                join(slot->countersPhysical, S::ComputeShader, A::ShaderWrite);
-            LMX_ASSERT(resources.buffer(statesInput) == slot->states.rhi(),
-                       "visibility classify backing identity changed");
-            tickets->states = recordReadback(m_gpu, commands, slot->states, slot->statesPhysical,
-                                             {0, stateBytes});
-            if (guard)
-                *guard = recordReadback(m_gpu, commands, slot->states, slot->statesPhysical,
-                                        wholeBuffer(slot->states));
-        });
+        }
+        if (params.candidateCount)
+            join(slot->countersPhysical, S::ComputeShader, A::ShaderWrite);
+        LMX_ASSERT(resources.buffer(statesInput) == slot->states.rhi(),
+                   "visibility classify backing identity changed");
+        tickets->states =
+            recordReadback(m_gpu, commands, slot->states, slot->statesPhysical, {0, stateBytes});
+        if (guard)
+            *guard = recordReadback(m_gpu, commands, slot->states, slot->statesPhysical,
+                                    wholeBuffer(slot->states));
+    };
+    if (occlusionEnabled)
+        history->appendRead(graph, "lmx.pass.visibility.classify", std::move(classify),
+                            std::move(classifyExecute), tables.views[0].candidateCount != 0);
+    else
+        graph.addComputePass("lmx.pass.visibility.classify", std::move(classify),
+                             std::move(classifyExecute));
     if (params.layout) {
         ComputePassDesc scan;
         scan.shaderBufferReads = {runs, chunks, views};
@@ -459,7 +500,7 @@ GpuVisibility::declare(RenderGraph& graph, rojoRHI::CommandList& commands, const
     graph.readbackBuffer(writtenStates);
     graph.exportBuffer(nextVersion(rows));
     graph.exportBuffer(nextVersion(arguments));
-    return GpuVisibilityOutputs{nextVersion(rows), nextVersion(arguments), tickets};
+    return GpuVisibilityOutputs{nextVersion(rows), nextVersion(arguments), tickets, projection};
 }
 
 //======================================================================================================================
@@ -472,11 +513,15 @@ void GpuVisibility::recordDeclarationStatus(const GpuVisibilityOutputs& declarat
     LMX_ASSERT(found != m_pending.end() && !found->tickets->discarded,
                "visibility status requires this owner's live declaration");
     LMX_ASSERT(status.frameNumber == found->frameNumber &&
-                   status.sceneGeneration == found->status.sceneGeneration,
+                   status.sceneGeneration == found->status.sceneGeneration &&
+                   status.occlusionAssociation == found->status.occlusionAssociation,
                "visibility status must preserve its declaration frame and scene identity");
     auto replacement = status;
     replacement.isRetired = false;
     found->status = std::move(replacement);
+    if (found->projection)
+        found->projection->status = found->status;
+    ++m_epoch;
 }
 
 //======================================================================================================================
@@ -488,10 +533,11 @@ void GpuVisibility::discardUnrecorded(const GpuVisibilityOutputs& declaration) {
     LMX_ASSERT(found != m_pending.end(), "visibility discard requires this owner's declaration");
     const auto tickets = found->tickets;
     const auto backing = found->backing;
-    LMX_ASSERT(!tickets->discarded && !tickets->states && !tickets->counters && !tickets->rows &&
-                   !tickets->arguments,
+    LMX_ASSERT(!tickets->discarded && !tickets->entered && !tickets->states && !tickets->counters &&
+                   !tickets->rows && !tickets->arguments,
                "visibility discard requires wholly unrecorded intent");
     tickets->discarded = true;
     m_pending.erase(found);
+    ++m_epoch;
 }
 } // namespace lmx::render

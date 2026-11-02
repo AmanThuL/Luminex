@@ -1,17 +1,15 @@
-// Exact reversed-Z minimum reduction. Source level addresses the whole sampled texture;
+// Exact reversed-Z minimum reduction from a whole sampled source into one storage mip.
+import RojoRHI;
 import OcclusionRoots;
-// destination is a one-mip storage view. Odd edge children outside the active rectangle do not exist.
-[[vk::binding(0, 0)]]
-Texture2D<float> gSource : register(t0);
-[[vk::binding(1, 0)]]
-RWTexture2D<float> gDestination : register(u1);
-[[vk::binding(0, 0)]]
-ConstantBuffer<HzbReduceParams> gParams : register(b0);
 
 [shader("compute")]
 [numthreads(8, 8, 1)]
 void computeMain(uint3 tid : SV_DispatchThreadID)
 {
+    HzbReduceRoot root = rojoRHI::root<HzbReduceRoot>();
+    HzbReduceParams gParams = rojoRHI::load<HzbReduceParams>(root.paramsAddr, 0);
+    Texture2D<float> gSource = rojoRHI::texture2D<float>(root.source);
+    RWTexture2D<float> gDestination = rojoRHI::rwTexture2D<float>(root.destination);
     if (tid.x >= gParams.destinationWidth || tid.y >= gParams.destinationHeight)
         return;
     float farthest = 1.0;

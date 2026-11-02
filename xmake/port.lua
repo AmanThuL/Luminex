@@ -7,31 +7,17 @@ local pending_families = {
     {
         family = "VISIBILITY",
         sources = {
-            "Source/Render/Passes/Occlusion/HzbStage.cpp",
-            "Source/Render/Passes/Occlusion/OcclusionReference.cpp",
             "Source/Render/Renderer/RendererOcclusion.cpp",
         },
         tests = {
             "Tests/Render/Passes/Visibility/GpuDisabledInstanceTests.cpp",
             "Tests/Render/Passes/Visibility/GpuVisibilityGraphTests.cpp",
             "Tests/Render/Passes/Visibility/GpuVisibilityRailTests.cpp",
-            "Tests/Render/Passes/Occlusion/Gpu*.cpp",
-            "Tests/Render/Passes/Occlusion/HzbTests.cpp",
+            "Tests/Render/Passes/Occlusion/GpuHzbGraphTests.cpp",
             "Tests/Render/Passes/Temporal/GpuOcclusionTemporalTests.cpp",
             "Tests/Render/Passes/Temporal/GpuVisibility*TemporalTests.cpp",
             "Tests/Render/Renderer/RendererCaptureLayoutTests.cpp",
             "Tests/App/Model/Performance/MeasurementSampleTests.cpp",
-        },
-        shaders = {
-            "Shaders/Passes/Occlusion/HzbDebugView.slang",
-            "Shaders/Passes/Occlusion/HzbPublish.slang",
-            "Shaders/Passes/Occlusion/HzbReduce.slang",
-            "Shaders/Passes/Occlusion/OcclusionReference.slang",
-        },
-        testShaders = {
-            "Shaders/Tests/HzbDepthFixture.slang",
-            "Shaders/Tests/HzbReadbackFixture.slang",
-            "Shaders/Tests/OcclusionProbe.slang",
         },
     },
     {
