@@ -300,6 +300,9 @@ void prepareVisibilityProjections(VisibilityRetirementBatch& staged) {
 }
 
 //======================================================================================================================
+// The prepared batch reserved capacity for the live records, so the insertion below moves elements
+// with nothrow moves and never allocates.
+// NOLINTNEXTLINE(bugprone-exception-escape)
 void commitVisibilityRetirement(VisibilityRetirementBatch& staged,
                                 std::vector<VisibilityPendingReadback>& pending,
                                 std::vector<VisibilityStatus>& retired) noexcept {
@@ -354,6 +357,8 @@ void GpuVisibility::validateRetiredTake(const PreparedVisibilityRetirement& prep
 }
 
 //======================================================================================================================
+// Commits through commitVisibilityRetirement, whose prepared capacity rules out allocation.
+// NOLINTNEXTLINE(bugprone-exception-escape)
 std::vector<VisibilityStatus>
 GpuVisibility::commitRetiredTake(PreparedVisibilityRetirement&& prepared) noexcept {
     validateRetiredTake(prepared);

@@ -19,6 +19,7 @@ namespace lmx::render {
 struct RendererResizeAccess {
     //==================================================================================================================
     static const HzbStage* stage(const Renderer& renderer);
+    //==================================================================================================================
     static std::array<rojoRHI::Texture, 2> pyramids(const Renderer& renderer);
 };
 

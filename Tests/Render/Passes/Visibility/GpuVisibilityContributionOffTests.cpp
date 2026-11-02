@@ -43,13 +43,13 @@ DepthReader depthReader(engine::GpuContext& gpu) {
     auto library = gpu.loadShaderLibrary("VisibilityDepthReadback");
     INFO(errorOf(library));
     REQUIRE(library);
-    auto pipeline =
-        engine::adoptGpu(gpu.device(), gpu.device().createPipeline(rojoRHI::ComputePipelineDesc{
-                                           .compute = {library->get(), "computeMain"},
-                                           .label = "lmx.test.visibility.depthReadback"}));
+    auto pipeline = engine::adoptGpu(
+        gpu.device(), gpu.device().createPipeline(rojoRHI::ComputePipelineDesc{
+                          .compute = {.library = library->get(), .name = "computeMain"},
+                          .label = "lmx.test.visibility.depthReadback"}));
     INFO(errorOf(pipeline));
     REQUIRE(pipeline);
-    return {std::move(*library), std::move(*pipeline)};
+    return {.library = std::move(*library), .pipeline = std::move(*pipeline)};
 }
 
 //======================================================================================================================
@@ -68,10 +68,11 @@ std::vector<uint8_t> attachmentBytes(engine::GpuContext& gpu, const Contribution
 //======================================================================================================================
 std::vector<uint8_t> depthBytes(engine::GpuContext& gpu, const ContributionTargets& targets,
                                 uint64_t size) {
-    auto bytes = render::readbackNow(
-        gpu, targets.depth,
-        {rojoRHI::Stage::ComputeShader, rojoRHI::Access::ShaderWrite, rojoRHI::Layout::Undefined},
-        {0, size});
+    auto bytes = render::readbackNow(gpu, targets.depth,
+                                     {.stage = rojoRHI::Stage::ComputeShader,
+                                      .access = rojoRHI::Access::ShaderWrite,
+                                      .layout = rojoRHI::Layout::Undefined},
+                                     {.offset = 0, .size = size});
     INFO(errorOf(bytes));
     REQUIRE(bytes);
     return std::move(*bytes);
@@ -217,7 +218,7 @@ ContributionTargets contributionTargets(engine::GpuContext& gpu, render::Rendere
 #ifndef NDEBUG
             const std::array<rojoRHI::ResourceAccess, 2> accesses{
                 {{.texture = source.texture,
-                  .range = {0, 1, 0, 1},
+                  .range = {.baseMip = 0, .mipCount = 1, .baseLayer = 0, .layerCount = 1},
                   .stage = rojoRHI::Stage::ComputeShader,
                   .access = rojoRHI::Access::ShaderRead},
                  {.buffer = destination,

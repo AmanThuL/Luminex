@@ -31,15 +31,14 @@ void requireLayout(const std::string& json, std::string_view name, uint32_t size
                    std::initializer_list<std::pair<std::string_view, uint32_t>> fields) {
     CAPTURE(name);
     const auto start =
-        json.find(std::format("{{\"name\": \"{}\", \"sizeBytes\": {}, \"fields\": [", name, size));
+        json.find(std::format(R"({{"name": "{}", "sizeBytes": {}, "fields": [)", name, size));
     REQUIRE(start != std::string::npos);
     const auto end = json.find("]}", start);
     REQUIRE(end != std::string::npos);
     const auto layout = json.substr(start, end - start);
     for (const auto& [field, offset] : fields) {
         INFO(field);
-        REQUIRE(
-            layout.contains(std::format("\"name\": \"{}\", \"offsetBytes\": {}", field, offset)));
+        REQUIRE(layout.contains(std::format(R"("name": "{}", "offsetBytes": {})", field, offset)));
     }
 }
 } // namespace

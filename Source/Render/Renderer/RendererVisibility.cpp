@@ -71,7 +71,7 @@ Renderer::prepareVisibility(RenderGraph& graph, rojoRHI::CommandList& commands,
             status.scene.candidates.push_back(
                 {.instanceIdentity = item.instanceIdentity,
                  .instanceRow = item.instanceRow,
-                 .worldBounds = {row.worldBoundsMin, row.worldBoundsMax}});
+                 .worldBounds = {.minimum = row.worldBoundsMin, .maximum = row.worldBoundsMax}});
         }
         status.shadow.candidates = status.scene.candidates;
         status.shadowCounters = status.sceneCounters;

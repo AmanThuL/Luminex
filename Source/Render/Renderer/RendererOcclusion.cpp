@@ -16,27 +16,35 @@
 #include <array>
 #include <bit>
 #include <cstddef>
+#include <string>
+#include <string_view>
 
 namespace lmx::render {
 namespace {
 //======================================================================================================================
 void registerHzbDebugLayoutsForCapture() {
-    engine::registerUniformStruct({"HzbDebugRoot",
-                                   sizeof(HzbDebugRoot),
-                                   {{"paramsAddr", offsetof(HzbDebugRoot, paramsAddr), "Addr"},
-                                    {"pyramid", offsetof(HzbDebugRoot, pyramid), "uint"},
-                                    {"padding", offsetof(HzbDebugRoot, padding), "uint"}}});
+    const auto field = [](std::string_view name, size_t offset, std::string_view type) {
+        return engine::SchemaUniformField{.name = std::string(name),
+                                          .offsetBytes = static_cast<uint32_t>(offset),
+                                          .type = std::string(type)};
+    };
     engine::registerUniformStruct(
-        {"HzbDebugViewParams",
-         sizeof(HzbDebugViewParams),
-         {{"level", offsetof(HzbDebugViewParams, level), "uint"},
-          {"activeWidth", offsetof(HzbDebugViewParams, activeWidth), "uint"},
-          {"activeHeight", offsetof(HzbDebugViewParams, activeHeight), "uint"},
-          {"padding", offsetof(HzbDebugViewParams, padding), "uint"},
-          {"outputWidth", offsetof(HzbDebugViewParams, outputWidth), "uint"},
-          {"outputHeight", offsetof(HzbDebugViewParams, outputHeight), "uint"},
-          {"padding2", offsetof(HzbDebugViewParams, padding2), "uint"},
-          {"padding3", offsetof(HzbDebugViewParams, padding3), "uint"}}});
+        {.name = "HzbDebugRoot",
+         .sizeBytes = sizeof(HzbDebugRoot),
+         .fields = {field("paramsAddr", offsetof(HzbDebugRoot, paramsAddr), "Addr"),
+                    field("pyramid", offsetof(HzbDebugRoot, pyramid), "uint"),
+                    field("padding", offsetof(HzbDebugRoot, padding), "uint")}});
+    engine::registerUniformStruct(
+        {.name = "HzbDebugViewParams",
+         .sizeBytes = sizeof(HzbDebugViewParams),
+         .fields = {field("level", offsetof(HzbDebugViewParams, level), "uint"),
+                    field("activeWidth", offsetof(HzbDebugViewParams, activeWidth), "uint"),
+                    field("activeHeight", offsetof(HzbDebugViewParams, activeHeight), "uint"),
+                    field("padding", offsetof(HzbDebugViewParams, padding), "uint"),
+                    field("outputWidth", offsetof(HzbDebugViewParams, outputWidth), "uint"),
+                    field("outputHeight", offsetof(HzbDebugViewParams, outputHeight), "uint"),
+                    field("padding2", offsetof(HzbDebugViewParams, padding2), "uint"),
+                    field("padding3", offsetof(HzbDebugViewParams, padding3), "uint")}});
 }
 } // namespace
 
@@ -159,33 +167,35 @@ lmx::Result<void> Renderer::declareOcclusion(RenderGraph& graph, rojoRHI::Comman
         return {};
     PassDesc pass;
     pass.color = ColorAttachment{.handle = display, .load = LoadOp::Load, .store = StoreOp::Store};
-    pass.textureReads.push_back(pyramid);
+    pass.textureReads.emplace_back(pyramid);
     const auto params = std::bit_cast<HzbDebugViewParams>(
-        buildHzbDebugParams({.requestedLevel = uint32_t(view.hzbDebugLevel),
+        buildHzbDebugParams({.requestedLevel = static_cast<uint32_t>(view.hzbDebugLevel),
                              .levelCount = occlusion.current.levelCount,
                              .activeWidth = occlusion.current.activeWidth,
                              .activeHeight = occlusion.current.activeHeight,
                              .outputWidth = m_width,
                              .outputHeight = m_height}));
-    graph.addPass("lmx.pass.hzb.debug", std::move(pass),
-                  [this, &commands, pyramid, params](const PassResources& resources) {
-                      commands.setPipeline(m_hzbDebugPipeline.get());
-                      const auto address = frameData(commands, params);
-                      engine::registerFrameRoot("HzbDebugViewParams", address);
-                      engine::registerFrameRoot(
-                          "HzbDebugRoot",
-                          commands.pushRoot(HzbDebugRoot{
-                              address, static_cast<uint32_t>(resources.view(pyramid)), 0}));
+    graph.addPass(
+        "lmx.pass.hzb.debug", std::move(pass),
+        [this, &commands, pyramid, params](const PassResources& resources) {
+            commands.setPipeline(m_hzbDebugPipeline.get());
+            const auto address = frameData(commands, params);
+            engine::registerFrameRoot("HzbDebugViewParams", address);
+            engine::registerFrameRoot(
+                "HzbDebugRoot", commands.pushRoot(HzbDebugRoot{
+                                    .paramsAddr = address,
+                                    .pyramid = static_cast<uint32_t>(resources.view(pyramid))}));
 #ifndef NDEBUG
-                      const std::array<rojoRHI::ResourceAccess, 1> accesses{
-                          {{.texture = resources.texture(pyramid).texture,
-                            .range = {params.level, 1, 0, 1},
-                            .stage = rojoRHI::Stage::FragmentShader,
-                            .access = rojoRHI::Access::ShaderRead}}};
-                      commands.declareAccess(accesses);
+            const std::array<rojoRHI::ResourceAccess, 1> accesses{
+                {{.texture = resources.texture(pyramid).texture,
+                  .range =
+                      {.baseMip = params.level, .mipCount = 1, .baseLayer = 0, .layerCount = 1},
+                  .stage = rojoRHI::Stage::FragmentShader,
+                  .access = rojoRHI::Access::ShaderRead}}};
+            commands.declareAccess(accesses);
 #endif
-                      commands.draw(3);
-                  });
+            commands.draw(3);
+        });
     display = nextVersion(display);
     return {};
 }

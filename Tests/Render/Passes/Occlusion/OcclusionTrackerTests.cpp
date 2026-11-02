@@ -76,10 +76,11 @@ bool scheduled(const render::CompiledFrameRecord& record, std::string_view label
 bool classifyReads(const render::CompiledFrameRecord& record, std::string_view pyramid) {
     const auto pass = passIndex(record, "lmx.pass.visibility.classify");
     REQUIRE(pass.has_value());
-    return std::ranges::any_of(record.debug.passes[*pass].uses, [&](const render::DebugUse& use) {
-        return record.debug.resources[use.resource].name == pyramid &&
-               use.role == render::UseRole::ShaderRead;
-    });
+    return std::ranges::any_of(record.debug.passes[pass.value()].uses,
+                               [&](const render::DebugUse& use) {
+                                   return record.debug.resources[use.resource].name == pyramid &&
+                                          use.role == render::UseRole::ShaderRead;
+                               });
 }
 
 } // namespace
