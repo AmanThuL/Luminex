@@ -34,7 +34,7 @@ struct OcclusionTransactionFixture {
     void record(uint64_t generation) {
         auto backing = std::make_shared<VisibilitySlotBacking>();
         backing->states = transactionBuffer(*gpu, 4, rojoRHI::Memory::Upload);
-        backing->counters = transactionBuffer(*gpu, 2 * kVisibilityCounterWords * sizeof(uint32_t),
+        backing->counters = transactionBuffer(*gpu, sizeof(uint32_t) * 2 * kVisibilityCounterWords,
                                               rojoRHI::Memory::Upload);
         auto referenceBacking = std::make_shared<ReferenceBacking>();
         referenceBacking->buffer = transactionBuffer(*gpu, 256, rojoRHI::Memory::Readback);
@@ -176,7 +176,7 @@ void txCandidate(std::ostringstream& stream, const InstanceVisibility& value) {
               value.occlusion.outcome, value.occlusion.occluded);
     for (const auto coordinate : value.occlusion.rectangle)
         txScalars(stream, coordinate);
-    for (uint32_t axis = 0; axis < 3; ++axis)
+    for (glm::length_t axis = 0; axis < 3; ++axis)
         txScalars(stream, std::bit_cast<uint32_t>(value.worldBounds.minimum[axis]),
                   std::bit_cast<uint32_t>(value.worldBounds.maximum[axis]));
 }
@@ -509,8 +509,8 @@ struct TxOwnerFixture {
 };
 
 //======================================================================================================================
-void checkHistoryCopies(OcclusionCheckHistory before, OcclusionCheckHistory after, uint64_t frame,
-                        uint64_t generation) {
+void checkHistoryCopies(const OcclusionCheckHistory& before, const OcclusionCheckHistory& after,
+                        uint64_t frame, uint64_t generation) {
     const std::array<OcclusionCheckObservation, 2> observations{
         {{1, 0, 7, true}, {2, 256, 11, true}}};
     for (const auto query : {frame, frame + 1, frame + 3}) {
@@ -759,19 +759,24 @@ TEST_CASE("prepared owner tokens bind actual owner context mutation epoch move a
             }).find("context") != std::string::npos);
     auto movedProduction = std::move(*production);
     auto movedReference = std::move(*reference);
+    // The moved-from tokens are the subject: committing them must report consumption.
     REQUIRE(abortDiagnostic([&] {
+                // NOLINTNEXTLINE(bugprone-use-after-move)
                 (void)fixture.production->commitRetiredTake(std::move(*production));
             }).find("consumed") != std::string::npos);
     REQUIRE(abortDiagnostic([&] {
+                // NOLINTNEXTLINE(bugprone-use-after-move)
                 fixture.reference->commitJoin(std::move(*reference));
             }).find("consumed") != std::string::npos);
     fixture.reference->commitJoin(std::move(movedReference));
     const auto statuses = fixture.production->commitRetiredTake(std::move(movedProduction));
     REQUIRE(statuses.size() == 1);
     REQUIRE(abortDiagnostic([&] {
+                // NOLINTNEXTLINE(bugprone-use-after-move)
                 (void)fixture.production->commitRetiredTake(std::move(movedProduction));
             }).find("consumed") != std::string::npos);
     REQUIRE(abortDiagnostic([&] {
+                // NOLINTNEXTLINE(bugprone-use-after-move)
                 fixture.reference->commitJoin(std::move(movedReference));
             }).find("consumed") != std::string::npos);
 
@@ -972,8 +977,8 @@ void OcclusionTransactionTestAccess::checkReferencePitchesAndLeases(
     std::vector<uint8_t> oldBytes(old->capacity), newBytes(replacement->capacity);
     REQUIRE(resolve(gpu, oldTicket, oldBytes));
     REQUIRE(resolve(gpu, replacementTicket, newBytes));
-    CHECK(oldBytes[80 * 4] == 0x3d);
-    CHECK(newBytes[65 * 4] == 0x7e);
+    CHECK(oldBytes[size_t{80} * 4] == 0x3d);
+    CHECK(newBytes[size_t{65} * 4] == 0x7e);
 }
 } // namespace lmx::render
 

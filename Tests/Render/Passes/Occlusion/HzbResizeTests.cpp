@@ -35,10 +35,10 @@ struct HzbResizeTestAccess {
         append(state, source.frameNumber, source.coverageEpoch, source.sceneGeneration,
                source.activeWidth, source.activeHeight, source.outputWidth, source.outputHeight,
                source.levelCount, source.built);
-        for (uint32_t column = 0; column < 4; ++column)
-            for (uint32_t row = 0; row < 4; ++row)
+        for (glm::length_t column = 0; column < 4; ++column)
+            for (glm::length_t row = 0; row < 4; ++row)
                 state.reals.push_back(source.viewProjection[column][row]);
-        for (uint32_t axis = 0; axis < 3; ++axis) {
+        for (glm::length_t axis = 0; axis < 3; ++axis) {
             state.reals.push_back(source.cameraPosition[axis]);
             state.reals.push_back(source.cameraForward[axis]);
         }
@@ -558,6 +558,8 @@ TEST_CASE("HZB token provenance rejects actual foreign stale moved and consumed 
     auto destination = first.stage->prepareResize(160, 112);
     REQUIRE(destination);
     *destination = std::move(moved);
+    // The moved-from token is the subject: it must no longer be current.
+    // NOLINTNEXTLINE(bugprone-use-after-move)
     REQUIRE_FALSE(HzbResizeTestAccess::current(*first.stage, moved));
     REQUIRE(HzbResizeTestAccess::current(*first.stage, *destination));
     REQUIRE(HzbResizeTestAccess::snapshot(*first.stage) == firstBefore);

@@ -1,11 +1,28 @@
+#include "Engine/Gpu/GpuOwned.h"
 #include "Engine/Scene/DrawItem.h"
+#include "Render/Common/FrameData.h"
 #include "Render/Passes/Occlusion/HzbHistoryBinding.h"
 #include "Render/Passes/Occlusion/HzbStage.h"
+#include "Render/Passes/Occlusion/OcclusionRoots.h"
+#include "Render/Passes/Visibility/GpuVisibility.h"
+#include "Render/Passes/Visibility/VisibilityRetirement.h"
+#include "Render/Passes/Visibility/VisibilityRoots.h"
 #include "Render/Renderer/SceneView.h"
 #include "Support/RenderGraphTestSupport.h"
 #include "Support/TestGpu.h"
+#include "Support/VisibilityOracleRoots.h"
 
+#include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <memory>
+#include <optional>
+#include <span>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 //======================================================================================================================
 TEST_CASE("an abandoned HZB declaration cannot supply next-frame history",
@@ -100,26 +117,6 @@ TEST_CASE("a real reduction prefix without publication cannot become HZB history
     REQUIRE(callbacks == 1);
     REQUIRE((params.flags & 2u) == 0);
 }
-
-#include "Engine/Gpu/GpuOwned.h"
-#include "Render/Common/FrameData.h"
-#include "Render/Passes/Occlusion/OcclusionRoots.h"
-#include "Render/Passes/Visibility/GpuVisibility.h"
-#include "Render/Passes/Visibility/VisibilityRetirement.h"
-#include "Render/Passes/Visibility/VisibilityRoots.h"
-#include "Support/VisibilityOracleRoots.h"
-
-#include <algorithm>
-#include <array>
-#include <bit>
-#include <cstddef>
-#include <cstdint>
-#include <cstring>
-#include <memory>
-#include <optional>
-#include <span>
-#include <utility>
-#include <vector>
 
 namespace lmx::render {
 struct HzbMatrixTestAccess {
@@ -306,8 +303,8 @@ struct HzbMatrixFixture {
         submission.scene.rows = submission.shadow.rows = &rows;
         submission.scene.arguments = submission.shadow.arguments = &arguments;
         const auto tables = buildVisibilityTables(view, submission, planes);
-        REQUIRE(tables.views[0].candidateCount == (camera ? 1 : 0));
-        REQUIRE(tables.views[1].candidateCount == (shadow ? 1 : 0));
+        REQUIRE(tables.views[0].candidateCount == (camera ? 1u : 0u));
+        REQUIRE(tables.views[1].candidateCount == (shadow ? 1u : 0u));
         if (zeroCapacity)
             visibility->setCapacityOverride(std::array<uint32_t, 3>{0, 0, 0});
         VisibilityStatus status;
@@ -540,13 +537,27 @@ std::shared_ptr<HzbCurrentReadback> retainCurrentHzb(HzbMatrixFixture& fixture, 
 }
 
 //======================================================================================================================
+bool sameOcclusionParams(const OcclusionParams& a, const OcclusionParams& b) {
+    return a.sourceRows == b.sourceRows && a.sourceWidth == b.sourceWidth &&
+           a.sourceHeight == b.sourceHeight && a.levelCount == b.levelCount && a.flags == b.flags &&
+           a.nearGuard == b.nearGuard && a.depthGuard == b.depthGuard && a.padding == b.padding;
+}
+
+//======================================================================================================================
+OcclusionParams recordedOcclusionParams(std::span<const std::byte> bytes) {
+    REQUIRE(bytes.size() == sizeof(OcclusionParams));
+    OcclusionParams params;
+    std::memcpy(&params, bytes.data(), sizeof(params));
+    return params;
+}
+
+//======================================================================================================================
 void checkHzbArguments(const HzbRecordedArguments& observed, const VisibilityStatus& status,
                        rojoRHI::Texture history, bool sampled) {
     static_assert(sizeof(OcclusionParams) == 96);
     REQUIRE(observed.params.size() == sizeof(OcclusionParams));
     REQUIRE(observed.root.size() == sizeof(VisibilityOcclusionRoot));
-    CHECK(std::memcmp(observed.params.data(), &status.occlusionParams, sizeof(OcclusionParams)) ==
-          0);
+    CHECK(sameOcclusionParams(recordedOcclusionParams(observed.params), status.occlusionParams));
     VisibilityOcclusionRoot root;
     std::memcpy(&root, observed.root.data(), sizeof(root));
     CHECK(root.occlusionAddr.lo == observed.paramsAddress.lo);
@@ -570,7 +581,7 @@ void checkHzbArguments(const HzbRecordedArguments& observed, const VisibilitySta
 #endif
 }
 
-enum class HzbMatrixCase {
+enum class HzbMatrixCase : uint8_t {
     Early,
     Late,
     Appended,
@@ -724,13 +735,13 @@ void runHzbMatrix(HzbMatrixCase kind) {
     CHECK(fixture.recorded[0].frame == frame.frame.number);
     if (!onlyClassifier) {
         REQUIRE(early->calls == 1);
-        CHECK(std::memcmp(&early->params, &status.occlusionParams, sizeof(OcclusionParams)) == 0);
+        CHECK(sameOcclusionParams(early->params, status.occlusionParams));
         CHECK(static_cast<uint32_t>(early->view) ==
               static_cast<uint32_t>(fixture.recorded[0].view));
     }
     if (late && kind != HzbMatrixCase::Culled) {
         REQUIRE(late->calls == 1);
-        CHECK(std::memcmp(&late->params, &early->params, sizeof(OcclusionParams)) == 0);
+        CHECK(sameOcclusionParams(late->params, early->params));
         CHECK(static_cast<uint32_t>(late->view) == static_cast<uint32_t>(early->view));
     }
     if (!onlyClassifier)
@@ -796,8 +807,8 @@ void runHzbMatrix(HzbMatrixCase kind) {
     REQUIRE(fixture.visibility->retireThrough(frame.frame.number));
     const auto retired = fixture.visibility->takeRetired();
     REQUIRE(retired.size() == 1);
-    CHECK(std::memcmp(&retired[0].occlusionParams, fixture.recorded[0].params.data(),
-                      sizeof(OcclusionParams)) == 0);
+    CHECK(sameOcclusionParams(retired[0].occlusionParams,
+                              recordedOcclusionParams(fixture.recorded[0].params)));
     CHECK(retired[0].occlusionAssociation == status.occlusionAssociation);
     if (std::string_view(LMX_SHADER_LIBRARY_EXTENSION) != ".nulllib" && camera &&
         kind != HzbMatrixCase::ZeroCapacity) {
