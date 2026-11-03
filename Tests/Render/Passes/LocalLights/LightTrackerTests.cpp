@@ -96,6 +96,8 @@ TEST_CASE("local-light modes reach the scene across paced frames under the track
                               ++inspected;
                           }});
 #ifndef NDEBUG
+    // runTrackedFrames skips the case in Release, where the tracker does not run, so the frames
+    // were inspected only in Debug.
     REQUIRE(inspected == kModes.size());
 #endif
 }

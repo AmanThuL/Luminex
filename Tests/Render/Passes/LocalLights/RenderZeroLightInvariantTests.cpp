@@ -36,7 +36,7 @@ struct OwnedBytes {
 struct DeclaredSnapshot {
     std::string graph;
     render::TemporalStatus temporal;
-    std::vector<std::byte> localParams; ///< The 136 bytes the scene pass uploads for this frame.
+    std::vector<std::byte> localParams; ///< The builder's 136 bytes for this frame's inputs.
     std::array<OwnedBytes, 5> tables;   ///< Vertices, indices, meshes, instances, materials.
 };
 
@@ -143,8 +143,9 @@ std::vector<DeclaredSnapshot> zeroLightReplay(bool switches, bool highWater,
         CHECK(lighting.effective == engine::LocalLightMode::Off);
         CHECK(lighting.listBytes == 0);
         CHECK(lighting.allocatedListBytes == 0);
-        // The parameters the scene pass builds from this frame's inputs: Off, zero rows, and the
-        // fixed grid over the frame's own render extent.
+        // The builder's output for this frame's inputs, as SceneStage calls it on a zero-live frame
+        // (no cluster outputs): Off, zero rows, and the fixed grid over the frame's own render
+        // extent. The uploaded frame-data block itself is not read back; no seam exposes its bytes.
         const auto& temporal = (*renderer)->temporalStatus();
         const auto params =
             render::buildLocalLightParams({.requestedMode = view.localLightMode,
@@ -194,10 +195,11 @@ std::vector<DeclaredSnapshot> zeroLightReplay(bool switches, bool highWater,
 //======================================================================================================================
 // Replaces v1's fake-command-list comparison of every bound input. The device replay compares
 // what a configured device can observe -- the compiled graph, the absence of every light import
-// and pass, the scene pass's local-light parameters, the scene-owned table bytes and descriptors,
-// and the temporal status -- between a replay switching requested modes and an all-Off replay,
-// across the five reconstruction cells and both high-water states. Which pointed bytes, roots and
-// pipelines each encoded command selected is not observable here.
+// and pass, the scene-owned table bytes and descriptors, and the temporal status -- between a
+// replay switching requested modes and an all-Off replay, across the five reconstruction cells
+// and both high-water states. It also compares the local-light parameters buildLocalLightParams
+// returns for each frame's inputs, which is the builder's output, not the uploaded block. Which
+// pointed bytes, roots and pipelines each encoded command selected is not observable here.
 TEST_CASE("zero-live requested modes preserve the Off frame on a configured device",
           "[render][device][zero-light-invariants]") {
     using namespace render;
