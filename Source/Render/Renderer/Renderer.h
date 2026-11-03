@@ -118,6 +118,11 @@ public:
     /// draw submission has prepared leaves its rows, the prefix copies it already recorded on
     /// `commands` and its recorded read uses advanced. Every application caller treats the failure
     /// as terminal.
+    ///
+    /// A successful declaration must be executed. A caller that abandons it instead -- dropping the
+    /// graph unexecuted -- cannot recover the renderer: the frame's light-cluster declaration stays
+    /// pending with no recorded readback, so every later light retirement fails. Visibility, by
+    /// contrast, drops such a declaration.
     lmx::Result<GraphTexture> declarePasses(RenderGraph& graph, rojoRHI::CommandList& commands,
                                             const engine::Camera& camera, const SceneView& view);
 
