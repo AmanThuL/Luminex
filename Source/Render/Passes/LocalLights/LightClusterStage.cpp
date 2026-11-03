@@ -35,7 +35,10 @@ constexpr SyncPoint kComputeWrite{rojoRHI::Stage::ComputeShader, rojoRHI::Access
 
 //======================================================================================================================
 // A discarded declaration released its slot; running its passes later would race the next owner.
-// The first callback marks the declaration entered, which makes it no longer discardable.
+// The first kernel callback marks the declaration entered, which makes it no longer discardable.
+// The reset fill, declared through the shared zero-fill helper, does not mark it; it runs only in
+// a graph that goes on to run the count pass, whose check catches an executed discarded
+// declaration.
 void enterLive(light_detail::ClusterReadbackTickets& tickets) {
     LMX_ASSERT(!tickets.discarded, "a discarded light-cluster declaration executed");
     tickets.entered = true;
@@ -302,6 +305,9 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rojoRHI::Comm
         graph.readbackBuffer(gridBuilt);
         graph.readbackBuffer(listFilled);
     }
+    // discardUnrecorded does not undo these: the slot's buffers keep the previous state while the
+    // next import seeds an access no command recorded. That is harmless while every declaration
+    // failure is terminal for the renderer.
     slot.used = true;
     slot.shaderRead = inputs.shaderReadsOutputs;
     return {.grid = gridBuilt, .indices = listFilled, .declared = true, .readbackIntent = tickets};

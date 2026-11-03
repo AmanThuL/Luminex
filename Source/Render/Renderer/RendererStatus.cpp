@@ -7,7 +7,6 @@
 #include "Render/Passes/Exposure/ExposureStage.h"
 #include "Render/Renderer/RendererInternal.h"
 #include <algorithm>
-#include <limits>
 
 namespace lmx::render {
 //======================================================================================================================
