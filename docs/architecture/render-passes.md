@@ -62,8 +62,9 @@ outside a frame. Upload/Readback mapped reads wait without consuming a frame; Gp
 explicit copy frame. Renderer reads use its physical TextureStateTable, never creation metadata
 or a guessed RenderTarget state. Restored SceneTable image tickets preserve overlapping submitted
 frames independently of later target reuse. Visibility and reference readbacks record their
-tickets inside the callbacks that write them and retire as one transaction; pending light readback
-consumers return with LIGHTS.
+tickets inside the callbacks that write them and retire as one transaction. Light-cluster readbacks
+do the same: the scan pass records the counters, and with list capture the grid, and the fill pass
+the index list; each declaration retires as one record once its frame completes.
 
 ## Visibility and submission modes
 
