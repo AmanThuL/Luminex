@@ -57,10 +57,6 @@ live only in `docs/roadmap.md` and its linked parts under `docs/roadmap/`.
   Luminex links `RojoRHI` and app-shell's `RojoRHIImGui`, retaining no first-party Legacy edge; standalone commands: `RojoRHI/AGENTS.md`.
 - **Gotcha**: Tests has `set_default(false)`: first `xmake build -P . Tests`, then use CWD `build/macosx/arm64/<mode>/test` for direct execution/shader lookup.
   GPU regression uses `[gpu]~[.]`; hidden diagnostics require explicit filters.
-- Frozen portability-checkpoint-A inventory (ADR 0009) remains separate from consumer acceptance:
-  `xmake build -P . RojoRHILegacyTests` then, from its `rojorhi-legacy-test` build directory,
-  `MTL_DEBUG_LAYER=1 ./RojoRHILegacyTests "[checkpoint-a]"`. Retained graph tags use the same filter in the Tests build directory. `python3 Tools/check_checkpoint_a.py` checks
-  this frozen split; it does not establish current backend hardware acceptance.
 - Theme colors: `python3 Tools/Theme/generate_tokens.py --check` validates generated C++/Figma outputs; `--audit` prints 48 contrast pairs. CI runs freshness; root policy runs `Tools/check_literal_colors.py`. Shape/density/type are shared C++ constants, not generated colors.
 - Format: `xmake format` (check: `xmake format --check`) · Policy: `xmake policy` (also runs
   `check_module_deps.py`/`check_source_headers.py`; `check_module_deps.py --link` needs a build, so

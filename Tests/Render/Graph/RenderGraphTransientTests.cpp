@@ -352,7 +352,7 @@ TEST_CASE("a transient consumed before it is written fails to compile", "[render
 //======================================================================================================================
 // The same rule through the one declaration form that consumes a version while writing it: a loaded
 // attachment keeps what is already there, and for a transient there is nothing to keep.
-TEST_CASE("a transient loaded as an attachment fails to compile", "[render][graph][checkpoint-a]") {
+TEST_CASE("a transient loaded as an attachment fails to compile", "[render][graph]") {
     FakeTransientBackend backend;
     TransientPool pool(backend);
     auto outTarget = textureFixture(64, 64, "out");
