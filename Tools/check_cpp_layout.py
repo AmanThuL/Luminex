@@ -149,7 +149,8 @@ def semantic_definition_lines(data: list[int], definition_modifier: int) -> set[
 
 
 def callable_definition_ranges(
-    data: list[int], definition_modifier: int, token_types: list[str]
+    data: list[int], definition_modifier: int, token_types: list[str],
+    constructor_or_destructor_modifier: int | None = None,
 ) -> list[dict[str, Any]]:
     """Keep exact parsed callable-name spans, including overloaded operator tokens."""
     if len(data) % 5:
@@ -163,9 +164,14 @@ def callable_definition_ranges(
         column = column_delta if line_delta else column + column_delta
         if not 0 <= token_type < len(token_types):
             raise LayoutSetupError("clangd returned a semantic token outside its type legend")
-        if modifiers & (1 << definition_modifier) and token_types[token_type] in {
-            "function", "method", "operator"
-        }:
+        token_kind = token_types[token_type]
+        callable_kind = token_kind in {"function", "method", "operator"}
+        constructor_or_destructor = (
+            token_kind == "class"
+            and constructor_or_destructor_modifier is not None
+            and bool(modifiers & (1 << constructor_or_destructor_modifier))
+        )
+        if modifiers & (1 << definition_modifier) and (callable_kind or constructor_or_destructor):
             if line < 0 or column < 0 or length <= 0:
                 raise LayoutSetupError("clangd returned an invalid callable definition span")
             ranges.append({"start": {"line": line, "character": column},
@@ -295,6 +301,7 @@ class ClangdClient:
         self._input: BinaryIO = self._process.stdin
         self._output: BinaryIO = self._process.stdout
         self._definition_modifier: int | None = None
+        self._constructor_or_destructor_modifier: int | None = None
         self._token_types: list[str] = []
         self._ast_provider = False
 
@@ -353,7 +360,10 @@ class ClangdClient:
         modifiers = legend.get("tokenModifiers", [])
         if "definition" not in modifiers:
             raise LayoutSetupError("clangd does not expose semantic definition tokens")
+        if "constructorOrDestructor" not in modifiers:
+            raise LayoutSetupError("clangd does not expose the constructorOrDestructor semantic modifier")
         self._definition_modifier = modifiers.index("definition")
+        self._constructor_or_destructor_modifier = modifiers.index("constructorOrDestructor")
         self._token_types = legend.get("tokenTypes", [])
         self._ast_provider = capabilities.get("astProvider") is True
         self.notify("initialized", {})
@@ -378,7 +388,10 @@ class ClangdClient:
             data = (tokens.get("result") or {}).get("data", [])
             token_lines = semantic_definition_lines(data, self._definition_modifier)
             starts = definition_start_lines(symbols.get("result") or [], uri, token_lines)
-            for selection in callable_definition_ranges(data, self._definition_modifier, self._token_types):
+            for selection in callable_definition_ranges(
+                data, self._definition_modifier, self._token_types,
+                self._constructor_or_destructor_modifier,
+            ):
                 if not self._ast_provider:
                     raise LayoutSetupError("clangd must expose AST ranges for callable definition coverage")
                 ast = self.request("textDocument/ast", {"textDocument": {"uri": uri}, "range": selection})

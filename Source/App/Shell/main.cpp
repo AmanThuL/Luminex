@@ -461,7 +461,14 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         joinRetiredTimings();
         if (shell->measurementNeedsRetirementWait()) {
             gpu.waitIdle();
-            (*renderer)->drainVisibilityAfterIdle();
+            if (auto retired = (*renderer)->drainVisibilityAfterIdle(); !retired) {
+                LMX_LOG_ERROR("visibility retirement failed: {}", retired.error().message);
+                if (capturingThisFrame) {
+                    gpu.waitForFrame(gpuFrame.number);
+                    gpu.endCapture();
+                }
+                return 1;
+            }
             if (auto retired = (*renderer)->drainLightingAfterIdle(); !retired) {
                 LMX_LOG_ERROR("lighting retirement failed: {}", retired.error().message);
                 if (capturingThisFrame) {
@@ -514,7 +521,10 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
 
     // Establish one explicit idle boundary before dependent resources unwind.
     gpu.waitIdle();
-    (*renderer)->drainVisibilityAfterIdle();
+    if (auto retired = (*renderer)->drainVisibilityAfterIdle(); !retired) {
+        LMX_LOG_ERROR("visibility retirement failed: {}", retired.error().message);
+        return 1;
+    }
     if (auto retired = (*renderer)->drainLightingAfterIdle(); !retired) {
         LMX_LOG_ERROR("lighting retirement failed: {}", retired.error().message);
         return 1;

@@ -272,6 +272,8 @@ TEST_CASE("candidate buffer path decodes the glTF URI before its file exists",
     fs::create_directories(directory);
     struct Cleanup {
         fs::path path;
+
+        //==============================================================================================================
         ~Cleanup() {
             std::error_code ignored;
             fs::remove_all(path, ignored);

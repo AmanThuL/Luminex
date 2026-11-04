@@ -1,5 +1,6 @@
+#include "Render/Gpu/Readback.h"
 #include "Render/Passes/Occlusion/HzbStage.h"
-#include <rojoRHI/Validate.h>
+#include "Support/TestGpu.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <glm/vec2.hpp>
@@ -37,18 +38,29 @@ TEST_CASE("HZB allocation holds every ceil-sized mip at every active scale", "[h
 }
 
 //======================================================================================================================
-TEST_CASE("R32Float is exact sampled storage data without attachment capability", "[hzb][rhi]") {
+TEST_CASE("R32Float sampled storage and reported attachment usage follow v2 capabilities",
+          "[hzb][rhi][device]") {
     using namespace rojoRHI;
-    REQUIRE(bytesPerPixel(Format::R32Float) == 4);
-    TextureDesc desc{.width = 8,
-                     .height = 8,
-                     .format = Format::R32Float,
-                     .sampled = true,
-                     .storageRead = true,
-                     .storageWrite = true,
-                     .cpuReadback = true,
+    auto gpu = createTestGpu();
+    REQUIRE(lmx::render::packedTexelBytes(Format::R32Float) == 4);
+    const auto capabilities = gpu->device().formatCapabilities(Format::R32Float);
+    REQUIRE(capabilities.sampled);
+    REQUIRE(capabilities.storageRead);
+    REQUIRE(capabilities.storageWrite);
+    TextureDesc desc{.format = Format::R32Float,
+                     .extent = {8, 8, 1},
+                     .usage = TextureUsage::Sampled | TextureUsage::Storage,
                      .label = "lmx.test.r32"};
-    REQUIRE(validate(desc));
-    desc.renderTarget = true;
-    REQUIRE_FALSE(validate(desc));
+    auto texture = lmx::engine::GpuTexture::create(gpu->device(), desc, {}, {.storageMips = true});
+    REQUIRE(texture);
+    REQUIRE(texture->view() != lmx::engine::kNoView);
+    REQUIRE(texture->storageViewCount() == 1);
+    // An unreported attachment usage is fatal misuse in RojoRHI rather than a creation error, so
+    // only the reported case is exercised here.
+    if (capabilities.colorAttachment) {
+        desc.usage = desc.usage | TextureUsage::RenderTarget;
+        auto attachment =
+            lmx::engine::GpuTexture::create(gpu->device(), desc, {}, {.storageMips = true});
+        REQUIRE(attachment);
+    }
 }

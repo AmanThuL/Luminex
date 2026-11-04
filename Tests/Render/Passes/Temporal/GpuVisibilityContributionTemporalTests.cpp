@@ -1,7 +1,9 @@
 #include "Engine/Scene/Scene.h"
 
+#include "Engine/Gpu/GpuOwned.h"
 #include "Render/Renderer/SceneViewBuilder.h"
 #include "Support/GpuTestSupport.h"
+#include "Support/OracleRoots.h"
 #include <cstring>
 
 #include <algorithm>
@@ -18,7 +20,54 @@ struct ContributionTargets {
     std::array<const engine::GpuTexture*, 4> textures{};
     render::TextureUse hdrUse = render::TextureUse::CopySource;
     engine::GpuBuffer depth;
+    const render::TextureStateTable* states = nullptr;
 };
+
+// The depth reader's pipeline, kept with the library it was created from.
+struct DepthReader {
+    engine::GpuOwned<rojoRHI::ShaderLibrary> library;
+    engine::GpuOwned<rojoRHI::Pipeline> pipeline;
+};
+
+//======================================================================================================================
+DepthReader depthReader(engine::GpuContext& gpu) {
+    auto library = gpu.loadShaderLibrary("VisibilityDepthReadback");
+    INFO(errorOf(library));
+    REQUIRE(library);
+    auto pipeline = engine::adoptGpu(
+        gpu.device(), gpu.device().createPipeline(rojoRHI::ComputePipelineDesc{
+                          .compute = {.library = library->get(), .name = "computeMain"},
+                          .label = "lmx.test.visibility.depthReadback"}));
+    INFO(errorOf(pipeline));
+    REQUIRE(pipeline);
+    return {.library = std::move(*library), .pipeline = std::move(*pipeline)};
+}
+
+//======================================================================================================================
+// One attachment's packed bytes, after checking the use the renderer's table records for it.
+std::vector<uint8_t> attachmentBytes(engine::GpuContext& gpu, const ContributionTargets& targets,
+                                     uint32_t attachment) {
+    const auto& texture = *targets.textures[attachment];
+    requireRecordedUse(*targets.states, texture,
+                       attachment == 0 ? targets.hdrUse : render::TextureUse::RenderTarget);
+    auto bytes = render::readbackNow(gpu, texture, *targets.states);
+    INFO(errorOf(bytes));
+    REQUIRE(bytes);
+    return std::move(*bytes);
+}
+
+//======================================================================================================================
+std::vector<uint8_t> depthBytes(engine::GpuContext& gpu, const ContributionTargets& targets,
+                                uint64_t size) {
+    auto bytes = render::readbackNow(gpu, targets.depth,
+                                     {.stage = rojoRHI::Stage::ComputeShader,
+                                      .access = rojoRHI::Access::ShaderWrite,
+                                      .layout = rojoRHI::Layout::Undefined},
+                                     {.offset = 0, .size = size});
+    INFO(errorOf(bytes));
+    REQUIRE(bytes);
+    return std::move(*bytes);
+}
 
 //======================================================================================================================
 engine::MeshData contributionQuad() {
@@ -38,12 +87,11 @@ engine::Scene contributionScene(rojoRHI::Device& device) {
         light.strength = {};
     const std::array<uint8_t, 16> texels{255, 255, 255, 0, 255, 255, 255, 255,
                                          255, 255, 255, 0, 255, 255, 255, 255};
-    const rojoRHI::TextureMip mip{.data = texels.data(), .bytesPerRow = 16};
+    const rojoRHI::TextureData mip{.bytes = std::as_bytes(std::span(texels)), .bytesPerRow = 16};
     auto texture = engine::GpuTexture::create(device,
-                                              {.width = 4,
-                                               .height = 1,
-                                               .format = rojoRHI::Format::RGBA8Unorm_sRGB,
-                                               .sampled = true,
+                                              {.format = rojoRHI::Format::RGBA8Unorm_sRGB,
+                                               .extent = {4, 1, 1},
+                                               .usage = rojoRHI::TextureUsage::Sampled,
                                                .label = "lmx.test.visibility.cutout"},
                                               std::span{&mip, 1});
     INFO(errorOf(texture));
@@ -101,14 +149,20 @@ std::unique_ptr<render::Renderer> contributionRenderer(engine::GpuContext& gpu) 
 ContributionTargets contributionTargets(engine::GpuContext& gpu, render::Renderer& renderer,
                                         render::TransientPool& pool, rojoRHI::CommandList& commands,
                                         const engine::Camera& camera, const render::SceneView& view,
-                                        uint64_t frame, rojoRHI::ComputePipeline& depthPipeline) {
+                                        uint64_t frame, const DepthReader& reader) {
     pool.beginFrame();
     render::RenderGraph graph(pool);
-    graph.exportTexture(renderer.declarePasses(graph, commands, camera, view));
+    const auto declared = renderer.declarePasses(graph, commands, camera, view);
+    INFO(errorOf(declared));
+    REQUIRE(declared);
+    graph.exportTexture(*declared);
     const auto compiled = graph.compileFrame(frame);
     REQUIRE(compiled);
     const auto& record = *compiled;
+    const auto lowered = graph.lower(frame);
+    REQUIRE(lowered);
     ContributionTargets targets;
+    targets.states = &renderer.textureStates();
     targets.textures = {&renderer.hdrColorTexture(), &renderer.depthTexture(),
                         renderer.motionTexture(), nullptr};
     render::GraphTexture depthHandle;
@@ -122,39 +176,54 @@ ContributionTargets contributionTargets(engine::GpuContext& gpu, render::Rendere
             if (record.debug.resources[use.resource].name != "lmx.render.reactive")
                 continue;
             REQUIRE(use.role == render::UseRole::ColorAttachment);
-            const auto texture = graph.passResources(pass).texture({use.resource, use.version});
-            REQUIRE(texture);
+            const auto texture =
+                graph.passResources(*lowered, pass).texture({use.resource, use.version});
+            REQUIRE(texture.texture.bits != 0);
             targets.textures[3] = renderer.reactiveTexture();
             REQUIRE(targets.textures[3] != nullptr);
-            REQUIRE(&targets.textures[3]->rhi() == *texture);
+            REQUIRE(targets.textures[3]->rhi() == texture.texture);
         }
     }
     REQUIRE(std::ranges::all_of(targets.textures,
                                 [](const auto* texture) { return texture != nullptr; }));
-    auto depth = engine::GpuBuffer::create(gpu.device(),
-                                           {.size = uint64_t{kSize} * kSize * 4,
-                                            .storageWrite = true,
-                                            .cpuReadback = true,
-                                            .label = "lmx.test.visibility.depth"},
-                                           nullptr);
+    auto depth =
+        engine::GpuBuffer::create(gpu.device(), {.size = uint64_t{kSize} * kSize * 4,
+                                                 .memory = rojoRHI::Memory::Gpu,
+                                                 .usage = rojoRHI::BufferUsage::ShaderWrite,
+                                                 .label = "lmx.test.visibility.depth"});
     REQUIRE(depth);
     targets.depth = std::move(*depth);
     targets.hdrUse = renderer.temporalStatus().upscaled ? render::TextureUse::ShaderRead
                                                         : render::TextureUse::CopySource;
-    const auto depthBuffer = graph.importBuffer(targets.depth.rhi(), "lmx.test.visibility.depth");
-    graph.addComputePass("lmx.test.visibility.readDepth",
-                         {.shaderTextureReads = {depthHandle}, .bufferWrites = {depthBuffer}},
-                         [&](const render::PassResources& resources) {
-                             const auto source = resources.texture(depthHandle);
-                             const auto destination = resources.buffer(depthBuffer);
-                             REQUIRE(source);
-                             REQUIRE(destination);
-                             commands.bindComputePipeline(depthPipeline);
-                             commands.bindTexture(1, **source);
-                             commands.bindStorageBuffer(0, **destination,
-                                                        rojoRHI::StorageAccess::Write);
-                             commands.dispatch(kSize / 8, kSize / 8, 1);
-                         });
+    const auto depthBuffer = graph.importBuffer(targets.depth, "lmx.test.visibility.depth");
+    render::ComputePassDesc readDepth;
+    readDepth.shaderTextureReads = {depthHandle};
+    readDepth.bufferWrites = {depthBuffer};
+    graph.addComputePass(
+        "lmx.test.visibility.readDepth", std::move(readDepth),
+        [&commands, &reader, depthHandle, depthBuffer](const render::PassResources& resources) {
+            const auto source = resources.texture(depthHandle);
+            const auto destination = resources.buffer(depthBuffer);
+            REQUIRE(source.texture.bits != 0);
+            REQUIRE(destination.bits != 0);
+            commands.setPipeline(reader.pipeline.get());
+            commands.pushRoot(lmx::test::VisibilityDepthRoot{
+                .output = resources.address(depthBuffer),
+                .depth = static_cast<uint32_t>(resources.view(depthHandle))});
+#ifndef NDEBUG
+            const std::array<rojoRHI::ResourceAccess, 2> accesses{
+                {{.texture = source.texture,
+                  .range = {.baseMip = 0, .mipCount = 1, .baseLayer = 0, .layerCount = 1},
+                  .stage = rojoRHI::Stage::ComputeShader,
+                  .access = rojoRHI::Access::ShaderRead},
+                 {.buffer = destination,
+                  .size = uint64_t{kSize} * kSize * 4,
+                  .stage = rojoRHI::Stage::ComputeShader,
+                  .access = rojoRHI::Access::ShaderWrite}}};
+            commands.declareAccess(accesses);
+#endif
+            commands.dispatch(kSize / 8, kSize / 8, 1);
+        });
     graph.readbackBuffer(render::nextVersion(depthBuffer));
     graph.execute(commands, frame);
     return targets;
@@ -166,18 +235,11 @@ std::array<std::vector<uint8_t>, 4> contributionBytes(engine::GpuContext& gpu,
     constexpr std::array<uint32_t, 4> bytesPerPixel{8, 4, 4, 1};
     std::array<std::vector<uint8_t>, 4> result;
     for (uint32_t attachment = 0; attachment < result.size(); ++attachment) {
-        result[attachment].resize(size_t{kSize} * kSize * bytesPerPixel[attachment]);
-        if (attachment == 1) {
-            const auto readbackBytes =
-                lmx::render::readbackNow(gpu, targets.depth, lmx::render::BufferUse::StorageWrite,
-                                         {0, result[attachment].size()});
-            std::memcpy(result[attachment].data(), readbackBytes.data(), result[attachment].size());
-        } else {
-            const auto readbackBytes = lmx::render::readbackNow(
-                gpu, *targets.textures[attachment],
-                attachment == 0 ? targets.hdrUse : render::TextureUse::RenderTarget);
-            std::memcpy(result[attachment].data(), readbackBytes.data(), result[attachment].size());
-        }
+        const size_t size = size_t{kSize} * kSize * bytesPerPixel[attachment];
+        result[attachment] = attachment == 1 ? depthBytes(gpu, targets, size)
+                                             : attachmentBytes(gpu, targets, attachment);
+        REQUIRE(result[attachment].size() >= size);
+        result[attachment].resize(size);
     }
     return result;
 }
@@ -206,24 +268,22 @@ void requireSentinelCoverage(engine::GpuContext& gpu, const ContributionTargets&
     std::vector<uint16_t> motion(size_t{kSize} * kSize * 2);
     std::vector<uint8_t> reactive(size_t{kSize} * kSize);
     {
-        const auto readbackBytes =
-            lmx::render::readbackNow(gpu, *targets.textures[0], targets.hdrUse);
+        const auto readbackBytes = attachmentBytes(gpu, targets, 0);
+        REQUIRE(readbackBytes.size() >= hdr.size() * sizeof(uint16_t));
         std::memcpy(hdr.data(), readbackBytes.data(), hdr.size() * sizeof(uint16_t));
     }
     {
-        const auto readbackBytes =
-            lmx::render::readbackNow(gpu, targets.depth, lmx::render::BufferUse::StorageWrite,
-                                     {0, depth.size() * sizeof(float)});
+        const auto readbackBytes = depthBytes(gpu, targets, depth.size() * sizeof(float));
         std::memcpy(depth.data(), readbackBytes.data(), depth.size() * sizeof(float));
     }
     {
-        const auto readbackBytes =
-            lmx::render::readbackNow(gpu, *targets.textures[2], render::TextureUse::RenderTarget);
+        const auto readbackBytes = attachmentBytes(gpu, targets, 2);
+        REQUIRE(readbackBytes.size() >= motion.size() * sizeof(uint16_t));
         std::memcpy(motion.data(), readbackBytes.data(), motion.size() * sizeof(uint16_t));
     }
     {
-        const auto readbackBytes =
-            lmx::render::readbackNow(gpu, *targets.textures[3], render::TextureUse::RenderTarget);
+        const auto readbackBytes = attachmentBytes(gpu, targets, 3);
+        REQUIRE(readbackBytes.size() >= reactive.size());
         std::memcpy(reactive.data(), readbackBytes.data(), reactive.size());
     }
     std::array<uint32_t, 3> covered{};
@@ -279,16 +339,7 @@ void requireSentinelCoverage(engine::GpuContext& gpu, const ContributionTargets&
 TEST_CASE("rejected geometry contributes no camera attachments through the jitter cycle",
           "[gpu][visibility][visibility-contribution]") {
     auto gpu = createTestGpu();
-    auto library = gpu->loadShaderLibrary("VisibilityDepthReadback");
-    INFO(errorOf(library));
-    REQUIRE(library);
-    auto depthPipeline =
-        gpu->device().createComputePipeline({.library = library->get(),
-                                             .computeEntry = "computeMain",
-                                             .threadsPerThreadgroup = {8, 8, 1},
-                                             .label = "lmx.test.visibility.depthReadback"});
-    INFO(errorOf(depthPipeline));
-    REQUIRE(depthPipeline);
+    const auto reader = depthReader(*gpu);
     auto scene = contributionScene(gpu->device());
     engine::Camera camera;
     camera.fovY = glm::half_pi<float>();
@@ -296,8 +347,7 @@ TEST_CASE("rejected geometry contributes no camera attachments through the jitte
         auto culled = contributionRenderer(*gpu);
         auto unculled = contributionRenderer(*gpu);
         auto empty = contributionRenderer(*gpu);
-        render::TransientPool culledPool(gpu->device()), unculledPool(gpu->device()),
-            emptyPool(gpu->device());
+        render::TransientPool culledPool(*gpu), unculledPool(*gpu), emptyPool(*gpu);
         for (const bool sentinels : {false, true}) {
             for (uint32_t phase = 0; phase < render::kJitterSequenceLength; ++phase) {
                 CAPTURE(scale, sentinels, phase);
@@ -323,14 +373,14 @@ TEST_CASE("rejected geometry contributes no camera attachments through the jitte
                                                 .viewProjectionJittered;
                 requireOutsideClip(scene, viewProjection);
                 const auto frame = gpu->frameNumber();
-                const auto culledTargets = contributionTargets(
-                    *gpu, *culled, culledPool, commands, camera, view, frame, **depthPipeline);
+                const auto culledTargets = contributionTargets(*gpu, *culled, culledPool, commands,
+                                                               camera, view, frame, reader);
                 view.visibilityEnabled = false;
                 const auto unculledTargets = contributionTargets(
-                    *gpu, *unculled, unculledPool, commands, camera, view, frame, **depthPipeline);
+                    *gpu, *unculled, unculledPool, commands, camera, view, frame, reader);
                 view.items = {};
                 const auto emptyTargets = contributionTargets(*gpu, *empty, emptyPool, commands,
-                                                              camera, view, frame, **depthPipeline);
+                                                              camera, view, frame, reader);
                 gpu->submitAndEndFrame(commandsFrame);
                 scene.commitFrame();
                 gpu->waitIdle();
@@ -369,15 +419,7 @@ TEST_CASE("rejected geometry contributes no camera attachments through the jitte
 TEST_CASE("GPU classification preserves every camera attachment through the jitter cycle",
           "[gpu][visibility][visibility-contribution][gpu-classify]") {
     auto gpuContext = createTestGpu();
-    auto library = gpuContext->loadShaderLibrary("VisibilityDepthReadback");
-    INFO(errorOf(library));
-    REQUIRE(library);
-    auto depthPipeline =
-        gpuContext->device().createComputePipeline({.library = library->get(),
-                                                    .computeEntry = "computeMain",
-                                                    .threadsPerThreadgroup = {8, 8, 1},
-                                                    .label = "lmx.test.visibility.depthReadback"});
-    REQUIRE(depthPipeline);
+    const auto reader = depthReader(*gpuContext);
     auto scene = contributionScene(gpuContext->device());
     engine::Camera camera;
     camera.fovY = glm::half_pi<float>();
@@ -386,7 +428,7 @@ TEST_CASE("GPU classification preserves every camera attachment through the jitt
         for (const float scale : {1.0f, 0.5f}) {
             auto cpu = contributionRenderer(*gpuContext);
             auto gpu = contributionRenderer(*gpuContext);
-            render::TransientPool cpuPool(gpuContext->device()), gpuPool(gpuContext->device());
+            render::TransientPool cpuPool(*gpuContext), gpuPool(*gpuContext);
             for (uint32_t phase = 0; phase < render::kJitterSequenceLength; ++phase) {
                 CAPTURE(static_cast<int>(submission), scale, phase);
                 scene.objects.back().position.x = phase % 2 == 0 ? 0.7f : 0.72f;
@@ -405,10 +447,10 @@ TEST_CASE("GPU classification preserves every camera attachment through the jitt
                 view.temporal.sceneGeneration = scene.objects.front().id.store;
                 const auto frame = gpuContext->frameNumber();
                 const auto expected = contributionTargets(*gpuContext, *cpu, cpuPool, commands,
-                                                          camera, view, frame, **depthPipeline);
+                                                          camera, view, frame, reader);
                 view.classifyMode = render::ClassifyMode::Gpu;
                 const auto actual = contributionTargets(*gpuContext, *gpu, gpuPool, commands,
-                                                        camera, view, frame, **depthPipeline);
+                                                        camera, view, frame, reader);
                 gpuContext->submitAndEndFrame(commandsFrame);
                 scene.commitFrame();
                 gpuContext->waitIdle();

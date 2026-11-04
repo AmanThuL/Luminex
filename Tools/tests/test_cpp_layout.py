@@ -21,6 +21,7 @@ class ParsedFixtureClient(layout.ClangdClient):
 
     def __init__(self, symbols: list, tokens: list[int], ast: dict | None) -> None:
         self._definition_modifier = 1
+        self._constructor_or_destructor_modifier = 2
         self._token_types = ["operator", "function", "method", "variable", "class"]
         self._ast_provider = True
         self.symbols = symbols
@@ -42,6 +43,24 @@ class ParsedFixtureClient(layout.ClangdClient):
         raise AssertionError(f"unexpected request: {method}")
 
 
+class InitializeFixtureClient(ParsedFixtureClient):
+    def __init__(self, modifiers: list[str]) -> None:
+        super().__init__([], [], None)
+        self.root = Path("/workspace")
+        self.modifiers = modifiers
+
+    def request(self, method: str, params: dict) -> dict:
+        if method == "initialize":
+            return {"result": {"capabilities": {
+                "semanticTokensProvider": {"legend": {
+                    "tokenTypes": ["class", "method"],
+                    "tokenModifiers": self.modifiers,
+                }},
+                "astProvider": True,
+            }}}
+        return super().request(method, params)
+
+
 def function_ast(start: int, end: int, kind: str = "Function") -> dict:
     return {
         "role": "declaration", "kind": kind, "detail": "operator==",
@@ -51,6 +70,95 @@ def function_ast(start: int, end: int, kind: str = "Function") -> dict:
 
 
 class CppLayoutTests(unittest.TestCase):
+
+    def test_local_destructor_class_token_claims_required_separator(self) -> None:
+        # Actual captured clangd legend/token/range: local ~CloseFrame lacks a document symbol.
+        client = ParsedFixtureClient([], [88, 13, 10, 8, 20483], {'kind': 'CXXDestructor', 'role': 'declaration', 'range': {'end': {'character': 13, 'line': 91}, 'start': {'character': 12, 'line': 88}}})
+        client._definition_modifier = 1
+        client._constructor_or_destructor_modifier = 12
+        client._token_types = ['variable', 'variable', 'parameter', 'function', 'method', 'function', 'property', 'variable', 'class', 'interface', 'enum', 'enumMember', 'type', 'type', 'unknown', 'namespace', 'typeParameter', 'concept', 'type', 'macro', 'modifier', 'operator', 'bracket', 'label', 'comment']
+        source = "\n".join(
+            [""] * 87
+            + [separator(" " * 12), "            ~CloseFrame() {",
+               "                if (!closed)", "                    gpu.submitAndEndFrame(frame);",
+               "            }"]
+        )
+        starts = client.definition_lines(Path("/workspace/Tests/Local.cpp"), source)
+        errors = layout.check_layout(Path("Tests/Local.cpp"), source, starts)
+        self.assertEqual(errors, [])
+        self.assertEqual(starts, {88})
+        self.assertEqual(client.ast_selections, [
+            {"start": {"line": 88, "character": 13},
+             "end": {"line": 88, "character": 23}},
+        ])
+
+
+    def test_constructor_modifier_zero_and_reordered_legend_select_class_callable(self) -> None:
+        selected = layout.callable_definition_ranges(
+            [3, 6, 2, 0, 5], 2, ["class", "method"], 0,
+        )
+        self.assertEqual(selected, [
+            {"start": {"line": 3, "character": 6},
+             "end": {"line": 3, "character": 8}},
+        ])
+
+    def test_legacy_three_argument_helper_keeps_class_definitions_non_callable(self) -> None:
+        self.assertEqual(layout.callable_definition_ranges(
+            [3, 6, 2, 0, 3], 1, ["class"],
+        ), [])
+
+    def test_class_declaration_and_ordinary_class_definition_do_not_request_ast(self) -> None:
+        client = ParsedFixtureClient(
+            [], [1, 4, 5, 4, 4, 1, 4, 5, 4, 2, 1, 4, 5, 3, 6], None,
+        )
+        self.assertEqual(client.definition_lines(Path("/workspace/Tests/Local.cpp"), ""), set())
+        self.assertEqual(client.ast_selections, [])
+
+    def test_constructor_modifier_requires_definition_on_class_token(self) -> None:
+        self.assertEqual(layout.callable_definition_ranges(
+            [3, 6, 2, 0, 1], 2, ["class"], 0,
+        ), [])
+
+    def test_initialize_uses_advertised_modifier_indices_including_zero(self) -> None:
+        client = InitializeFixtureClient(["constructorOrDestructor", "declaration", "definition"])
+        client.initialize()
+        self.assertEqual(client._constructor_or_destructor_modifier, 0)
+        self.assertEqual(client._definition_modifier, 2)
+
+    def test_initialize_missing_required_modifier_fails_closed(self) -> None:
+        for modifiers, missing in [
+            (["declaration", "definition"], "constructorOrDestructor"),
+            (["constructorOrDestructor", "declaration"], "definition"),
+        ]:
+            with self.subTest(missing=missing):
+                client = InitializeFixtureClient(modifiers)
+                with self.assertRaisesRegex(layout.LayoutSetupError, missing):
+                    client.initialize()
+
+    def test_local_destructor_requires_ast_capability(self) -> None:
+        client = ParsedFixtureClient([], [3, 4, 5, 4, 6], function_ast(3, 5, "CXXDestructor"))
+        client._ast_provider = False
+        with self.assertRaisesRegex(layout.LayoutSetupError, "AST"):
+            client.definition_lines(Path("/workspace/Tests/Local.cpp"), "")
+
+    def test_local_destructor_unresolved_or_wrong_range_fails_closed(self) -> None:
+        for ast in [
+            None,
+            {"role": "declaration", "kind": "CXXRecord"},
+            {"role": "declaration", "kind": "CXXDestructor", "range": {}},
+            function_ast(8, 9, "CXXDestructor"),
+        ]:
+            with self.subTest(ast=ast):
+                client = ParsedFixtureClient([], [3, 4, 5, 4, 6], ast)
+                with self.assertRaises(layout.LayoutSetupError):
+                    client.definition_lines(Path("/workspace/Tests/Local.cpp"), "")
+
+    def test_constructor_token_keeps_malformed_stream_and_type_failures(self) -> None:
+        for data in ([1], [1, 4, 5, 8, 6]):
+            with self.subTest(data=data):
+                with self.assertRaises(layout.LayoutSetupError):
+                    layout.callable_definition_ranges(data, 1, ["class"], 2)
+
     def test_omitted_defaulted_friend_uses_parsed_boundary(self) -> None:
         # Apple clangd exposes the == definition token while omitting its document symbol.
         client = ParsedFixtureClient([], [3, 24, 2, 0, 3], function_ast(3, 3))

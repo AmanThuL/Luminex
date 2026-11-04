@@ -4,14 +4,11 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Util/Stopwatch.h"
-#ifndef LMX_PENDING_VISIBILITY
 #include "Render/Passes/Occlusion/OcclusionReference.h"
-#endif
-
-#ifndef LMX_PENDING_VISIBILITY
 #include "Render/Passes/Visibility/GpuVisibility.h"
-#endif
+#include "Render/Passes/Visibility/VisibilityRetirement.h"
 #include "Render/Renderer/Renderer.h"
+#include "Render/Renderer/RendererInternal.h"
 #include <limits>
 
 namespace lmx::render {
@@ -29,39 +26,38 @@ VisibilityCounters cpuCounters(const VisibilityResult& result, uint32_t commands
 } // namespace
 
 //======================================================================================================================
-std::array<GraphBuffer, 2>
+lmx::Result<RendererVisibilityFrame>
 Renderer::prepareVisibility(RenderGraph& graph, rojoRHI::CommandList& commands,
                             const SceneView& view, const FrustumPlanes& planes,
-                            [[maybe_unused]] std::span<const GraphBuffer> sceneBuffers) {
+                            std::span<const GraphBuffer> sceneBuffers,
+                            const RendererOcclusionFrame& occlusion) {
     const auto frame = m_gpu.frameNumber();
-#ifndef LMX_PENDING_VISIBILITY
-    // Retirement precedes draw-buffer growth, whose release list may destroy completed storage.
-    if (m_gpuVisibility && frame >= 3)
-        m_gpuVisibility->retireThrough(frame - 3);
-#endif
-    m_visibilityStatus = {};
-#ifndef LMX_PENDING_VISIBILITY
-    m_visibilityStatus.occlusionEnabled = view.occlusionEnabled;
-    m_visibilityStatus.occlusionCheckEnabled = view.occlusionCheck;
-    m_visibilityStatus.occlusionInvalidReason = m_occlusionReason;
-    m_visibilityStatus.occlusionSourceFrame = m_occlusionSource.frameNumber;
-    m_visibilityStatus.occlusionParams = m_occlusionParams;
-    m_visibilityStatus.pyramidBytes =
-        m_hzbStage && view.occlusionEnabled ? m_hzbStage->layout().bytes : 0;
-    m_visibilityStatus.classifyMode = view.classifyMode;
-    m_visibilityStatus.checkEnabled = view.classifyCheck;
-#else
-    m_visibilityStatus.classifyMode = ClassifyMode::Cpu;
-#endif
-    m_visibilityStatus.frameNumber = frame;
-    m_visibilityStatus.sceneGeneration = view.temporal.sceneGeneration;
+    // Retirement precedes draw-buffer growth, whose release list may destroy completed storage,
+    // and the visibility declaration, whose slot reuse needs the frame three back released. One
+    // transaction prepares production and reference before either publishes; its error is sticky.
+    if (m_gpuVisibility && frame >= 3) {
+        auto retired = VisibilityRetirementAccess::retire(*m_gpuVisibility,
+                                                          m_occlusionReference.get(), frame - 3);
+        if (!retired)
+            return std::unexpected(retired.error());
+    }
+    RendererVisibilityFrame result;
+    VisibilityStatus& status = result.status;
+    status.occlusionAssociation = occlusion.association;
+    status.occlusionEnabled = view.occlusionEnabled;
+    status.occlusionCheckEnabled = view.occlusionCheck;
+    status.occlusionInvalidReason = occlusion.reason;
+    status.occlusionSourceFrame = m_occlusionSource.frameNumber;
+    status.occlusionParams = occlusion.params;
+    status.pyramidBytes = m_hzbStage && view.occlusionEnabled ? m_hzbStage->layout().bytes : 0;
+    status.classifyMode = view.classifyMode;
+    status.checkEnabled = view.classifyCheck;
+    status.frameNumber = frame;
+    status.sceneGeneration = view.temporal.sceneGeneration;
     const Stopwatch classifyTimer;
-#ifndef LMX_PENDING_VISIBILITY
     if (view.classifyMode == ClassifyMode::Cpu) {
-        m_visibilityStatus.scene =
-            classifyView(planes, view.items, view.tables, view.visibilityEnabled);
-        m_visibilityStatus.shadow =
-            classifyView(planes, view.items, view.tables, view.visibilityEnabled, true);
+        status.scene = classifyView(planes, view.items, view.tables, view.visibilityEnabled);
+        status.shadow = classifyView(planes, view.items, view.tables, view.visibilityEnabled, true);
     } else {
         // Preserve declaration-time row identity and bounds without executing the CPU box oracle.
         for (const auto& item : view.items) {
@@ -69,48 +65,34 @@ Renderer::prepareVisibility(RenderGraph& graph, rojoRHI::CommandList& commands,
                        "visibility requires canonical instance rows");
             const auto& row = view.tables.instanceRows[item.instanceRow];
             if (row.flags & engine::kInstanceDisabled)
-                ++m_visibilityStatus.sceneCounters.disabled;
+                ++status.sceneCounters.disabled;
             else
-                ++m_visibilityStatus.sceneCounters.candidates;
-            m_visibilityStatus.scene.candidates.push_back(
+                ++status.sceneCounters.candidates;
+            status.scene.candidates.push_back(
                 {.instanceIdentity = item.instanceIdentity,
                  .instanceRow = item.instanceRow,
-                 .worldBounds = {row.worldBoundsMin, row.worldBoundsMax}});
+                 .worldBounds = {.minimum = row.worldBoundsMin, .maximum = row.worldBoundsMax}});
         }
-        m_visibilityStatus.shadow.candidates = m_visibilityStatus.scene.candidates;
-        m_visibilityStatus.shadowCounters = m_visibilityStatus.sceneCounters;
+        status.shadow.candidates = status.scene.candidates;
+        status.shadowCounters = status.sceneCounters;
         if (!m_gpuVisibility) {
             auto stage = GpuVisibility::create(m_gpu);
-            LMX_ASSERT(stage.has_value(), stage.error().message);
+            if (!stage)
+                return std::unexpected(stage.error());
             m_gpuVisibility = std::move(*stage);
         }
     }
-#else
-    m_visibilityStatus.scene =
-        classifyView(planes, view.items, view.tables, view.visibilityEnabled);
-    m_visibilityStatus.shadow =
-        classifyView(planes, view.items, view.tables, view.visibilityEnabled, true);
-#endif
     const Stopwatch prepareTimer;
-#ifndef LMX_PENDING_VISIBILITY
-    m_visibilityStatus.classifyMs = view.classifyMode == ClassifyMode::Cpu
-                                        ? classifyTimer.elapsedMillisecondsUntil(prepareTimer)
-                                        : 0;
-#else
-    m_visibilityStatus.classifyMs = classifyTimer.elapsedMillisecondsUntil(prepareTimer);
-#endif
+    status.classifyMs = view.classifyMode == ClassifyMode::Cpu
+                            ? classifyTimer.elapsedMillisecondsUntil(prepareTimer)
+                            : 0;
 
-#ifndef LMX_PENDING_VISIBILITY
+    // CPU frames copy their prepared prefixes on `commands` before any graph pass records.
     const auto prepared =
-        m_drawSubmission.prepare(frame, view, m_visibilityStatus.scene, m_visibilityStatus.shadow);
-#else
-    SceneView cpuView = view;
-    cpuView.classifyMode = ClassifyMode::Cpu;
-    const auto prepared = m_drawSubmission.prepare(
-        commands, frame, cpuView, m_visibilityStatus.scene, m_visibilityStatus.shadow);
-#endif
-    LMX_ASSERT(prepared.has_value(), prepared.error().message);
-    m_visibilityStatus.submission = m_drawSubmission.stats();
+        m_drawSubmission.prepare(commands, frame, view, status.scene, status.shadow);
+    if (!prepared)
+        return std::unexpected(prepared.error());
+    status.submission = m_drawSubmission.stats();
     auto import = [&](const engine::GpuBuffer& buffer, const char* label,
                       std::optional<BufferUse> use) {
         return use ? graph.importBuffer(buffer, label, *use) : graph.importBuffer(buffer, label);
@@ -118,9 +100,8 @@ Renderer::prepareVisibility(RenderGraph& graph, rojoRHI::CommandList& commands,
     auto rows = import(*m_drawSubmission.scene().rows, "lmx.draw.rows", m_drawSubmission.rowUse());
     auto arguments = import(*m_drawSubmission.scene().arguments, "lmx.draw.args",
                             m_drawSubmission.argumentUse());
-#ifndef LMX_PENDING_VISIBILITY
     if (view.classifyMode == ClassifyMode::Gpu) {
-        const auto output = m_gpuVisibility->declare(
+        auto output = m_gpuVisibility->declare(
             graph, commands, view,
             {.planes = planes,
              .submission = m_drawSubmission.prepared(),
@@ -128,33 +109,42 @@ Renderer::prepareVisibility(RenderGraph& graph, rojoRHI::CommandList& commands,
              .meshes = sceneBuffers.empty() ? GraphBuffer{} : sceneBuffers[2],
              .rows = rows,
              .arguments = arguments,
-             .pyramid = m_previousPyramid,
-             .occlusion = m_occlusionParams},
-            m_visibilityStatus);
-        rows = output.rows;
-        arguments = output.arguments;
+             .history = occlusion.history,
+             .occlusion = occlusion.params},
+            status);
+        if (!output)
+            return std::unexpected(output.error());
+        rows = output->rows;
+        arguments = output->arguments;
+        result.declaration = std::move(*output);
     } else {
-        m_visibilityStatus.sceneCounters =
-            cpuCounters(m_visibilityStatus.scene, m_visibilityStatus.submission.sceneCommands);
-        m_visibilityStatus.shadowCounters =
-            cpuCounters(m_visibilityStatus.shadow, m_visibilityStatus.submission.shadowCommands);
+        status.sceneCounters = cpuCounters(status.scene, status.submission.sceneCommands);
+        status.shadowCounters = cpuCounters(status.shadow, status.submission.shadowCommands);
     }
-#else
-    m_visibilityStatus.sceneCounters =
-        cpuCounters(m_visibilityStatus.scene, m_visibilityStatus.submission.sceneCommands);
-    m_visibilityStatus.shadowCounters =
-        cpuCounters(m_visibilityStatus.shadow, m_visibilityStatus.submission.shadowCommands);
-#endif
-    m_visibilityStatus.prepareMs = prepareTimer.elapsedMilliseconds();
-#ifndef LMX_PENDING_VISIBILITY
-    if (view.classifyMode == ClassifyMode::Gpu)
-        m_gpuVisibility->recordDeclarationStatus(m_visibilityStatus);
+    status.prepareMs = prepareTimer.elapsedMilliseconds();
+    if (result.declaration)
+        m_gpuVisibility->recordDeclarationStatus(*result.declaration, status);
     // CPU-only frames keep their historical imports; once a GPU writer has used this allocation
     // its terminal reads remain recorded across classifier switches.
     if (view.classifyMode == ClassifyMode::Gpu || m_drawSubmission.rowUse())
         m_drawSubmission.recordUses();
-#endif
-    return {rows, arguments};
+    result.buffers = {rows, arguments};
+    return result;
+}
+
+//======================================================================================================================
+std::vector<VisibilityStatus> Renderer::takeRetiredVisibility() {
+    // Every record reached m_retired through a joined retirement, so taking cannot fail.
+    return m_gpuVisibility ? m_gpuVisibility->takeRetired() : std::vector<VisibilityStatus>{};
+}
+
+//======================================================================================================================
+lmx::Result<void> Renderer::drainVisibilityAfterIdle() {
+    if (m_gpuVisibility)
+        return VisibilityRetirementAccess::retire(*m_gpuVisibility, m_occlusionReference.get(),
+                                                  std::numeric_limits<uint64_t>::max());
+    LMX_ASSERT(!m_occlusionReference, "an occlusion reference requires its production owner");
+    return {};
 }
 
 } // namespace lmx::render

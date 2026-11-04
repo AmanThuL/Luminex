@@ -8,15 +8,11 @@
 #include "Render/Passes/Display/DisplayStage.h"
 #include "Render/Passes/Exposure/ExposureStage.h"
 
-#ifndef LMX_PENDING_VISIBILITY
 #include "Render/Passes/Occlusion/OcclusionReference.h"
-#endif
 
 #include "Render/Passes/Temporal/VendorTemporalScaler.h"
 
-#ifndef LMX_PENDING_VISIBILITY
 #include "Render/Passes/Visibility/GpuVisibility.h"
-#endif
 #include "Render/Renderer/Renderer.h"
 #include "Render/Renderer/RendererInternal.h"
 #include <chrono>
@@ -73,9 +69,7 @@ void registerUniformLayoutsForCapture() {
     SceneStage::registerSceneTableLayoutsForCapture();
     ShadowStage::registerUniformLayoutsForCapture();
 
-#ifndef LMX_PENDING_VISIBILITY
     registerVisibilityLayoutsForCapture();
-#endif
 
 #ifndef LMX_PENDING_LIGHTS
     LightClusterStage::registerLayoutsForCapture();
@@ -292,6 +286,16 @@ lmx::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
     if (!temporalSlots) {
         return std::unexpected(temporalSlots.error());
     }
+    // The occlusion pyramid pair, once a frame has created it, is one more replacement: prepared
+    // here without touching the live pair, committed with everything else below.
+    std::optional<PreparedHzbResize> hzb;
+    if (m_hzbStage) {
+        auto prepared = m_hzbStage->prepareResize(width, height);
+        if (!prepared) {
+            return std::unexpected(prepared.error());
+        }
+        hzb = std::move(*prepared);
+    }
 
     // Every allocation above succeeded, so commit them all at once: a failure before this point
     // leaves the renderer entirely at its old extent, with every old identity and state entry.
@@ -303,18 +307,9 @@ lmx::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
     m_width = width;
     m_height = height;
     adoptTemporalTargets(std::move(*temporalTargets), std::move(*temporalSlots));
-
-#ifndef LMX_PENDING_VISIBILITY
-    // The occlusion pyramid is not part of the commit: it resizes after it, on its own terms.
-    if (m_hzbStage) {
-        {
-            auto result = m_hzbStage->resize(width, height, m_textureStates);
-            if (!result) {
-                return std::unexpected(result.error());
-            }
-        }
+    if (hzb) {
+        m_hzbStage->commitResize(std::move(*hzb), m_textureStates);
     }
-#endif
     return {};
 }
 

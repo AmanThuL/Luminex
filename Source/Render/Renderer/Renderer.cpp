@@ -9,6 +9,7 @@
 #include "Render/Passes/Bloom/BloomStage.h"
 #include "Render/Passes/Display/DisplayStage.h"
 #include "Render/Passes/Exposure/ExposureStage.h"
+#include "Render/Passes/Visibility/GpuVisibility.h"
 #include "Render/Renderer/RendererInternal.h"
 
 namespace lmx::render {
@@ -44,13 +45,17 @@ lmx::Result<GraphTexture> Renderer::declarePasses(RenderGraph& graph,
         extractFrustumPlanes(state.temporalEnabled ? state.cameraState.viewProjectionJittered
                                                    : state.cameraState.viewProjection);
 
-#ifndef LMX_PENDING_VISIBILITY
-    m_previousPyramid = prepareOcclusion(graph, camera, view, state.extents, state.cameraState);
-#endif
+    auto occlusion =
+        prepareOcclusion(graph, commands, camera, view, state.extents, state.cameraState);
+    if (!occlusion)
+        return std::unexpected(occlusion.error());
 
-    const auto drawBuffers = prepareVisibility(graph, commands, view, planes, imports.sceneBuffers);
-    const auto drawRows = drawBuffers[0];
-    const auto drawArguments = drawBuffers[1];
+    auto visibility =
+        prepareVisibility(graph, commands, view, planes, imports.sceneBuffers, *occlusion);
+    if (!visibility)
+        return std::unexpected(visibility.error());
+    const auto drawRows = visibility->buffers[0];
+    const auto drawArguments = visibility->buffers[1];
 
     const GraphTexture shadowRead =
         m_shadowStage->declare(graph, commands, view,
@@ -214,12 +219,19 @@ lmx::Result<GraphTexture> Renderer::declarePasses(RenderGraph& graph,
     }
 #endif
 
-#ifndef LMX_PENDING_VISIBILITY
     // HZB follows every temporal depth consumer in the stable graph schedule.
-    declareOcclusion(graph, commands, view, nextVersion(imports.sceneDepth), displayResult);
-#endif
+    const auto declaredOcclusion = declareOcclusion(
+        graph, commands, view, nextVersion(imports.sceneDepth), displayResult, *occlusion);
+    if (!declaredOcclusion) {
+        // Nothing has recorded yet: cancel the visibility intent explicitly rather than leave an
+        // unrecorded entry for retirement to drop once the abandoned graph releases its callbacks.
+        if (visibility->declaration)
+            m_gpuVisibility->discardUnrecorded(*visibility->declaration);
+        return std::unexpected(declaredOcclusion.error());
+    }
 
     recordFrameStatus(state);
+    commitVisibility(std::move(*visibility), std::move(*occlusion));
     return displayResult;
 }
 

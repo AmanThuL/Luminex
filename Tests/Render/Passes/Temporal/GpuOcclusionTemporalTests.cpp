@@ -6,7 +6,6 @@
 #include <functional>
 
 using namespace lmx::render;
-using namespace rojoRHI;
 namespace engine = lmx::engine;
 
 namespace {
@@ -34,11 +33,30 @@ engine::Scene occludedScene(float targetX = 0) {
                       .material = material});
     return result;
 }
+
+// The frame's attachments, copied on its own command list after its passes: a readback in a frame
+// of its own would leave a gap in the occlusion source clock that the next frame would see.
+struct FrameTargets {
+    std::vector<uint8_t> hdr;
+    std::vector<uint8_t> motion;
+    std::vector<uint8_t> reactive;
+};
+
+//======================================================================================================================
+std::vector<uint8_t> resolvedBytes(lmx::engine::GpuContext& gpu, const ReadbackTicket& ticket) {
+    std::vector<uint8_t> bytes(ticket.region.size);
+    const auto resolved = resolve(gpu, ticket, bytes);
+    INFO(errorOf(resolved));
+    REQUIRE(resolved);
+    return bytes;
+}
+
 //======================================================================================================================
 VisibilityStatus checkedFrame(lmx::engine::GpuContext& gpu, engine::Scene& scene,
                               Renderer& renderer, const engine::Camera& camera, float scale = 1,
                               bool jitter = false, std::function<void(SceneView&)> configure = {},
-                              std::vector<uint32_t>* depthReadback = nullptr) {
+                              std::vector<uint32_t>* depthReadback = nullptr,
+                              FrameTargets* targets = nullptr) {
     auto gpuFrame1 = gpu.beginFrame();
     auto& commands = gpuFrame1.commands;
     REQUIRE(scene.prepareFrame(gpu.frameNumber()));
@@ -56,51 +74,40 @@ VisibilityStatus checkedFrame(lmx::engine::GpuContext& gpu, engine::Scene& scene
     view.bloomEnabled = false;
     if (configure)
         configure(view);
-    renderer.render(commands, camera, view);
-    lmx::engine::GpuOwned<ShaderLibrary> readLibrary;
-    std::unique_ptr<ComputePipeline> readPipeline;
-    lmx::engine::GpuBuffer depthBuffer;
-    if (depthReadback) {
-        auto library = gpu.loadShaderLibrary("HzbReadbackFixture");
-        REQUIRE(library);
-        readLibrary = std::move(*library);
-        auto pipeline =
-            gpu.device().createComputePipeline({.library = readLibrary.get(),
-                                                .computeEntry = "computeMain",
-                                                .threadsPerThreadgroup = {8, 8, 1},
-                                                .label = "lmx.test.occlusion.depthReader"});
-        REQUIRE(pipeline);
-        readPipeline = std::move(*pipeline);
-        const auto& depth = renderer.depthTexture();
-        depthReadback->resize(uint64_t{depth.desc().width} * depth.desc().height);
-        auto buffer = lmx::engine::GpuBuffer::create(gpu.device(),
-                                                     {.size = depthReadback->size() * sizeof(float),
-                                                      .storageWrite = true,
-                                                      .cpuReadback = true,
-                                                      .label = "lmx.test.occlusion.depthReadback"},
-                                                     nullptr);
-        REQUIRE(buffer);
-        depthBuffer = std::move(*buffer);
-        commands.beginComputePass("lmx.test.occlusion.depthReadback");
-        commands.bindComputePipeline(*readPipeline);
-        commands.bindTexture(0, depth.rhi());
-        commands.bindStorageBuffer(1, depthBuffer.rhi(), StorageAccess::Write);
-        commands.bindFrameData(
-            0, std::array<uint32_t, 4>{depth.desc().width, depth.desc().height, 0, 0});
-        commands.dispatch((depth.desc().width + 7) / 8, (depth.desc().height + 7) / 8, 1);
-        commands.endComputePass();
+    const auto rendered = renderer.render(commands, camera, view);
+    if (!rendered)
+        gpu.submitAndEndFrame(gpuFrame1);
+    INFO(errorOf(rendered));
+    REQUIRE(rendered);
+    ReadbackTicket depthTicket, hdrTicket, motionTicket, reactiveTicket;
+    auto& states = renderer.textureStates();
+    if (depthReadback)
+        depthTicket = recordReadback(gpu, commands, renderer.depthTexture(), states);
+    if (targets) {
+        // Raw copies the scene colour into its history; the attachments end as render targets.
+        requireRecordedUse(states, renderer.hdrColorTexture(), TextureUse::CopySource);
+        requireRecordedUse(states, *renderer.motionTexture(), TextureUse::RenderTarget);
+        requireRecordedUse(states, *renderer.reactiveTexture(), TextureUse::RenderTarget);
+        hdrTicket = recordReadback(gpu, commands, renderer.hdrColorTexture(), states);
+        motionTicket = recordReadback(gpu, commands, *renderer.motionTexture(), states);
+        reactiveTicket = recordReadback(gpu, commands, *renderer.reactiveTexture(), states);
     }
     gpu.submitAndEndFrame(gpuFrame1);
     scene.commitFrame();
     gpu.waitIdle();
     if (depthReadback) {
-        const auto readbackBytes =
-            lmx::render::readbackNow(gpu, depthBuffer, lmx::render::BufferUse::StorageWrite,
-                                     lmx::render::wholeBuffer(depthBuffer));
-        std::memcpy(depthReadback->data(), readbackBytes.data(),
-                    depthReadback->size() * sizeof(float));
+        const auto& depth = renderer.depthTexture();
+        depthReadback->resize(uint64_t{depth.desc().extent.width} * depth.desc().extent.height);
+        const auto resolved = resolve(gpu, depthTicket, resolveBytes(std::span(*depthReadback)));
+        INFO(errorOf(resolved));
+        REQUIRE(resolved);
     }
-    renderer.drainVisibilityAfterIdle();
+    if (targets) {
+        targets->hdr = resolvedBytes(gpu, hdrTicket);
+        targets->motion = resolvedBytes(gpu, motionTicket);
+        targets->reactive = resolvedBytes(gpu, reactiveTicket);
+    }
+    REQUIRE(renderer.drainVisibilityAfterIdle());
     auto retired = renderer.takeRetiredVisibility();
     REQUIRE(retired.size() == 1);
     auto status = std::move(retired.front());
@@ -117,18 +124,6 @@ VisibilityStatus checkedFrame(lmx::engine::GpuContext& gpu, engine::Scene& scene
     REQUIRE(status.shadowCounters.occluded == 0);
     return status;
 }
-//======================================================================================================================
-std::vector<uint8_t> targetBytes(lmx::engine::GpuContext& gpu,
-                                 const lmx::engine::GpuTexture& texture, uint32_t bytesPerPixel,
-                                 lmx::render::TextureUse current) {
-    std::vector<uint8_t> result(uint64_t{texture.desc().width} * texture.desc().height *
-                                bytesPerPixel);
-    {
-        const auto readbackBytes = lmx::render::readbackNow(gpu, texture, current);
-        std::memcpy(result.data(), readbackBytes.data(), result.size());
-    }
-    return result;
-}
 } // namespace
 
 //======================================================================================================================
@@ -142,34 +137,30 @@ TEST_CASE("production occlusion preserves exact static geometry attachments and 
     engine::Camera camera;
     camera.fovY = glm::half_pi<float>();
     std::vector<uint32_t> depth, occludedDepth;
+    FrameTargets baselineTargets, occludedTargets;
     auto baseline = checkedFrame(
         *gpu, scene, **renderer, camera, 1, false,
         [](SceneView& view) {
             view.occlusionEnabled = false;
             view.occlusionCheck = false;
         },
-        &depth);
-    const auto hdr =
-        targetBytes(*gpu, (*renderer)->hdrColorTexture(), 8, lmx::render::TextureUse::CopySource);
-    const auto motion =
-        targetBytes(*gpu, *(*renderer)->motionTexture(), 4, lmx::render::TextureUse::RenderTarget);
-    const auto reactive = targetBytes(*gpu, *(*renderer)->reactiveTexture(), 1,
-                                      lmx::render::TextureUse::RenderTarget);
+        &depth, &baselineTargets);
+    const auto& hdr = baselineTargets.hdr;
+    const auto& motion = baselineTargets.motion;
+    const auto& reactive = baselineTargets.reactive;
     auto first = checkedFrame(*gpu, scene, **renderer, camera);
     REQUIRE(first.sceneCounters.occluded == 0);
-    auto second = checkedFrame(*gpu, scene, **renderer, camera, 1, false, {}, &occludedDepth);
+    auto second = checkedFrame(*gpu, scene, **renderer, camera, 1, false, {}, &occludedDepth,
+                               &occludedTargets);
     REQUIRE(second.sceneCounters.occluded == 1);
     REQUIRE(second.occlusionInvalidReason == OcclusionInvalidReason::None);
     REQUIRE(second.occlusionSourceFrame + 1 == second.frameNumber);
     REQUIRE(second.occlusionCheck.strict);
     REQUIRE(second.occlusionCheck.falselyRejectedInstances == 0);
-    REQUIRE(targetBytes(*gpu, (*renderer)->hdrColorTexture(), 8,
-                        lmx::render::TextureUse::CopySource) == hdr);
+    REQUIRE(occludedTargets.hdr == hdr);
     REQUIRE(occludedDepth == depth);
-    REQUIRE(targetBytes(*gpu, *(*renderer)->motionTexture(), 4,
-                        lmx::render::TextureUse::RenderTarget) == motion);
-    REQUIRE(targetBytes(*gpu, *(*renderer)->reactiveTexture(), 1,
-                        lmx::render::TextureUse::RenderTarget) == reactive);
+    REQUIRE(occludedTargets.motion == motion);
+    REQUIRE(occludedTargets.reactive == reactive);
     for (const float scale : {1.0f, 0.5f, 1.0f}) {
         for (uint32_t phase = 0; phase < 16; ++phase) {
             CAPTURE(scale, phase);
@@ -319,15 +310,17 @@ TEST_CASE("occlusion joins overlapping retired frames across slot reuse in both 
             view.temporal.reconstruction = ReconstructionMode::Raw;
             view.temporal.sceneGeneration = 9;
             view.temporal.renderScale = frame % 2 == 0 ? 1.0f : 0.5f;
-            (*renderer)->render(commands, camera, view);
+            const auto rendered = (*renderer)->render(commands, camera, view);
             gpu->submitAndEndFrame(gpuFrame3);
+            INFO(errorOf(rendered));
+            REQUIRE(rendered);
             scene.commitFrame();
             auto retired = (*renderer)->takeRetiredVisibility();
             for (auto& status : retired)
                 statuses.push_back(std::move(status));
         }
         gpu->waitIdle();
-        (*renderer)->drainVisibilityAfterIdle();
+        REQUIRE((*renderer)->drainVisibilityAfterIdle());
         auto retired = (*renderer)->takeRetiredVisibility();
         for (auto& status : retired)
             statuses.push_back(std::move(status));

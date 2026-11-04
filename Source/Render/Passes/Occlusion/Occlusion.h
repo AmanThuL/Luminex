@@ -22,6 +22,12 @@ enum class OcclusionOutcome : uint32_t {
     OutsideSource,  ///< Guarded rectangle leaves the source active extent.
     RectTooLarge    ///< No available level covers the rectangle in at most two texels per axis.
 };
+/// OcclusionParams::flags bit: previous-frame rejection is requested.
+constexpr uint32_t kOcclusionEnabledFlag = 1u;
+/// OcclusionParams::flags bit: the source pyramid is valid history for this frame.
+constexpr uint32_t kOcclusionHistoryValidFlag = 2u;
+/// Both flags: the only state in which a camera candidate samples the pyramid.
+constexpr uint32_t kOcclusionTestingFlags = kOcclusionEnabledFlag | kOcclusionHistoryValidFlag;
 /// Exact slot-13 shader ABI; explicit rows avoid matrix storage ambiguity.
 struct OcclusionParams {
     std::array<glm::vec4, 4> sourceRows{};   ///< Rows of the source jittered view-projection.

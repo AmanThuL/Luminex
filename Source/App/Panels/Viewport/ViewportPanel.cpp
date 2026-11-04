@@ -10,9 +10,7 @@
 #include "App/Panels/Shared/EditorStyle.h"
 #include "App/Panels/Viewport/ViewportGizmo.h"
 #include "Core/Diagnostics/Log.h"
-#ifndef LMX_PENDING_VISIBILITY
 #include "Render/Passes/Occlusion/HzbStage.h"
-#endif
 #include <rojoRHI/ImGuiAdapter.h>
 
 #include <imgui.h>
@@ -210,14 +208,10 @@ void drawOcclusionOverlay(const ViewportPanelContext& context, ImVec2 origin, Im
 } // namespace
 
 //======================================================================================================================
-uint32_t viewportHzbLevels([[maybe_unused]] const render::Renderer& renderer) {
-#ifndef LMX_PENDING_VISIBILITY
+uint32_t viewportHzbLevels(const render::Renderer& renderer) {
     if (renderer.width() == 0 || renderer.height() == 0)
         return 0;
     return render::hzbLayout(renderer.width(), renderer.height()).levelCount;
-#else
-    return 0;
-#endif
 }
 
 //======================================================================================================================

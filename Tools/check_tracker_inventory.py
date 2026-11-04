@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Require the Renderer, buffer, POST and TEMPORAL validation cases in a Catch2 tracker listing."""
+"""Require the Renderer, buffer and render-family validation cases in a Catch2 tracker listing."""
 
 from __future__ import annotations
 
@@ -20,6 +20,9 @@ REQUIRED_CASES = (
     "selection replacement and resize preserve target generations under the tracker",
     "native temporal history alternates its slots across frames under the tracker",
     "vendor temporal frames leave their slots in external states under the tracker",
+    "GPU visibility frames classify and emit across classifier and layout switches under "
+    "the tracker",
+    "occlusion pyramids alternate and the reference checks every frame under the tracker",
 )
 
 

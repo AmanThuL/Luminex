@@ -2,6 +2,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "Render/Graph/FrameEmitter.h"
 #include "Render/Graph/LoweredFrame.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Graph/TransientPool.h"
@@ -22,6 +23,53 @@
 
 using namespace lmx;
 using namespace lmx::render;
+
+namespace lmx::render {
+struct HzbGraphTestAccess {
+    static GraphResult<uint32_t> recordThrough(RenderGraph& graph, rojoRHI::CommandList& commands,
+                                               uint64_t frameId, std::string_view lastLabel) {
+        auto lowered = graph.lower(frameId);
+        if (!lowered)
+            return std::unexpected(lowered.error());
+        graph.placeTransients(*lowered);
+        std::vector<LoweredOp> prefix;
+        std::vector<bool> scopes;
+        bool found = false;
+        for (const auto& op : lowered->ops) {
+            prefix.push_back(op);
+            if (std::holds_alternative<BeginScopeOp>(op))
+                scopes.push_back(false);
+            else if (std::holds_alternative<BeginRenderPassOp>(op))
+                scopes.push_back(true);
+            else if (std::holds_alternative<EndScopeOp>(op) ||
+                     std::holds_alternative<EndRenderPassOp>(op)) {
+                REQUIRE_FALSE(scopes.empty());
+                scopes.pop_back();
+            }
+            if (const auto* run = std::get_if<RunOp>(&op); run && run->label == lastLabel) {
+                found = true;
+                break;
+            }
+        }
+        REQUIRE(found);
+        for (auto scope = scopes.rbegin(); scope != scopes.rend(); ++scope) {
+            if (*scope)
+                prefix.emplace_back(EndRenderPassOp{});
+            else
+                prefix.emplace_back(EndScopeOp{});
+        }
+        lowered->ops = std::move(prefix);
+        lowered->finalStates.clear();
+        lowered->physicalStates.clear();
+        uint32_t callbacks = 0;
+        emit(*lowered, commands, [&](uint32_t pass) {
+            graph.m_passes[pass].execute(graph.passResources(*lowered, pass));
+            ++callbacks;
+        });
+        return callbacks;
+    }
+};
+} // namespace lmx::render
 
 namespace {
 [[maybe_unused]] const ExecuteFn kNoWork = [](const PassResources&) {};

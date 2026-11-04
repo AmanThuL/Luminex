@@ -259,6 +259,50 @@ function lmx_configure_shader_library(target)
                           "Render/Passes/Temporal/TemporalFrameData.h")
     end
     local entries = lmx_shader_entries(kind)
+    -- v1 compiled every Visibility*, Hzb* and LightCluster* entry, and every Occlusion* entry
+    -- except OcclusionReference, with precise floating point. The rule is v1's prefix predicate
+    -- over entry basenames, so a new entry in those families is selected without a list edit.
+    local precise_prefixes = {"Visibility", "Occlusion", "Hzb", "LightCluster"}
+    local function precise(name)
+        if name == "OcclusionReference" then
+            return false
+        end
+        for _, prefix in ipairs(precise_prefixes) do
+            if name:startswith(prefix) then
+                return true
+            end
+        end
+        return false
+    end
+    -- Every prefix must still name a real entry, pending families included, so a renamed family
+    -- cannot silently fall back to the default floating-point mode.
+    local all_entries = os.files(path.join(repository_root, "Shaders/Passes/**.slang"))
+    table.join2(all_entries, os.files(path.join(repository_root, "Shaders/Tests/*.slang")))
+    for _, prefix in ipairs(precise_prefixes) do
+        local matched = false
+        for _, file in ipairs(all_entries) do
+            local name = path.basename(file)
+            if name:startswith(prefix) and precise(name) then
+                local text = assert(io.readfile(file), "cannot read shader: " .. file)
+                    :gsub("/%*.-%*/", ""):gsub("//[^\n]*", "")
+                if text:find('%[%s*shader%s*%(%s*"(%w+)"%s*%)%s*%]') then
+                    matched = true
+                    break
+                end
+            end
+        end
+        assert(matched, "precise shader prefix names no shader entry: " .. prefix)
+    end
+    local precise_entries = {}
+    for _, file in ipairs(entries) do
+        local basename = path.basename(file)
+        if precise(basename) then
+            table.insert(precise_entries, basename)
+        end
+    end
+    if #precise_entries > 0 then
+        target:values_set("slang.precise_files", table.unpack(precise_entries))
+    end
     target:values_set("lmx.shader.entries", table.unpack(entries))
     target:add("files", table.unpack(entries))
 end

@@ -6,8 +6,27 @@
 #pragma once
 #include "Core/Containers/Interval.h"
 #include "Render/Graph/RenderGraph.h"
+#include "Render/Passes/Occlusion/Occlusion.h"
 
 namespace lmx::render::graph_detail {
+
+// One final compile record decides observers before physical accesses are walked.
+struct HzbRecordingPlan {
+    struct Decision {
+        std::shared_ptr<HzbHistoryBinding> binding;
+        OcclusionParams params;
+    };
+    struct Mask {
+        uint32_t pass = 0;
+        uint32_t resource = 0;
+        uint32_t version = 0;
+        uint32_t declaration = 0;
+        rojoRHI::SubresourceRange range;
+    };
+    std::vector<Decision> decisions;
+    std::vector<Mask> masks;
+    std::vector<uint32_t> suppressedFinalUses;
+};
 
 // Inclusive, resolved mip/layer bounds shared by validation and transition derivation.
 struct ResolvedRange {

@@ -151,7 +151,8 @@ BufferUse physicalBufferUse(PassKind kind, UseRole role) {
 } // namespace
 
 //======================================================================================================================
-GraphResult<void> RenderGraph::lowerPhysical(LoweredFrame& frame, const AliasPlan& plan) const {
+GraphResult<void> RenderGraph::lowerPhysical(LoweredFrame& frame, const AliasPlan& plan,
+                                             const graph_detail::HzbRecordingPlan& history) const {
     using S = rojoRHI::Stage;
     using A = rojoRHI::Access;
     using L = rojoRHI::Layout;
@@ -198,6 +199,9 @@ GraphResult<void> RenderGraph::lowerPhysical(LoweredFrame& frame, const AliasPla
                     }
                 }
             }
+        } else if (resource.priorBufferPhysical) {
+            const auto prior = *resource.priorBufferPhysical;
+            current.buffer = {prior.stage, prior.access, L::Undefined};
         } else if (resource.priorBufferAccess) {
             auto sync = bufferSync(*resource.priorBufferAccess, PassKind::Compute);
             // A prior nominal shader use does not carry its stage provenance.
@@ -233,7 +237,10 @@ GraphResult<void> RenderGraph::lowerPhysical(LoweredFrame& frame, const AliasPla
         }
         std::vector<std::vector<std::optional<TextureState>>> textures(m_resources.size());
         std::vector<std::optional<TextureState>> buffers(m_resources.size());
-        for (const auto& declaration : pass.declarations) {
+        for (uint32_t ordinal = 0; ordinal < pass.declarations.size(); ++ordinal) {
+            const auto& declaration = pass.declarations[ordinal];
+            if (hzbMasked(history, passIndex, ordinal))
+                continue;
             const auto index = declaration.resource;
             const auto& resource = m_resources[index];
             if (resource.kind == ResourceKind::Buffer) {
@@ -359,7 +366,9 @@ GraphResult<void> RenderGraph::lowerPhysical(LoweredFrame& frame, const AliasPla
         const bool present = std::ranges::any_of(m_sinks, [index](const Sink& sink) {
             return sink.kind == SinkKind::Present && sink.resource == index;
         });
-        if (resource.finalUse || present) {
+        const bool suppressed = std::ranges::find(history.suppressedFinalUses, index) !=
+                                history.suppressedFinalUses.end();
+        if ((resource.finalUse && !suppressed) || present) {
             auto sync = resource.finalUse ? textureSync(*resource.finalUse, PassKind::Raster,
                                                         engine::isDepthFormat(resource.format))
                                           : SyncPoint{S::None, A::None, L::Present};
