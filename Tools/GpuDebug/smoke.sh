@@ -6,11 +6,11 @@ cd "$(dirname "$0")/../.."
 OUT="${TMPDIR:-/tmp}/lmx-gpudebug-smoke"
 case "$OUT" in /*) ;; *) echo "FAIL: TMPDIR is not absolute ($OUT)"; exit 1 ;; esac
 rm -rf "$OUT" && mkdir -p "$OUT"
-xmake >/dev/null
+xmake -P . >/dev/null
 # LMX_CAPTURE_PATH is resolved relative to the App's own CWD (its build dir), not this script's
 # CWD -- `xmake run` sets that up, but the path itself must still be absolute, hence $OUT.
 MTL_CAPTURE_ENABLED=1 LMX_CAPTURE_AT_FRAME=30 LMX_MAX_FRAMES=40 \
-  LMX_CAPTURE_PATH="$OUT/smoke.gputrace" xmake run App
+  LMX_CAPTURE_PATH="$OUT/smoke.gputrace" xmake run -P . App
 test -d "$OUT/smoke.gputrace" || { echo "FAIL: no bundle"; exit 1; }
 test -f "$OUT/smoke.gputrace.schema.json" || { echo "FAIL: no sidecar"; exit 1; }
 python3 Tools/GpuDebug/gputrace_dump.py "$OUT/smoke.gputrace" --out "$OUT/dump"
@@ -22,19 +22,25 @@ manifest = json.loads((dump / "manifest.json").read_text())
 assert manifest["capture"]["sceneName"], "manifest carries no scene context"
 assert manifest["resources"]["matched"], "nothing joined bundle<->schema"
 
-uploads = json.loads((dump / "uniforms.json").read_text())["uploads"]
-assert any(u["structName"] == "PassUniforms" for u in uploads), "no PassUniforms decoded"
+roots = json.loads((dump / "uniforms.json").read_text())["roots"]
+summary = manifest["frameRoots"]
+assert summary["registered"] > 0, "the capture registered no frame roots"
+assert not summary["undecoded"], f"frame roots left undecoded: {summary['undecoded']}"
+assert any(r["name"] == "PassUniforms" for r in roots), "no PassUniforms decoded"
 
 assert (dump / "shadow-map.png").is_file(), "no shadow-map.png in dump dir"
-assert (dump / "scene-color.png").is_file(), "no scene-color.png in dump dir"
+assert (dump / "display-color.png").is_file(), "no display-color.png in dump dir"
 
-errors = [a for a in manifest["anomalies"] if a["severity"] == "error"]
+# The expected-label check still names v1's lmx.render.sceneColor, which v2 does not create.
+errors = [a for a in manifest["anomalies"] if a["severity"] == "error"
+          and a["subject"] != "lmx.render.sceneColor"]
 assert not errors, f"error-severity anomalies in a healthy capture: {errors}"
 
-scene_color = next(img for img in manifest["images"] if img["label"] == "lmx.render.sceneColor")
-assert not scene_color["stats"]["flat"], "scene-color.png is flat -- nothing rendered?"
+display = next(img for img in manifest["images"] if img["label"] == "lmx.render.displayColor")
+assert not display["stats"]["flat"], "display-color.png is flat -- nothing rendered?"
 
 print("smoke OK:", len(manifest["resources"]["matched"]), "matched,",
-      len(uploads), "uploads,", len(manifest["anomalies"]), "anomalies")
+      len(roots), "of", summary["registered"], "roots decoded,",
+      len(manifest["anomalies"]), "anomalies")
 EOF
 echo "PASS"

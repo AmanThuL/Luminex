@@ -22,12 +22,13 @@ import bundlelib  # noqa: E402
 import gputrace_dump  # noqa: E402
 import schemalib  # noqa: E402
 
-from test_bundlelib import BundleFixture, _texture_header  # noqa: E402
+from test_bundlelib import (  # noqa: E402
+    BundleFixture, _texture_header, framed_buffer_records, framed_stream)
 
 _CLI = _TOOLS_DIR / "gputrace_dump.py"
 
 _SCHEMA = {
-    "version": 1,
+    "version": 2,
     "context": {"sceneName": "Test", "frameIndex": 1, "cameraPos": [0, 0, 0],
                "boundingSphere": [0, 0, 0, 1], "light0Direction": [0, -1, 0],
                "light0Strength": [1, 1, 1], "ambient": [0.1, 0.1, 0.1], "shadowFilter": "PCF"},
@@ -38,7 +39,7 @@ _SCHEMA = {
          "width": 8, "height": 8, "mipLevels": 1},
     ],
     "uniformStructs": [],
-    "frameDataUploads": [],
+    "frameRoots": [],
 }
 
 
@@ -102,7 +103,7 @@ class GputraceDumpCliTests(unittest.TestCase):
             [(a["severity"], a["check"], a["subject"]) for a in manifest["anomalies"]],
             [("error", "missing-expected-resource", "lmx.render.sceneColor"),
              ("error", "missing-expected-resource", "lmx.render.shadowMap"),
-             ("error", "no-pass-uniforms-upload", "PassUniforms"),
+             ("error", "no-pass-uniforms-root", "PassUniforms"),
              ("warning", "flat-image", "lmx.test.tex"),
              ("info", "unmatched-blobs", "bundle")])
         self.assertIn("anomalies: 3 error, 1 warning, 1 info", result.stdout)
@@ -257,10 +258,10 @@ class DecodeImagesUnexpectedExceptionTests(unittest.TestCase):
 
 
 class UniformsJsonCliTests(unittest.TestCase):
-    """manifest.json references uniforms.json, and uniforms.json is
-    written on every run -- empty uploads (with an explanatory pageAttribution) when there's
-    nothing to decode or the page-attribution policy declines, decoded uploads when it succeeds.
-    """
+    """manifest.json references uniforms.json, and uniforms.json is written on every run: every
+    decoded frame root, and an attribution line that names the first undecodable root."""
+
+    PAGE = 0x10016030000
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -270,97 +271,94 @@ class UniformsJsonCliTests(unittest.TestCase):
         self.bundle.mkdir()
         self.schema_path = self.tmp_path / "test.gputrace.schema.json"
 
-    def _flush_unrelated_bundle(self):
-        fx = BundleFixture(self.bundle)
-        fx.add_labelled_resource("lmx.unrelated", None)
-        fx.flush_device_resources()
+    def _flush_bundle(self, *records: bytes):
+        (self.bundle / "device-resources-0xd0d0").write_bytes(framed_stream(*records))
 
-    def test_manifest_gains_uniforms_key_and_no_uploads_case_is_unremarkable(self):
-        self.schema_path.write_text(json.dumps(_SCHEMA))  # uniformStructs/frameDataUploads: []
-        self._flush_unrelated_bundle()
-        out_dir = self.tmp_path / "out"
-
-        result = _run_cli(str(self.bundle), "--schema", str(self.schema_path), "--out",
-                          str(out_dir))
-
-        self.assertEqual(result.returncode, 0, msg=result.stderr)
-        manifest = json.loads((out_dir / "manifest.json").read_text())
-        self.assertEqual(manifest["uniforms"], "uniforms.json")
-        self.assertNotIn("notes", manifest)  # "no uploads this capture" isn't a failure
-        uniforms = json.loads((out_dir / "uniforms.json").read_text())
-        self.assertEqual(uniforms["version"], 1)
-        self.assertEqual(uniforms["uploads"], [])
-        self.assertIn("no frame-data uploads", uniforms["pageAttribution"])
-
-    def test_single_page_blob_decodes_pass_uniforms_end_to_end(self):
-        page_bytes = bytearray(4096)
-        # eyePos lives at struct offset 128; this upload starts at page offset 512, so its
-        # absolute position is 512 + 128 = 640.
-        page_bytes[640:652] = struct.pack("<3f", 1.5, 2.5, 3.5)
-        (self.bundle / "MTLBuffer-13-0").write_bytes(bytes(page_bytes))
-        self._flush_unrelated_bundle()
-        schema = {
+    def _roots_schema(self, roots) -> dict:
+        return {
             **_SCHEMA,
-            "resources": [
-                {"label": "rojorhi.device.frameData.0.page.0", "kind": "buffer", "sizeBytes": 4096},
-            ],
             "uniformStructs": [
-                {"name": "PassUniforms", "slot": 2, "sizeBytes": 288,
+                {"name": "PassUniforms", "sizeBytes": 160,
                  "fields": [{"name": "eyePos", "offsetBytes": 128, "type": "float3"}]},
+                {"name": "ScenePassRoot", "sizeBytes": 16,
+                 "fields": [{"name": "passUniforms", "offsetBytes": 0, "type": "Addr"},
+                            {"name": "lights", "offsetBytes": 8, "type": "Addr"}]},
             ],
-            "frameDataUploads": [
-                {"pageLabel": "rojorhi.device.frameData.0.page.0", "slot": 2, "pageOffset": 512,
-                 "sizeBytes": 288, "alignmentBytes": 256, "gpuAddress": 4096},
-            ],
+            "frameRoots": [{"name": name, "addr": {"lo": addr & 0xFFFFFFFF, "hi": addr >> 32}}
+                           for name, addr in roots],
         }
-        self.schema_path.write_text(json.dumps(schema))
-        out_dir = self.tmp_path / "out"
 
+    def _run(self):
+        out_dir = self.tmp_path / "out"
         result = _run_cli(str(self.bundle), "--schema", str(self.schema_path), "--out",
                           str(out_dir))
-
         self.assertEqual(result.returncode, 0, msg=result.stderr)
-        uniforms = json.loads((out_dir / "uniforms.json").read_text())
-        self.assertEqual(len(uniforms["uploads"]), 1)
-        upload = uniforms["uploads"][0]
-        self.assertEqual(upload["structName"], "PassUniforms")
-        self.assertEqual(upload["pageLabel"], "rojorhi.device.frameData.0.page.0")
-        self.assertEqual(upload["alignmentBytes"], 256)
-        self.assertNotIn("gpuAddress", upload)  # non-deterministic across runs; not surfaced
-        self.assertEqual(upload["values"]["eyePos"], [1.5, 2.5, 3.5])
-        self.assertTrue(upload["finite"])
-        self.assertIn("single page-sized blob", uniforms["pageAttribution"])
-        manifest = json.loads((out_dir / "manifest.json").read_text())
-        self.assertNotIn("notes", manifest)  # clean attribution shouldn't add a manifest note
+        return (json.loads((out_dir / "manifest.json").read_text()),
+                json.loads((out_dir / "uniforms.json").read_text()))
 
-    def test_ambiguous_page_attribution_writes_empty_uploads_and_manifest_note(self):
-        (self.bundle / "MTLBuffer-1-0").write_bytes(b"\x00" * 4096)
-        (self.bundle / "MTLBuffer-2-0").write_bytes(b"\x00" * 4096)  # 2 candidates: not 1 or 3
-        self._flush_unrelated_bundle()
-        schema = {
-            **_SCHEMA,
-            "resources": [
-                {"label": f"rojorhi.device.frameData.0.page.{i}", "kind": "buffer", "sizeBytes": 4096}
-                for i in range(3)
-            ],
-            "uniformStructs": [],
-            "frameDataUploads": [
-                {"pageLabel": "rojorhi.device.frameData.0.page.0", "slot": 2, "pageOffset": 0,
-                 "sizeBytes": 80, "alignmentBytes": 256, "gpuAddress": 0},
-            ],
-        }
-        self.schema_path.write_text(json.dumps(schema))
-        out_dir = self.tmp_path / "out"
+    def test_manifest_gains_uniforms_key_and_no_roots_case_is_unremarkable(self):
+        self.schema_path.write_text(json.dumps(_SCHEMA))  # uniformStructs/frameRoots: []
+        self._flush_bundle()
 
-        result = _run_cli(str(self.bundle), "--schema", str(self.schema_path), "--out",
-                          str(out_dir))
+        manifest, uniforms = self._run()
 
-        self.assertEqual(result.returncode, 0, msg=result.stderr)
-        uniforms = json.loads((out_dir / "uniforms.json").read_text())
-        self.assertEqual(uniforms["uploads"], [])
-        self.assertTrue(uniforms["pageAttribution"])
-        manifest = json.loads((out_dir / "manifest.json").read_text())
-        self.assertEqual(manifest["notes"], [uniforms["pageAttribution"]])
+        self.assertEqual(manifest["uniforms"], "uniforms.json")
+        self.assertNotIn("notes", manifest)  # "no roots this capture" isn't a failure
+        self.assertEqual(manifest["frameRoots"],
+                         {"registered": 0, "decoded": 0, "byName": {}, "undecoded": []})
+        self.assertEqual(uniforms["version"], 2)
+        self.assertEqual(uniforms["roots"], [])
+        self.assertIn("no frame roots", uniforms["rootAttribution"])
+
+    def test_roots_decode_by_name_and_address_end_to_end(self):
+        page = bytearray(4096)
+        # PassUniforms sits at page offset 512, so its eyePos is at 512 + 128 = 640.
+        page[640:652] = struct.pack("<3f", 1.5, 2.5, 3.5)
+        page[0:16] = struct.pack("<QQ", self.PAGE + 512, 0x10000040000 + 32)
+        (self.bundle / "MTLBuffer-13-0").write_bytes(bytes(page))
+        self._flush_bundle(
+            framed_buffer_records(0xA1, self.PAGE, 4096, "rojorhi.frameArena.page",
+                                  "MTLBuffer-13-0"),
+            framed_buffer_records(0xA2, 0x10000040000, 1024, "lmx.scene.lights.0"))
+        self.schema_path.write_text(json.dumps(self._roots_schema(
+            [("ScenePassRoot", self.PAGE), ("PassUniforms", self.PAGE + 512)])))
+
+        manifest, uniforms = self._run()
+
+        self.assertEqual([r["name"] for r in uniforms["roots"]], ["ScenePassRoot", "PassUniforms"])
+        scene, passes = uniforms["roots"]
+        self.assertEqual(scene["values"], {"passUniforms": {"root": "PassUniforms"},
+                                           "lights": {"buffer": "lmx.scene.lights.0",
+                                                      "offset": 32}})
+        self.assertEqual((passes["buffer"], passes["bufferOffset"], passes["sizeBytes"]),
+                         ("rojorhi.frameArena.page", 512, 160))
+        self.assertEqual(passes["values"]["eyePos"], [1.5, 2.5, 3.5])
+        self.assertTrue(passes["finite"])
+        self.assertNotIn("address", passes)  # non-deterministic across runs; not surfaced
+        self.assertEqual(manifest["frameRoots"]["decoded"], 2)
+        self.assertEqual(manifest["frameRoots"]["byName"], {"ScenePassRoot": 1, "PassUniforms": 1})
+        self.assertNotIn("notes", manifest)  # every root decoded: no manifest note
+
+    def test_root_outside_every_buffer_is_reported_in_the_manifest(self):
+        self._flush_bundle(framed_buffer_records(0xA1, self.PAGE, 4096, "page"))
+        self.schema_path.write_text(json.dumps(self._roots_schema([("PassUniforms", 0x40)])))
+
+        manifest, uniforms = self._run()
+
+        self.assertEqual(uniforms["roots"], [])
+        self.assertEqual(manifest["frameRoots"]["undecoded"][0]["name"], "PassUniforms")
+        self.assertIn("no single captured buffer", manifest["frameRoots"]["undecoded"][0]["reason"])
+        self.assertEqual(manifest["notes"], [uniforms["rootAttribution"]])
+        self.assertIn("uniform-decode-unavailable", [a["check"] for a in manifest["anomalies"]])
+
+    def test_version_one_sidecar_exits_2_naming_the_cause(self):
+        self._flush_bundle()
+        self.schema_path.write_text(json.dumps({**_SCHEMA, "version": 1}))
+
+        result = _run_cli(str(self.bundle), "--schema", str(self.schema_path))
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("RojoRHI v2", result.stderr)
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ only worth trusting if the shape that must NOT fire is asserted as carefully as 
 must. Two rules get extra attention because getting them wrong makes the tool actively
 misleading -- the `lmx.render.sceneDepth` capture artifact (a known all-NaN plane that is not
 evidence about the frame, and must never read as an error) and the transpose in the
-shadow-transform cross-check (uploads are decoded row-major, `shadowmath` computes column-major;
+shadow-transform cross-check (roots are decoded row-major, `shadowmath` computes column-major;
 a missing transpose would fire on every healthy capture).
 
 Run: python3 -m unittest discover -s Tools/GpuDebug/tests -v
@@ -36,16 +36,14 @@ def _texture(label, kind="texture2d", width=8, height=8):
                               height=height, mip_levels=1, size_bytes=None)
 
 
-def _schema(resources=None, frame_data_uploads=None, context=None):
+def _schema(resources=None, frame_roots=None, context=None):
     return schemalib.Schema(
         context=context if context is not None else _context(),
         resources=resources if resources is not None else [_texture(_SHADOW_MAP),
                                                            _texture(_SCENE_COLOR)],
         uniform_structs=[],
-        frame_data_uploads=frame_data_uploads if frame_data_uploads is not None else [
-            schemalib.FrameDataUpload(page_label="rojorhi.device.frameData.0.page.0", slot=2,
-                                      page_offset=0, size_bytes=288, alignment_bytes=256,
-                                      gpu_address=0x1000)],
+        frame_roots=frame_roots if frame_roots is not None else [
+            schemalib.FrameRoot(name="PassUniforms", address=0x1000)],
     )
 
 
@@ -102,14 +100,13 @@ def _healthy_shadow_transform():
     return _row_major(shadowmath.fit_shadow_ortho(_SPHERE, _LIGHT_DIR)[1])
 
 
-def _upload(index=0, struct_name="PassUniforms", values=None, finite=True, slot=2):
+def _root(index=0, name="PassUniforms", values=None, finite=True):
     return {
         "index": index,
-        "structName": struct_name,
-        "slot": slot,
-        "pageLabel": "rojorhi.device.frameData.0.page.0",
-        "pageOffset": index * 288,
-        "alignmentBytes": 256,
+        "name": name,
+        "buffer": "rojorhi.frameArena.page",
+        "bufferOffset": index * 512,
+        "sizeBytes": 400,
         "values": values if values is not None else {
             "viewProj": _row_major(shadowmath.identity()),
             "shadowTransform": _healthy_shadow_transform(),
@@ -120,10 +117,10 @@ def _upload(index=0, struct_name="PassUniforms", values=None, finite=True, slot=
     }
 
 
-def _uniforms(uploads=None, attribution="single page-sized blob, attributed to page 0"):
-    return {"version": 1, "matrixOrder": "row-major (transposed from column-major storage)",
-            "pageAttribution": attribution,
-            "uploads": [_upload()] if uploads is None else uploads}
+def _uniforms(roots=None, attribution="1 of 1 frame roots decoded from captured buffers"):
+    return {"version": 2, "matrixOrder": "row-major (transposed from column-major storage)",
+            "rootAttribution": attribution,
+            "roots": [_root()] if roots is None else roots}
 
 
 def _manifest(images=None, resources=None, context=None):
@@ -273,32 +270,32 @@ class NanUniformTests(unittest.TestCase):
         values = {"viewProj": _row_major(shadowmath.identity()),
                   "shadowTransform": _healthy_shadow_transform(),
                   "eyePos": [1.0, None, 3.0]}
-        found = _checks(_run(uniforms=_uniforms([_upload(values=values, finite=False)])),
+        found = _checks(_run(uniforms=_uniforms([_root(values=values, finite=False)])),
                         "nan-uniform")
         self.assertEqual([a["severity"] for a in found], ["error"])
         self.assertEqual(found[0]["subject"], "PassUniforms.eyePos")
 
-    def test_fires_once_per_field_even_across_repeated_uploads(self):
+    def test_fires_once_per_field_even_across_repeated_roots(self):
         values = {"eyePos": [None, None, None], "shadowTransform": _healthy_shadow_transform()}
-        uploads = [_upload(index=0, values=values, finite=False),
-                   _upload(index=1, values=values, finite=False)]
-        found = _checks(_run(uniforms=_uniforms(uploads)), "nan-uniform")
+        roots = [_root(index=0, values=values, finite=False),
+                 _root(index=1, values=values, finite=False)]
+        found = _checks(_run(uniforms=_uniforms(roots)), "nan-uniform")
         self.assertEqual([a["subject"] for a in found], ["PassUniforms.eyePos"])
         self.assertIn("0, 1", found[0]["finding"])
 
     def test_fires_for_a_non_finite_matrix_entry(self):
         matrix = _row_major(shadowmath.identity())
         matrix[2][3] = None
-        found = _checks(_run(uniforms=_uniforms([_upload(values={"viewProj": matrix},
-                                                          finite=False)])), "nan-uniform")
+        found = _checks(_run(uniforms=_uniforms([_root(values={"viewProj": matrix},
+                                                        finite=False)])), "nan-uniform")
         self.assertEqual([a["subject"] for a in found], ["PassUniforms.viewProj"])
 
-    def test_does_not_fire_for_finite_uploads(self):
+    def test_does_not_fire_for_finite_roots(self):
         self.assertEqual(_checks(_run(), "nan-uniform"), [])
 
     def test_does_not_mistake_an_integer_field_for_a_missing_float(self):
         values = {"shadowTransform": _healthy_shadow_transform(), "shadowFilter": 0, "flags": 0}
-        self.assertEqual(_checks(_run(uniforms=_uniforms([_upload(values=values)])),
+        self.assertEqual(_checks(_run(uniforms=_uniforms([_root(values=values)])),
                                  "nan-uniform"), [])
 
 
@@ -308,14 +305,14 @@ class DegenerateMatrixTests(unittest.TestCase):
     def test_fires_error_for_an_all_zero_view_proj(self):
         values = {"viewProj": [[0.0] * 4 for _ in range(4)],
                   "shadowTransform": _healthy_shadow_transform()}
-        found = _checks(_run(uniforms=_uniforms([_upload(values=values)])), "degenerate-matrix")
+        found = _checks(_run(uniforms=_uniforms([_root(values=values)])), "degenerate-matrix")
         self.assertEqual([a["severity"] for a in found], ["error"])
         self.assertEqual(found[0]["subject"], "PassUniforms.viewProj")
 
     def test_fires_error_for_a_collapsed_shadow_transform(self):
         collapsed = _row_major(shadowmath.identity())
         collapsed[2][2] = 0.0  # an axis scaled to nothing -> determinant 0
-        found = _checks(_run(uniforms=_uniforms([_upload(values={"shadowTransform": collapsed})])),
+        found = _checks(_run(uniforms=_uniforms([_root(values={"shadowTransform": collapsed})])),
                         "degenerate-matrix")
         self.assertEqual([a["subject"] for a in found], ["PassUniforms.shadowTransform"])
 
@@ -329,7 +326,7 @@ class DegenerateMatrixTests(unittest.TestCase):
         """Check 3 already owns a NaN matrix; a determinant over Nones would just crash."""
         matrix = _row_major(shadowmath.identity())
         matrix[0][0] = None
-        anomalies = _run(uniforms=_uniforms([_upload(values={"viewProj": matrix}, finite=False)]))
+        anomalies = _run(uniforms=_uniforms([_root(values={"viewProj": matrix}, finite=False)]))
         self.assertEqual(_checks(anomalies, "degenerate-matrix"), [])
         self.assertEqual(len(_checks(anomalies, "nan-uniform")), 1)
 
@@ -368,26 +365,26 @@ class MissingExpectedResourceTests(unittest.TestCase):
         self.assertEqual(_checks(_run(manifest), "missing-expected-resource"), [])
 
 
-# --- Check 6: no-pass-uniforms-upload ----------------------------------------------------------
+# --- Check 6: no-pass-uniforms-root ------------------------------------------------------------
 
-class NoPassUniformsUploadTests(unittest.TestCase):
-    def test_fires_error_when_only_sky_uniforms_were_uploaded(self):
-        uploads = [_upload(struct_name="SkyUniforms",
-                           values={"viewProj": _row_major(shadowmath.identity()),
-                                   "eyePos": [0.0, 0.0, 0.0]})]
-        found = _checks(_run(uniforms=_uniforms(uploads)), "no-pass-uniforms-upload")
+class NoPassUniformsRootTests(unittest.TestCase):
+    def test_fires_error_when_only_sky_uniforms_were_decoded(self):
+        roots = [_root(name="SkyUniforms",
+                       values={"viewProj": _row_major(shadowmath.identity()),
+                               "eyePos": [0.0, 0.0, 0.0]})]
+        found = _checks(_run(uniforms=_uniforms(roots)), "no-pass-uniforms-root")
         self.assertEqual([a["severity"] for a in found], ["error"])
         self.assertIn("mid-scene-switch", found[0]["next_steps_hint"])
 
-    def test_fires_error_when_the_capture_recorded_no_uploads_at_all(self):
-        found = _checks(_run(uniforms=_uniforms(uploads=[],
-                                                 attribution="no frame-data uploads recorded in "
-                                                             "this capture"),
-                             schema=_schema(frame_data_uploads=[])), "no-pass-uniforms-upload")
+    def test_fires_error_when_the_capture_recorded_no_roots_at_all(self):
+        found = _checks(_run(uniforms=_uniforms(roots=[],
+                                                 attribution="no frame roots recorded in this "
+                                                             "capture"),
+                             schema=_schema(frame_roots=[])), "no-pass-uniforms-root")
         self.assertEqual([a["severity"] for a in found], ["error"])
 
-    def test_does_not_fire_when_pass_uniforms_were_uploaded(self):
-        self.assertEqual(_checks(_run(), "no-pass-uniforms-upload"), [])
+    def test_does_not_fire_when_pass_uniforms_were_decoded(self):
+        self.assertEqual(_checks(_run(), "no-pass-uniforms-root"), [])
 
 
 # --- Uniform decode unavailable: the degrade-to-info path for checks 3, 4, 6, 7 ----------------
@@ -395,61 +392,60 @@ class NoPassUniformsUploadTests(unittest.TestCase):
 class UniformDecodeUnavailableTests(unittest.TestCase):
     def _declined(self):
         """The shape uniformlib produces when its attribution policy declines: the schema recorded
-        uploads, but no page blob could be attributed, so nothing was decoded."""
-        return _uniforms(uploads=[], attribution="found 0 MTLBuffer-* blob(s) sized 262144 bytes "
-                                                  "(expected 1, or 3 to match sibling page "
-                                                  "resources); page bytes not attributed")
+        roots, but no page blob could be attributed, so nothing was decoded."""
+        return _uniforms(roots=[], attribution="0 of 1 frame roots decoded from captured buffers; "
+                                                "first undecoded: root 0 PassUniforms: no single "
+                                                "captured buffer holds address 0x1000")
 
     def test_emits_one_info_naming_the_attribution_note(self):
         found = _checks(_run(uniforms=self._declined()), "uniform-decode-unavailable")
         self.assertEqual([a["severity"] for a in found], ["info"])
         self.assertIn("uniform decode unavailable:", found[0]["finding"])
-        self.assertIn("page bytes not attributed", found[0]["finding"])
+        self.assertIn("no single captured buffer holds", found[0]["finding"])
 
     def test_suppresses_the_uniform_dependent_checks_rather_than_firing_them(self):
         anomalies = _run(uniforms=self._declined())
-        for check in ("nan-uniform", "degenerate-matrix", "no-pass-uniforms-upload",
+        for check in ("nan-uniform", "degenerate-matrix", "no-pass-uniforms-root",
                       "shadow-transform-mismatch"):
             self.assertEqual(_checks(anomalies, check), [], msg=f"{check} fired without uniforms")
         self.assertEqual([a for a in anomalies if a["severity"] == "error"], [])
 
-    def test_a_capture_that_simply_had_no_uploads_is_not_treated_as_unavailable(self):
-        """"the engine recorded zero uploads" and "the decoder could not read the page" are
+    def test_a_capture_that_simply_had_no_roots_is_not_treated_as_unavailable(self):
+        """"the engine recorded zero roots" and "the decoder could not read the root" are
         different findings: the first is check 6's error, the second is not the frame's fault."""
-        anomalies = _run(uniforms=_uniforms(uploads=[]), schema=_schema(frame_data_uploads=[]))
+        anomalies = _run(uniforms=_uniforms(roots=[]), schema=_schema(frame_roots=[]))
         self.assertEqual(_checks(anomalies, "uniform-decode-unavailable"), [])
-        self.assertEqual(len(_checks(anomalies, "no-pass-uniforms-upload")), 1)
+        self.assertEqual(len(_checks(anomalies, "no-pass-uniforms-root")), 1)
 
 
 # --- Check 7: shadow-transform-mismatch --------------------------------------------------------
 
 class ShadowTransformMismatchTests(unittest.TestCase):
-    def test_does_not_fire_when_the_upload_matches_the_recompute(self):
-        """The transpose regression test. Uploads are decoded row-major; shadowmath computes
+    def test_does_not_fire_when_the_root_matches_the_recompute(self):
+        """The transpose regression test. Roots are decoded row-major; shadowmath computes
         column-major. If the cross-check forgot to transpose one side, this healthy fixture would
-        fire -- which is why the fixture builds its upload by transposing the recompute rather than
+        fire -- which is why the fixture builds its root by transposing the recompute rather than
         by copying whatever the checker produces."""
         self.assertEqual(_checks(_run(), "shadow-transform-mismatch"), [])
 
     def test_fires_error_when_the_uploaded_transform_drifts(self):
         drifted = _healthy_shadow_transform()
         drifted[0][3] += 0.5
-        found = _checks(_run(uniforms=_uniforms([_upload(values={
+        found = _checks(_run(uniforms=_uniforms([_root(values={
             "shadowTransform": drifted})])), "shadow-transform-mismatch")
         self.assertEqual([a["severity"] for a in found], ["error"])
-        self.assertIn("stale upload", found[0]["next_steps_hint"])
+        self.assertIn("stale frame data", found[0]["next_steps_hint"])
 
-    def test_compares_against_the_last_pass_uniforms_upload(self):
-        """Multiple PassUniforms uploads in one frame are possible; the last one is what the scene
-        pass actually drew with. Matching on structName rather than slot matters here too -- the
-        sky's SkyUniforms shares slot 2."""
+    def test_compares_against_the_last_pass_uniforms_root(self):
+        """Multiple PassUniforms roots in one frame are possible; the last one is what the scene
+        pass actually drew with, and a root of another name in between is ignored."""
         stale = _healthy_shadow_transform()
         stale[0][3] += 5.0
-        uploads = [_upload(index=0, values={"shadowTransform": stale}),
-                   _upload(index=1, struct_name="SkyUniforms",
-                           values={"viewProj": _row_major(shadowmath.identity())}),
-                   _upload(index=2, values={"shadowTransform": _healthy_shadow_transform()})]
-        self.assertEqual(_checks(_run(uniforms=_uniforms(uploads)), "shadow-transform-mismatch"),
+        roots = [_root(index=0, values={"shadowTransform": stale}),
+                 _root(index=1, name="SkyUniforms",
+                       values={"viewProj": _row_major(shadowmath.identity())}),
+                 _root(index=2, values={"shadowTransform": _healthy_shadow_transform()})]
+        self.assertEqual(_checks(_run(uniforms=_uniforms(roots)), "shadow-transform-mismatch"),
                          [])
 
     def test_tolerates_float32_rounding(self):
@@ -457,7 +453,7 @@ class ShadowTransformMismatchTests(unittest.TestCase):
         the wrong bar -- a relative 1e-3 is loose enough for the precision gap and far tighter than
         any real drift."""
         rounded = [[float(f"{value:.6g}") for value in row] for row in _healthy_shadow_transform()]
-        self.assertEqual(_checks(_run(uniforms=_uniforms([_upload(values={
+        self.assertEqual(_checks(_run(uniforms=_uniforms([_root(values={
             "shadowTransform": rounded})])), "shadow-transform-mismatch"), [])
 
     def test_degrades_to_info_when_the_context_has_null_floats(self):
@@ -481,11 +477,11 @@ class ShadowTransformMismatchTests(unittest.TestCase):
                              schema=_schema(context=context)), "shadow-transform-mismatch")
         self.assertEqual([a["severity"] for a in found], ["info"])
 
-    def test_skips_silently_when_the_upload_transform_is_non_finite(self):
-        """Check 3 owns a NaN upload; comparing Nones against floats here would only add noise."""
+    def test_skips_silently_when_the_root_transform_is_non_finite(self):
+        """Check 3 owns a NaN root; comparing Nones against floats here would only add noise."""
         matrix = _healthy_shadow_transform()
         matrix[1][1] = None
-        anomalies = _run(uniforms=_uniforms([_upload(values={"shadowTransform": matrix},
+        anomalies = _run(uniforms=_uniforms([_root(values={"shadowTransform": matrix},
                                                       finite=False)]))
         self.assertEqual(_checks(anomalies, "shadow-transform-mismatch"), [])
 

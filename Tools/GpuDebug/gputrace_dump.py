@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Decode a .gputrace capture bundle into a manifest.json describing what was recovered.
 
-Walks the bundle, loads its schema sidecar, recovers lmx.* labels from the device-resources
-streams, joins labels/blobs/schema resources according to the measured bundle format, then
-decodes each matched texture's primary blob to a PNG and statistics (see
-decodelib.py/pnglib.py), and
-finally runs the anomaly checks over everything recovered (see anomalylib.py) into
-manifest["anomalies"], severity-ordered.
+Walks the bundle, loads its schema sidecar (version 2), recovers lmx.* labels from the
+device-resources streams, joins labels/blobs/schema resources according to the measured bundle
+format, decodes each matched texture's primary blob to a PNG and statistics (see
+decodelib.py/pnglib.py), decodes every registered frame root by name and GPU address into
+uniforms.json (see uniformlib.py; manifest["frameRoots"] summarizes it), and finally runs the
+anomaly checks over everything recovered (see anomalylib.py) into manifest["anomalies"],
+severity-ordered.
 
 Usage: python3 gputrace_dump.py <bundle.gputrace> [--schema <path>] [--out <dir>]
   --schema defaults to <bundle>.schema.json (the sidecar CaptureSchema writes next to the bundle)
@@ -161,69 +162,61 @@ def _decode_images(join_result: bundlelib.JoinResult, out_dir: pathlib.Path) -> 
     return images
 
 
-def _upload_json(upload: uniformlib.DecodedUpload) -> dict:
+def _root_json(root: uniformlib.DecodedRoot) -> dict:
     # No raw GPU address: it varies run to run even for byte-identical captures, and this feeds
-    # uniforms.json, which is meant to be diffable across runs. pageLabel + pageOffset + the
-    # decoded block's own byte length (implicit in `values`) + alignmentBytes already identify the
-    # range deterministically.
+    # uniforms.json, which is meant to be diffable across runs. The buffer label and offset name
+    # the range; Addr fields inside `values` are described the same way (see uniformlib).
     return {
-        "index": upload.index,
-        "structName": upload.struct_name,
-        "slot": upload.slot,
-        "pageLabel": upload.page_label,
-        "pageOffset": upload.page_offset,
-        "alignmentBytes": upload.alignment_bytes,
-        "values": upload.values,
-        "finite": upload.finite,
+        "index": root.index,
+        "name": root.name,
+        "buffer": root.buffer_label,
+        "bufferOffset": root.buffer_offset,
+        "sizeBytes": root.size_bytes,
+        "values": root.values,
+        "finite": root.finite,
     }
 
 
-def _decode_uniforms(schema: schemalib.Schema, bundle: bundlelib.Bundle):
-    """Resolve page bytes via uniformlib's positional-attribution policy (bundlelib.join() cannot
-    do this itself -- buffer blobs aren't label-joinable and same-size pages are ambiguous by
-    design, see uniformlib's module docstring) and decode every schema-declared upload against
-    them.
+def _frame_roots_json(schema: schemalib.Schema, result: uniformlib.RootDecode) -> dict:
+    """manifest.json's summary of root decoding: counts per name and every undecoded root."""
+    by_name: dict = {}
+    for root in schema.frame_roots:
+        by_name[root.name] = by_name.get(root.name, 0) + 1
+    return {
+        "registered": len(schema.frame_roots),
+        "decoded": len(result.decoded),
+        "byName": by_name,
+        "undecoded": [{"index": r.index, "name": r.name, "reason": r.reason}
+                      for r in result.undecoded],
+    }
 
-    Returns (uniforms_doc, manifest_note). `manifest_note` is None on the two normal paths --
-    nothing to decode, or a page was attributed and decoded cleanly -- and a short string when the
-    attribution policy declined to decode anything despite recorded uploads, or a decode itself
-    failed; both are still exit-0 (uniforms.json always gets a well-formed, possibly-empty
-    document), but the reason is echoed into manifest.json's notes too.
+
+def _decode_roots(schema: schemalib.Schema, bundle: bundlelib.Bundle):
+    """Map the bundle's buffers by GPU address and decode every registered frame root.
+
+    Returns (uniforms_doc, frame_roots_summary, manifest_note). `manifest_note` is None when every
+    recorded root decoded (or none was recorded), and the attribution summary otherwise; either
+    way the run exits 0 and uniforms.json is a well-formed, possibly-empty document.
     """
-    resolution = uniformlib.resolve_page_bytes(schema, bundle)
+    result = uniformlib.decode_roots(schema, bundlelib.scan_buffers(bundle))
     manifest_note = None
-    decoded_uploads = []
-    if resolution.page_bytes_by_label:
-        try:
-            decoded_uploads = uniformlib.decode_uploads(
-                schema, resolution.page_bytes_by_label, skip_unresolved=True)
-        except uniformlib.UniformError as exc:
-            manifest_note = f"frame-data upload decode failed: {exc}"
-            print(f"warning: {manifest_note}", file=sys.stderr)
-        resolved_labels = set(resolution.page_bytes_by_label)
-        recorded_labels = {upload.page_label for upload in schema.frame_data_uploads}
-        if resolved_labels != recorded_labels:
-            manifest_note = resolution.attribution
-            print(f"warning: {manifest_note}", file=sys.stderr)
-    elif schema.frame_data_uploads:
-        # Attribution declined (ambiguous/absent page blob) despite the schema recording
-        # uploads -- worth flagging in the manifest, unlike "no uploads this capture at all".
-        manifest_note = resolution.attribution
+    if result.undecoded:
+        manifest_note = result.attribution
         print(f"warning: {manifest_note}", file=sys.stderr)
-
     uniforms_doc = {
-        "version": 1,
+        "version": 2,
         "matrixOrder": _MATRIX_ORDER_NOTE,
-        "pageAttribution": resolution.attribution,
-        "uploads": [_upload_json(u) for u in decoded_uploads],
+        "rootAttribution": result.attribution,
+        "roots": [_root_json(root) for root in result.decoded],
     }
-    return uniforms_doc, manifest_note
+    return uniforms_doc, _frame_roots_json(schema, result), manifest_note
 
 
 def build_manifest(bundle_path: pathlib.Path, schema_path: pathlib.Path, bundle: bundlelib.Bundle,
                     schema: schemalib.Schema, join_result: bundlelib.JoinResult,
                     images: list, uniforms_note: str | None = None,
-                    uniforms_doc: dict | None = None) -> dict:
+                    uniforms_doc: dict | None = None,
+                    frame_roots: dict | None = None) -> dict:
     header_version = bundlelib.first_texture_header_version(bundle)
     notes = []
     if header_version is not None and header_version != bundlelib.EXPECTED_HEADER_VERSION:
@@ -243,6 +236,7 @@ def build_manifest(bundle_path: pathlib.Path, schema_path: pathlib.Path, bundle:
         "resources": _resources_json(join_result),
         "images": images,
         "uniforms": "uniforms.json",
+        "frameRoots": frame_roots if frame_roots is not None else {},
         "anomalies": [],
     }
     if notes:
@@ -293,13 +287,13 @@ def main(argv=None) -> int:
 
     images = _decode_images(join_result, out_dir)
 
-    uniforms_doc, uniforms_note = _decode_uniforms(schema, bundle)
+    uniforms_doc, frame_roots, uniforms_note = _decode_roots(schema, bundle)
     uniforms_path = out_dir / "uniforms.json"
     uniforms_path.write_text(json.dumps(uniforms_doc, indent=2) + "\n")
     print(f"wrote {uniforms_path}")
 
     manifest = build_manifest(args.bundle, schema_path, bundle, schema, join_result, images,
-                              uniforms_note, uniforms_doc)
+                              uniforms_note, uniforms_doc, frame_roots)
 
     manifest_path = out_dir / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")

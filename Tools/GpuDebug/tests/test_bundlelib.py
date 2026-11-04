@@ -53,6 +53,43 @@ def _texture_header(width: int, height: int, pixel_format: int = 80,
     return header
 
 
+# The framed form scan_buffers() walks: the "MTSP" stream header, then records of u32 length,
+# u32 call code, 24 bytes, a u32, the descriptor (NUL, padded to 4), the receiver and the payload.
+_CODE_SET_LABEL = 0xFFFFD803
+_CODE_CONTENTS = 0xFFFFD803
+
+
+def _framed_record(code: int, descriptor: bytes, receiver: int, payload: bytes) -> bytes:
+    body = descriptor + b"\x00"
+    body += b"\x00" * ((-len(body)) % 4)
+    body += struct.pack("<Q", receiver) + payload
+    body += b"\x00" * ((-len(body)) % 4)
+    header = struct.pack("<II", 36 + len(body), code) + b"\x00" * 24 + struct.pack("<I", 0)
+    return header + body
+
+
+def framed_buffer_records(handle: int, address: int, length: int | None, label: str | None,
+                          blob_name: str | None = None, device: int = 0xD0D0) -> bytes:
+    """The records a real stream holds for one MTLBuffer: its label, GPU address, length and,
+    when the capture dumped contents, the contents record that ends with the buffer handle."""
+    out = b""
+    if label is not None:
+        out += _framed_record(_CODE_SET_LABEL, b"CS", handle, label.encode("ascii") + b"\x00")
+    out += _framed_record(bundlelib._CALL_GPU_ADDRESS, b"Cuw", handle, struct.pack("<Q", address))
+    if length is not None:
+        out += _framed_record(bundlelib._CALL_LENGTH, b"Cul", handle, struct.pack("<Q", length))
+    if blob_name is not None:
+        name = blob_name.encode("ascii") + b"\x00"
+        name += b"\x00" * ((-len(name)) % 4)
+        tail = struct.pack("<IQIIQ", length or 0, 0, 0, 0x74, handle)
+        out += _framed_record(_CODE_CONTENTS, b"CU<b>ulul", device, name + tail)
+    return out
+
+
+def framed_stream(*records: bytes) -> bytes:
+    return bundlelib.STREAM_MAGIC + struct.pack("<I", 0x400) + b"".join(records)
+
+
 class BundleFixture:
     """Build a fixture shaped like a real capture bundle."""
 
@@ -241,7 +278,7 @@ class ScanLabelsTests(unittest.TestCase):
 
 def _schema_with(resources) -> schemalib.Schema:
     return schemalib.Schema(context={}, resources=resources, uniform_structs=[],
-                            frame_data_uploads=[])
+                            frame_roots=[])
 
 
 def _texture_resource(label, width, height, fmt="BGRA8Unorm", mip_levels=1) -> schemalib.Resource:
@@ -545,6 +582,80 @@ class FirstTextureHeaderVersionTests(unittest.TestCase):
         bundle = bundlelib.walk_bundle(self.root)
 
         self.assertIsNone(bundlelib.first_texture_header_version(bundle))
+
+
+class ScanBuffersTests(unittest.TestCase):
+    """scan_buffers() maps GPU addresses to labelled buffers and their blobs from framed records."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = pathlib.Path(self._tmp.name) / "b.gputrace"
+        self.root.mkdir()
+
+    def _write(self, data: bytes, name: str = "device-resources-0xd0d0"):
+        (self.root / name).write_bytes(data)
+
+    def test_joins_address_length_label_and_blob_through_the_handle(self):
+        (self.root / "MTLBuffer-7-0").write_bytes(b"\x00" * 4096)
+        self._write(framed_stream(
+            framed_buffer_records(0xA1, 0x1_0000_8000, 4096, "rojorhi.frameArena.page",
+                                  "MTLBuffer-7-0"),
+            framed_buffer_records(0xA2, 0x1_0000_0000, 256, "lmx.scene.lights.0")))
+
+        buffers = bundlelib.scan_buffers(bundlelib.walk_bundle(self.root))
+
+        self.assertEqual([(b.gpu_address, b.length, b.label) for b in buffers],
+                         [(0x1_0000_0000, 256, "lmx.scene.lights.0"),
+                          (0x1_0000_8000, 4096, "rojorhi.frameArena.page")])
+        self.assertIsNone(buffers[0].blob)
+        self.assertEqual(buffers[1].blob.path.name, "MTLBuffer-7-0")
+
+    def test_buffer_containing_uses_the_half_open_range(self):
+        self._write(framed_stream(framed_buffer_records(0xA1, 0x1000, 0x100, "a")))
+        buffers = bundlelib.scan_buffers(bundlelib.walk_bundle(self.root))
+
+        self.assertEqual(bundlelib.buffer_containing(buffers, 0x1000).label, "a")
+        self.assertEqual(bundlelib.buffer_containing(buffers, 0x10FF).label, "a")
+        self.assertIsNone(bundlelib.buffer_containing(buffers, 0x1100))
+        self.assertIsNone(bundlelib.buffer_containing(buffers, 0x0FFF))
+
+    def test_missing_length_falls_back_to_the_blob_size(self):
+        (self.root / "MTLBuffer-3-0").write_bytes(b"\x00" * 512)
+        self._write(framed_stream(framed_buffer_records(0xA1, 0x2000, None, "a",
+                                                        "MTLBuffer-3-0")))
+
+        (buffer,) = bundlelib.scan_buffers(bundlelib.walk_bundle(self.root))
+
+        self.assertEqual(buffer.length, 512)
+
+    def test_reads_the_capture_stream_too(self):
+        self._write(framed_stream())
+        self._write(framed_stream(framed_buffer_records(0xB1, 0x3000, 64, "made.in.frame")),
+                    name="capture")
+
+        (buffer,) = bundlelib.scan_buffers(bundlelib.walk_bundle(self.root))
+
+        self.assertEqual(buffer.label, "made.in.frame")
+
+    def test_unframed_or_truncated_streams_yield_what_they_can(self):
+        good = framed_buffer_records(0xA1, 0x1000, 16, "kept")
+        # Its address record is the last one and loses its tail, so the walk ends before it.
+        truncated = framed_buffer_records(0xA2, 0x2000, None, "lost")[:-4]
+        self._write(framed_stream(good, truncated))
+        self._write(b"no magic here", name="unused-device-resources-0xd0d0")
+
+        buffers = bundlelib.scan_buffers(bundlelib.walk_bundle(self.root))
+
+        self.assertEqual([b.label for b in buffers], ["kept"])
+
+    def test_overlapping_ranges_are_ambiguous(self):
+        self._write(framed_stream(framed_buffer_records(0xA1, 0x1000, 0x100, "a"),
+                                  framed_buffer_records(0xA2, 0x1080, 0x100, "b")))
+        buffers = bundlelib.scan_buffers(bundlelib.walk_bundle(self.root))
+
+        self.assertIsNone(bundlelib.buffer_containing(buffers, 0x10C0))
+        self.assertEqual(bundlelib.buffer_containing(buffers, 0x1040).label, "a")
 
 
 if __name__ == "__main__":

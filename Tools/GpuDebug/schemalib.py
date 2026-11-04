@@ -1,8 +1,13 @@
-"""Load and validate a Luminex capture-schema sidecar (<bundle>.gputrace.schema.json, version 1).
+"""Load and validate a Luminex capture-schema sidecar (<bundle>.gputrace.schema.json, version 2).
 
-The sidecar is written by RojoRHI/Source/CaptureSchema.cpp on every endCapture() call. This module
+The sidecar is written by Source/Engine/Gpu/CaptureSchema.cpp when a capture ends. This module
 loads the versioned JSON into plain dataclasses and validates its required keys; geometry and
-content cross-checks against the bundle live in bundlelib.join().
+content cross-checks against the bundle live in bundlelib.join(), and root decoding in uniformlib.
+
+Version 2 names the frame's data by root: `frameRoots` lists each registered root's name and GPU
+address (`Addr` lo/hi), and `uniformStructs` gives each named layout. Version 1 sidecars, whose
+`frameDataUploads` named arena pages and binding slots, came from builds before RojoRHI v2 and are
+rejected with a message saying so.
 
 Run: python3 -c "import schemalib; print(schemalib.load_schema('bundle.gputrace.schema.json'))"
 """
@@ -10,12 +15,12 @@ import dataclasses
 import json
 import pathlib
 
-SUPPORTED_VERSION = 1
+SUPPORTED_VERSION = 2
 
-# The sidecar is written next to the bundle by every App-driven capture (RojoRHI/Source/
-# CaptureSchema.cpp's writeJson, called from Metal4Capture's endCapture()). Every SchemaError
-# below carries this alongside the offending path -- the usual cause of a schema failure is "the
-# sidecar doesn't exist / is stale" rather than a bug in this module.
+# The sidecar is written next to the bundle by every App-driven capture (GpuContext::endCapture
+# calls writeCaptureSchema). Every SchemaError below carries this alongside the offending path --
+# the usual cause of a schema failure is "the sidecar doesn't exist / is stale" rather than a bug
+# in this module.
 RUN_COMMAND_HINT = (
     "MTL_CAPTURE_ENABLED=1 LMX_MAX_FRAMES=<N> LMX_CAPTURE_AT_FRAME=<M> "
     "LMX_CAPTURE_PATH=<out>.gputrace ./App   (run from the App's build dir; the schema sidecar "
@@ -46,28 +51,22 @@ class UniformField:
 @dataclasses.dataclass
 class UniformStruct:
     name: str
-    slot: int
     size_bytes: int
     fields: list  # list[UniformField]
 
 
 @dataclasses.dataclass
-class FrameDataUpload:
-    page_label: str
-    slot: int
-    page_offset: int
-    size_bytes: int
-    alignment_bytes: int
-    gpu_address: int
+class FrameRoot:
+    name: str  # the registered root name, which names its layout in uniform_structs
+    address: int  # the GPU virtual address, (hi << 32) | lo
 
 
 @dataclasses.dataclass
 class Resource:
     label: str
-    kind: str  # "texture2d" | "cube" | "buffer"
+    kind: str  # "texture2d" | "cube" | "buffer" | ...
     # Texture-only fields; None for kind == "buffer" (the sidecar omits these keys entirely --
-    # CaptureSchema.cpp's renderJson() branches on kind the same way, see the reciprocal branch
-    # there for why).
+    # CaptureSchema.cpp's renderSchema() branches on kind the same way).
     format: str | None
     width: int | None
     height: int | None
@@ -81,7 +80,7 @@ class Schema:
     context: dict
     resources: list  # list[Resource]
     uniform_structs: list  # list[UniformStruct]
-    frame_data_uploads: list  # list[FrameDataUpload]
+    frame_roots: list  # list[FrameRoot], in registration order
 
 
 def _require(obj: dict, key: str, where: str):
@@ -125,21 +124,18 @@ def _load_uniform_struct(raw: dict, where: str) -> UniformStruct:
     ]
     return UniformStruct(
         name=_require(raw, "name", where),
-        slot=_require(raw, "slot", where),
         size_bytes=_require(raw, "sizeBytes", where),
         fields=fields,
     )
 
 
-def _load_frame_data_upload(raw: dict, where: str) -> FrameDataUpload:
-    return FrameDataUpload(
-        page_label=_require(raw, "pageLabel", where),
-        slot=_require(raw, "slot", where),
-        page_offset=_require(raw, "pageOffset", where),
-        size_bytes=_require(raw, "sizeBytes", where),
-        alignment_bytes=_require(raw, "alignmentBytes", where),
-        gpu_address=_require(raw, "gpuAddress", where),
-    )
+def _load_frame_root(raw: dict, where: str) -> FrameRoot:
+    addr = _require(raw, "addr", where)
+    if not isinstance(addr, dict):
+        raise _error(f"{where}: 'addr' must be an object with 'lo' and 'hi'")
+    lo = _require(addr, "lo", f"{where} addr")
+    hi = _require(addr, "hi", f"{where} addr")
+    return FrameRoot(name=_require(raw, "name", where), address=(hi << 32) | lo)
 
 
 def load_schema(path) -> Schema:
@@ -157,6 +153,11 @@ def load_schema(path) -> Schema:
         raise _error(f"{path}: top-level JSON value must be an object")
 
     version = _require(raw, "version", str(path))
+    if version == 1:
+        raise _error(
+            f"{path}: schema version 1 comes from a build before RojoRHI v2 (frame data by arena "
+            f"page and slot); this tool reads version {SUPPORTED_VERSION} only (frame data by root "
+            "name and address). Re-capture with the current App")
     if version != SUPPORTED_VERSION:
         raise _error(
             f"{path}: unsupported schema version {version!r}, expected {SUPPORTED_VERSION}"
@@ -164,8 +165,8 @@ def load_schema(path) -> Schema:
 
     # `context` is passed through as a plain dict rather than a dataclass: its non-finite floats
     # round-trip through the sidecar as JSON null (CaptureSchema.cpp's appendFloat), which
-    # `json.loads` already turns these values into None. Consumers must tolerate None wherever a
-    # non-finite context float can appear.
+    # `json.loads` already turns into None. Consumers must tolerate None wherever a non-finite
+    # context float can appear.
     context = _require(raw, "context", str(path))
 
     resources = [
@@ -176,14 +177,14 @@ def load_schema(path) -> Schema:
         _load_uniform_struct(s, f"{path} uniformStructs[{i}]")
         for i, s in enumerate(_require(raw, "uniformStructs", str(path)))
     ]
-    frame_data_uploads = [
-        _load_frame_data_upload(u, f"{path} frameDataUploads[{i}]")
-        for i, u in enumerate(_require(raw, "frameDataUploads", str(path)))
+    frame_roots = [
+        _load_frame_root(r, f"{path} frameRoots[{i}]")
+        for i, r in enumerate(_require(raw, "frameRoots", str(path)))
     ]
 
     return Schema(
         context=context,
         resources=resources,
         uniform_structs=uniform_structs,
-        frame_data_uploads=frame_data_uploads,
+        frame_roots=frame_roots,
     )

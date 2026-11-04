@@ -1,40 +1,25 @@
-"""Decode schema-declared frame-data uploads (`Schema.frame_data_uploads`/`uniform_structs`)
-against the arena-page bytes captured in a `.gputrace` bundle, plus the page-blob attribution
-policy those bytes need in the first place.
+"""Decode the frame's named roots (`Schema.frame_roots`) from the buffer bytes a `.gputrace` holds.
 
-Buffer attribution follows constraints measured from real capture bundles:
+A root is a (name, GPU address) pair the renderer registered while the capture was open; the
+name also names its layout in `Schema.uniform_structs`. The bundle records every buffer's GPU
+address, length and label (bundlelib.scan_buffers), so:
 
-- **Buffer blobs are not label-joinable.** The buffer-contents record's
-  receiver is the *device*, not the buffer, so `bundlelib.join()` never attaches a label to a
-  `MTLBuffer-*` blob -- it can only match a buffer resource by exact, unambiguous size, and
-  correctly refuses to guess among same-size candidates (a frame-data slot's arena pages are all
-  the same 256 KiB normal-page size, so several pages sharing one capture are the textbook
-  ambiguous case). `resolve_page_bytes` below is the positional fallback `join()` deliberately does
-  not attempt:
-  1. Every upload in one capture names one page (`pageLabel`); look up that page's `sizeBytes`
-     from the matching schema resource.
-  2. Candidates = every root-level `MTLBuffer-*` blob whose FILE SIZE equals that `sizeBytes`
-     exactly (buffer blobs carry no header, so file size is buffer length).
-  3. Exactly one candidate -> use it; Metal typically only dumps the frame's referenced page.
-  4. Exactly as many candidates as sibling page resources (every *other frame-in-flight slot's*
-     page at the same page index, matched by label shape) -> sort blobs by the numeric `<id>` in
-     `MTLBuffer-<id>-<n>` ascending and pick positionally. The real ambiguity a capture hits is
-     cross-slot, not within one slot: `Metal4Device` creates exactly one page per slot up front
-     (`Metal4FrameArena::create`), so three same-sized page-0 buffers, one per slot, is the common
-     case -- the same shape three sibling uniform rings used to have, one per slot, sharing every
-     part of the label except the slot number. A single slot growing to several pages in one frame
-     is a real but different situation: those pages differ in *index*, not slot, and are never each
-     other's attribution family (a within-slot arena never confuses its own pages for one another
-     at allocation time, so there is nothing to disambiguate there). Captures show a slot's page 0
-     created before the next slot's, so ascending id order lines up with ascending slot number.
-     This is explicitly an *untrusted* heuristic -- ordering, not identity -- and is labelled as
-     such in the returned attribution.
-  5. Any other candidate count -> decline to decode; the caller gets an explanatory note instead
-     of a guess.
-- **Non-finite floats render as JSON `null`**, matching how `CaptureSchema.cpp`'s `appendFloat`
-  already serializes a non-finite context float into the schema sidecar (schemalib.py's
-  `test_context_tolerates_null_floats`). A page can legitimately hold uninitialized/NaN bytes
-  outside the region a frame actually wrote. Decode it, flag it, and never fabricate a number.
+1. A root resolves to the one captured buffer whose `[address, address + length)` holds its
+   address -- in practice a RojoRHI frame-arena page, which the sidecar does not list because the
+   arena is internal to RojoRHI.
+2. Its struct decodes at `root address - buffer address` in that buffer's blob, field by field,
+   from the layout registered under the root's name. The struct must lie wholly inside the blob.
+3. Each `Addr` field is followed one level and shown without the raw address, which differs run
+   to run: `{"root": name}` when it equals a registered root's address, else `{"buffer": label,
+   "offset": n}` for the labelled buffer it points into, else `{"unresolved": "0x..."}`. A zero
+   address stays `0`, not `null`: null is reserved for non-finite floats, which the anomaly checks
+   look for, and a zero address is an ordinary unused field.
+
+The bytes are what the capture saw in GPU memory, not a CPU copy, so a root overwritten before the
+GPU read it shows the overwrite. A root that cannot be decoded (no buffer holds its address, the
+buffer has no captured contents, an unknown field type) is reported with its reason; the other
+roots still decode. Non-finite floats render as JSON `null`, as `CaptureSchema.cpp`'s
+`appendFloat` does for the context; decode them, flag them, never fabricate a number.
 
 Run: python3 -c "import uniformlib"  (see tests/test_uniformlib.py for worked examples)
 """
@@ -43,52 +28,63 @@ import math
 import re
 import struct
 
-RUN_COMMAND_HINT = (
-    "MTL_CAPTURE_ENABLED=1 LMX_MAX_FRAMES=<N> LMX_CAPTURE_AT_FRAME=<M> "
-    "LMX_CAPTURE_PATH=<out>.gputrace ./App   (run from the App's build dir)"
-)
+import bundlelib
 
-# First N bytes shown for an upload whose (slot, sizeBytes) matches no registered struct.
+# First N bytes shown for a root whose name has no registered layout.
 _RAW_HEX_BYTES = 64
 
-_BUFFER_ID_RE = re.compile(r"^MTLBuffer-(\d+)-\d+$")
-# Metal4FrameArena.cpp labels a page "rojorhi.device.frameData.<slot>.page.<index>" -- the constant
-# prefix, the frame-in-flight slot, the literal "page", and the page index within that slot. The
-# attribution family groups by (prefix, index) with the slot wildcarded, i.e. every slot's page at
-# the same index: that is the cross-slot ambiguity the ring family used to have (three same-size
-# rings, one per slot), because a real device creates exactly one page per slot up front.
-_PAGE_LABEL_RE = re.compile(r"^(.+)\.(\d+)\.page\.(\d+)$")
+_ARRAY_RE = re.compile(r"^(.+)\[(\d+)\]$")
+
+# Scalar element format, component count and byte size per field type. Arrays (`T[n]`) use the
+# C++ layout the registering code takes its offsets from: elements packed at sizeof(T).
+_TYPES = {
+    "float": ("f", 1, 4),
+    "float2": ("f", 2, 8),
+    "float3": ("f", 3, 12),
+    "float4": ("f", 4, 16),
+    "float4x4": ("f", 16, 64),
+    "int": ("i", 1, 4),
+    "int2": ("i", 2, 8),
+    "int3": ("i", 3, 12),
+    "int4": ("i", 4, 16),
+    "uint": ("I", 1, 4),
+    "uint2": ("I", 2, 8),
+    "uint3": ("I", 3, 12),
+    "uint4": ("I", 4, 16),
+    "Addr": ("Q", 1, 8),
+}
 
 
 class UniformError(Exception):
-    """Raised when a schema-declared upload's byte range doesn't fit inside the page bytes
-    actually available for its `pageLabel`. Names the page label plus the declared offset/size
-    and the available length, so a caller can tell a stale schema from a mis-attributed page
-    blob (see the module docstring's `resolve_page_bytes` policy) at a glance.
-    """
+    """Raised for a field whose type this decoder does not know; names the field and type."""
 
 
 @dataclasses.dataclass
-class DecodedUpload:
-    # Deliberately no `gpu_address`: it is a real virtual address that varies run to run even for
-    # two captures with byte-identical content, and this record feeds `uniforms.json`, which is
-    # meant to be diffable across runs -- `page_label` + `page_offset` + the block's size + this
-    # alignment already name the range deterministically, which is what a reader needs to trace an
-    # upload back to its arena range without the address itself.
-    index: int
-    struct_name: str
-    slot: int
-    page_label: str
-    page_offset: int
-    alignment_bytes: int
+class DecodedRoot:
+    # Deliberately no raw address: it varies run to run even for two captures with byte-identical
+    # content, and this record feeds `uniforms.json`, which is meant to be diffable across runs.
+    # The buffer label and offset name the range instead.
+    index: int  # position in the sidecar's frameRoots, i.e. registration order
+    name: str
+    buffer_label: str | None
+    buffer_offset: int
+    size_bytes: int | None  # None when the name has no registered layout (values hold rawHex)
     values: dict
     finite: bool  # False if any decoded float in `values` was NaN/Inf (rendered as None/null)
 
 
 @dataclasses.dataclass
-class PageResolution:
-    page_bytes_by_label: dict  # page label -> bytes, only for pages the policy could attribute
-    attribution: str  # human-readable note; written verbatim as uniforms.json's "pageAttribution"
+class UndecodedRoot:
+    index: int
+    name: str
+    reason: str
+
+
+@dataclasses.dataclass
+class RootDecode:
+    decoded: list  # list[DecodedRoot]
+    undecoded: list  # list[UndecodedRoot]
+    attribution: str  # one-line summary; written verbatim as uniforms.json's "rootAttribution"
 
 
 def _sanitize_float(value: float):
@@ -99,186 +95,145 @@ def _sanitize_float(value: float):
     return None, False
 
 
-def _decode_field(field, page_bytes: bytes, base_offset: int):
-    """(value, finite) for one schemalib.UniformField, read at `base_offset + field.offset_bytes`.
+def _type_size(type_name: str) -> int:
+    match = _ARRAY_RE.match(type_name)
+    base, count = (match.group(1), int(match.group(2))) if match else (type_name, 1)
+    if base not in _TYPES:
+        raise UniformError(f"unrecognized field type {type_name!r}")
+    return _TYPES[base][2] * count
 
-    Types mirror Renderer.cpp's registerUniformLayoutsForCapture(): float/float3/float4 are plain
-    struct.unpack_from reads, float4x4 is 16 floats in glm/Slang column-major storage order
-    (mem[col*4+row] == M[row][col]) transposed into a row-major nested list for display
-    (display[row][col] == M[row][col], i.e. the SAME matrix, just re-shaped for readability --
-    not a mathematical transpose of the matrix itself), and int/uint are plain 4-byte reads with
-    no finiteness concept.
+
+class _AddrNamer:
+    """Turns an `Addr` value into its diffable description (module docstring, step 3)."""
+
+    def __init__(self, roots: list, buffers: list):
+        self._roots = {}
+        for root in roots:
+            self._roots.setdefault(root.address, root.name)
+        self._buffers = buffers
+
+    def __call__(self, address: int):
+        if address == 0:
+            return 0
+        if address in self._roots:
+            return {"root": self._roots[address]}
+        buffer = bundlelib.buffer_containing(self._buffers, address)
+        if buffer is not None and buffer.label is not None:
+            return {"buffer": buffer.label, "offset": address - buffer.gpu_address}
+        return {"unresolved": f"{address:#x}"}
+
+
+def _decode_element(base: str, data: bytes, offset: int, name_addr):
+    """(value, finite) for one element of scalar/vector/matrix type `base` at `offset`.
+
+    float4x4 is 16 floats in glm/Slang column-major storage order (mem[col*4+row] == M[row][col])
+    reshaped into a row-major nested list for display (display[row][col] == M[row][col]: the SAME
+    matrix, not a mathematical transpose of it). int/uint have no finiteness concept.
     """
+    fmt, count, _ = _TYPES[base]
+    raw = struct.unpack_from(f"<{count}{fmt}", data, offset)
+    if base == "Addr":
+        return name_addr(raw[0]), True
+    if fmt != "f":
+        return (raw[0] if count == 1 else list(raw)), True
+    values, finite = [], True
+    for component in raw:
+        value, ok = _sanitize_float(component)
+        values.append(value)
+        finite = finite and ok
+    if base == "float4x4":
+        columns = [values[c * 4:(c + 1) * 4] for c in range(4)]
+        return [[columns[c][r] for c in range(4)] for r in range(4)], finite
+    return (values[0] if count == 1 else values), finite
+
+
+def _decode_field(field, data: bytes, base_offset: int, name_addr):
+    """(value, finite) for one schemalib.UniformField at `base_offset + field.offset_bytes`."""
     offset = base_offset + field.offset_bytes
-    if field.type == "float":
-        raw = struct.unpack_from("<f", page_bytes, offset)[0]
-        return _sanitize_float(raw)
-    if field.type == "float3":
-        raw = struct.unpack_from("<3f", page_bytes, offset)
-        values, finite = [], True
-        for component in raw:
-            v, ok = _sanitize_float(component)
-            values.append(v)
-            finite = finite and ok
-        return values, finite
-    if field.type == "float4":
-        raw = struct.unpack_from("<4f", page_bytes, offset)
-        values, finite = [], True
-        for component in raw:
-            v, ok = _sanitize_float(component)
-            values.append(v)
-            finite = finite and ok
-        return values, finite
-    if field.type == "float4x4":
-        raw = struct.unpack_from("<16f", page_bytes, offset)
-        flat, finite = [], True
-        for component in raw:
-            v, ok = _sanitize_float(component)
-            flat.append(v)
-            finite = finite and ok
-        columns = [flat[c * 4:(c + 1) * 4] for c in range(4)]
-        rows = [[columns[c][r] for c in range(4)] for r in range(4)]
-        return rows, finite
-    if field.type == "int":
-        return struct.unpack_from("<i", page_bytes, offset)[0], True
-    if field.type == "uint":
-        return struct.unpack_from("<I", page_bytes, offset)[0], True
-    raise UniformError(
-        f"field {field.name!r}: unrecognized uniform field type {field.type!r}"
-    )
-
-
-def _decode_struct_fields(struct_, page_bytes: bytes, page_offset: int):
-    values, finite = {}, True
-    for field in struct_.fields:
-        value, ok = _decode_field(field, page_bytes, page_offset)
-        values[field.name] = value
+    match = _ARRAY_RE.match(field.type)
+    base, count = (match.group(1), int(match.group(2))) if match else (field.type, None)
+    if base not in _TYPES:
+        raise UniformError(f"field {field.name!r}: unrecognized field type {field.type!r}")
+    if count is None:
+        return _decode_element(base, data, offset, name_addr)
+    stride = _TYPES[base][2]
+    values, finite = [], True
+    for element in range(count):
+        value, ok = _decode_element(base, data, offset + element * stride, name_addr)
+        values.append(value)
         finite = finite and ok
     return values, finite
 
 
-def decode_uploads(schema, page_bytes_by_label: dict, skip_unresolved: bool = False) -> list:
-    """Decode every `schema.frame_data_uploads` entry against `page_bytes_by_label`.
+def _struct_extent(struct_) -> int:
+    """Bytes the struct occupies: its registered size, or its last field's end if larger."""
+    end = struct_.size_bytes
+    for field in struct_.fields:
+        end = max(end, field.offset_bytes + _type_size(field.type))
+    return end
 
-    `page_bytes_by_label` maps a page label to the bytes attributed to it (see
-    `resolve_page_bytes`). By default an upload whose page has no entry raises UniformError, so a
-    direct caller cannot silently forget resolution. The dump pipeline passes skip_unresolved=True
-    to preserve uploads from pages that were attributed when a different page stayed ambiguous.
 
-    Struct resolution is by exact (slot, sizeBytes) match against `schema.uniform_structs` -- the
-    plan Reference states that pair is unique across the four registered structs. No match decodes
-    as `struct_name="unknown"` with the upload's first 64 raw bytes as hex, so the sidecar is
-    always legible even for a struct this schema version doesn't recognize.
+def decode_roots(schema, buffers: list) -> RootDecode:
+    """Decode every `schema.frame_roots` entry from `buffers` (bundlelib.scan_buffers output).
+
+    Never raises for one root's problem: a root that cannot be decoded lands in `undecoded` with
+    its reason, so one stale layout or missing blob does not hide the rest of the frame.
     """
-    struct_by_key = {(s.slot, s.size_bytes): s for s in schema.uniform_structs}
+    structs = {s.name: s for s in schema.uniform_structs}
+    name_addr = _AddrNamer(schema.frame_roots, buffers)
+    blob_bytes: dict = {}
+    decoded, undecoded = [], []
 
-    decoded = []
-    for index, upload in enumerate(schema.frame_data_uploads):
-        if skip_unresolved and upload.page_label not in page_bytes_by_label:
+    for index, root in enumerate(schema.frame_roots):
+        def skip(reason: str, index=index, root=root):
+            undecoded.append(UndecodedRoot(index=index, name=root.name, reason=reason))
+
+        if root.address == 0:
+            skip("registered with a zero address")
             continue
-        page_bytes = page_bytes_by_label.get(upload.page_label, b"")
-        end = upload.page_offset + upload.size_bytes
-        if end > len(page_bytes):
-            raise UniformError(
-                f"upload {index} on page {upload.page_label!r}: slice "
-                f"[{upload.page_offset}:{end}] (size {upload.size_bytes}) exceeds the "
-                f"{len(page_bytes)}-byte page available for that label"
-            )
+        buffer = bundlelib.buffer_containing(buffers, root.address)
+        if buffer is None:
+            skip(f"no single captured buffer holds address {root.address:#x}")
+            continue
+        if buffer.blob is None:
+            skip(f"buffer {buffer.label!r} holds it, but the capture dumped no contents for it")
+            continue
+        data = blob_bytes.get(buffer.blob.path)
+        if data is None:
+            data = blob_bytes[buffer.blob.path] = buffer.blob.path.read_bytes()
+        offset = root.address - buffer.gpu_address
+        struct_ = structs.get(root.name)
 
-        struct_ = struct_by_key.get((upload.slot, upload.size_bytes))
         if struct_ is None:
-            raw = page_bytes[upload.page_offset:upload.page_offset + min(_RAW_HEX_BYTES,
-                                                                          upload.size_bytes)]
-            decoded.append(DecodedUpload(
-                index=index, struct_name="unknown", slot=upload.slot,
-                page_label=upload.page_label, page_offset=upload.page_offset,
-                alignment_bytes=upload.alignment_bytes, values={"rawHex": raw.hex()}, finite=True))
+            raw = data[offset:offset + _RAW_HEX_BYTES]
+            decoded.append(DecodedRoot(
+                index=index, name=root.name, buffer_label=buffer.label, buffer_offset=offset,
+                size_bytes=None, values={"rawHex": raw.hex()}, finite=True))
             continue
-
-        values, finite = _decode_struct_fields(struct_, page_bytes, upload.page_offset)
-        decoded.append(DecodedUpload(
-            index=index, struct_name=struct_.name, slot=upload.slot,
-            page_label=upload.page_label, page_offset=upload.page_offset,
-            alignment_bytes=upload.alignment_bytes, values=values, finite=finite))
-    return decoded
-
-
-def _page_label_parts(label: str):
-    """(prefix, slot, index) from "rojorhi.device.frameData.0.page.1" ->
-    ("rojorhi.device.frameData", 0, 1), or None when `label` doesn't match a frame-data page label's
-    shape."""
-    match = _PAGE_LABEL_RE.match(label)
-    if match is None:
-        return None
-    return match.group(1), int(match.group(2)), int(match.group(3))
-
-
-def _buffer_id(name: str):
-    match = _BUFFER_ID_RE.match(name)
-    return int(match.group(1)) if match else None
-
-
-def resolve_page_bytes(schema, bundle) -> PageResolution:
-    """Apply the module docstring's positional-attribution policy for every page `schema.
-    frame_data_uploads` references, reading blob bytes from `bundle.blobs` (a bundlelib.Bundle).
-
-    Each referenced page is resolved independently. This preserves unambiguous pages in a capture
-    that spills across the arena while declining only the pages whose same-sized blobs cannot be
-    distinguished safely.
-
-    `bundle` is never touched when there are no uploads to resolve bytes for -- callers may pass
-    None in that case (exercised by tests that don't need a bundle fixture at all).
-    """
-    upload_page_labels = {u.page_label for u in schema.frame_data_uploads}
-    if not upload_page_labels:
-        return PageResolution({}, "no frame-data uploads recorded in this capture")
-
-    page_resources = {
-        r.label: r for r in schema.resources
-        if r.kind == "buffer" and r.label in upload_page_labels
-    }
-    referenced_by_size = {}
-    for resource in page_resources.values():
-        referenced_by_size.setdefault(resource.size_bytes, []).append(resource.label)
-
-    resolved = {}
-    notes = []
-    for page_label in sorted(upload_page_labels):
-        page_resource = page_resources.get(page_label)
-        if page_resource is None:
-            notes.append(f"{page_label}: schema buffer resource missing")
+        try:
+            extent = _struct_extent(struct_)
+            if offset + extent > len(data):
+                skip(f"its {extent}-byte layout at offset {offset} runs past the "
+                     f"{len(data)}-byte contents of {buffer.label!r}")
+                continue
+            values, finite = {}, True
+            for field in struct_.fields:
+                value, ok = _decode_field(field, data, offset, name_addr)
+                values[field.name] = value
+                finite = finite and ok
+        except UniformError as exc:
+            skip(str(exc))
             continue
+        decoded.append(DecodedRoot(
+            index=index, name=root.name, buffer_label=buffer.label, buffer_offset=offset,
+            size_bytes=struct_.size_bytes, values=values, finite=finite))
 
-        parsed = _page_label_parts(page_label)
-        if parsed is None:
-            notes.append(f"{page_label}: label shape invalid")
-            continue
-        prefix, _slot, page_index = parsed
-        family = sorted(
-            (r for r in schema.resources
-             if r.kind == "buffer" and (parts := _page_label_parts(r.label)) is not None
-             and parts[0] == prefix and parts[2] == page_index),
-            key=lambda r: _page_label_parts(r.label)[1],
-        )
-        candidates = [
-            b for b in bundle.blobs
-            if b.path.name.startswith("MTLBuffer-") and b.size_bytes == page_resource.size_bytes
-        ]
-
-        if len(candidates) == 1 and len(referenced_by_size[page_resource.size_bytes]) == 1:
-            resolved[page_label] = candidates[0].path.read_bytes()
-            notes.append(f"{page_label}: single page-sized blob")
-            continue
-
-        if family and len(candidates) == len(family):
-            ordered = sorted(candidates, key=lambda b: (_buffer_id(b.path.name) is None,
-                                                         _buffer_id(b.path.name)))
-            position = next(i for i, resource in enumerate(family)
-                            if resource.label == page_label)
-            resolved[page_label] = ordered[position].path.read_bytes()
-            notes.append(f"{page_label}: positional creation-order id (untrusted heuristic)")
-            continue
-
-        notes.append(f"{page_label}: {len(candidates)} candidate blob(s), unresolved")
-
-    return PageResolution(resolved, "; ".join(notes))
+    total = len(schema.frame_roots)
+    if total == 0:
+        attribution = "no frame roots recorded in this capture"
+    else:
+        attribution = f"{len(decoded)} of {total} frame roots decoded from captured buffers"
+        if undecoded:
+            first = undecoded[0]
+            attribution += f"; first undecoded: root {first.index} {first.name}: {first.reason}"
+    return RootDecode(decoded=decoded, undecoded=undecoded, attribution=attribution)

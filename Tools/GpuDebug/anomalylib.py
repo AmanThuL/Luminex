@@ -169,57 +169,57 @@ def _check_empty_shadow_map(images: list) -> list:
 
 # --- Uniform availability: the gate in front of checks 3, 4, 6 and 7 ---------------------------
 
-def _uniform_decode_note(uploads: list, uniforms: dict, schema) -> str | None:
+def _uniform_decode_note(roots: list, uniforms: dict, schema) -> str | None:
     """The reason nothing could be decoded, or None when uniform data is usable.
 
     "Nothing was decoded" splits two ways and the split matters: if the *schema* recorded no
-    uploads, the frame genuinely uploaded nothing and check 6's error is the right answer; if the
-    schema recorded uploads but none came back decoded, the page-attribution policy declined (or
-    a decode failed) and none of the uniform checks can say anything at all. Only the second is
-    "unavailable" -- and the presence of decoded uploads is a sharper test of it than pattern-
+    roots, the frame genuinely registered nothing and check 6's error is the right answer; if the
+    schema recorded roots but none came back decoded, no captured buffer held them (or a decode
+    failed) and none of the uniform checks can say anything at all. Only the second is
+    "unavailable" -- and the presence of decoded roots is a sharper test of it than pattern-
     matching the attribution string, which uniformlib is free to reword.
     """
-    if uploads:
+    if roots:
         return None
-    if not schema.frame_data_uploads:
+    if not schema.frame_roots:
         return None
-    return (uniforms or {}).get("pageAttribution") or "no page attribution recorded"
+    return (uniforms or {}).get("rootAttribution") or "no root attribution recorded"
 
 
 def _check_uniform_decode_unavailable(note: str) -> list:
     return [_anomaly(
         "uniform-decode-unavailable", "info", "uniforms",
         f"uniform decode unavailable: {note}",
-        "the uniform-dependent checks (nan-uniform, degenerate-matrix, no-pass-uniforms-upload, "
+        "the uniform-dependent checks (nan-uniform, degenerate-matrix, no-pass-uniforms-root, "
         "shadow-transform-mismatch) were skipped, not passed -- re-capture if you need them")]
 
 
 # --- Check 3: nan-uniform ----------------------------------------------------------------------
 
-def _check_nan_uniform(uploads: list) -> list:
-    """One anomaly per distinct `Struct.field`, listing every upload index it was non-finite in.
+def _check_nan_uniform(roots: list) -> list:
+    """One anomaly per distinct `Struct.field`, listing every root index it was non-finite in.
 
-    Per field rather than per upload because that is the granularity a reader acts on, and deduped
-    across uploads because the same field going NaN in eight uploads of one frame is one bug, not
-    eight -- a per-upload list would bury the other checks under noise.
+    Per field rather than per root because that is the granularity a reader acts on, and deduped
+    across roots because the same field going NaN in eight roots of one frame is one bug, not
+    eight -- a per-root list would bury the other checks under noise.
     """
     offenders: dict = {}
-    for upload in uploads:
-        struct_name = upload.get("structName", "unknown")
-        index = upload.get("index")
+    for root in roots:
+        struct_name = root.get("name", "unknown")
+        index = root.get("index")
         named_any = False
-        for field, value in (upload.get("values") or {}).items():
+        for field, value in (root.get("values") or {}).items():
             if _has_none(value):
                 offenders.setdefault(f"{struct_name}.{field}", []).append(index)
                 named_any = True
-        # `finite` false with no null found means the two disagree -- report the upload rather
+        # `finite` false with no null found means the two disagree -- report the root rather
         # than silently trusting either, since one of them is lying about the same bytes.
-        if upload.get("finite") is False and not named_any:
+        if root.get("finite") is False and not named_any:
             offenders.setdefault(f"{struct_name} (field unidentified)", []).append(index)
 
     return [
         _anomaly("nan-uniform", "error", subject,
-                 f"{subject} decoded to a non-finite value (NaN or Inf) in upload(s) "
+                 f"{subject} decoded to a non-finite value (NaN or Inf) in root(s) "
                  + ", ".join(str(i) for i in indices),
                  "a NaN in a uniform poisons everything downstream of it -- trace back to what "
                  "produced this field on the CPU (a degenerate camera/light basis or an "
@@ -230,7 +230,7 @@ def _check_nan_uniform(uploads: list) -> list:
 
 # --- Check 4: degenerate-matrix ----------------------------------------------------------------
 
-def _check_degenerate_matrix(uploads: list) -> list:
+def _check_degenerate_matrix(roots: list) -> list:
     """A collapsed viewProj or shadowTransform, deduped by `Struct.field` like check 3.
 
     The determinant is computed on the decoded row-major matrix without transposing first, which
@@ -238,11 +238,11 @@ def _check_degenerate_matrix(uploads: list) -> list:
     convention genuinely does not matter (contrast check 7, where it decides the answer).
     """
     offenders: dict = {}
-    for upload in uploads:
-        struct_name = upload.get("structName", "unknown")
-        index = upload.get("index")
+    for root in roots:
+        struct_name = root.get("name", "unknown")
+        index = root.get("index")
         for field in _MATRIX_FIELDS:
-            matrix = (upload.get("values") or {}).get(field)
+            matrix = (root.get("values") or {}).get(field)
             if not isinstance(matrix, list) or len(matrix) != 4 or _has_none(matrix):
                 continue  # absent, malformed, or check 3's problem
             all_zero = all(value == 0.0 for row in matrix for value in row)
@@ -256,7 +256,7 @@ def _check_degenerate_matrix(uploads: list) -> list:
         indices = ", ".join(str(index) for index, _ in hits)
         out.append(_anomaly(
             "degenerate-matrix", "error", subject,
-            f"{subject} is degenerate in upload(s) {indices}: {hits[0][1]}",
+            f"{subject} is degenerate in root(s) {indices}: {hits[0][1]}",
             "a singular matrix collapses geometry to a point or a plane -- check the scene's "
             "bounding sphere radius, the light direction, and the camera's near/far planes for a "
             "zero or a NaN that got squashed to one"))
@@ -294,27 +294,26 @@ def _check_missing_expected_resource(resources: dict, schema) -> list:
     return out
 
 
-# --- Check 6: no-pass-uniforms-upload ----------------------------------------------------------
+# --- Check 6: no-pass-uniforms-root ------------------------------------------------------------
 
-def _check_no_pass_uniforms_upload(uploads: list) -> list:
-    """Matched on `structName`, deliberately not on slot: the sky's SkyUniforms binds the same
-    slot 2, so a slot-based count would report "PassUniforms was uploaded" for a frame that only
-    ever drew the sky."""
-    if any(u.get("structName") == "PassUniforms" for u in uploads):
+def _check_no_pass_uniforms_root(roots: list) -> list:
+    """Matched on the root name: the scene pass registers its PassUniforms root every frame it
+    draws, so a decoded frame without one never ran the scene pass."""
+    if any(r.get("name") == "PassUniforms" for r in roots):
         return []
     return [_anomaly(
-        "no-pass-uniforms-upload", "error", "PassUniforms",
-        f"no PassUniforms upload was recorded in this capture ({len(uploads)} upload(s) total)",
-        "scene pass never uploaded PassUniforms -- was the frame captured mid-scene-switch?")]
+        "no-pass-uniforms-root", "error", "PassUniforms",
+        f"no PassUniforms root was decoded in this capture ({len(roots)} root(s) total)",
+        "scene pass never registered PassUniforms -- was the frame captured mid-scene-switch?")]
 
 
 # --- Check 7: shadow-transform-mismatch --------------------------------------------------------
 
-def _last_pass_uniforms(uploads: list):
+def _last_pass_uniforms(roots: list):
     latest = None
-    for upload in uploads:
-        if upload.get("structName") == "PassUniforms":
-            latest = upload
+    for root in roots:
+        if root.get("name") == "PassUniforms":
+            latest = root
     return latest
 
 
@@ -329,11 +328,11 @@ def _skipped_cross_check(reason: str) -> list:
         "this is a gap in what the dump could verify, not a finding about the frame")]
 
 
-def _check_shadow_transform(context: dict, uploads: list) -> list:
-    upload = _last_pass_uniforms(uploads)
-    if upload is None:
+def _check_shadow_transform(context: dict, roots: list) -> list:
+    root = _last_pass_uniforms(roots)
+    if root is None:
         return []  # check 6 already said the sharper thing
-    uploaded = (upload.get("values") or {}).get("shadowTransform")
+    uploaded = (root.get("values") or {}).get("shadowTransform")
     if not isinstance(uploaded, list) or len(uploaded) != 4 or _has_none(uploaded):
         return []  # absent or non-finite: checks 3/4 own it
 
@@ -354,7 +353,7 @@ def _check_shadow_transform(context: dict, uploads: list) -> list:
     # convention); `uploaded` is uniformlib's row-major *display* shape (`uploaded[row][col]`).
     # Same matrix, two shapes -- so the comparison indexes them with swapped subscripts rather
     # than transposing either one into a new list. Getting this backwards fires on every healthy
-    # capture, which is what test_does_not_fire_when_the_upload_matches_the_recompute pins.
+    # capture, which is what test_does_not_fire_when_the_root_matches_the_recompute pins.
     worst = 0.0
     worst_at = None
     for row in range(4):
@@ -374,7 +373,7 @@ def _check_shadow_transform(context: dict, uploads: list) -> list:
         f"(boundingSphere {sphere}, light0Direction {light_dir}); largest disagreement at "
         f"row {row} col {col}: uploaded {got!r} vs recomputed {want!r} (delta {worst:.6g})",
         "uploaded shadowTransform disagrees with a recompute from the sidecar's scene state: "
-        "stale upload, wrong slot, or fitShadowOrtho input drift")]
+        "stale frame data, a wrong root address, or fitShadowOrtho input drift")]
 
 
 # --- Check 8: unmatched-blobs ------------------------------------------------------------------
@@ -420,8 +419,8 @@ def run_checks(manifest: dict, uniforms: dict, schema) -> list:
 
     `manifest` is the dict `gputrace_dump.build_manifest` produced (images + stats, resource
     buckets, capture context); `uniforms` is the whole `uniforms.json` document rather than just
-    its `uploads` list, because the page-attribution note that sits beside them is what tells the
-    uniform checks whether a silence means "nothing was uploaded" or "nothing could be read";
+    its `roots` list, because the root-attribution note that sits beside them is what tells the
+    uniform checks whether a silence means "nothing was registered" or "nothing could be read";
     `schema` is the `schemalib.Schema`.
 
     The final sort is by severity only, and Python's sort is stable, so within a severity the
@@ -430,24 +429,24 @@ def run_checks(manifest: dict, uniforms: dict, schema) -> list:
     images = manifest.get("images") or []
     resources = manifest.get("resources") or {}
     context = manifest.get("capture") or {}
-    uploads = (uniforms or {}).get("uploads") or []
+    roots = (uniforms or {}).get("roots") or []
 
     anomalies = []
     anomalies += _check_flat_image(images)
     anomalies += _check_empty_shadow_map(images)
 
-    unavailable = _uniform_decode_note(uploads, uniforms, schema)
+    unavailable = _uniform_decode_note(roots, uniforms, schema)
     if unavailable is not None:
         anomalies += _check_uniform_decode_unavailable(unavailable)
     else:
-        anomalies += _check_nan_uniform(uploads)
-        anomalies += _check_degenerate_matrix(uploads)
+        anomalies += _check_nan_uniform(roots)
+        anomalies += _check_degenerate_matrix(roots)
 
     anomalies += _check_missing_expected_resource(resources, schema)
 
     if unavailable is None:
-        anomalies += _check_no_pass_uniforms_upload(uploads)
-        anomalies += _check_shadow_transform(context, uploads)
+        anomalies += _check_no_pass_uniforms_root(roots)
+        anomalies += _check_shadow_transform(context, roots)
 
     anomalies += _check_unmatched_blobs(resources)
     anomalies += _check_undecodable_resources(resources)
