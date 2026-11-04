@@ -104,7 +104,8 @@ live only in `docs/roadmap.md` and its linked parts under `docs/roadmap/`.
   Debug > Capture Next GPU Frame in the main menu (shown with its `C` shortcut); both need
   `MTL_CAPTURE_ENABLED=1`. Then open the .gputrace in Xcode. Automated runs: `LMX_MAX_FRAMES=N`
   exits after N attempted frames; `LMX_CAPTURE_AT_FRAME=N` captures without a keypress;
-  `LMX_CLOSE_WINDOWS_AT_FRAME=N` closes detached windows. `--open-window performance|graph|gallery|session`
+  `LMX_CLOSE_WINDOWS_AT_FRAME=N` closes detached windows; `LMX_RESIZE_WINDOW_AT_FRAME=N` shrinks the main
+  window to 800x600 points at frame N and grows it to 1280x720 100 frames later, through the resize path a drag takes. `--open-window performance|graph|gallery|session`
   opens a tool window; Debug `--rhi-validation` enables the tracker (Release refuses it; measurement disables it).
   `LMX_DYNAMIC_RESOLUTION_BUDGET_MS=<ms>` starts the editor with dynamic resolution on and that GPU
   budget before the frame loop begins, and logs every controller scale change at INFO, the
