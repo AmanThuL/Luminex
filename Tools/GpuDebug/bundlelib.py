@@ -464,12 +464,14 @@ def scan_buffers(bundle: Bundle) -> list:
     """Every buffer whose GPU address the bundle records, as BufferRecords sorted by address.
 
     Reads the device-resources streams and, when present, the capture stream. A later record for
-    the same handle replaces an earlier one, so a handle Metal reused names its newest buffer.
+    the same handle replaces an earlier one, and a new address record clears what the handle's
+    previous buffer left, so a handle Metal reused names its newest buffer only.
     """
     addresses: dict[int, int] = {}
     lengths: dict[int, int] = {}
     labels: dict[int, str] = {}
     blob_names: dict[int, str] = {}
+    blob_since_address: set[int] = set()
     streams = list(bundle.device_resource_files)
     capture = bundle.root / _CAPTURE_STREAM
     if capture.is_file():
@@ -482,7 +484,15 @@ def scan_buffers(bundle: Bundle) -> list:
                 continue
             receiver = struct.unpack_from("<Q", data, payload)[0]
             if descriptor == b"Cuw" and code == _CALL_GPU_ADDRESS and payload + 16 <= end:
+                # A buffer's records run contents, address, length, label, so an address record
+                # starts the buffer the handle names now: a handle Metal reused for a new buffer
+                # must not keep the old one's length, label, or a blob not recorded just before.
                 addresses[receiver] = struct.unpack_from("<Q", data, payload + 8)[0]
+                lengths.pop(receiver, None)
+                labels.pop(receiver, None)
+                if receiver not in blob_since_address:
+                    blob_names.pop(receiver, None)
+                blob_since_address.discard(receiver)
             elif descriptor == b"Cul" and code == _CALL_LENGTH and payload + 16 <= end:
                 lengths[receiver] = struct.unpack_from("<Q", data, payload + 8)[0]
             elif descriptor == b"CS":
@@ -494,6 +504,7 @@ def scan_buffers(bundle: Bundle) -> list:
                 if match is not None and end - 8 >= match.end():
                     handle = struct.unpack_from("<Q", data, end - 8)[0]
                     blob_names[handle] = match.group(0)[:-1].decode("ascii")
+                    blob_since_address.add(handle)
 
     blobs_by_name = {blob.path.name: blob for blob in bundle.blobs}
     records = []

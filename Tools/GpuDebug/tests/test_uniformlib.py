@@ -7,11 +7,13 @@ import struct
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 import bundlelib  # noqa: E402
 import schemalib  # noqa: E402
+import shadowmath  # noqa: E402
 import uniformlib  # noqa: E402
 
 PAGE_ADDRESS = 0x10016030000
@@ -205,11 +207,92 @@ class DecodeRootsTests(unittest.TestCase):
         self.assertTrue(result.attribution.startswith("1 of 6 frame roots decoded"))
         self.assertIn("root 1 PassUniforms", result.attribution)
 
+    def test_no_buffer_records_at_all_names_the_trace_format(self):
+        """Every capture has buffers, so an empty map means the records went unrecognised, which
+        must not read as the roots pointing nowhere."""
+        result = uniformlib.decode_roots(self._schema([("PassUniforms", PAGE_ADDRESS)]), [])
+
+        (root,) = result.undecoded
+        self.assertEqual(root.reason, uniformlib.NO_BUFFER_RECORDS)
+        self.assertIn("not recognised", root.reason)
+        self.assertNotIn("no single captured buffer", root.reason)
+
+    def test_a_failed_field_read_leaves_only_that_root_undecoded(self):
+        self.page[0:160] = _pass_uniforms_bytes()
+        self.page[256:416] = _pass_uniforms_bytes()
+        real = uniformlib._decode_field
+        calls = []
+
+        def flaky(field, data, base_offset, name_addr):
+            calls.append(base_offset)
+            if base_offset == 256:
+                raise struct.error("unpack_from requires a buffer of at least 12 bytes")
+            return real(field, data, base_offset, name_addr)
+
+        with mock.patch.object(uniformlib, "_decode_field", flaky):
+            result = uniformlib.decode_roots(
+                self._schema([("PassUniforms", PAGE_ADDRESS),
+                              ("PassUniforms", PAGE_ADDRESS + 256)]), self._buffers())
+
+        self.assertEqual([r.index for r in result.decoded], [0])
+        self.assertEqual([r.index for r in result.undecoded], [1])
+        self.assertIn("field read failed", result.undecoded[0].reason)
+
     def test_no_roots_is_unremarkable(self):
         result = uniformlib.decode_roots(self._schema([]), self._buffers(page_blob=False))
 
         self.assertEqual((result.decoded, result.undecoded), ([], []))
         self.assertEqual(result.attribution, "no frame roots recorded in this capture")
+
+
+class RealCaptureFixtureTests(unittest.TestCase):
+    """Decodes `fixtures/sponza-v2`, trimmed from a real capture of the Release Metal App at Luminex
+    f4910b80 (Sponza, frame 6). Its device-resources stream holds the trace's own framed records,
+    byte for byte, for the frame-arena page and the seven buffers the roots point into; its
+    sidecar keeps the real context, four roots and their layouts. The one edit: the page blob
+    keeps only bytes 7824..8752, so the page's address and length records were moved to that
+    window. Root addresses and every Addr inside the bytes are the capture's own.
+    """
+
+    FIXTURE = pathlib.Path(__file__).resolve().parent / "fixtures" / "sponza-v2"
+
+    def setUp(self):
+        self.schema = schemalib.load_schema(self.FIXTURE / "sponza-v2.schema.json")
+        self.buffers = bundlelib.scan_buffers(bundlelib.walk_bundle(self.FIXTURE))
+        self.result = uniformlib.decode_roots(self.schema, self.buffers)
+        self.roots = {root.name: root for root in self.result.decoded}
+
+    def test_the_real_records_map_every_buffer_with_its_label(self):
+        self.assertEqual(sorted(b.label for b in self.buffers), [
+            "lmx.draw.rows.0", "lmx.light.grid.0", "lmx.light.indices.0",
+            "lmx.scene.instances.0", "lmx.scene.lights.0", "lmx.scene.materials.0",
+            "lmx.scene.vertices", "rojorhi.frameArena.page"])
+        page = next(b for b in self.buffers if b.label == "rojorhi.frameArena.page")
+        self.assertEqual(page.blob.path.name, "MTLBuffer-484-0")
+
+    def test_every_root_decodes_and_addrs_resolve_to_roots_and_labelled_buffers(self):
+        self.assertEqual(self.result.undecoded, [])
+        self.assertEqual([r.name for r in self.result.decoded],
+                         ["PassUniforms", "LocalLightParams", "ScenePassRoot", "SceneDrawRoot"])
+        scene = self.roots["ScenePassRoot"].values
+        self.assertEqual(scene["passUniforms"], {"root": "PassUniforms"})
+        self.assertEqual(scene["localLightParams"], {"root": "LocalLightParams"})
+        self.assertEqual(scene["vertices"], {"buffer": "lmx.scene.vertices", "offset": 0})
+        self.assertEqual(scene["lightGrid"], {"buffer": "lmx.light.grid.0", "offset": 0})
+        self.assertEqual(scene["exposure"], 0)
+        self.assertEqual(self.roots["SceneDrawRoot"].values["pass"], {"root": "ScenePassRoot"})
+        self.assertEqual(self.roots["LocalLightParams"].values["mode"], 2)  # clustered
+        self.assertEqual(self.roots["PassUniforms"].values["eyePos"],
+                         [8.5, 1.600000023841858, 0.6000000238418579])
+
+    def test_the_decoded_shadow_transform_matches_a_recompute_from_the_context(self):
+        context = self.schema.context
+        expected = shadowmath.fit_shadow_ortho(context["boundingSphere"],
+                                               context["light0Direction"])[1]
+        decoded = self.roots["PassUniforms"].values["shadowTransform"]
+        for row in range(4):
+            for col in range(4):
+                self.assertAlmostEqual(decoded[row][col], expected[col][row], places=4)
 
 
 if __name__ == "__main__":

@@ -51,8 +51,7 @@ See [workspace recovery](editor-workspace.md#workspace-recovery) for persistence
 Console retains 2,000 messages / 2 MiB, truncating payloads at 16 KiB on a UTF-8 boundary. UTC time and severity accompany each entry. The T/D/I/W/E/C chips count each retained severity and select
 that level and above; search is a case-insensitive substring filter. Scroll up to hold the displayed rows while logging continues. Return to the bottom or click `↓ N new` to resume; the chip stays
 visible even at zero. More > Clear empties messages/counters while keeping filters and freeze state; new arrivals then count from Clear. More > Copy visible copies matching displayed messages,
-including when frozen. Nonzero eviction/truncation counts print below the header; full statistics are in search help. Header counts may trail newly displayed rows by one frame. Search executes no
-commands.
+including when frozen. Nonzero eviction/truncation counts print below the header; full statistics are in search help. Header counts may trail newly displayed rows by one frame. Search executes no commands.
 
 The selection outline follows visible geometry, including depth occlusion and masked cutouts. Foreground occlusion cuts never become silhouette edges; border endpoints are depth-tested. App adds
 `lmx.pass.selection.coverage`, `lmx.pass.selection.visibility` and `lmx.pass.selection.outline` to a separate SDR target. Their costs appear in graph/timing records; scene targets and temporal history

@@ -328,6 +328,27 @@ def _check_no_pass_uniforms_root(roots: list) -> list:
         "scene pass never registered PassUniforms -- was the frame captured mid-scene-switch?")]
 
 
+def _pass_uniforms_undecoded_note(roots: list, manifest: dict) -> str | None:
+    """The reason PassUniforms could not be read, when the frame registered one that did not
+    decode and none did: then check 6's "never registered" would be false, so checks 6 and 7
+    degrade to an info note instead."""
+    if any(r.get("name") == "PassUniforms" for r in roots):
+        return None
+    undecoded = (manifest.get("frameRoots") or {}).get("undecoded") or []
+    for entry in undecoded:
+        if entry.get("name") == "PassUniforms":
+            return f"root {entry.get('index')} PassUniforms: {entry.get('reason')}"
+    return None
+
+
+def _check_pass_uniforms_unavailable(note: str) -> list:
+    return [_anomaly(
+        "uniform-decode-unavailable", "info", "PassUniforms",
+        f"PassUniforms was registered but could not be decoded: {note}",
+        "no-pass-uniforms-root and shadow-transform-mismatch were skipped, not passed -- see "
+        "manifest frameRoots.undecoded for why")]
+
+
 # --- Check 7: shadow-transform-mismatch --------------------------------------------------------
 
 def _last_pass_uniforms(roots: list):
@@ -466,8 +487,12 @@ def run_checks(manifest: dict, uniforms: dict, schema) -> list:
     anomalies += _check_missing_expected_resource(resources, schema)
 
     if unavailable is None:
-        anomalies += _check_no_pass_uniforms_root(roots)
-        anomalies += _check_shadow_transform(context, roots)
+        pass_note = _pass_uniforms_undecoded_note(roots, manifest)
+        if pass_note is not None:
+            anomalies += _check_pass_uniforms_unavailable(pass_note)
+        else:
+            anomalies += _check_no_pass_uniforms_root(roots)
+            anomalies += _check_shadow_transform(context, roots)
 
     anomalies += _check_unmatched_blobs(resources)
     anomalies += _check_undecodable_resources(resources)

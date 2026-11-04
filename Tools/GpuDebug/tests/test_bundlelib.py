@@ -72,17 +72,18 @@ def framed_buffer_records(handle: int, address: int, length: int | None, label: 
                           blob_name: str | None = None, device: int = 0xD0D0) -> bytes:
     """The records a real stream holds for one MTLBuffer: its label, GPU address, length and,
     when the capture dumped contents, the contents record that ends with the buffer handle."""
+    # The order a real stream uses for each buffer: contents, address, length, label.
     out = b""
-    if label is not None:
-        out += _framed_record(_CODE_SET_LABEL, b"CS", handle, label.encode("ascii") + b"\x00")
-    out += _framed_record(bundlelib._CALL_GPU_ADDRESS, b"Cuw", handle, struct.pack("<Q", address))
-    if length is not None:
-        out += _framed_record(bundlelib._CALL_LENGTH, b"Cul", handle, struct.pack("<Q", length))
     if blob_name is not None:
         name = blob_name.encode("ascii") + b"\x00"
         name += b"\x00" * ((-len(name)) % 4)
         tail = struct.pack("<IQIIQ", length or 0, 0, 0, 0x74, handle)
         out += _framed_record(_CODE_CONTENTS, b"CU<b>ulul", device, name + tail)
+    out += _framed_record(bundlelib._CALL_GPU_ADDRESS, b"Cuw", handle, struct.pack("<Q", address))
+    if length is not None:
+        out += _framed_record(bundlelib._CALL_LENGTH, b"Cul", handle, struct.pack("<Q", length))
+    if label is not None:
+        out += _framed_record(_CODE_SET_LABEL, b"CS", handle, label.encode("ascii") + b"\x00")
     return out
 
 
@@ -641,13 +642,33 @@ class ScanBuffersTests(unittest.TestCase):
     def test_unframed_or_truncated_streams_yield_what_they_can(self):
         good = framed_buffer_records(0xA1, 0x1000, 16, "kept")
         # Its address record is the last one and loses its tail, so the walk ends before it.
-        truncated = framed_buffer_records(0xA2, 0x2000, None, "lost")[:-4]
+        truncated = framed_buffer_records(0xA2, 0x2000, None, None)[:-4]
         self._write(framed_stream(good, truncated))
         self._write(b"no magic here", name="unused-device-resources-0xd0d0")
 
         buffers = bundlelib.scan_buffers(bundlelib.walk_bundle(self.root))
 
         self.assertEqual([b.label for b in buffers], ["kept"])
+
+    def test_a_reused_handle_names_only_its_newest_buffer(self):
+        (self.root / "MTLBuffer-3-0").write_bytes(b"\x00" * 4096)
+        self._write(framed_stream(
+            framed_buffer_records(0xA1, 0x1000, 4096, "old.buffer", "MTLBuffer-3-0"),
+            framed_buffer_records(0xA1, 0x9000, None, None)))
+
+        (buffer,) = bundlelib.scan_buffers(bundlelib.walk_bundle(self.root))
+
+        # No stale length, label or blob from the handle's first buffer.
+        self.assertEqual((buffer.gpu_address, buffer.length, buffer.label, buffer.blob),
+                         (0x9000, None, None, None))
+
+    def test_an_address_with_the_high_bit_set_round_trips(self):
+        address = 0xFFFF_8000_0000_0000
+        self._write(framed_stream(framed_buffer_records(0xA1, address, 64, "high")))
+        buffers = bundlelib.scan_buffers(bundlelib.walk_bundle(self.root))
+
+        self.assertEqual(buffers[0].gpu_address, address)
+        self.assertEqual(bundlelib.buffer_containing(buffers, address + 63).label, "high")
 
     def test_overlapping_ranges_are_ambiguous(self):
         self._write(framed_stream(framed_buffer_records(0xA1, 0x1000, 0x100, "a"),

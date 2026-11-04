@@ -138,8 +138,8 @@ live only in `docs/roadmap.md` and its linked parts under `docs/roadmap/`.
 - Document validation: after `xmake test -P . Tests/unit`, run `python3 Tools/Scenes/validate_documents.py` from the worktree root (pinned Khronos validator, Rosetta required). Canonical JSON/buffer bytes determine dirty; manifest 3/measurement 5 hash the loaded pair, excluding unsaved edits. Workspace uses schema 6; schema 5 restores unchanged with Session hidden; PNG metadata stays unchanged. Icons stage beside App; windowed AppKit startup applies the provisional FACET B2.2 PNG (owner approval pending), headless skips it and a missing PNG warns once.
 - GPU debug: `MTL_CAPTURE_ENABLED=1 LMX_CAPTURE_AT_FRAME=N LMX_MAX_FRAMES=N+10
   LMX_CAPTURE_PATH=/tmp/out.gputrace xmake run -P . App`;
-  open the trace in Xcode. Sidecars use owner metadata/named Addr roots (schema 2); the old decoder
-  rejects them until rojo-rhi #145. Timings: `python3 Tools/GpuDebug/profile.py`.
+  open the trace in Xcode or decode it with `python3 Tools/GpuDebug/gputrace_dump.py`, which reads
+  schema-2 sidecars (owner metadata, named Addr roots). Timings: `python3 Tools/GpuDebug/profile.py`.
   `LMX_GRAPH_DUMP=/tmp/out.txt xmake run App` writes the first compiled frame once; paths must be
   absolute. Interactive Dump exports the displayed frame. Procedures, recovery and exposure/bloom
   parity checks: `docs/guides/gpu-debugging.md`.

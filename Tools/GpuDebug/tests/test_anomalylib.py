@@ -399,6 +399,22 @@ class NoPassUniformsRootTests(unittest.TestCase):
     def test_does_not_fire_when_pass_uniforms_were_decoded(self):
         self.assertEqual(_checks(_run(), "no-pass-uniforms-root"), [])
 
+    def test_an_undecoded_pass_uniforms_root_is_unavailable_not_missing(self):
+        """The frame registered PassUniforms but the decoder could not read it: saying it was
+        never registered would be false, so check 6 (and 7) yield an info note naming why."""
+        manifest = _manifest()
+        manifest["frameRoots"] = {"registered": 2, "decoded": 1, "byName": {},
+                                  "undecoded": [{"index": 1, "name": "PassUniforms",
+                                                 "reason": "no single captured buffer holds it"}]}
+        sky = _root(name="SkyUniforms", values={"viewProj": _row_major(shadowmath.identity())})
+        anomalies = _run(manifest=manifest, uniforms=_uniforms([sky]))
+
+        self.assertEqual(_checks(anomalies, "no-pass-uniforms-root"), [])
+        self.assertEqual(_checks(anomalies, "shadow-transform-mismatch"), [])
+        (note,) = _checks(anomalies, "uniform-decode-unavailable")
+        self.assertEqual((note["severity"], note["subject"]), ("info", "PassUniforms"))
+        self.assertIn("no single captured buffer holds it", note["finding"])
+
 
 # --- Uniform decode unavailable: the degrade-to-info path for checks 3, 4, 6, 7 ----------------
 

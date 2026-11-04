@@ -55,6 +55,12 @@ _TYPES = {
 }
 
 
+# The reason every root gets when the bundle yields no buffer address at all: a capture always has
+# buffers, so this means bundlelib.scan_buffers did not recognise the trace's records.
+NO_BUFFER_RECORDS = ("the trace's buffer address records were not recognised (no buffer addresses "
+                     "found in the bundle; the .gputrace record format may have changed)")
+
+
 class UniformError(Exception):
     """Raised for a field whose type this decoder does not know; names the field and type."""
 
@@ -191,6 +197,9 @@ def decode_roots(schema, buffers: list) -> RootDecode:
         if root.address == 0:
             skip("registered with a zero address")
             continue
+        if not buffers:
+            skip(NO_BUFFER_RECORDS)
+            continue
         buffer = bundlelib.buffer_containing(buffers, root.address)
         if buffer is None:
             skip(f"no single captured buffer holds address {root.address:#x}")
@@ -223,6 +232,9 @@ def decode_roots(schema, buffers: list) -> RootDecode:
                 finite = finite and ok
         except UniformError as exc:
             skip(str(exc))
+            continue
+        except struct.error as exc:  # a field read past the bytes despite the extent check
+            skip(f"field read failed: {exc}")
             continue
         decoded.append(DecodedRoot(
             index=index, name=root.name, buffer_label=buffer.label, buffer_offset=offset,

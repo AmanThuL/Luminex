@@ -118,6 +118,42 @@ class LoadSchemaTests(unittest.TestCase):
             schemalib.load_schema(path)
         self.assertIn("'hi'", str(ctx.exception))
 
+    def test_numeric_fields_must_be_in_range_integers(self):
+        def root(lo, hi):
+            return {**SCHEMA_EXAMPLE, "frameRoots": [{"name": "R", "addr": {"lo": lo, "hi": hi}}]}
+
+        def field(offset):
+            return {**SCHEMA_EXAMPLE, "uniformStructs": [
+                {"name": "S", "sizeBytes": 4,
+                 "fields": [{"name": "f", "offsetBytes": offset, "type": "float"}]}]}
+
+        cases = {
+            "bool lo": (root(True, 0), "'lo'"),
+            "lo at 2**32": (root(1 << 32, 0), "'lo'"),
+            "negative hi": (root(0, -1), "'hi'"),
+            "string hi": (root(0, "1"), "'hi'"),
+            "negative offset": (field(-4), "'offsetBytes'"),
+            "float offset": (field(4.0), "'offsetBytes'"),
+            "bool sizeBytes": ({**SCHEMA_EXAMPLE, "uniformStructs": [
+                {"name": "S", "sizeBytes": False, "fields": []}]}, "'sizeBytes'"),
+            "negative width": ({**SCHEMA_EXAMPLE, "resources": [
+                {"label": "t", "kind": "texture2d", "format": "R8", "width": -1, "height": 1,
+                 "mipLevels": 1}]}, "'width'"),
+        }
+        for name, (data, key) in cases.items():
+            with self.subTest(name):
+                path = _write_json(self.tmp_path, f"{name}.json", data)
+                with self.assertRaises(schemalib.SchemaError) as ctx:
+                    schemalib.load_schema(path)
+                self.assertIn(key, str(ctx.exception))
+
+    def test_largest_address_words_are_accepted(self):
+        data = {**SCHEMA_EXAMPLE,
+                "frameRoots": [{"name": "R", "addr": {"lo": 0xFFFFFFFF, "hi": 0xFFFFFFFF}}]}
+        path = _write_json(self.tmp_path, "schema.json", data)
+
+        self.assertEqual(schemalib.load_schema(path).frame_roots[0].address, (1 << 64) - 1)
+
     def test_version_one_sidecar_is_rejected_as_pre_v2(self):
         data = {**SCHEMA_EXAMPLE, "version": 1, "frameDataUploads": []}
         path = _write_json(self.tmp_path, "schema.json", data)

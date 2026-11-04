@@ -89,6 +89,16 @@ def _require(obj: dict, key: str, where: str):
     return obj[key]
 
 
+def _require_int(obj: dict, key: str, where: str, limit: int | None = None) -> int:
+    """A required non-negative integer (a JSON bool is not one), below `limit` when given."""
+    value = _require(obj, key, where)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise _error(f"{where}: {key!r} must be a non-negative integer, got {value!r}")
+    if limit is not None and value >= limit:
+        raise _error(f"{where}: {key!r} must be below {limit:#x}, got {value!r}")
+    return value
+
+
 def _load_resource(raw: dict, where: str) -> Resource:
     kind = _require(raw, "kind", where)
     label = _require(raw, "label", where)
@@ -100,15 +110,15 @@ def _load_resource(raw: dict, where: str) -> Resource:
             width=None,
             height=None,
             mip_levels=None,
-            size_bytes=_require(raw, "sizeBytes", where),
+            size_bytes=_require_int(raw, "sizeBytes", where),
         )
     return Resource(
         label=label,
         kind=kind,
         format=_require(raw, "format", where),
-        width=_require(raw, "width", where),
-        height=_require(raw, "height", where),
-        mip_levels=_require(raw, "mipLevels", where),
+        width=_require_int(raw, "width", where),
+        height=_require_int(raw, "height", where),
+        mip_levels=_require_int(raw, "mipLevels", where),
         size_bytes=None,
     )
 
@@ -117,14 +127,14 @@ def _load_uniform_struct(raw: dict, where: str) -> UniformStruct:
     fields = [
         UniformField(
             name=_require(f, "name", f"{where} fields[{i}]"),
-            offset_bytes=_require(f, "offsetBytes", f"{where} fields[{i}]"),
+            offset_bytes=_require_int(f, "offsetBytes", f"{where} fields[{i}]"),
             type=_require(f, "type", f"{where} fields[{i}]"),
         )
         for i, f in enumerate(raw.get("fields", []))
     ]
     return UniformStruct(
         name=_require(raw, "name", where),
-        size_bytes=_require(raw, "sizeBytes", where),
+        size_bytes=_require_int(raw, "sizeBytes", where),
         fields=fields,
     )
 
@@ -133,8 +143,8 @@ def _load_frame_root(raw: dict, where: str) -> FrameRoot:
     addr = _require(raw, "addr", where)
     if not isinstance(addr, dict):
         raise _error(f"{where}: 'addr' must be an object with 'lo' and 'hi'")
-    lo = _require(addr, "lo", f"{where} addr")
-    hi = _require(addr, "hi", f"{where} addr")
+    lo = _require_int(addr, "lo", f"{where} addr", limit=1 << 32)
+    hi = _require_int(addr, "hi", f"{where} addr", limit=1 << 32)
     return FrameRoot(name=_require(raw, "name", where), address=(hi << 32) | lo)
 
 
