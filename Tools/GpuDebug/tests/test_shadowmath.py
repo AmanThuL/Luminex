@@ -67,6 +67,18 @@ class FitShadowOrthoTests(unittest.TestCase):
         self.assertAlmostEqual(clip[2], 0.5, places=4)
         self.assertTrue(0.0 <= clip[2] <= 1.0)
 
+    def test_depth_is_reversed_like_fit_ortho_to_sphere(self):
+        """The sphere point nearest the light maps to depth 1 and the farthest to 0, as
+        `fitOrthoToSphere` reverses depth for the Greater depth test the shadow pass uses."""
+        sphere = (0.0, 0.0, 0.0, 2.0)
+        direction = (0.0, 0.0, -1.0)  # the light shines toward -z, so +z is nearer to it
+        view_proj, _ = shadowmath.fit_shadow_ortho(sphere, direction)
+
+        nearest = shadowmath.transform_point(view_proj, (0.0, 0.0, 2.0))
+        farthest = shadowmath.transform_point(view_proj, (0.0, 0.0, -2.0))
+        self.assertAlmostEqual(nearest[2], 1.0, places=5)
+        self.assertAlmostEqual(farthest[2], 0.0, places=5)
+
     def test_fits_the_bounding_sphere_exactly_off_origin_too(self):
         """Property (b), basis-independent half: the silhouette touches all four sides (exactly 1,
         not "at most 1" -- a loose fit wastes shadow-map texels, a tight-but-clipping one loses
