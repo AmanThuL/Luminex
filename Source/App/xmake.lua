@@ -6,8 +6,6 @@ target("App")
         add_mxxflags("-DNDEBUG")
     end
     add_frameworks("AppKit")
-    remove_files(lmx_pending_files("sources"))
-    add_defines(lmx_pending_defines())
     add_deps("Core", "RojoRHI", "RojoRHIImGui", "Render", "Asset", "AppModel", "ImGui", "ImGuiNodeEditor", "ImGuizmo", "Engine", "Scenes")
     add_packages("libsdl3", "glm")
     lmx_apply_shader_rule("app")
