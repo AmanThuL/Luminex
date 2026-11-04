@@ -5,7 +5,7 @@ The scored protocol is fixed: 12 alternating AB/BA fresh-process pairs, W32/N256
 Native TAA 1280x720 scale 1, 10,000 paired-median bootstrap resamples, seed 0x4C4D5836.
 Every workload and failed attempt remains in the output. Timings never select defaults.
 Use --control local for five lit workloads, or --control zero --parent App for six
-frozen parent/schema-3 or 4 versus candidate/schema-5 workloads. Select --parent-schema 4
+frozen parent/schema-3, 4 or 5 versus candidate/schema-5 workloads. Select --parent-schema 4 or 5
 for a lighting-capable parent; the default 3 retains older-parent commands. No collection runs
 in --selftest.
 """
@@ -52,7 +52,7 @@ def command(binary, output, plan, candidate, unscored, parent_schema=3):
            "--render-scale", "1", "--measure-camera", "track" if plan["cameraTrack"] else "initial"]
     if plan["scene"] == "visibility-lab":
         cmd += ["--lab-instances", str(plan["labInstances"])]
-    if candidate or parent_schema == 4:
+    if candidate or parent_schema >= 4:
         cmd += ["--local-lights", plan["localLightMode"], "--light-view", "off"]
         if plan["scene"] == "light-lab":
             cmd += ["--lab-lights", str(plan["labLights"]), "--lab-light-pile", "0"]
@@ -289,7 +289,7 @@ class LightingTests(unittest.TestCase):
         import io
         import tempfile
 
-        for parent_schema in (3, 4):
+        for parent_schema in (3, 4, 5):
             with self.subTest(parent_schema=parent_schema), tempfile.TemporaryDirectory() as temp:
                 root = Path(temp)
                 parent, candidate = root / "parent", root / "candidate"
@@ -349,8 +349,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--parent", type=Path)
-    parser.add_argument("--parent-schema", type=int, choices=(3, 4), default=3,
-                        help="parent measurement schema/capability; 4 enables explicit zero-light flags")
+    parser.add_argument("--parent-schema", type=int, choices=(3, 4, 5), default=3,
+                        help="parent measurement schema/capability; 4 or 5 enables explicit zero-light flags")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--control", choices=("local", "zero"), default="local")
     parser.add_argument("--workloads")
