@@ -14,6 +14,25 @@
 
 namespace lmx {
 
+namespace {
+
+struct SinCos {
+    float sine;
+    float cosine;
+};
+
+//======================================================================================================================
+SinCos sinCos(float radians) {
+#if defined(__APPLE__)
+    const __float2 pair = __sincosf_stret(radians);
+    return {pair.__sinval, pair.__cosval};
+#else
+    return {std::sin(radians), std::cos(radians)};
+#endif
+}
+
+} // namespace
+
 //======================================================================================================================
 // `T * Ry * Rx * Rz * S`, Euler angles in degrees. decomposeTransform's round-trip check goes
 // through this same function, so extraction and composition can never disagree about the order.
@@ -23,6 +42,26 @@ glm::mat4 composeTransform(const DecomposedTransform& transform) {
     model = glm::rotate(model, glm::radians(transform.eulerDegrees.x), glm::vec3{1.0f, 0.0f, 0.0f});
     model = glm::rotate(model, glm::radians(transform.eulerDegrees.z), glm::vec3{0.0f, 0.0f, 1.0f});
     return glm::scale(model, transform.scale);
+}
+
+//======================================================================================================================
+// Each element repeats glm::eulerAngleYXZ's expression, so floating-point contraction stays what
+// it was; only the trig calls differ.
+glm::quat quatFromEulerYXZ(float yaw, float pitch, float roll) {
+    const auto [sh, ch] = sinCos(yaw);
+    const auto [sp, cp] = sinCos(pitch);
+    const auto [sb, cb] = sinCos(roll);
+    glm::mat3 basis;
+    basis[0][0] = ch * cb + sh * sp * sb;
+    basis[0][1] = sb * cp;
+    basis[0][2] = -sh * cb + ch * sp * sb;
+    basis[1][0] = -ch * sb + sh * sp * cb;
+    basis[1][1] = cb * cp;
+    basis[1][2] = sb * sh + ch * sp * cb;
+    basis[2][0] = sh * cp;
+    basis[2][1] = -sp;
+    basis[2][2] = ch * cp;
+    return glm::quat_cast(basis);
 }
 
 //======================================================================================================================
