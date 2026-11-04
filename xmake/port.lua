@@ -4,18 +4,6 @@ local repository_root = path.directory(os.scriptdir())
 local port_path = path.join(repository_root, "xmake/port.lua")
 
 local pending_families = {
-    {
-        family = "BENCH",
-        sources = {
-            "Benchmarks/FrameData/*.cpp",
-        },
-        testShaders = {
-            "Shaders/Tests/FrameDataQuad.slang",
-        },
-        targets = {
-            "FrameDataBench",
-        },
-    },
 }
 
 lmx_port_pending = pending_families

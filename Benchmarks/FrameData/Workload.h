@@ -11,11 +11,11 @@ namespace lmx::bench {
 
 /// Distinguishes the two frame-data delivery shapes the frozen workload set exercises (spec section
 /// 11): Dynamic re-delivers a changing per-draw block through deliverPerDrawData every draw of
-/// every frame; Static binds an already-created, unwritten buffer and writes zero per-frame
-/// frame-data bytes.
+/// every frame; Static addresses a buffer created once before timing and uploads only each draw's
+/// root.
 enum class WorkloadKind {
     Dynamic, ///< Re-delivers a changing per-draw block of `blockSize` bytes every draw.
-    Static,  ///< Binds a buffer created once before timing; no per-frame data delivery.
+    Static,  ///< Addresses a buffer created once before timing; only the root is uploaded.
 };
 
 /// One frozen workload's shape: how many disjoint quads it draws per frame, its delivery kind, and

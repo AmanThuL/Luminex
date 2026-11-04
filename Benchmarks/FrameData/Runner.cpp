@@ -7,33 +7,37 @@
 #include "DeliverPerDrawData.h"
 #include "Digest.h"
 
+#include "Core/IO/File.h"
 #include <rojoRHI/RHI.h>
 
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstring>
-#include <memory>
+#include <limits>
+#include <optional>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace lmx::bench {
 namespace {
 
 /// The leading, shader-read fields of every per-draw block, static or dynamic (must match
-/// Shaders/FrameDataQuad.slang's QuadParams layout exactly). A dynamic workload's larger block
-/// carries this struct followed by unread padding out to its frozen size.
+/// Shaders/Tests/FrameDataQuad.slang's QuadParams layout exactly). A dynamic workload's larger
+/// block carries this struct followed by unread padding out to its frozen size.
 struct QuadParams {
     float offset[2] = {0.0f, 0.0f};           ///< NDC-space quad center.
     float halfExtent[2] = {0.0f, 0.0f};       ///< NDC-space quad half-size.
     float tint[4] = {1.0f, 1.0f, 1.0f, 1.0f}; ///< Solid quad colour.
 };
 static_assert(sizeof(QuadParams) == 32,
-              "must match Shaders/FrameDataQuad.slang's QuadParams layout");
+              "must match Shaders/Tests/FrameDataQuad.slang's QuadParams layout");
 
-constexpr uint32_t kBufferSlot = 0;
 constexpr uint32_t kCellPixels = 8;
+constexpr uint32_t kBytesPerPixel = 4;       // RGBA8Unorm.
+constexpr uint64_t kRowPitchAlignment = 256; // VU-rojo-cmd-0035.
+constexpr rojoRHI::SubresourceRange kTargetRange{0, 1, 0, 1};
 
 //======================================================================================================================
 uint32_t gridWidthFor(uint32_t drawCount) {
@@ -114,69 +118,179 @@ QuadParams quadParamsFor(const GridLayout& layout, uint32_t frame, uint32_t draw
     return params;
 }
 
+/// Owns the run's device: every object the run creates is released with it, on every return path.
+struct DeviceOwner {
+    rojoRHI::Device device;
+
+    //==================================================================================================================
+    explicit DeviceOwner(rojoRHI::Device owned) : device(owned) {}
+
+    //==================================================================================================================
+    DeviceOwner(const DeviceOwner&) = delete;
+
+    //==================================================================================================================
+    DeviceOwner& operator=(const DeviceOwner&) = delete;
+
+    //==================================================================================================================
+    ~DeviceOwner() { rojoRHI::destroyDevice(device); }
+};
+
+/// The one graphics queue and its fence: each submission signals the next value, and `wait`
+/// blocks until the GPU reaches it. Waits are never inside a timed region.
+struct Submitter {
+    rojoRHI::Device device;
+    rojoRHI::Queue queue;
+    rojoRHI::Fence fence;
+    uint64_t value = 0;
+
+    //==================================================================================================================
+    void submit(rojoRHI::CommandList& commands) {
+        commands.end();
+        const rojoRHI::FenceValue signal{fence, ++value};
+        queue.submit(std::span(&commands, 1), {}, std::span(&signal, 1));
+    }
+
+    //==================================================================================================================
+    bool wait() { return device.wait({fence, value}, std::numeric_limits<uint64_t>::max()); }
+};
+
+//======================================================================================================================
+// The pass's color attachment barrier: the first frame discards the target's undefined contents,
+// every later one orders after the previous frame's attachment writes.
+rojoRHI::TextureBarrier toColorAttachment(rojoRHI::Texture target, bool written) {
+    rojoRHI::TextureBarrier barrier{.texture = target,
+                                    .range = kTargetRange,
+                                    .dstStage = rojoRHI::Stage::ColorAttachment,
+                                    .dstAccess = rojoRHI::Access::ColorAttachmentWrite,
+                                    .newLayout = rojoRHI::Layout::ColorAttachment};
+    if (written) {
+        barrier.srcStage = rojoRHI::Stage::ColorAttachment;
+        barrier.srcAccess = rojoRHI::Access::ColorAttachmentWrite;
+        barrier.oldLayout = rojoRHI::Layout::ColorAttachment;
+    }
+    return barrier;
+}
+
+//======================================================================================================================
+// Copies the target, last written as a color attachment, into a readback buffer in one untimed
+// frame, waits for it, and digests the rows tightly packed -- the byte layout the v1 harness read
+// back, so digests compare across the two.
+std::optional<std::string> readbackDigest(rojoRHI::Device& device, Submitter& submitter,
+                                          rojoRHI::Texture target, const GridLayout& layout,
+                                          uint64_t& digest) {
+    const uint64_t packedRow = uint64_t{layout.targetWidth} * kBytesPerPixel;
+    const uint64_t rowPitch =
+        (packedRow + kRowPitchAlignment - 1) / kRowPitchAlignment * kRowPitchAlignment;
+    auto staging = device.createBuffer({.size = rowPitch * layout.targetHeight,
+                                        .memory = rojoRHI::Memory::Readback,
+                                        .label = "framedatabench.readback"});
+    if (!staging) {
+        return "readback buffer creation failed: " + staging.error().message;
+    }
+
+    device.beginFrame();
+    rojoRHI::CommandList commands =
+        device.acquireCommandList(rojoRHI::QueueType::Graphics, "framedatabench.readback");
+    const rojoRHI::TextureBarrier toCopy{.texture = target,
+                                         .range = kTargetRange,
+                                         .srcStage = rojoRHI::Stage::ColorAttachment,
+                                         .srcAccess = rojoRHI::Access::ColorAttachmentWrite,
+                                         .dstStage = rojoRHI::Stage::Copy,
+                                         .dstAccess = rojoRHI::Access::CopyRead,
+                                         .oldLayout = rojoRHI::Layout::ColorAttachment,
+                                         .newLayout = rojoRHI::Layout::CopySrc};
+    commands.barrier({}, {}, std::span(&toCopy, 1));
+    commands.copyTextureToBuffer(target, {.extent = {layout.targetWidth, layout.targetHeight, 1}},
+                                 *staging,
+                                 {.offset = 0, .rowPitch = static_cast<uint32_t>(rowPitch)});
+    submitter.submit(commands);
+    device.endFrame();
+    if (!submitter.wait()) {
+        return "readback fence wait failed";
+    }
+
+    const std::byte* mapped = device.cpuPointer(*staging);
+    std::vector<std::byte> pixels(packedRow * layout.targetHeight);
+    for (uint32_t row = 0; row < layout.targetHeight; ++row) {
+        std::memcpy(pixels.data() + row * packedRow, mapped + row * rowPitch, packedRow);
+    }
+    digest = fnv1a64(pixels);
+    return std::nullopt;
+}
+
 } // namespace
 
 //======================================================================================================================
 RunResult runWorkload(const WorkloadSpec& spec, const RunConfig& config) {
     RunResult result;
 
-    auto deviceResult = rojoRHI::createDevice({.enableValidation = false});
+    auto deviceResult = rojoRHI::createDevice({.label = "framedatabench.device"});
     if (!deviceResult) {
         result.error = "device creation failed: " + deviceResult.error().message;
         return result;
     }
-    std::unique_ptr<rojoRHI::Device> device = std::move(*deviceResult);
+    const DeviceOwner owner{*deviceResult};
+    rojoRHI::Device device = owner.device;
 
-    auto libraryResult = device->loadShaderLibrary("Shaders/FrameDataQuad");
-    if (!libraryResult) {
-        result.error = "FrameDataQuad shader load failed: " + libraryResult.error().message;
+    const std::string libraryPath =
+        std::string("Shaders/FrameDataQuad") + LMX_SHADER_LIBRARY_EXTENSION;
+    const auto libraryBytes = readWholeFile(libraryPath);
+    if (!libraryBytes || libraryBytes->empty()) {
+        result.error = "cannot read shader library '" + libraryPath + "'";
         return result;
     }
-    std::unique_ptr<rojoRHI::ShaderLibrary> library = std::move(*libraryResult);
-
-    auto pipelineResult =
-        device->createGraphicsPipeline({.library = library.get(),
-                                        .vertexEntry = "vertexMain",
-                                        .fragmentEntry = "fragmentMain",
-                                        .colorFormat = rojoRHI::Format::RGBA8Unorm,
-                                        .fillMode = rojoRHI::FillMode::Solid,
-                                        .cullMode = rojoRHI::CullMode::None,
-                                        .label = "framedatabench.pipeline"});
-    if (!pipelineResult) {
-        result.error = "pipeline creation failed: " + pipelineResult.error().message;
+    auto library = device.loadShaderLibrary(*libraryBytes, "FrameDataQuad");
+    if (!library) {
+        result.error = "FrameDataQuad shader load failed: " + library.error().message;
         return result;
     }
-    std::unique_ptr<rojoRHI::GraphicsPipeline> pipeline = std::move(*pipelineResult);
+
+    const rojoRHI::ColorTarget color{.format = rojoRHI::Format::RGBA8Unorm};
+    auto pipeline = device.createPipeline(
+        {.vertex = {*library, "vertexMain"},
+         .fragment = {*library, "fragmentMain"},
+         .raster = {.cull = rojoRHI::CullMode::None, .fill = rojoRHI::FillMode::Solid},
+         .colors = std::span(&color, 1),
+         .label = "framedatabench.pipeline"});
+    if (!pipeline) {
+        result.error = "pipeline creation failed: " + pipeline.error().message;
+        return result;
+    }
 
     const GridLayout layout(spec.drawCount);
-    auto targetResult = device->createTexture({.width = layout.targetWidth,
-                                               .height = layout.targetHeight,
-                                               .format = rojoRHI::Format::RGBA8Unorm,
-                                               .renderTarget = true,
-                                               .cpuReadback = true,
-                                               .label = "framedatabench.target"});
-    if (!targetResult) {
-        result.error = "target texture creation failed: " + targetResult.error().message;
+    auto target = device.createTexture({.format = rojoRHI::Format::RGBA8Unorm,
+                                        .extent = {layout.targetWidth, layout.targetHeight, 1},
+                                        .usage = rojoRHI::TextureUsage::RenderTarget,
+                                        .label = "framedatabench.target"});
+    if (!target) {
+        result.error = "target texture creation failed: " + target.error().message;
         return result;
     }
-    std::unique_ptr<rojoRHI::Texture> target = std::move(*targetResult);
 
-    // Static workloads bind already-created, reusable buffers and deliver zero per-frame frame-data
-    // bytes; their one-time content never varies with frame, so it is computed once here.
-    std::vector<std::unique_ptr<rojoRHI::Buffer>> staticBuffers;
+    auto fence = device.createFence(0, "framedatabench.fence");
+    if (!fence) {
+        result.error = "fence creation failed: " + fence.error().message;
+        return result;
+    }
+    Submitter submitter{device, device.queue(rojoRHI::QueueType::Graphics), *fence};
+
+    // Static workloads address already-created, reusable buffers and upload no per-frame parameter
+    // bytes, only each draw's root; their one-time content never varies with frame, so it is
+    // computed once here.
+    std::vector<rojoRHI::Addr> staticParams;
     std::vector<std::byte> dynamicBlock;
     if (spec.kind == WorkloadKind::Static) {
-        staticBuffers.reserve(spec.drawCount);
+        staticParams.reserve(spec.drawCount);
         for (uint32_t draw = 0; draw < spec.drawCount; ++draw) {
             const QuadParams params = quadParamsFor(layout, 0, draw);
-            auto bufferResult = device->createBuffer(
-                {.size = sizeof(params), .label = "framedatabench.staticParams"}, &params);
-            if (!bufferResult) {
-                result.error =
-                    "static params buffer creation failed: " + bufferResult.error().message;
+            auto buffer = device.createBuffer(
+                {.size = sizeof(params), .label = "framedatabench.staticParams"},
+                std::as_bytes(std::span(&params, 1)));
+            if (!buffer) {
+                result.error = "static params buffer creation failed: " + buffer.error().message;
                 return result;
             }
-            staticBuffers.push_back(std::move(*bufferResult));
+            staticParams.push_back(device.address(*buffer));
         }
     } else {
         dynamicBlock.assign(spec.blockSize, std::byte{0});
@@ -184,80 +298,79 @@ RunResult runWorkload(const WorkloadSpec& spec, const RunConfig& config) {
 
     const uint32_t totalFrames = config.warmupFrames + config.measuredFrames;
     result.perFrameTimedRegionNs.reserve(config.measuredFrames);
-
-    // Owns the simulated incumbent ring cursor and the overflow buffers a dynamic workload's
-    // draws beyond simulated ring capacity must create (DeliverPerDrawData.h). Retirement of the
-    // previous frame's overflow buffers is safe inside the loop below because every frame fully
-    // drains (waitIdle()) before the next one's timed region ever starts.
-    DeliveryContext deliveryContext(*device);
+    const rojoRHI::ColorAttachment attachment{.texture = *target,
+                                              .load = rojoRHI::LoadOp::Clear,
+                                              .store = rojoRHI::StoreOp::Store,
+                                              .clear = {0.0f, 0.0f, 0.0f, 1.0f}};
+    const rojoRHI::Rect2D area{0, 0, layout.targetWidth, layout.targetHeight};
+    const rojoRHI::Viewport viewport{.width = static_cast<float>(layout.targetWidth),
+                                     .height = static_cast<float>(layout.targetHeight)};
+    bool targetWritten = false;
 
     for (uint32_t frame = 0; frame < totalFrames; ++frame) {
-        // ---- BEGIN TIMED REGION: the clock starts immediately before device->beginFrame(), so
-        // the region includes everything that call does internally -- the pacing wait, publishing
-        // the previous occupant's resolved pass timings, and resetting this slot's command
-        // allocator and uniform-ring cursor -- not only the work spec section 11 names as starting
-        // "after the pacing wait" (arena/ring reset, allocation, copy, binding, encoding, submit).
-        // Isolating the reset from the wait would need a second RHI entry point this backend does
-        // not expose; wrapping beginFrame() whole is the same boundary the archived M5.1 NoApi
-        // harness times its RHI side against (BindRhi.cpp's measureBindScaleRhi starts its
-        // clock before beginFrame() too), so baseline and candidate are compared on identical
-        // terms even though neither literally starts "after" the wait. Excludes the untimed
-        // waitIdle() below, which only proves the frame retired before the next iteration reuses
-        // its slot. For a dynamic workload, deliveryContext.beginFrame()'s retirement of the
-        // previous frame's overflow buffers and the per-draw loop's fresh overflow buffer creations
-        // are both inside this region: that churn is the allocation cliff being measured (ADR 0010
-        // / M5.1 evidence 7.1).
+        // ---- BEGIN TIMED REGION: the clock starts immediately before Device::beginFrame(), so
+        // the region includes everything that call does internally -- the pacing wait and the
+        // recycling of the slot's command allocators and frame arena -- then recording, the
+        // per-draw frame-data uploads and root pushes, submission and Device::endFrame(). This is
+        // the boundary the v1 harness timed, so the two compare on identical terms. Excludes the
+        // untimed fence wait below, which only proves the frame retired before the next iteration
+        // records.
         const auto start = std::chrono::steady_clock::now();
-        rojoRHI::CommandList& commands = device->beginFrame();
-        deliveryContext.beginFrame();
+        device.beginFrame();
+        rojoRHI::CommandList commands =
+            device.acquireCommandList(rojoRHI::QueueType::Graphics, "framedatabench.frame");
+        const rojoRHI::TextureBarrier barrier = toColorAttachment(*target, targetWritten);
+        commands.barrier({}, {}, std::span(&barrier, 1));
         commands.beginRenderPass(
-            {.colorTarget = target.get(), .clear = true, .label = "framedatabench.draws"});
-        commands.bindPipeline(*pipeline);
+            {.colors = std::span(&attachment, 1), .area = area, .label = "framedatabench.draws"});
+        commands.setPipeline(*pipeline);
+        commands.setViewport(viewport);
+        commands.setScissor(area);
         if (spec.kind == WorkloadKind::Static) {
             for (uint32_t draw = 0; draw < spec.drawCount; ++draw) {
-                commands.bindBuffer(kBufferSlot, *staticBuffers[draw]);
+                commands.pushRoot(FrameDataQuadRoot{.params = staticParams[draw]});
                 commands.draw(6);
             }
         } else {
             for (uint32_t draw = 0; draw < spec.drawCount; ++draw) {
                 const QuadParams params = quadParamsFor(layout, frame, draw);
                 std::memcpy(dynamicBlock.data(), &params, sizeof(params));
-                deliverPerDrawData(deliveryContext, commands, kBufferSlot, dynamicBlock.data(),
-                                   dynamicBlock.size());
+                deliverPerDrawData(commands, dynamicBlock);
                 commands.draw(6);
             }
         }
         commands.endRenderPass();
-        device->endFrame(nullptr);
+        submitter.submit(commands);
+        device.endFrame();
         const auto end = std::chrono::steady_clock::now();
         // ---- END TIMED REGION
+        targetWritten = true;
 
-        device->waitIdle();
+        if (!submitter.wait()) {
+            result.error = "frame fence wait failed";
+            return result;
+        }
         if (frame >= config.warmupFrames) {
             result.perFrameTimedRegionNs.push_back(static_cast<uint64_t>(
                 std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count()));
         }
-        // Candidate-only counter evidence: snapshot immediately after warm-up completes (frame ==
-        // config.warmupFrames - 1 just retired) and never again until the run's final snapshot
-        // below -- taken here, right after waitIdle(), rather than at the top of the next
-        // iteration, so it reflects exactly "after warm-up, before the first measured frame's
-        // timed region" with nothing measured yet able to have touched the counters.
+        // Snapshot immediately after warm-up retires (frame == config.warmupFrames - 1 just
+        // completed), right after the fence wait rather than at the top of the next iteration, so
+        // it reflects exactly "after warm-up, before the first measured frame's timed region".
         if (frame + 1 == config.warmupFrames) {
-            result.frameDataCountersAfterWarmup = rojoRHI::metal4::frameDataCounters(*device);
+            result.countersAfterWarmup = device.counters();
         }
     }
-    result.frameDataCountersAfterMeasurement = rojoRHI::metal4::frameDataCounters(*device);
-
+    result.countersAfterMeasurement = device.counters();
     result.medianNs = medianOf(result.perFrameTimedRegionNs);
-    result.overflowBufferCreations = deliveryContext.overflowBufferCreations;
-    result.overflowBufferCreationsPerFrame =
-        totalFrames > 0 ? deliveryContext.overflowBufferCreations / totalFrames : 0;
 
-    if (config.verify) {
-        std::vector<uint8_t> pixels(uint64_t{layout.targetWidth} * layout.targetHeight * 4);
-        target->readback(pixels.data(), pixels.size());
-        result.digest =
-            fnv1a64(std::as_bytes(std::span<const uint8_t>(pixels.data(), pixels.size())));
+    if (config.verify && targetWritten) {
+        uint64_t digest = 0;
+        if (auto error = readbackDigest(device, submitter, *target, layout, digest)) {
+            result.error = *error;
+            return result;
+        }
+        result.digest = digest;
     }
 
     result.ok = true;
@@ -274,18 +387,6 @@ bool runSelfTests(std::vector<std::string>& failures) {
             failures.push_back(std::move(what));
         }
     };
-
-    // alignUp (Core/Math/Align.h): every overflow decision depends on this arithmetic being
-    // exactly right at the ring boundary. Post-migration, only the baseline (m5.2-baseline tag)
-    // build's delivery seam still exercises this ring math -- the candidate's bindFrameData path
-    // never reaches it -- so these checks now guard the baseline build's path alone.
-    check(alignUp(0, kRingAlignmentBytes) == 0, "alignUp(0, 256) == 0");
-    check(alignUp(1, kRingAlignmentBytes) == 256, "alignUp(1, 256) == 256");
-    check(alignUp(256, kRingAlignmentBytes) == 256, "alignUp(256, 256) == 256 (already aligned)");
-    check(alignUp(257, kRingAlignmentBytes) == 512, "alignUp(257, 256) == 512");
-    check(alignUp(64, kRingAlignmentBytes) == 256,
-          "alignUp(64, 256) == 256 (F-FIT-512/F-DYNAMIC-4096)");
-    check(alignUp(304, kRingAlignmentBytes) == 512, "alignUp(304, 256) == 512 (F-DYNAMIC-1024)");
 
     // medianOf: odd count, even count, single element, empty.
     check(medianOf({5}) == 5, "medianOf({5}) == 5");
