@@ -101,7 +101,7 @@ class GputraceDumpCliTests(unittest.TestCase):
         # own contents, and that the output is severity-ordered (errors, then warnings, then info).
         self.assertEqual(
             [(a["severity"], a["check"], a["subject"]) for a in manifest["anomalies"]],
-            [("error", "missing-expected-resource", "lmx.render.sceneColor"),
+            [("error", "missing-expected-resource", "lmx.render.displayColor"),
              ("error", "missing-expected-resource", "lmx.render.shadowMap"),
              ("error", "no-pass-uniforms-root", "PassUniforms"),
              ("warning", "flat-image", "lmx.test.tex"),

@@ -31,9 +31,7 @@ assert any(r["name"] == "PassUniforms" for r in roots), "no PassUniforms decoded
 assert (dump / "shadow-map.png").is_file(), "no shadow-map.png in dump dir"
 assert (dump / "display-color.png").is_file(), "no display-color.png in dump dir"
 
-# The expected-label check still names v1's lmx.render.sceneColor, which v2 does not create.
-errors = [a for a in manifest["anomalies"] if a["severity"] == "error"
-          and a["subject"] != "lmx.render.sceneColor"]
+errors = [a for a in manifest["anomalies"] if a["severity"] == "error"]
 assert not errors, f"error-severity anomalies in a healthy capture: {errors}"
 
 display = next(img for img in manifest["images"] if img["label"] == "lmx.render.displayColor")

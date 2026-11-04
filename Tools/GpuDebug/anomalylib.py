@@ -13,10 +13,10 @@ Two classification rules carry most of this module's value, and both are about *
   (null stats, `flat` true). Reporting that as "nothing rendered into your depth buffer" would send
   a reader hunting a bug that does not exist, so it degrades to an info note that names the
   artifact. `lmx.render.shadowMap` gets no such excuse -- it *is* sampled (texture slot t3), so an
-  all-NaN or all-clear shadow map there is a real error.
+  all-NaN or all-clear shadow map there is a real error (a nearly clear one is a warning).
 - **A missing blob is usually normal.** Real App captures may omit blobs for labelled textures
   and most sky-cubemap mips. Only
-  `lmx.render.shadowMap` and `lmx.render.sceneColor` are dumped in every healthy capture, so only
+  `lmx.render.shadowMap` and `lmx.render.displayColor` are dumped in every healthy capture, so only
   those two are checked for presence.
 
 Determinism is a requirement, not an accident: checks run in a fixed order, subjects sort by label
@@ -25,14 +25,17 @@ byte-identical `anomalies` arrays and a diff between two dumps means something c
 
 Run: python3 -c "import anomalylib"  (see tests/test_anomalylib.py for worked examples)
 """
+import decodelib
 import shadowmath
 
 SHADOW_MAP_LABEL = "lmx.render.shadowMap"
-SCENE_COLOR_LABEL = "lmx.render.sceneColor"
+# The SDR display target the scene resolves into, the decodable colour image of every frame (the
+# HDR scene colour, lmx.render.sceneColorHdr, is a format decodelib does not read).
+DISPLAY_COLOR_LABEL = "lmx.render.displayColor"
 SCENE_DEPTH_LABEL = "lmx.render.sceneDepth"
 
 # The two resources every healthy App capture dumps. Everything else absent is normal.
-EXPECTED_LABELS = (SCENE_COLOR_LABEL, SHADOW_MAP_LABEL)
+EXPECTED_LABELS = (DISPLAY_COLOR_LABEL, SHADOW_MAP_LABEL)
 
 # A depth image at least this fraction at the clear value counts as "the pass wrote nothing".
 # Not 1.0: a few texels of a 2048x2048 map differing is still, for diagnostic purposes, empty.
@@ -129,13 +132,14 @@ def _check_flat_image(images: list) -> list:
                 f"{label} came back as a uniform plane ({detail}), which is the known capture "
                 "artifact rather than a fact about the frame: this texture is renderTarget-only "
                 "and never sampled, so a GPU capture cannot resolve its contents",
-                "nothing to do -- read the scene colour image instead; if you need real depth "
+                "nothing to do -- read the display colour image instead; if you need real depth "
                 "values, give the texture ShaderRead usage before capturing"))
             continue
         out.append(_anomaly(
             "flat-image", "warning", label,
             f"every texel of {label} holds the same value"
-            + (" (all at the clear depth 1.0)" if stats.get("fractionAtClear") == 1.0 else ""),
+            + (f" (all at the clear depth {decodelib.CLEAR_DEPTH})"
+               if stats.get("fractionAtClear") == 1.0 else ""),
             f"nothing rendered into {label} this frame; check the pass that writes it ran and "
             "its draws weren't culled"))
     return out
@@ -144,6 +148,11 @@ def _check_flat_image(images: list) -> list:
 # --- Check 2: empty-shadow-map -----------------------------------------------------------------
 
 def _check_empty_shadow_map(images: list) -> list:
+    """An error only for a genuinely empty map: every texel non-finite, or every texel at the
+    clear depth. A map at or above the 99% bar with some texels written is a warning that states
+    the coverage: a sparse, floorless scene fitted to a large bounding sphere legitimately leaves
+    its few occluders on well under 1% of the map, so the bar alone cannot tell sparse from broken.
+    """
     out = []
     for image in sorted(images, key=lambda i: i.get("label", "")):
         if image.get("label") != SHADOW_MAP_LABEL:
@@ -151,19 +160,31 @@ def _check_empty_shadow_map(images: list) -> list:
         stats = _stats(image)
         if not _shadow_map_is_empty(stats):
             continue
+        hint = ("shadow pass wrote nothing: check DrawItems reach the shadow pass, fitShadowOrtho "
+                "inputs, and winding/cull interaction")
         if _is_all_nan_plane(stats):
-            finding = (f"{SHADOW_MAP_LABEL} came back with every texel non-finite (NaN). Unlike "
-                       f"{SCENE_DEPTH_LABEL}, this texture IS sampled (texture slot t3), so the "
-                       "capture had contents to resolve -- an all-NaN plane means nothing valid "
-                       "was ever written into it")
-        else:
-            fraction = stats.get("fractionAtClear")
-            finding = (f"{fraction:.4f} of {SHADOW_MAP_LABEL}'s texels sit at the clear depth "
-                       "1.0, i.e. no occluder was rasterized into the shadow map")
+            out.append(_anomaly(
+                "empty-shadow-map", "error", SHADOW_MAP_LABEL,
+                f"{SHADOW_MAP_LABEL} came back with every texel non-finite (NaN). Unlike "
+                f"{SCENE_DEPTH_LABEL}, this texture IS sampled (texture slot t3), so the "
+                "capture had contents to resolve -- an all-NaN plane means nothing valid "
+                "was ever written into it", hint))
+            continue
+        fraction = stats.get("fractionAtClear")
+        if fraction == 1.0:
+            out.append(_anomaly(
+                "empty-shadow-map", "error", SHADOW_MAP_LABEL,
+                f"every texel of {SHADOW_MAP_LABEL} sits at the clear depth "
+                f"{decodelib.CLEAR_DEPTH}, i.e. no occluder was rasterized into the shadow map",
+                hint))
+            continue
         out.append(_anomaly(
-            "empty-shadow-map", "error", SHADOW_MAP_LABEL, finding,
-            "shadow pass wrote nothing: check DrawItems reach the shadow pass, fitShadowOrtho "
-            "inputs, and winding/cull interaction"))
+            "empty-shadow-map", "warning", SHADOW_MAP_LABEL,
+            f"{fraction:.4f} of {SHADOW_MAP_LABEL}'s texels sit at the clear depth "
+            f"{decodelib.CLEAR_DEPTH}: occluders cover only {1.0 - fraction:.2%} of the map",
+            "normal for a sparse scene whose bounding sphere is much larger than its occluders "
+            "(no floor, distant markers); otherwise check DrawItems reach the shadow pass and the "
+            "fitShadowOrtho inputs"))
     return out
 
 

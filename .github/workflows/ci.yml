@@ -87,6 +87,9 @@ jobs:
       - name: Screenshot comparison tests
         run: python3 Tools/Screenshots/compare.py --selftest
 
+      - name: GPU debug tool tests
+        run: python3 -m unittest discover -s Tools/GpuDebug/tests -v
+
   build-test:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}

@@ -22,7 +22,7 @@ import schemalib  # noqa: E402
 import shadowmath  # noqa: E402
 
 _SHADOW_MAP = "lmx.render.shadowMap"
-_SCENE_COLOR = "lmx.render.sceneColor"
+_DISPLAY_COLOR = "lmx.render.displayColor"
 _SCENE_DEPTH = "lmx.render.sceneDepth"
 
 _SPHERE = [0.0, 0.0, 0.0, 42.43]
@@ -40,7 +40,7 @@ def _schema(resources=None, frame_roots=None, context=None):
     return schemalib.Schema(
         context=context if context is not None else _context(),
         resources=resources if resources is not None else [_texture(_SHADOW_MAP),
-                                                           _texture(_SCENE_COLOR)],
+                                                           _texture(_DISPLAY_COLOR)],
         uniform_structs=[],
         frame_roots=frame_roots if frame_roots is not None else [
             schemalib.FrameRoot(name="PassUniforms", address=0x1000)],
@@ -64,7 +64,7 @@ def _resources(matched=None, matched_undecodable=None, unmatched_blobs=None, mis
     return {
         "matched": [{"resource": {"label": label}, "blob": {"path": f"{label}.blob",
                                                             "sizeBytes": 1024}}
-                    for label in (matched if matched is not None else [_SHADOW_MAP, _SCENE_COLOR])],
+                    for label in (matched if matched is not None else [_SHADOW_MAP, _DISPLAY_COLOR])],
         "matchedUndecodable": [{"resource": {"label": label}, "reason": reason}
                                for label, reason in (matched_undecodable or [])],
         "unmatchedBlobs": [{"path": name, "sizeBytes": size}
@@ -130,7 +130,7 @@ def _manifest(images=None, resources=None, context=None):
         "resources": resources if resources is not None else _resources(),
         "images": images if images is not None else [
             _image(_SHADOW_MAP, _depth_stats(), fmt="Depth32Float"),
-            _image(_SCENE_COLOR, _color_stats()),
+            _image(_DISPLAY_COLOR, _color_stats()),
         ],
         "anomalies": [],
     }
@@ -166,7 +166,7 @@ class HealthyCaptureTests(unittest.TestCase):
     def test_output_is_severity_ordered_errors_first(self):
         manifest = _manifest(
             images=[_image(_SHADOW_MAP, _depth_stats(fraction_at_clear=1.0), fmt="Depth32Float"),
-                    _image(_SCENE_COLOR, _color_stats(flat=True))],
+                    _image(_DISPLAY_COLOR, _color_stats(flat=True))],
             resources=_resources(unmatched_blobs=[("MTLBuffer-92-0", 64)]))
         ranks = [{"error": 0, "warning": 1, "info": 2}[a["severity"]] for a in _run(manifest)]
         self.assertEqual(ranks, sorted(ranks))
@@ -189,11 +189,11 @@ class HealthyCaptureTests(unittest.TestCase):
 
 class FlatImageTests(unittest.TestCase):
     def test_fires_warning_for_a_flat_color_image(self):
-        manifest = _manifest(images=[_image(_SCENE_COLOR, _color_stats(flat=True))])
+        manifest = _manifest(images=[_image(_DISPLAY_COLOR, _color_stats(flat=True))])
         found = _checks(_run(manifest), "flat-image")
         self.assertEqual(len(found), 1)
         self.assertEqual(found[0]["severity"], "warning")
-        self.assertEqual(found[0]["subject"], _SCENE_COLOR)
+        self.assertEqual(found[0]["subject"], _DISPLAY_COLOR)
         self.assertIn("nothing rendered into", found[0]["next_steps_hint"])
 
     def test_fires_warning_for_a_depth_image_entirely_at_clear(self):
@@ -202,6 +202,7 @@ class FlatImageTests(unittest.TestCase):
                                             fmt="Depth32Float")])
         found = _checks(_run(manifest), "flat-image")
         self.assertEqual([a["severity"] for a in found], ["warning"])
+        self.assertIn("clear depth 0.0", found[0]["finding"])  # reversed depth clears to 0
 
     def test_does_not_fire_for_an_image_with_content(self):
         self.assertEqual(_checks(_run(), "flat-image"), [])
@@ -235,13 +236,25 @@ class FlatImageTests(unittest.TestCase):
 # --- Check 2: empty-shadow-map -----------------------------------------------------------------
 
 class EmptyShadowMapTests(unittest.TestCase):
-    def test_fires_error_when_the_shadow_map_is_at_clear(self):
-        manifest = _manifest(images=[_image(_SHADOW_MAP, _depth_stats(fraction_at_clear=0.995),
+    def test_fires_error_when_every_texel_is_at_clear(self):
+        manifest = _manifest(images=[_image(_SHADOW_MAP, _depth_stats(fraction_at_clear=1.0),
                                             fmt="Depth32Float")])
         found = _checks(_run(manifest), "empty-shadow-map")
         self.assertEqual([a["severity"] for a in found], ["error"])
         self.assertIn("shadow pass", found[0]["next_steps_hint"])
         self.assertIn("fitShadowOrtho", found[0]["next_steps_hint"])
+        self.assertIn("clear depth 0.0", found[0]["finding"])
+
+    def test_warns_with_the_coverage_when_nearly_every_texel_is_at_clear(self):
+        """A sparse scene's few occluders can cover under 1% of the map: past the 99% bar but not
+        empty, so a warning that states the coverage, never an error."""
+        manifest = _manifest(images=[_image(_SHADOW_MAP, _depth_stats(fraction_at_clear=0.995),
+                                            fmt="Depth32Float")])
+        found = _checks(_run(manifest), "empty-shadow-map")
+        self.assertEqual([a["severity"] for a in found], ["warning"])
+        self.assertIn("0.50% of the map", found[0]["finding"])
+        self.assertIn("clear depth 0.0", found[0]["finding"])
+        self.assertEqual([a for a in _run(manifest) if a["severity"] == "error"], [])
 
     def test_fires_error_when_the_shadow_map_is_an_all_nan_plane(self):
         """The shadow map is sampled (texture slot t3), so it does NOT get sceneDepth's
@@ -335,23 +348,23 @@ class DegenerateMatrixTests(unittest.TestCase):
 
 class MissingExpectedResourceTests(unittest.TestCase):
     def test_fires_error_when_the_shadow_map_is_absent_from_the_schema(self):
-        found = _checks(_run(schema=_schema(resources=[_texture(_SCENE_COLOR)])),
+        found = _checks(_run(schema=_schema(resources=[_texture(_DISPLAY_COLOR)])),
                         "missing-expected-resource")
         self.assertEqual([a["severity"] for a in found], ["error"])
         self.assertEqual(found[0]["subject"], _SHADOW_MAP)
         self.assertIn("never created", found[0]["next_steps_hint"])
 
     def test_fires_error_when_a_resource_is_in_the_schema_but_not_in_the_bundle(self):
-        manifest = _manifest(resources=_resources(matched=[_SHADOW_MAP], missing=[_SCENE_COLOR]))
+        manifest = _manifest(resources=_resources(matched=[_SHADOW_MAP], missing=[_DISPLAY_COLOR]))
         found = _checks(_run(manifest), "missing-expected-resource")
-        self.assertEqual([a["subject"] for a in found], [_SCENE_COLOR])
+        self.assertEqual([a["subject"] for a in found], [_DISPLAY_COLOR])
         self.assertIn("not in the bundle", found[0]["next_steps_hint"])
 
     def test_fires_error_when_the_shadow_map_has_no_captured_contents(self):
         """A fallback texture with no blob is normal, but the shadow map
         is dumped in every healthy capture, so its absence is a finding."""
         manifest = _manifest(resources=_resources(
-            matched=[_SCENE_COLOR],
+            matched=[_DISPLAY_COLOR],
             matched_undecodable=[(_SHADOW_MAP, "no contents captured")]))
         found = _checks(_run(manifest), "missing-expected-resource")
         self.assertEqual([a["subject"] for a in found], [_SHADOW_MAP])

@@ -146,8 +146,8 @@ the current automated dump does not recover MetalFX's private encoder names. The
 and `.outputCopy`; that copy belongs to the external pass's GPU timing. Graph dumps describe the
 declared external operation, not the vendor's private encoders. Use Xcode to inspect opaque encoder ordering or fence state when the decoded manifest cannot establish them.
 
-The dump tool currently cannot decode the HDR, motion or reactive formats or recover packed transients from placement-heap contents. Its legacy expected scene-color label still
-reports an error on this renderer. Preserve these findings with the capture; they are distinct from runtime Metal validation and do not establish a reconstruction failure.
+The dump tool currently cannot decode the HDR, motion or reactive formats or recover packed transients from placement-heap contents; its anomaly checks read the SDR
+`lmx.render.displayColor` and reversed depth, where every depth target clears to 0. Preserve these findings with the capture; they are distinct from runtime Metal validation and do not establish a reconstruction failure.
 
 Motion, reprojection error and reprojected history are engine diagnostics. The latter adds `lmx.pass.temporal.reprojectedHistory` under vendor mode; rejection, blend weight and per-pixel
 history age are native-only. CLI combinations of those views with `--temporal metalfx` are usage
@@ -245,7 +245,7 @@ Scored headless measurement refuses enabled Metal/DYLD/capture instrumentation, 
 python3 -m unittest discover -s Tools/GpuDebug/tests -v
 ```
 
-These tests validate the parsers and report generation without requiring a GPU capture session. The separate [ImGui buffer probe](../../RojoRHI/Tools/ImGuiBufferProbe/README.md) checks real Metal4 UI upload lifetime and an old-policy failure control; it requires a GPU.
+These tests validate the parsers and report generation without a GPU capture session; hosted CI runs them in the policy job. The separate [ImGui buffer probe](../../RojoRHI/Tools/ImGuiBufferProbe/README.md) checks real Metal4 UI upload lifetime and an old-policy failure control; it requires a GPU.
 
 ## Parity checks
 
