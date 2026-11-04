@@ -604,6 +604,7 @@ TEST_CASE("document meshes instantiate with shared resources and authored bounds
     doc.nodes[1].translation = {-0.f, 2.f, 3.f};
     doc.nodes[1].scale = {-2.f, 3.f, .125f};
     const auto path = std::filesystem::current_path() / "SceneDocuments" / "ux6-content.scene.gltf";
+    std::filesystem::create_directories(path.parent_path());
     const auto saved = asset::saveSceneDocument(doc, path);
     INFO((saved ? "saved" : saved.error().message));
     REQUIRE(saved);
@@ -791,6 +792,7 @@ TEST_CASE("document content preserves object and resource order across a generat
                      {.name = "Between", .generator = asset::DocGenerator{"test", {}}});
     doc.rootNodes = {0, 1, 2, 3};
     const auto path = std::filesystem::current_path() / "SceneDocuments" / "ux6-order.scene.gltf";
+    std::filesystem::create_directories(path.parent_path());
     REQUIRE(asset::saveSceneDocument(doc, path));
     const engine::SceneGenerator generator =
         [](engine::Scene& scene, const asset::DocGenerator&,
@@ -998,6 +1000,7 @@ TEST_CASE("document mesh resources stay shared across an imported asset",
     doc.rootNodes = {0, 1, 2, 3};
     const auto path =
         std::filesystem::current_path() / "SceneDocuments" / "ux6-asset-order.scene.gltf";
+    std::filesystem::create_directories(path.parent_path());
     REQUIRE(asset::saveSceneDocument(doc, path));
     const auto loaded = engine::instantiateSceneDocument(device, doc, path, {});
     INFO((loaded ? "ok" : loaded.error().message));
@@ -1257,6 +1260,7 @@ TEST_CASE("saved mesh mobility stays aligned with instantiated object order",
     doc.nodes[1].mobility = asset::DocMobility::Movable;
     const auto path =
         std::filesystem::current_path() / "SceneDocuments" / "mobility-mesh.scene.gltf";
+    std::filesystem::create_directories(path.parent_path());
     REQUIRE(asset::saveSceneDocument(doc, path));
     const auto loaded = engine::instantiateSceneDocument(device, doc, path, {});
     INFO((loaded ? "ok" : loaded.error().message));
