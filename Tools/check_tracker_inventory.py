@@ -23,6 +23,10 @@ REQUIRED_CASES = (
     "GPU visibility frames classify and emit across classifier and layout switches under "
     "the tracker",
     "occlusion pyramids alternate and the reference checks every frame under the tracker",
+    "local-light modes reach the scene across paced frames under the tracker",
+    "zero-live high-water light rows declare no consumers under the tracker",
+    "checked light lists retain declaration identities under the tracker",
+    "light diagnostics switch without stale consumers under the tracker",
 )
 
 

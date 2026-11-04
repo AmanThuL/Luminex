@@ -9,6 +9,7 @@
 #include <glm/glm.hpp>
 
 #include <array>
+#include <cstring>
 
 using namespace lmx::render;
 using namespace lmx::render::scene_detail;
@@ -118,6 +119,32 @@ TEST_CASE("local light params zero the row count when local lights are off", "[r
         CHECK(params.sliceDepth[0] == clusterSliceDepths(0.1f)[0]);
         CHECK(params.sliceDepth[kClusterSliceCount] ==
               clusterSliceDepths(0.1f)[kClusterSliceCount]);
+    }
+    SECTION("zero-live requests build the whole Off payload at every high-water mark") {
+        // The nine requests the zero-live device replay switches through. Every one of them, with
+        // or without rows left behind by disabled lights, builds the Off baseline byte for byte.
+        constexpr std::array requests{
+            lmx::engine::LocalLightMode::Off,       lmx::engine::LocalLightMode::Direct,
+            lmx::engine::LocalLightMode::Clustered, lmx::engine::LocalLightMode::Off,
+            lmx::engine::LocalLightMode::Clustered, lmx::engine::LocalLightMode::Direct,
+            lmx::engine::LocalLightMode::Clustered, lmx::engine::LocalLightMode::Direct,
+            lmx::engine::LocalLightMode::Off};
+        for (const uint32_t highWater : {0u, 4u}) {
+            CAPTURE(highWater);
+            inputs.liveLightCount = 0;
+            inputs.lightRowCount = highWater;
+            inputs.hasClusters = false;
+            inputs.requestedMode = lmx::engine::LocalLightMode::Off;
+            const LocalLightParams baseline = buildLocalLightParams(inputs);
+            CHECK(baseline.mode == static_cast<uint32_t>(lmx::engine::LocalLightMode::Off));
+            CHECK(baseline.rowCount == 0);
+            for (const auto request : requests) {
+                CAPTURE(static_cast<int>(request));
+                inputs.requestedMode = request;
+                const LocalLightParams params = buildLocalLightParams(inputs);
+                CHECK(std::memcmp(&params, &baseline, sizeof(LocalLightParams)) == 0);
+            }
+        }
     }
 }
 

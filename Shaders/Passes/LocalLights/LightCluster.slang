@@ -1,7 +1,8 @@
 // Safe-math froxel geometry shared by the count and fill kernels. Every float operation is the
 // literal transcription of Source/Render/LightClusters.cpp's ordered fp32 sequence: no min/max/dot
 // intrinsic, no matrix product and no reciprocal shortcut, so the GPU grid equals the CPU mirror
-// bit for bit. The prefix joins the safe-math shader set in xmake/shaders.lua and the backend.
+// bit for bit. The count, scan and fill entries compile as precise shader files
+// (xmake/luminex_shaders.lua).
 import SceneTables;
 import LocalLightTypes;
 

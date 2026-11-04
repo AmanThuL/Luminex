@@ -6,24 +6,22 @@
 //
 // The math mode is the file default, which is the mode the scene pass compiles under, so the
 // agreement this measures is the agreement the renderer will actually have.
+//
+// The address root carries the sample table and the float4 output array.
 
+import RojoRHI;
 import Lighting;
 import SceneTables;
 import LocalLightOracleRoots;
-
-[[vk::binding(0, 0)]]
-RWStructuredBuffer<float4> gOutput : register(u0); // → MSL [[buffer(0)]]
-
-[[vk::binding(1, 0)]]
-StructuredBuffer<PunctualSample> gSamples : register(t1); // → MSL [[buffer(1)]]
 
 [shader("compute")]
 [numthreads(1, 1, 1)]
 void computeMain(uint3 tid: SV_DispatchThreadID)
 {
-    PunctualSample item = gSamples[tid.x];
+    let root = rojoRHI::root<PunctualLightRoot>();
+    PunctualSample item = rojoRHI::load<PunctualSample>(root.samples, tid.x);
     float3 radiance = ComputePunctualLight(item.light, item.position, item.normal,
                                            item.toEye, item.baseColour, item.f0,
                                            item.metallic, item.alpha);
-    gOutput[tid.x] = float4(radiance, 0.0f);
+    rojoRHI::store<float4>(root.output, tid.x, float4(radiance, 0.0f));
 }

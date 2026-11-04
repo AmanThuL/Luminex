@@ -78,6 +78,11 @@
       "file": "Tests/Render/Passes/Occlusion/HzbResizeTests.cpp",
       "header": "Source/Render/Passes/Occlusion/HzbHistoryBinding.h",
       "reason": "Observe owned HZB source and recording parameter copies after explicit graph closure during prepared resize tests."
+    },
+    {
+      "file": "Tests/Render/Passes/LocalLights/LightClusterRetirementTests.cpp",
+      "header": "Source/Render/Passes/LocalLights/LightClusterReadback.h",
+      "reason": "Verify actual light-list retirement preserves causal ticket failures, empty/absent outcomes and unconsumed frame records."
     }
   ],
   "units": {
@@ -181,6 +186,7 @@
         "Source/Render/Common/PacedSlots.h",
         "Source/Render/Common/DrawEncoding.h",
         "Source/Render/Passes/Visibility/VisibilityRetirement.h",
+        "Source/Render/Passes/LocalLights/LightClusterReadback.h",
         "Source/Render/Passes/Occlusion/HzbHistoryBinding.h"
       ]
     },

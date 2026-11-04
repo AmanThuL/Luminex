@@ -5,12 +5,10 @@
 
 #pragma once
 
-#ifndef LMX_PENDING_LIGHTS
-
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Gpu/GpuBuffer.h"
 #include "Engine/Gpu/GpuContext.h"
-#include "Render/Gpu/Readback.h"
+#include "Engine/Gpu/GpuOwned.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/LocalLights/LightClusters.h"
 
@@ -18,10 +16,13 @@
 
 #include <array>
 #include <memory>
-#include <optional>
 #include <vector>
 
 namespace lmx::render {
+namespace light_detail {
+class LightClusterReadback;
+struct ClusterReadbackTickets;
+} // namespace light_detail
 
 /// Counter storage words per paced slot: LightClusterCounters' six fields plus ABI padding.
 inline constexpr uint32_t kLightClusterCounterWords = 8;
@@ -50,6 +51,8 @@ struct LightClusterOutputs {
     GraphBuffer grid;      ///< Per-froxel `(offset, count)` records, in flat froxel order.
     GraphBuffer indices;   ///< The flat row-index list the records address.
     bool declared = false; ///< Whether the four passes were declared at all.
+    std::weak_ptr<const light_detail::ClusterReadbackTickets>
+        readbackIntent{}; ///< Exact unrecorded declaration identity, for discardUnrecorded.
 };
 
 /// One frame's readback: always the counters, plus the lists when the declaration asked for them.
@@ -65,7 +68,10 @@ struct RetiredLightClusters {
 /// `buildLightClusters` bit for bit; see Shaders/Passes/LocalLights/LightCluster.slang.
 class LightClusterStage {
 public:
-    /// Registers the scalar-packed kernel parameter layout without creating a GPU device.
+    /// Releases the kernels, slots and every unretired readback.
+    ~LightClusterStage();
+
+    /// Registers the scalar-packed kernel parameter and address-root layouts without a GPU device.
     static void registerLayoutsForCapture();
 
     /// Loads the safe-math clustering kernels and allocates every paced slot.
@@ -81,14 +87,24 @@ public:
     void setCapacityOverride(uint32_t perCluster = kMaxLightsPerCluster,
                              uint32_t global = kLightClusterIndexCapacity);
 
-    /// Reads back every declaration whose frame is at most `completedFrame`.
-    void retireThrough(uint64_t completedFrame);
+    /// Reads back every declaration whose frame is at most `completedFrame`, in declaration order.
+    /// The first failure returns its error unchanged; that declaration and every later one stay
+    /// pending, and records already retired stay available to takeRetired.
+    lmx::Result<void> retireThrough(uint64_t completedFrame);
 
-    /// Moves all newly retired records to the caller, in frame order.
+    /// Cancels this exact declaration when its graph will never execute (compilation failed or
+    /// the frame was abandoned), releasing its paced slot, as GpuVisibility's discardUnrecorded
+    /// does for visibility. The declaration must be unentered and hold no recorded outcome; one
+    /// whose callbacks ran stays pending and keeps failing retirement. Executing its graph after
+    /// the discard is misuse.
+    void discardUnrecorded(const LightClusterOutputs& declaration);
+
+    /// Moves all newly retired records to the caller, in frame order. The take is destructive: a
+    /// Renderer holds taken records until its own frame join commits rather than taking again.
     std::vector<RetiredLightClusters> takeRetired();
 
 private:
-    explicit LightClusterStage(engine::GpuContext& gpu) : m_gpu(gpu) {}
+    explicit LightClusterStage(engine::GpuContext& gpu);
 
     // One paced set of owned buffers. `used` is what says a later frame's import must seed the
     // previous access, exactly as GpuVisibility's slots do.
@@ -97,31 +113,14 @@ private:
         bool used = false;
         bool shaderRead = false;
     };
-    // Recorded by the passes that write each buffer, after the write, and shared with the pending
-    // entry. A ticket names the buffer the frame wrote, never its owner. The grid and index
-    // tickets exist only when the frame captures its lists; a ticket stays empty when its graph
-    // never executed.
-    struct Tickets {
-        std::optional<ReadbackTicket> grid, indices, counters;
-    };
-    struct Pending {
-        uint64_t frameNumber = 0;
-        bool captureLists = false;
-        std::shared_ptr<Tickets> tickets = std::make_shared<Tickets>();
-    };
-
-    RetiredLightClusters readback(const Pending& pending) const;
 
     engine::GpuContext& m_gpu;
     std::array<engine::GpuOwned<rojoRHI::ShaderLibrary>, 3> m_libraries;
-    std::array<engine::GpuOwned<rojoRHI::ComputePipeline>, 3> m_pipelines;
+    std::array<engine::GpuOwned<rojoRHI::Pipeline>, 3> m_pipelines;
     std::array<Slot, 3> m_slots;
-    std::vector<Pending> m_pending;
-    std::vector<RetiredLightClusters> m_retired;
+    std::unique_ptr<light_detail::LightClusterReadback> m_readback;
     uint32_t m_perClusterCap = kMaxLightsPerCluster;
     uint32_t m_globalCapacity = kLightClusterIndexCapacity;
 };
 
 } // namespace lmx::render
-
-#endif

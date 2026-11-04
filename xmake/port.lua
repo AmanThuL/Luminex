@@ -5,31 +5,6 @@ local port_path = path.join(repository_root, "xmake/port.lua")
 
 local pending_families = {
     {
-        family = "LIGHTS",
-        sources = {
-            "Source/Render/Passes/LocalLights/LightClusterStage.cpp",
-            "Source/Render/Passes/LocalLights/LightClusterReadback.cpp",
-            "Source/Render/Passes/LocalLights/LightDebugStage.cpp",
-            "Source/Render/Renderer/RendererLighting.cpp",
-        },
-        tests = {
-            "Tests/Render/Passes/LocalLights/Gpu*.cpp",
-            "Tests/Render/Passes/LocalLights/RenderZeroLightInvariantTests.cpp",
-            "Tests/Render/Passes/LocalLights/LightCaptureLayoutTests.cpp",
-            "Tests/Render/Passes/Temporal/GpuZeroLightHistoryTests.cpp",
-            "Tests/App/Model/Performance/MeasurementSampleTests.cpp",
-        },
-        shaders = {
-            "Shaders/Passes/LocalLights/LightClusterCount.slang",
-            "Shaders/Passes/LocalLights/LightClusterFill.slang",
-            "Shaders/Passes/LocalLights/LightClusterScan.slang",
-            "Shaders/Passes/LocalLights/LightDebugView.slang",
-        },
-        testShaders = {
-            "Shaders/Tests/PunctualLightOracle.slang",
-        },
-    },
-    {
         family = "BENCH",
         sources = {
             "Benchmarks/FrameData/*.cpp",

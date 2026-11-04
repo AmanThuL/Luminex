@@ -2,6 +2,7 @@
 // exactly zero, so preserving row order preserves the nonzero floating-point summation order.
 module LocalLights;
 
+import RojoRHI;
 import Lighting;
 import SceneTables;
 import LocalLightTypes;
@@ -47,10 +48,10 @@ public uint LocalLightCluster(LocalLightParams params, float4 svPosition)
 // The local-light sum for one shaded surface, before pre-exposure. `Off` visits no row and returns
 // exact +0, which is the additive identity for every value the scene pass can already hold -- that
 // is what lets a scene with no local lights render byte for byte what it rendered before this
-// module existed.
-public float3 AccumulateLocalLights(LocalLightParams params, StructuredBuffer<LightRow> lights,
-                                    StructuredBuffer<ClusterRecord> grid,
-                                    StructuredBuffer<uint> indices, float4 svPosition,
+// module existed. `lights`, `grid` and `indices` address the light rows, the froxel records and
+// the index lists; a path loads only what it selects, so Off loads none and Direct no list.
+public float3 AccumulateLocalLights(LocalLightParams params, rojoRHI::Addr lights,
+                                    rojoRHI::Addr grid, rojoRHI::Addr indices, float4 svPosition,
                                     float3 position, float3 normal, float3 toEye, float3 baseColor,
                                     float3 f0, float metallic, float alpha)
 {
@@ -74,7 +75,8 @@ public float3 AccumulateLocalLights(LocalLightParams params, StructuredBuffer<Li
     }
     else if (clustered)
     {
-        ClusterRecord record = grid[LocalLightCluster(params, svPosition)];
+        ClusterRecord record =
+            rojoRHI::load<ClusterRecord>(grid, LocalLightCluster(params, svPosition));
         offset = record.offset;
         count = record.count & ~kClusterTruncatedBit;
     }
@@ -82,9 +84,9 @@ public float3 AccumulateLocalLights(LocalLightParams params, StructuredBuffer<Li
     float3 sum = float3(0.0f);
     for (uint i = 0u; i < count; ++i)
     {
-        uint index = clustered ? indices[offset + i] : i;
-        sum += ComputePunctualLight(lights[index], position, normal, toEye, baseColor, f0, metallic,
-                                    filteredAlpha);
+        uint index = clustered ? rojoRHI::load<uint>(indices, offset + i) : i;
+        sum += ComputePunctualLight(rojoRHI::load<LightRow>(lights, index), position, normal, toEye,
+                                    baseColor, f0, metallic, filteredAlpha);
     }
     return sum;
 }

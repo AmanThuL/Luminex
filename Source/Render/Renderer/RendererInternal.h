@@ -66,6 +66,12 @@ struct RendererOcclusionFrame {
     bool strictView = false;        // Unchanged unjittered view, coverage and active extent.
 };
 
+// One declaration's lighting status and light lists, published only when the whole frame declares.
+struct RendererLightingFrame {
+    LightingStatus status;        // Declared status, not yet retired.
+    LightClusterOutputs clusters; // Grid and index lists; the declaration is discarded on failure.
+};
+
 // One declaration's visibility status and draw buffers, published with the frame.
 struct RendererVisibilityFrame {
     std::array<GraphBuffer, 2> buffers;              // Draw rows and arguments to consume.

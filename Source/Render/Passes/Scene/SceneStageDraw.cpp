@@ -16,6 +16,7 @@
 #include <array>
 #include <cstring>
 #include <optional>
+#include <span>
 
 namespace lmx::render {
 using namespace scene_detail;
@@ -57,13 +58,39 @@ void declareTextureRead(rojoRHI::CommandList& commands, const engine::TextureRef
           .access = rojoRHI::Access::ShaderRead}}};
     commands.declareAccess(access);
 }
+
+//======================================================================================================================
+// Direct loads rows [0, rowCount). Clustered loads each fragment's froxel record and, through it,
+// index-list entries naming rows inside [0, rowCount); a record's range is a GPU value.
+void declareLocalLightReads(rojoRHI::CommandList& commands, const PassResources& resources,
+                            const SceneStageInputs& inputs, const LocalLightParams& params) {
+    const auto read = [&](GraphBuffer handle, uint64_t size) {
+        return rojoRHI::ResourceAccess{.buffer = resources.buffer(handle),
+                                       .size = size,
+                                       .stage = rojoRHI::Stage::FragmentShader,
+                                       .access = rojoRHI::Access::ShaderRead};
+    };
+    std::array<rojoRHI::ResourceAccess, 3> accesses{};
+    uint32_t count = 0;
+    if (params.rowCount != 0) {
+        accesses[count++] =
+            read(*inputs.lights, uint64_t{params.rowCount} * sizeof(engine::LightRow));
+    }
+    if (static_cast<engine::LocalLightMode>(params.mode) == engine::LocalLightMode::Clustered) {
+        accesses[count++] =
+            read(*inputs.lightGrid, uint64_t{kClusterCount} * sizeof(ClusterRecord));
+        accesses[count++] = read(*inputs.lightIndices, rojoRHI::kWholeSize);
+    }
+    commands.declareAccess(std::span{accesses}.first(count));
+}
 #endif
 } // namespace
 
 //======================================================================================================================
 void SceneStage::draw(rojoRHI::CommandList& commands, const SceneView& view,
                       const SceneStageInputs& inputs, const PassUniforms& passUniforms,
-                      GraphTexture shadowRead, GraphBuffer exposureCurrent, bool temporalEnabled,
+                      const LocalLightParams& localLightParams, GraphTexture shadowRead,
+                      GraphBuffer exposureCurrent, bool temporalEnabled,
                       const CameraFrameState& cameraState, const CameraFrameState& previousCamera,
                       glm::vec2 jitterNdc, const PassResources& resources) {
     const bool hasSky =
@@ -93,20 +120,37 @@ void SceneStage::draw(rojoRHI::CommandList& commands, const SceneView& view,
         commands.setPipeline(opaquePipeline);
         const auto uniformsAddress = frameData(commands, passUniforms);
         engine::registerFrameRoot("PassUniforms", uniformsAddress);
-        // Local-light addresses remain zero while address-based light accumulation is unavailable.
-        const ScenePassRoot pass{.vertices = view.tables.vertices->address(),
-                                 .visibleRows = resources.address(inputs.drawRows),
-                                 .instances = view.tables.instances->address(),
-                                 .materials = view.tables.materials->address(),
-                                 .passUniforms = uniformsAddress,
-                                 .exposure = exposure,
-                                 .shadow = static_cast<uint32_t>(resources.view(shadowRead)),
-                                 .irradiance = static_cast<uint32_t>(irradiance->view()),
-                                 .prefilteredEnv = static_cast<uint32_t>(prefiltered->view()),
-                                 .dfg = static_cast<uint32_t>(dfg->view()),
-                                 .linearSampler = static_cast<uint32_t>(inputs.linearSampler),
-                                 .shadowSampler = static_cast<uint32_t>(inputs.shadowSampler),
-                                 .iblSampler = static_cast<uint32_t>(inputs.iblSampler)};
+        // Every path loads the parameters; Direct also loads the light rows and Clustered the rows,
+        // the grid and the index lists. An address a path never loads stays zero.
+        const auto localLightMode = static_cast<engine::LocalLightMode>(localLightParams.mode);
+        const bool shadesLocalLights = localLightMode != engine::LocalLightMode::Off;
+        const bool clustered = localLightMode == engine::LocalLightMode::Clustered;
+        LMX_ASSERT(!shadesLocalLights || inputs.lights.has_value(),
+                   "local-light shading needs the imported light rows");
+        LMX_ASSERT(!clustered || inputs.lightGrid.has_value(),
+                   "clustered shading needs the light grid and index lists");
+        const auto localLightParamsAddress = frameData(commands, localLightParams);
+        engine::registerFrameRoot("LocalLightParams", localLightParamsAddress);
+        const ScenePassRoot pass{
+            .vertices = view.tables.vertices->address(),
+            .visibleRows = resources.address(inputs.drawRows),
+            .instances = view.tables.instances->address(),
+            .materials = view.tables.materials->address(),
+            .passUniforms = uniformsAddress,
+            .exposure = exposure,
+            .lights =
+                shadesLocalLights ? resources.address(inputs.lights.value()) : rojoRHI::Addr{},
+            .lightGrid = clustered ? resources.address(inputs.lightGrid.value()) : rojoRHI::Addr{},
+            .lightIndices =
+                clustered ? resources.address(inputs.lightIndices.value()) : rojoRHI::Addr{},
+            .localLightParams = localLightParamsAddress,
+            .shadow = static_cast<uint32_t>(resources.view(shadowRead)),
+            .irradiance = static_cast<uint32_t>(irradiance->view()),
+            .prefilteredEnv = static_cast<uint32_t>(prefiltered->view()),
+            .dfg = static_cast<uint32_t>(dfg->view()),
+            .linearSampler = static_cast<uint32_t>(inputs.linearSampler),
+            .shadowSampler = static_cast<uint32_t>(inputs.shadowSampler),
+            .iblSampler = static_cast<uint32_t>(inputs.iblSampler)};
         const auto passAddress = frameData(commands, pass);
         engine::registerFrameRoot("ScenePassRoot", passAddress);
         encodeDrawRuns(
@@ -180,6 +224,9 @@ void SceneStage::draw(rojoRHI::CommandList& commands, const SceneView& view,
                               .stage = rojoRHI::Stage::FragmentShader,
                               .access = rojoRHI::Access::ShaderRead}}};
                         commands.declareAccess(access);
+                    }
+                    if (shadesLocalLights) {
+                        declareLocalLightReads(commands, resources, inputs, localLightParams);
                     }
                 }
 #endif

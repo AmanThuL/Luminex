@@ -64,9 +64,12 @@ Vertex. loadVertex reconstructs logical vectors only. Scene and Shadow roots pre
 firstEntry versus indirect drawId identity and use view/sampler indices. The SceneTableAbi oracle
 writes all116uint words per row for two rows, preserving every field, explicit padding and stride.
 New C++ roots align16; pushRoot supplies GPU256 alignment. Named roots/payloads feed capture
-schema2; the old decoder remains unsupported until its migration. Four local-light contribution
-sites stay neutral with unread zero addresses while LIGHTS is pending; the Renderer reaches the
-motion entries and their three-target MRT on every temporal frame.
+schema2; the old decoder remains unsupported until its migration. The four scene entries add
+`AccumulateLocalLights` after the directional lights and before image-based lighting, emissive
+and pre-exposure; it loads the 136-byte `LocalLightParams` and, by mode, the light rows (Direct)
+or the rows, grid and index lists (Clustered) through ScenePassRoot's addresses, and Off loads
+neither. The Renderer reaches the motion entries and their three-target MRT on every temporal
+frame.
 
 ## Shaders/Passes/<family>/
 
