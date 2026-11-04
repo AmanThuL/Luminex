@@ -25,3 +25,7 @@ public struct LocalLightParams
     // Reversed-Z boundary depths, one per slice plus the closing boundary; never increasing.
     public float sliceDepth[25];
 };
+
+// `sliceDepth`'s offset in 4-byte words (SceneFrameData.h asserts byte 36), for reading the table
+// in place with `rojoRHI::load<float>`.
+public static const uint kLocalLightParamsSliceDepthWord = 9u;
