@@ -137,7 +137,7 @@ SurfaceShading shadeSurfaceDetailed(VSOutput input, bool frontFace)
                 ComputeDirectionalLight(gPass.lights[2], normalW, toEye, baseColor, f0, metallic,
                                         alpha);
 
-    litColor += AccumulateLocalLights(rojoRHI::load<LocalLightParams>(pass.localLightParams, 0),
+    litColor += AccumulateLocalLights(pass.localLightParams,
                                       pass.lights, pass.lightGrid, pass.lightIndices,
                                       input.position, input.positionW, normalW, toEye, baseColor,
                                       f0, metallic, alpha);

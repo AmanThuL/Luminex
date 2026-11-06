@@ -29,15 +29,15 @@ float4 fragmentMain(float4 position : SV_Position) : SV_Target
         uint2(gParams.activeWidth - 1u, gParams.activeHeight - 1u));
     float depth = gDepth.Load(int3(pixel, 0));
     if (depth <= 0.0f) return float4(0, 0, 0, 1);
-    LocalLightParams cluster;
+    LocalLightParams cluster = {};
     cluster.mode = kLocalLightModeClustered;
     cluster.rowCount = gParams.rowCount;
     cluster.gridX = 16u; cluster.gridY = 9u; cluster.gridZ = 24u;
     cluster.activeOriginX = 0u; cluster.activeOriginY = 0u;
     cluster.activeWidth = gParams.activeWidth; cluster.activeHeight = gParams.activeHeight;
-    for (uint s = 0u; s < 25u; ++s) cluster.sliceDepth[s] = gParams.sliceDepth[s];
     ClusterRecord record = rojoRHI::load<ClusterRecord>(root.grid,
-        LocalLightCluster(cluster, float4(float2(pixel) + 0.5f, depth, 1)));
+        LocalLightCluster(cluster, root.params, kDebugParamsSliceDepthWord,
+                          float4(float2(pixel) + 0.5f, depth, 1)));
     uint count = record.count & ~kClusterTruncatedBit;
     bool truncated = (record.count & kClusterTruncatedBit) != 0u;
     if (gParams.mode == 1u)

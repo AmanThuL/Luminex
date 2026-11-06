@@ -68,7 +68,9 @@ schema2; the old decoder remains unsupported until its migration. The four scene
 `AccumulateLocalLights` after the directional lights and before image-based lighting, emissive
 and pre-exposure; it loads the 136-byte `LocalLightParams` and, by mode, the light rows (Direct)
 or the rows, grid and index lists (Clustered) through ScenePassRoot's addresses, and Off loads
-neither. The Renderer reaches the motion entries and their three-target MRT on every temporal
+neither. The cluster lookup reads the slice table in place with `rojoRHI::load<float>`: `load<T>`
+returns a value, and indexing an array member of the copy with a loop counter puts the copy in
+thread memory, which on Metal cost the scene pass about 0.09 ms per frame on Sponza. The Renderer reaches the motion entries and their three-target MRT on every temporal
 frame.
 
 ## Shaders/Passes/<family>/

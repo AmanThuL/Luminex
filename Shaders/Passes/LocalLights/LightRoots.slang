@@ -33,3 +33,7 @@ struct DebugParams
     uint outputHeight;
     float sliceDepth[25];
 };
+
+// `DebugParams.sliceDepth`'s offset in 4-byte words (LightClusterFrameData.h asserts byte 88), for
+// LocalLightCluster's in-place read of the table.
+static const uint kDebugParamsSliceDepthWord = 22u;

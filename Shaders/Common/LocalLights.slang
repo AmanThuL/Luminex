@@ -24,7 +24,12 @@ public static const uint kClusterTruncatedBit = 0x80000000u;
 // clamp then folds a pixel before the active origin into the last tile, exactly as the mirror
 // documents. The slice is the lowest `s` whose boundary pair brackets the rasterised depth, and a
 // depth no slice claims falls into the open last slice.
-public uint LocalLightCluster(LocalLightParams params, float4 svPosition)
+//
+// The boundary table is read in place, word `sliceDepthWord + s` of `sliceDepthBase`, so `params`'
+// own `sliceDepth` is never read. Indexing a loaded copy's array with the loop counter would place
+// the whole copy in thread memory, which Metal keeps on the stack for every shaded fragment.
+public uint LocalLightCluster(LocalLightParams params, rojoRHI::Addr sliceDepthBase,
+                              uint sliceDepthWord, float4 svPosition)
 {
     uint pixelX = (uint)svPosition.x - params.activeOriginX;
     uint pixelY = (uint)svPosition.y - params.activeOriginY;
@@ -35,7 +40,9 @@ public uint LocalLightCluster(LocalLightParams params, float4 svPosition)
     uint slice = params.gridZ - 1u;
     for (uint s = 0u; s < params.gridZ; ++s)
     {
-        if (params.sliceDepth[s] >= svPosition.z && svPosition.z > params.sliceDepth[s + 1u])
+        float nearDepth = rojoRHI::load<float>(sliceDepthBase, sliceDepthWord + s);
+        float farDepth = rojoRHI::load<float>(sliceDepthBase, sliceDepthWord + s + 1u);
+        if (nearDepth >= svPosition.z && svPosition.z > farDepth)
         {
             slice = s;
             break;
@@ -48,13 +55,15 @@ public uint LocalLightCluster(LocalLightParams params, float4 svPosition)
 // The local-light sum for one shaded surface, before pre-exposure. `Off` visits no row and returns
 // exact +0, which is the additive identity for every value the scene pass can already hold -- that
 // is what lets a scene with no local lights render byte for byte what it rendered before this
-// module existed. `lights`, `grid` and `indices` address the light rows, the froxel records and
-// the index lists; a path loads only what it selects, so Off loads none and Direct no list.
-public float3 AccumulateLocalLights(LocalLightParams params, rojoRHI::Addr lights,
+// module existed. `paramsAddr` addresses the frame's `LocalLightParams`; `lights`, `grid` and
+// `indices` address the light rows, the froxel records and the index lists; a path loads only what
+// it selects, so Off loads none and Direct no list.
+public float3 AccumulateLocalLights(rojoRHI::Addr paramsAddr, rojoRHI::Addr lights,
                                     rojoRHI::Addr grid, rojoRHI::Addr indices, float4 svPosition,
                                     float3 position, float3 normal, float3 toEye, float3 baseColor,
                                     float3 f0, float metallic, float alpha)
 {
+    LocalLightParams params = rojoRHI::load<LocalLightParams>(paramsAddr, 0);
     // Conservative isotropic NDF filtering (Tokuyoshi/Kaplanyan 2021, equation 13):
     // https://jcgt.org/published/0010/02/02/ . The normal's pixel footprint broadens only the
     // punctual lobe; authored roughness and the existing directional/IBL paths stay unchanged.
@@ -76,7 +85,9 @@ public float3 AccumulateLocalLights(LocalLightParams params, rojoRHI::Addr light
     else if (clustered)
     {
         ClusterRecord record =
-            rojoRHI::load<ClusterRecord>(grid, LocalLightCluster(params, svPosition));
+            rojoRHI::load<ClusterRecord>(grid, LocalLightCluster(params, paramsAddr,
+                                                                 kLocalLightParamsSliceDepthWord,
+                                                                 svPosition));
         offset = record.offset;
         count = record.count & ~kClusterTruncatedBit;
     }
