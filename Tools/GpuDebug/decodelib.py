@@ -34,7 +34,9 @@ _BGRA_FORMATS = frozenset((_BGRA8_UNORM, _BGRA8_UNORM_SRGB))
 _RGBA_FORMATS = frozenset((_RGBA8_UNORM,))
 _COLOR_FORMATS = _BGRA_FORMATS | _RGBA_FORMATS
 
-_CLEAR_DEPTH = 1.0  # fractionAtClear counts texels exactly at the clear value.
+# fractionAtClear counts texels exactly at the clear value. Depth is reversed (near 1, far 0)
+# and every depth target clears to the far plane, 0 (LoweredFrame.h's clearDepth default).
+CLEAR_DEPTH = 0.0
 
 # Bytes per texel for every format decodelib actually reads row data for (D32Float and the three
 # 8-bit-per-channel color formats are all 4 bytes/texel). BC1 never reaches _validate_geometry --
@@ -148,7 +150,7 @@ def _decode_depth32(header: bundlelib.BlobHeader, payload: bytes) -> Decoded:
     # honest "no valid data" plane into a manifest that just says "mean": NaN (invalid JSON, and a
     # worse lie than fake contrast would have been).
     valid = [v for v in values if math.isfinite(v)]
-    at_clear = sum(1 for v in valid if v == _CLEAR_DEPTH)
+    at_clear = sum(1 for v in valid if v == CLEAR_DEPTH)
     if valid:
         min_v, max_v = min(valid), max(valid)
         mean_v = sum(valid) / len(valid)
@@ -159,7 +161,7 @@ def _decode_depth32(header: bundlelib.BlobHeader, payload: bytes) -> Decoded:
     # a plane whose every texel is the identical non-finite pattern.
     flat = total == 0 or values.tobytes() == struct.pack("<f", values[0]) * total
 
-    # Record the TRUE value range in stats before normalizing -- a depth map hovering at 1.0
+    # Record the TRUE value range in stats before normalizing -- a depth map hovering at 0.0
     # must not silently gain fake contrast in the numbers, only in the (necessarily normalized)
     # grayscale PNG. Texels with no valid range to normalize against (flat, or non-finite) render
     # as plain black rather than participating in arithmetic that would raise or fabricate a value.

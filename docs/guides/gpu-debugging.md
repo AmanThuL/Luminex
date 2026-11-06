@@ -51,8 +51,7 @@ See [workspace recovery](editor-workspace.md#workspace-recovery) for persistence
 Console retains 2,000 messages / 2 MiB, truncating payloads at 16 KiB on a UTF-8 boundary. UTC time and severity accompany each entry. The T/D/I/W/E/C chips count each retained severity and select
 that level and above; search is a case-insensitive substring filter. Scroll up to hold the displayed rows while logging continues. Return to the bottom or click `↓ N new` to resume; the chip stays
 visible even at zero. More > Clear empties messages/counters while keeping filters and freeze state; new arrivals then count from Clear. More > Copy visible copies matching displayed messages,
-including when frozen. Nonzero eviction/truncation counts print below the header; full statistics are in search help. Header counts may trail newly displayed rows by one frame. Search executes no
-commands.
+including when frozen. Nonzero eviction/truncation counts print below the header; full statistics are in search help. Header counts may trail newly displayed rows by one frame. Search executes no commands.
 
 The selection outline follows visible geometry, including depth occlusion and masked cutouts. Foreground occlusion cuts never become silhouette edges; border endpoints are depth-tested. App adds
 `lmx.pass.selection.coverage`, `lmx.pass.selection.visibility` and `lmx.pass.selection.outline` to a separate SDR target. Their costs appear in graph/timing records; scene targets and temporal history
@@ -89,19 +88,20 @@ resource metadata, registered `uniformStructs`, and `frameRoots` containing a ro
 use actual command state when diagnosing synchronization. See the
 [GPU ownership layer](../architecture/engine.md) for registration and lifetimes.
 
-The current `gputrace_dump.py`/uniform decoder supports schema 1 only and explicitly rejects these
-new schema-2 sidecars. [The decoder migration](https://github.com/AmanThuL/rojo-rhi/issues/145)
-owns new-root decoding and evidence; native Xcode capture inspection remains available. For an
-archived schema-1 capture only, the historical command is:
-
 ```bash
-python3 Tools/GpuDebug/gputrace_dump.py /tmp/archived-frame.gputrace --out /tmp/archived-frame-dump
+python3 Tools/GpuDebug/gputrace_dump.py /tmp/luminex-frame.gputrace --out /tmp/luminex-frame-dump
 ```
+
+The trace records every buffer's GPU address, length and label, so the decoder finds the buffer
+holding each root's `Addr` (usually a `rojorhi.frameArena.page`) and decodes the root's named
+struct from the bytes the GPU saw. `uniforms.json` lists root values, naming each `Addr` field by
+the root or labelled buffer and offset it points to (`0` when unused); `manifest.json`'s
+`frameRoots` counts roots by name with each undecoded root's reason. Schema-1 sidecars are rejected.
 
 Escalate in this order:
 
 1. Confirm scene, camera, settings and capture frame; distinguish pending stages from missing work.
-2. Inspect the schema's registered root layouts, addresses and owner metadata.
+2. Inspect the decoded roots, their registered layouts and owner metadata.
 3. Inspect inputs/outputs in Xcode, beginning at the earliest incorrect resource.
 4. Reproduce with Metal validation; Debug `--rhi-validation` enables the RHI tracker separately.
 5. Add a narrow diagnostic if the trace cannot establish command order or state.
@@ -145,8 +145,8 @@ the current automated dump does not recover MetalFX's private encoder names. The
 and `.outputCopy`; that copy belongs to the external pass's GPU timing. Graph dumps describe the
 declared external operation, not the vendor's private encoders. Use Xcode to inspect opaque encoder ordering or fence state when the decoded manifest cannot establish them.
 
-The dump tool currently cannot decode the HDR, motion or reactive formats or recover packed transients from placement-heap contents. Its legacy expected scene-color label and shadow-depth
-recompute may also report errors on this renderer. Preserve these findings with the capture; they are distinct from runtime Metal validation and do not establish a reconstruction failure.
+The dump tool currently cannot decode the HDR, motion or reactive formats or recover packed transients from placement-heap contents; its anomaly checks read the SDR
+`lmx.render.displayColor` and reversed depth, where every depth target clears to 0. Preserve these findings with the capture; they are distinct from runtime Metal validation and do not establish a reconstruction failure.
 
 Motion, reprojection error and reprojected history are engine diagnostics. The latter adds `lmx.pass.temporal.reprojectedHistory` under vendor mode; rejection, blend weight and per-pixel
 history age are native-only. CLI combinations of those views with `--temporal metalfx` are usage
@@ -244,7 +244,7 @@ Scored headless measurement refuses enabled Metal/DYLD/capture instrumentation, 
 python3 -m unittest discover -s Tools/GpuDebug/tests -v
 ```
 
-These tests validate the parsers and report generation without requiring a GPU capture session. The separate [ImGui buffer probe](../../RojoRHI/Tools/ImGuiBufferProbe/README.md) checks real Metal4 UI upload lifetime and an old-policy failure control; it requires a GPU.
+These tests validate the parsers and report generation without a GPU capture session; hosted CI runs them in the policy job. The separate [ImGui buffer probe](../../RojoRHI/Tools/ImGuiBufferProbe/README.md) checks real Metal4 UI upload lifetime and an old-policy failure control; it requires a GPU.
 
 ## Parity checks
 

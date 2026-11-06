@@ -12,9 +12,9 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 import schemalib  # noqa: E402
 
-# Representative version-1 capture schema.
+# Representative version-2 capture schema.
 SCHEMA_EXAMPLE = {
-    "version": 1,
+    "version": 2,
     "context": {
         "sceneName": "…",
         "frameIndex": 120,
@@ -28,15 +28,14 @@ SCHEMA_EXAMPLE = {
     "resources": [
         {"label": "lmx.render.shadowMap", "kind": "texture2d", "format": "D32Float",
          "width": 2048, "height": 2048, "mipLevels": 1},
-        {"label": "rojorhi.device.frameData.0.page.0", "kind": "buffer", "sizeBytes": 262144},
+        {"label": "lmx.scene.lights.0", "kind": "buffer", "sizeBytes": 1024},
     ],
     "uniformStructs": [
-        {"name": "PassUniforms", "slot": 2, "sizeBytes": 288,
+        {"name": "PassUniforms", "sizeBytes": 400,
          "fields": [{"name": "viewProj", "offsetBytes": 0, "type": "float4x4"}]},
     ],
-    "frameDataUploads": [
-        {"pageLabel": "rojorhi.device.frameData.0.page.1", "slot": 2, "pageOffset": 1024,
-         "sizeBytes": 288, "alignmentBytes": 256, "gpuAddress": 4294967296},
+    "frameRoots": [
+        {"name": "PassUniforms", "addr": {"lo": 369303184, "hi": 256}},
     ],
 }
 
@@ -62,7 +61,7 @@ class LoadSchemaTests(unittest.TestCase):
         self.assertEqual(schema.context["frameIndex"], 120)
         self.assertEqual(len(schema.resources), 2)
         self.assertEqual(len(schema.uniform_structs), 1)
-        self.assertEqual(len(schema.frame_data_uploads), 1)
+        self.assertEqual(len(schema.frame_roots), 1)
 
     def test_texture_resource_carries_geometry(self):
         path = _write_json(self.tmp_path, "schema.json", SCHEMA_EXAMPLE)
@@ -85,8 +84,8 @@ class LoadSchemaTests(unittest.TestCase):
 
         buf = next(r for r in schema.resources if r.kind == "buffer")
 
-        self.assertEqual(buf.label, "rojorhi.device.frameData.0.page.0")
-        self.assertEqual(buf.size_bytes, 262144)
+        self.assertEqual(buf.label, "lmx.scene.lights.0")
+        self.assertEqual(buf.size_bytes, 1024)
         self.assertIsNone(buf.format)
         self.assertIsNone(buf.width)
         self.assertIsNone(buf.height)
@@ -98,23 +97,73 @@ class LoadSchemaTests(unittest.TestCase):
 
         struct = schema.uniform_structs[0]
         self.assertEqual(struct.name, "PassUniforms")
-        self.assertEqual(struct.slot, 2)
-        self.assertEqual(struct.size_bytes, 288)
+        self.assertEqual(struct.size_bytes, 400)
         self.assertEqual(struct.fields[0].name, "viewProj")
         self.assertEqual(struct.fields[0].offset_bytes, 0)
         self.assertEqual(struct.fields[0].type, "float4x4")
 
-    def test_frame_data_upload_fields(self):
+    def test_frame_root_joins_lo_and_hi_into_one_address(self):
         path = _write_json(self.tmp_path, "schema.json", SCHEMA_EXAMPLE)
         schema = schemalib.load_schema(path)
 
-        upload = schema.frame_data_uploads[0]
-        self.assertEqual(upload.page_label, "rojorhi.device.frameData.0.page.1")
-        self.assertEqual(upload.slot, 2)
-        self.assertEqual(upload.page_offset, 1024)
-        self.assertEqual(upload.size_bytes, 288)
-        self.assertEqual(upload.alignment_bytes, 256)
-        self.assertEqual(upload.gpu_address, 4294967296)
+        root = schema.frame_roots[0]
+        self.assertEqual(root.name, "PassUniforms")
+        self.assertEqual(root.address, (256 << 32) | 369303184)
+
+    def test_frame_root_without_hi_names_the_key(self):
+        data = {**SCHEMA_EXAMPLE, "frameRoots": [{"name": "X", "addr": {"lo": 1}}]}
+        path = _write_json(self.tmp_path, "schema.json", data)
+
+        with self.assertRaises(schemalib.SchemaError) as ctx:
+            schemalib.load_schema(path)
+        self.assertIn("'hi'", str(ctx.exception))
+
+    def test_numeric_fields_must_be_in_range_integers(self):
+        def root(lo, hi):
+            return {**SCHEMA_EXAMPLE, "frameRoots": [{"name": "R", "addr": {"lo": lo, "hi": hi}}]}
+
+        def field(offset):
+            return {**SCHEMA_EXAMPLE, "uniformStructs": [
+                {"name": "S", "sizeBytes": 4,
+                 "fields": [{"name": "f", "offsetBytes": offset, "type": "float"}]}]}
+
+        cases = {
+            "bool lo": (root(True, 0), "'lo'"),
+            "lo at 2**32": (root(1 << 32, 0), "'lo'"),
+            "negative hi": (root(0, -1), "'hi'"),
+            "string hi": (root(0, "1"), "'hi'"),
+            "negative offset": (field(-4), "'offsetBytes'"),
+            "float offset": (field(4.0), "'offsetBytes'"),
+            "bool sizeBytes": ({**SCHEMA_EXAMPLE, "uniformStructs": [
+                {"name": "S", "sizeBytes": False, "fields": []}]}, "'sizeBytes'"),
+            "negative width": ({**SCHEMA_EXAMPLE, "resources": [
+                {"label": "t", "kind": "texture2d", "format": "R8", "width": -1, "height": 1,
+                 "mipLevels": 1}]}, "'width'"),
+        }
+        for name, (data, key) in cases.items():
+            with self.subTest(name):
+                path = _write_json(self.tmp_path, f"{name}.json", data)
+                with self.assertRaises(schemalib.SchemaError) as ctx:
+                    schemalib.load_schema(path)
+                self.assertIn(key, str(ctx.exception))
+
+    def test_largest_address_words_are_accepted(self):
+        data = {**SCHEMA_EXAMPLE,
+                "frameRoots": [{"name": "R", "addr": {"lo": 0xFFFFFFFF, "hi": 0xFFFFFFFF}}]}
+        path = _write_json(self.tmp_path, "schema.json", data)
+
+        self.assertEqual(schemalib.load_schema(path).frame_roots[0].address, (1 << 64) - 1)
+
+    def test_version_one_sidecar_is_rejected_as_pre_v2(self):
+        data = {**SCHEMA_EXAMPLE, "version": 1, "frameDataUploads": []}
+        path = _write_json(self.tmp_path, "schema.json", data)
+
+        with self.assertRaises(schemalib.SchemaError) as ctx:
+            schemalib.load_schema(path)
+        message = str(ctx.exception)
+        self.assertIn("version 1", message)
+        self.assertIn("RojoRHI v2", message)
+        self.assertIn("Re-capture", message)
 
     def test_missing_version_raises_schema_error(self):
         data = dict(SCHEMA_EXAMPLE)
@@ -127,12 +176,12 @@ class LoadSchemaTests(unittest.TestCase):
 
     def test_unsupported_version_raises_schema_error(self):
         data = dict(SCHEMA_EXAMPLE)
-        data["version"] = 2
+        data["version"] = 3
         path = _write_json(self.tmp_path, "schema.json", data)
 
         with self.assertRaises(schemalib.SchemaError) as ctx:
             schemalib.load_schema(path)
-        self.assertIn("2", str(ctx.exception))
+        self.assertIn("3", str(ctx.exception))
 
     def test_missing_required_key_names_it_in_the_error(self):
         data = dict(SCHEMA_EXAMPLE)
@@ -162,7 +211,9 @@ class LoadSchemaTests(unittest.TestCase):
         # missing", so a future raise site can't quietly skip the hint.
         cases = {
             "missing version": {k: v for k, v in SCHEMA_EXAMPLE.items() if k != "version"},
-            "wrong version": {**SCHEMA_EXAMPLE, "version": 2},
+            "wrong version": {**SCHEMA_EXAMPLE, "version": 3},
+            "version one": {**SCHEMA_EXAMPLE, "version": 1},
+            "missing frame roots": {k: v for k, v in SCHEMA_EXAMPLE.items() if k != "frameRoots"},
             "missing resources": {k: v for k, v in SCHEMA_EXAMPLE.items() if k != "resources"},
         }
         for name, data in cases.items():
