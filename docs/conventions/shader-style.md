@@ -33,8 +33,8 @@
   root structs or `float3`. Upload larger constants once and carry their Addr in the root.
 - Build: `xmake/luminex_shaders.lua` selects entry files only and configures the mounted
   `rojorhi.slang` rule. Common/family/root modules remain dependencies, not runtime libraries.
-  App selects kept pass entries; Tests adds kept oracles; dormant FrameDataBench selects only
-  FrameDataQuad. `xmake/port.lua` owns exclusions. Each target has its own shader output directory,
+  App selects every pass entry; Tests adds the oracles; FrameDataBench selects only
+  FrameDataQuad. Each target has its own shader output directory,
   and `LMX_SHADER_LIBRARY_EXTENSION` selects `.metal4lib`, `.nulllib` or `.d3d12lib`.
   Metal 4 requires the offline Metal toolchain (`xcodebuild -downloadComponent MetalToolchain`);
   generated MSL stays in the build tree for inspection. Basenames are case-insensitively unique.

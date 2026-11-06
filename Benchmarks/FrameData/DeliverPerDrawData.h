@@ -4,89 +4,30 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
-#include "Core/Diagnostics/Assert.h"
-#include "Core/Math/Align.h"
 #include <rojoRHI/RHI.h>
 
-#include <cstdint>
-#include <memory>
-#include <vector>
+#include <cstddef>
+#include <span>
+#include <type_traits>
 
 namespace lmx::bench {
 
-/// Mirrors the incumbent Metal 4 backend's fixed per-frame transient-uniform capacity, as recorded
-/// by ADR 0010 and the M5.1 evidence this seam's baseline path reproduces (still present, under its
-/// own name, in the backend source the `m5.2-baseline` tag checks out). Backend-private and not
-/// part of the public `RojoRHI/Include` surface `FrameDataBench` links against, so this is a
-/// deliberately duplicated, independent tracker -- not a shared symbol -- exactly as the archived
-/// M5.1 adapters at tag `m5.1-noapi-evidence` had to duplicate it to decide client-side whether a
-/// call would fit before making it, since the incumbent path's overflow was a fatal assert with no
-/// recoverable failure to branch on.
-inline constexpr uint64_t kRingCapacityBytes = 256 * 1024;
-/// Mirrors the incumbent backend's fixed per-frame transient-uniform offset alignment: every write
-/// on that path rounds its occupied span up to this boundary regardless of its own size.
-inline constexpr uint64_t kRingAlignmentBytes = 256;
-
-/// Per-run state the delivery seam needs to reproduce the incumbent RHI's exact per-frame
-/// uniform-ring behavior: "the fixed uniform ring while blocks fit, then caller-side per-draw
-/// buffer creation beyond capacity" (ADR 0010 / M5.1 evidence section 7.1) -- not a fatal abort,
-/// which is what a caller that ignored capacity would hit, and not what the measured "old
-/// allocation path" is.
-///
-/// Only the baseline side needs that state: on this candidate path `deliverPerDrawData`'s body is a
-/// single `bindFrameData` call. The struct still carries the full ring model rather than shrinking
-/// to what this side uses, because the paired driver builds its baseline executable from the frozen
-/// `m5.2-baseline` tag, whose copy of this file runs the ring/overflow logic below, and links both
-/// executables against the same `DeliveryContext` shape through this header's frozen signature.
-/// Shrinking it on the candidate side alone would buy nothing the signature freeze does not already
-/// provide. The ring-model members below and `deliverPerDrawData`'s `context` parameter are
-/// therefore unused on the candidate path.
-struct DeliveryContext {
-    /// `device` must outlive every call this context is passed to.
-    explicit DeliveryContext(rojoRHI::Device& device) : device(&device) {}
-
-    rojoRHI::Device* device = nullptr;
-
-    /// Mirrors the backend's per-frame ring bump cursor. Reset to zero once per frame by
-    /// `beginFrame()`, matching the real ring's own per-frame reset.
-    uint64_t ringCursor = 0;
-
-    /// The previous frame's caller-side overflow buffers, retained until `beginFrame()` retires
-    /// (destroys) them. Safe to destroy at that point because the harness waits the device fully
-    /// idle after every frame before the next one ever records a command (Runner.cpp) -- the same
-    /// safety argument `RhiAdapter.cpp`'s own per-draw buffer replacement relies on.
-    std::vector<std::unique_ptr<rojoRHI::Buffer>> overflowBuffers;
-
-    /// Cumulative caller-side overflow buffers created across the whole run. `F-FIT-512` and both
-    /// static workloads must finish a run with this at zero -- they never exceed the simulated
-    /// ring.
-    uint64_t overflowBufferCreations = 0;
-
-    /// Resets the simulated ring cursor and retires the previous frame's overflow buffers. Called
-    /// once per frame, inside the timed region, as the first step after `Device::beginFrame()`: the
-    /// retirement destruction is real, counted CPU cost -- the allocation cliff this benchmark
-    /// exists to measure -- not bookkeeping to hide outside the timer.
-    void beginFrame() {
-        ringCursor = 0;
-        overflowBuffers.clear();
-    }
+/// The root block FrameDataQuad reads: one address of the draw's parameter block (must match
+/// Shaders/Tests/FrameDataQuad.slang's FrameDataQuadRoot layout exactly).
+struct FrameDataQuadRoot {
+    rojoRHI::Addr params{}; ///< The draw's QuadParams, followed by any unread padding.
 };
+static_assert(sizeof(FrameDataQuadRoot) == 8 && alignof(FrameDataQuadRoot) == 8,
+              "must match Shaders/Tests/FrameDataQuad.slang's FrameDataQuadRoot layout");
+static_assert(std::is_trivially_copyable_v<FrameDataQuadRoot> &&
+              std::is_standard_layout_v<FrameDataQuadRoot>);
 
-/// The one production-owned seam every dynamic FrameDataBench workload delivers its per-draw block
-/// through, and nothing else. On this candidate path it is one `CommandList::bindFrameData` call
-/// against the growable per-slot arena -- one allocation, one copy, one address bind, no capacity
-/// to track and no overflow buffer to create, unlike the ring-based incumbent this seam replaced
-/// (still exercised by the baseline executable built from the `m5.2-baseline` tag's copy of this
-/// file). `context` is threaded through unused; see the note on `DeliveryContext` above for why the
-/// signature keeps it.
-///
-/// `slot` is the argument-table buffer slot the caller's pipeline reads the block from; `data`/
-/// `size` name the bytes to copy, which the caller may reuse or free immediately after the call
-/// returns. Valid only inside a render or compute pass, per `bindFrameData`'s own contract.
-inline void deliverPerDrawData([[maybe_unused]] DeliveryContext& context,
-                               rojoRHI::CommandList& commands, uint32_t slot, const void* data,
-                               uint64_t size) {
-    commands.bindFrameData(slot, data, size);
+/// The one seam every dynamic FrameDataBench workload delivers its per-draw block through, and
+/// nothing else: the block is copied into the open frame's arena by `uploadFrameData`, and its
+/// address reaches the shader through a pushed root. The caller may reuse or free `block` as soon
+/// as the call returns. Valid only while a frame is open, since the address dies with the frame.
+inline void deliverPerDrawData(rojoRHI::CommandList& commands, std::span<const std::byte> block) {
+    commands.pushRoot(FrameDataQuadRoot{.params = commands.uploadFrameData(block)});
 }
 
 } // namespace lmx::bench

@@ -3,12 +3,12 @@
 /// @brief Implements the FrameDataBench command-line entry point.
 //----------------------------------------------------------------------------------------------------------------------
 
-/// @details FrameDataBench: the production frame-data benchmark. Times the RHI's
-///        per-frame data-delivery path -- CommandList::bindFrameData, reached through this
-///        benchmark's one delivery seam (DeliverPerDrawData.h) -- over the five frozen workloads in
-///        docs/milestones/m5/m5.2-design.md section 11. The paired driver's
-///        baseline side builds this same seam from the frozen `m5.2-baseline` tag, where the
-///        delivery seam still reaches the incumbent RHI's transient-uniform delivery path.
+/// @details FrameDataBench: the production frame-data benchmark. Times the RHI's per-frame
+///        data-delivery path -- `CommandList::uploadFrameData` and a pushed root, reached through
+///        this benchmark's one delivery seam (DeliverPerDrawData.h) -- over the five frozen
+///        workloads in docs/milestones/m5/m5.2-design.md section 11. The baseline of a paired
+///        comparison is the frozen RojoRHI v1 build of this target, which delivered the same blocks
+///        through v1's `bindFrameData`; equal `--verify` digests prove both render the same pixels.
 ///        Renders offscreen only: no window, no ImGui, no scene assets, just deterministic
 ///        synthetic quads and a readback digest.
 ///
@@ -26,13 +26,12 @@
 ///        Usage: FrameDataBench --selftest
 ///          Runs this binary's own pure host-side logic checks (no GPU device touched) and exits
 ///          0 iff every check passed; failures print to stderr.
-#include "DeliverPerDrawData.h"
 #include "Digest.h"
 #include "Runner.h"
 #include "Workload.h"
 
 #include "Core/IO/Json.h"
-#include <rojoRHI/Metal4/Metal4FrameData.h>
+#include <rojoRHI/RHI.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -114,29 +113,35 @@ std::optional<CliOptions> parseArgs(const std::vector<std::string_view>& args, s
 }
 
 //======================================================================================================================
-// Serializes one FrameDataCounters snapshot (candidate-only counter evidence) as a JSON
-// object literal, or writes `null` when the run never took this snapshot (RunResult's
-// std::optional is unset -- see Runner.h). The baseline binary this JSON schema also serves is
-// built from the frozen `m5.2-baseline` tag tree, whose copy of Main.cpp has none of this code at
-// all, so a missing "frameData" key -- not a null field inside one -- is how a baseline JSON
-// differs; the paired driver never reads these additive fields, so either shape is backward
-// compatible with it.
-void writeFrameDataCounters(std::ofstream& file,
-                            const std::optional<rojoRHI::metal4::FrameDataCounters>& counters) {
+// Serializes one Device::counters() snapshot as a JSON object literal, or writes `null` when the
+// run never took this snapshot (RunResult's std::optional is unset -- see Runner.h). The paired
+// driver never reads these additive fields.
+void writeCounters(std::ofstream& file, const std::optional<rojoRHI::Counters>& counters) {
     if (!counters) {
         file << "null";
         return;
     }
-    file << "{\"calls\": " << counters->calls << ", \"bytes\": " << counters->bytes
-         << ", \"addressBinds\": " << counters->addressBinds
-         << ", \"pageCreations\": " << counters->pageCreations << ", \"slots\": [";
-    for (size_t i = 0; i < counters->slots.size(); ++i) {
-        const auto& slot = counters->slots[i];
-        file << (i == 0 ? "" : ", ") << "{\"pageCount\": " << slot.pageCount
-             << ", \"pagesUsed\": " << slot.pagesUsed << ", \"bytesUsed\": " << slot.bytesUsed
-             << ", \"capacityBytes\": " << slot.capacityBytes << "}";
-    }
-    file << "]}";
+    const rojoRHI::Counters& c = *counters;
+    file << "{\"nativeCreateCalls\": " << c.nativeCreateCalls
+         << ", \"nativeRecordCalls\": " << c.nativeRecordCalls
+         << ", \"nativeSubmitCalls\": " << c.nativeSubmitCalls
+         << ", \"nativeHostCalls\": " << c.nativeHostCalls
+         << ", \"cpuAllocations\": " << c.cpuAllocations
+         << ", \"gpuAllocations\": " << c.gpuAllocations
+         << ", \"frameDataUploads\": " << c.frameDataUploads
+         << ", \"frameArenaBytes\": " << c.frameArenaBytes
+         << ", \"frameArenaGrowths\": " << c.frameArenaGrowths
+         << ", \"descriptorWrites\": " << c.descriptorWrites
+         << ", \"globalBarriers\": " << c.globalBarriers
+         << ", \"bufferBarriers\": " << c.bufferBarriers
+         << ", \"textureBarriers\": " << c.textureBarriers
+         << ", \"nativeBarriers\": " << c.nativeBarriers
+         << ", \"pipelinesCreated\": " << c.pipelinesCreated
+         << ", \"pipelineCacheHits\": " << c.pipelineCacheHits
+         << ", \"pipelineCacheMisses\": " << c.pipelineCacheMisses
+         << ", \"pipelineCompileNanoseconds\": " << c.pipelineCompileNanoseconds
+         << ", \"encodersOpened\": " << c.encodersOpened
+         << ", \"deferredDestructionsRetired\": " << c.deferredDestructionsRetired << "}";
 }
 
 //======================================================================================================================
@@ -162,27 +167,18 @@ bool writeResultJson(const std::filesystem::path& path, const CliOptions& option
     }
     file << "],\n";
     file << "  \"medianNs\": " << result.medianNs << ",\n";
-    file << "  \"overflowBufferCreations\": " << result.overflowBufferCreations << ",\n";
-    file << "  \"overflowBufferCreationsPerFrame\": " << result.overflowBufferCreationsPerFrame
-         << ",\n";
-    // The exact client-side ring model this run's overflow decisions assumed
-    // (DeliverPerDrawData.h); recorded so a later reader never has to re-derive or guess the
-    // constants a baseline result was built on.
-    file << "  \"ringModel\": {\"capacityBytes\": " << lmx::bench::kRingCapacityBytes
-         << ", \"alignmentBytes\": " << lmx::bench::kRingAlignmentBytes << "},\n";
     file << "  \"verify\": " << (options.verify ? "true" : "false") << ",\n";
     if (result.digest) {
         file << "  \"digest\": \"" << lmx::bench::digestToHex(*result.digest) << "\",\n";
     } else {
         file << "  \"digest\": null,\n";
     }
-    // Candidate-only counter evidence (additive; absent from a baseline JSON built from the frozen
-    // m5.2-baseline tag tree -- see writeFrameDataCounters above).
-    file << "  \"frameDataCountersAfterWarmup\": ";
-    writeFrameDataCounters(file, result.frameDataCountersAfterWarmup);
+    // Counter evidence (additive; the paired driver reads only the fields above).
+    file << "  \"countersAfterWarmup\": ";
+    writeCounters(file, result.countersAfterWarmup);
     file << ",\n";
-    file << "  \"frameDataCountersAfterMeasurement\": ";
-    writeFrameDataCounters(file, result.frameDataCountersAfterMeasurement);
+    file << "  \"countersAfterMeasurement\": ";
+    writeCounters(file, result.countersAfterMeasurement);
     file << "\n";
     file << "}\n";
     return static_cast<bool>(file);
@@ -249,9 +245,8 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::printf("case=%s medianNs=%llu overflowBufferCreations=%llu digest=%s\n",
-                options->caseName.c_str(), static_cast<unsigned long long>(result.medianNs),
-                static_cast<unsigned long long>(result.overflowBufferCreations),
+    std::printf("case=%s medianNs=%llu digest=%s\n", options->caseName.c_str(),
+                static_cast<unsigned long long>(result.medianNs),
                 result.digest ? lmx::bench::digestToHex(*result.digest).c_str() : "(none)");
     return 0;
 }
