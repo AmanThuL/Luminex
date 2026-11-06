@@ -1,4 +1,4 @@
-"""A pure-Python mirror of `Renderer.cpp`'s `fitShadowOrtho` (and the two glm functions it calls),
+"""A pure-Python mirror of `ShadowStage.cpp`'s `fitShadowOrtho` (and the glm functions it calls),
 so a dump can recompute the shadow matrices a captured frame *should* have uploaded and compare
 them against the ones it actually did.
 
@@ -153,9 +153,14 @@ def fit_shadow_ortho(bounding_sphere, light_dir):
     # By construction this is (0, 0, -2r); compute it so the code states the fit directly.
     center_ls = transform_point(light_view, center)
     # Right-handed view space looks down -z, so the distance to a point along the view axis is -z.
+    # Reversed depth, as `fitOrthoToSphere` (Core/Math/Projection.h) does: handing orthoRH_ZO the
+    # far distance as its near and the near distance as its far maps the near plane to 1 and the
+    # far plane to 0, matching the Greater depth test and GreaterEqual sampler the shadow pass uses.
+    near_distance = -center_ls[2] - radius
+    far_distance = -center_ls[2] + radius
     light_proj = ortho_rh_zo(center_ls[0] - radius, center_ls[0] + radius,
                              center_ls[1] - radius, center_ls[1] + radius,
-                             -center_ls[2] - radius, -center_ls[2] + radius)
+                             far_distance, near_distance)
 
     # NDC x [-1,1] maps to u [0,1], y [-1,1] maps to v [1,0] (texture v runs down), and z needs
     # no remap because Metal clip depth is already the [0,1] a D32Float shadow map stores.

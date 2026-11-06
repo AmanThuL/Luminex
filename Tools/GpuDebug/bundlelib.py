@@ -14,8 +14,14 @@ The format assumptions below were measured on real macOS 26 capture bundles:
   containing "<b>" names a blob file. Same receiver -> same resource: join a label to a blob
   through the receiver, then the blob's resource-id prefix (e.g. "MTLTexture-16"), then every
   file on disk sharing that prefix (one resource can own many blobs: one per mip/slice).
-- Buffers are not label-joinable (their contents record's receiver is the device, not the
-  buffer) -- buffers join to blobs by exact, unambiguous size instead.
+- Buffers are not label-joinable through the receiver (their contents record's receiver is the
+  device, not the buffer) -- join() matches them to blobs by exact, unambiguous size instead.
+- Each stream opens with the magic "MTSP" and a 4-byte word, then a run of framed records: u32
+  record length, u32 call code, 24 bytes, a u32, then the descriptor above. Two calls give every
+  buffer's GPU address and length -- "Cuw" under code 0xffffd80c (receiver, address) and "Cul"
+  under 0xffffd811 (receiver, length) -- keyed by the buffer handle that its "CS" label record
+  carries too. A buffer's contents record ends with that handle, which joins the handle to its
+  MTLBuffer blob. scan_buffers() reads them, so a GPU address maps to a label, a blob and an offset.
 
 Run: python3 -c "import bundlelib; b = bundlelib.walk_bundle('x.gputrace'); print(b.blobs)"
 """
@@ -401,3 +407,116 @@ def first_texture_header_version(bundle: Bundle) -> int | None:
         if header is not None:
             return header.version
     return None
+
+
+# --- Buffer addresses -------------------------------------------------------------------------
+
+STREAM_MAGIC = b"MTSP"
+_STREAM_HEADER_SIZE = 8
+# u32 length, u32 call code, 24 bytes, u32: the descriptor starts this far into a record.
+_RECORD_HEADER_SIZE = 36
+_CALL_GPU_ADDRESS = 0xFFFFD80C  # "Cuw": buffer handle, GPU virtual address
+_CALL_LENGTH = 0xFFFFD811  # "Cul": buffer handle, length in bytes
+_BUFFER_BLOB_RE = re.compile(rb"MTLBuffer-\d+-\d+\x00")
+# The stream the capture itself records, beside the device-resources snapshots: a buffer created
+# while the capture was open has its address records here.
+_CAPTURE_STREAM = "capture"
+
+
+@dataclasses.dataclass
+class BufferRecord:
+    """One MTLBuffer the capture recorded: its GPU address range, label and contents blob."""
+    gpu_address: int
+    length: int | None  # None only if the stream recorded no length call for the buffer
+    label: str | None
+    blob: Blob | None  # None when the capture dumped no contents for the buffer
+
+    def contains(self, address: int) -> bool:
+        if self.length is None:
+            return address == self.gpu_address
+        return self.gpu_address <= address < self.gpu_address + self.length
+
+
+def _iter_records(data: bytes):
+    """Yield (call_code, descriptor, payload_offset, record_end) for each framed record.
+
+    `payload_offset` is the receiver's offset (after the descriptor's alignment padding). A
+    stream without the magic, or a record whose length runs past the stream, ends the walk: the
+    bytes after it cannot be framed, and a partial map is better than a misread one.
+    """
+    if not data.startswith(STREAM_MAGIC):
+        return
+    offset = _STREAM_HEADER_SIZE
+    while offset + _RECORD_HEADER_SIZE <= len(data):
+        length, code = struct.unpack_from("<II", data, offset)
+        end = offset + length
+        if length <= _RECORD_HEADER_SIZE or end > len(data):
+            return
+        start = offset + _RECORD_HEADER_SIZE
+        nul = data.find(b"\x00", start, end)
+        if nul != -1:
+            payload_offset = ((nul + 4) // 4) * 4
+            yield code, data[start:nul], payload_offset, end
+        offset = end
+
+
+def scan_buffers(bundle: Bundle) -> list:
+    """Every buffer whose GPU address the bundle records, as BufferRecords sorted by address.
+
+    Reads the device-resources streams and, when present, the capture stream. A later record for
+    the same handle replaces an earlier one, and a new address record clears what the handle's
+    previous buffer left, so a handle Metal reused names its newest buffer only.
+    """
+    addresses: dict[int, int] = {}
+    lengths: dict[int, int] = {}
+    labels: dict[int, str] = {}
+    blob_names: dict[int, str] = {}
+    blob_since_address: set[int] = set()
+    streams = list(bundle.device_resource_files)
+    capture = bundle.root / _CAPTURE_STREAM
+    if capture.is_file():
+        streams.append(capture)
+
+    for stream_path in streams:
+        data = stream_path.read_bytes()
+        for code, descriptor, payload, end in _iter_records(data):
+            if payload + 8 > end:
+                continue
+            receiver = struct.unpack_from("<Q", data, payload)[0]
+            if descriptor == b"Cuw" and code == _CALL_GPU_ADDRESS and payload + 16 <= end:
+                # A buffer's records run contents, address, length, label, so an address record
+                # starts the buffer the handle names now: a handle Metal reused for a new buffer
+                # must not keep the old one's length, label, or a blob not recorded just before.
+                addresses[receiver] = struct.unpack_from("<Q", data, payload + 8)[0]
+                lengths.pop(receiver, None)
+                labels.pop(receiver, None)
+                if receiver not in blob_since_address:
+                    blob_names.pop(receiver, None)
+                blob_since_address.discard(receiver)
+            elif descriptor == b"Cul" and code == _CALL_LENGTH and payload + 16 <= end:
+                lengths[receiver] = struct.unpack_from("<Q", data, payload + 8)[0]
+            elif descriptor == b"CS":
+                nul = data.find(b"\x00", payload + 8, end)
+                if nul != -1:
+                    labels[receiver] = data[payload + 8:nul].decode("ascii", errors="replace")
+            elif b"<b>" in descriptor:
+                match = _BUFFER_BLOB_RE.search(data, payload, end)
+                if match is not None and end - 8 >= match.end():
+                    handle = struct.unpack_from("<Q", data, end - 8)[0]
+                    blob_names[handle] = match.group(0)[:-1].decode("ascii")
+                    blob_since_address.add(handle)
+
+    blobs_by_name = {blob.path.name: blob for blob in bundle.blobs}
+    records = []
+    for handle, address in addresses.items():
+        blob = blobs_by_name.get(blob_names.get(handle, ""))
+        length = lengths.get(handle, blob.size_bytes if blob is not None else None)
+        records.append(BufferRecord(gpu_address=address, length=length,
+                                    label=labels.get(handle), blob=blob))
+    return sorted(records, key=lambda record: record.gpu_address)
+
+
+def buffer_containing(buffers: list, address: int):
+    """The one BufferRecord whose range holds `address`, or None (none, or several overlap)."""
+    hits = [record for record in buffers if record.contains(address)]
+    return hits[0] if len(hits) == 1 else None

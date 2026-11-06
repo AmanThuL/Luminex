@@ -107,9 +107,10 @@ Shader libraries load selected-backend bytes from `Shaders/<name><extension>`.
 name/address records in Luminex. Resource moves preserve registry identity; logical release removes
 it independently of deferred native retirement. Capture writes `<bundle>.schema.json`, schema
 version 2 with context, resources, uniformStructs and frameRoots; it has no binding-slot or arena-page
-records. Existing version-1-only GPU debug tools reject new sidecars until their decoder migration
-([RojoRHI #145](https://github.com/AmanThuL/rojo-rhi/issues/145)). JSON escaping, finite-number handling
-and atomic sidecar replacement preserve existing behavior.
+records. `Tools/GpuDebug` decodes each root from the captured buffer that holds its address, using
+the layout registered under its name, and rejects version-1 sidecars
+([GPU debugging](../guides/gpu-debugging.md#capture-and-inspect-a-frame)). JSON escaping,
+finite-number handling and atomic sidecar replacement preserve existing behavior.
 
 ## GPU uploads
 
