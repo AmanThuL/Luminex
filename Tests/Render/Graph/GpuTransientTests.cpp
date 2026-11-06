@@ -248,8 +248,7 @@ TEST_CASE("a pooled frame and an unpooled frame render the same image", "[gpu]")
 // bytes and is filled with a different pattern; if the barrier the graph derives did not order that
 // fill after the first transient's last read, the first result would come back carrying the second
 // one's fill. Both readbacks are checked, so a bleed in either direction is visible.
-TEST_CASE("a transient cannot read what the transient it replaced left behind",
-          "[gpu][checkpoint-a]") {
+TEST_CASE("a transient cannot read what the transient it replaced left behind", "[gpu]") {
     using namespace rojoRHI;
     using namespace lmx::render;
 
@@ -390,7 +389,7 @@ TEST_CASE("a transient cannot read what the transient it replaced left behind",
 // high-water mark, the number of live generations never grows past one per slot plus one retiring
 // per slot, and a run that settles releases every retired generation. Metal validation is what
 // covers the other half -- a generation released while a frame still reads it would fault here.
-TEST_CASE("resizing and toggling transients leaks no heap generation", "[gpu][checkpoint-a]") {
+TEST_CASE("resizing and toggling transients leaks no heap generation", "[gpu]") {
     using namespace rojoRHI;
     using namespace lmx::render;
 

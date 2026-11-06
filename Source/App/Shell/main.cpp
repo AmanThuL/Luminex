@@ -7,6 +7,7 @@
 #include "App/Headless/Screenshot.h"
 #include "App/Model/Graph/FrameRecordRing.h"
 #include "App/Model/Options/AppOptions.h"
+#include "App/Model/Options/RunHooks.h"
 #include "App/Model/Scene/SceneDefaults.h"
 #include "App/Shell/AppAppearance.h"
 #include "App/Shell/AppIcon.h"
@@ -34,6 +35,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -41,17 +43,8 @@
 
 namespace {
 
-// SDL window dimensions are logical points.
-constexpr int kWindowWidth = 1280;
-constexpr int kWindowHeight = 720;
-
 // Capture paths are relative to the process working directory unless overridden.
 constexpr std::string_view kCapturePath = "luminex-frame.gputrace";
-
-constexpr uint64_t kResizeDownFrame = 100;
-constexpr uint64_t kResizeUpFrame = 200;
-constexpr int kResizeDownWidth = 800;
-constexpr int kResizeDownHeight = 600;
 
 //======================================================================================================================
 // Zero disables frame-triggered behavior.
@@ -61,12 +54,12 @@ uint64_t frameNumberFromEnv(const char* name) {
         return 0;
     }
     const std::string_view text(raw);
-    uint64_t frames = 0;
-    if (!lmx::parseNumber(text, frames)) {
+    const std::optional<uint64_t> frame = lmx::app::parseFrameHook(text);
+    if (!frame) {
         LMX_LOG_WARN("{}='{}' is not a number; ignoring it", name, text);
         return 0;
     }
-    return frames;
+    return *frame;
 }
 
 //======================================================================================================================
@@ -132,8 +125,9 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
     int pointWidth = 0;
     int pointHeight = 0;
     SDL_GetWindowSize(window, &pointWidth, &pointHeight);
-    LMX_LOG_INFO("window: {}x{} points, swapchain: {}x{} pixels BGRA8Unorm", pointWidth,
-                 pointHeight, pixelWidth, pixelHeight);
+    LMX_LOG_INFO("window: {}x{} points, swapchain: {}x{} pixels BGRA8Unorm, display scale {}",
+                 pointWidth, pointHeight, pixelWidth, pixelHeight,
+                 SDL_GetWindowDisplayScale(window));
 
     // Per-frame graphs die before the pool; the renderer and shell unwind before its resources.
     lmx::render::TransientPool transientPool(gpu);
@@ -181,6 +175,27 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         LMX_LOG_INFO("LMX_MAX_FRAMES={}: exiting after that many frames", maxFrames);
     }
     const uint64_t closeWindowsAtFrame = frameNumberFromEnv("LMX_CLOSE_WINDOWS_AT_FRAME");
+    const uint64_t resizeWindowAtFrame = frameNumberFromEnv("LMX_RESIZE_WINDOW_AT_FRAME");
+    if (resizeWindowAtFrame > 0 && maxFrames == 0) {
+        LMX_LOG_WARN("LMX_RESIZE_WINDOW_AT_FRAME={} has no effect without LMX_MAX_FRAMES",
+                     resizeWindowAtFrame);
+    } else if (resizeWindowAtFrame > maxFrames) {
+        LMX_LOG_WARN("LMX_RESIZE_WINDOW_AT_FRAME={} is past LMX_MAX_FRAMES={}; the window will not "
+                     "resize",
+                     resizeWindowAtFrame, maxFrames);
+    } else if (resizeWindowAtFrame > 0 &&
+               maxFrames - resizeWindowAtFrame < lmx::app::kResizeHookHoldFrames) {
+        LMX_LOG_WARN("LMX_RESIZE_WINDOW_AT_FRAME={} leaves fewer than {} frames before "
+                     "LMX_MAX_FRAMES={}; the window will shrink but not grow back",
+                     resizeWindowAtFrame, lmx::app::kResizeHookHoldFrames, maxFrames);
+    }
+    if (maxFrames > 0 && resizeWindowAtFrame > 0) {
+        LMX_LOG_INFO("LMX_RESIZE_WINDOW_AT_FRAME={}: will resize the main window to {}x{} points, "
+                     "then back to {}x{} points {} frames later",
+                     resizeWindowAtFrame, lmx::app::kResizeHookSmallSize.width,
+                     lmx::app::kResizeHookSmallSize.height, lmx::app::kWindowedSize.width,
+                     lmx::app::kWindowedSize.height, lmx::app::kResizeHookHoldFrames);
+    }
     const uint64_t captureAtFrame = frameNumberFromEnv("LMX_CAPTURE_AT_FRAME");
     if (captureAtFrame > 0) {
         LMX_LOG_INFO("LMX_CAPTURE_AT_FRAME={}: will capture that frame", captureAtFrame);
@@ -237,8 +252,16 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
                 // swapchain.
                 if (event.window.windowID == SDL_GetWindowID(window) && event.window.data1 > 0 &&
                     event.window.data2 > 0) {
-                    lastResizedExtent = {static_cast<uint32_t>(event.window.data1),
-                                         static_cast<uint32_t>(event.window.data2)};
+                    const rojoRHI::Extent2D extent{static_cast<uint32_t>(event.window.data1),
+                                                   static_cast<uint32_t>(event.window.data2)};
+                    // The per-frame size poll below may have resized to this extent already; the
+                    // resize is repeated, but logged only for a new extent.
+                    if (extent.width != lastResizedExtent.width ||
+                        extent.height != lastResizedExtent.height) {
+                        LMX_LOG_INFO("swapchain resized to {}x{} pixels", extent.width,
+                                     extent.height);
+                    }
+                    lastResizedExtent = extent;
                     swapchain->resize(lastResizedExtent);
                 }
                 break;
@@ -260,16 +283,31 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
 
         ++frameIndex;
 
+        // The hook asks SDL for a new window size, as a user's drag does; the resulting window
+        // events reach the same swapchain resize above. SDL_SetWindowSize is a silent no-op on a
+        // still-maximized window on macOS (returns success, emits no event), so the window is
+        // restored first; after --windowed it was never maximized and the restore is a no-op.
         if (maxFrames > 0) {
-            // SDL_SetWindowSize is a silent no-op on a still-maximized window on macOS (returns
-            // success, emits no event); SDL_RestoreWindow first is what lets this hook exercise
-            // the down/up resize path whether the run started maximized or --windowed, where the
-            // window was never maximized and the restore is a no-op.
-            if (frameIndex == kResizeDownFrame) {
+            if (const auto size = lmx::app::resizeHookSize(resizeWindowAtFrame, frameIndex)) {
+                lmx::app::WindowSize fromPoints;
+                lmx::app::WindowSize fromPixels;
+                SDL_GetWindowSize(window, &fromPoints.width, &fromPoints.height);
+                SDL_GetWindowSizeInPixels(window, &fromPixels.width, &fromPixels.height);
                 SDL_RestoreWindow(window);
-                SDL_SetWindowSize(window, kResizeDownWidth, kResizeDownHeight);
-            } else if (frameIndex == kResizeUpFrame) {
-                SDL_SetWindowSize(window, kWindowWidth, kWindowHeight);
+                if (!SDL_SetWindowSize(window, size->width, size->height)) {
+                    LMX_LOG_WARN("frame {}: SDL_SetWindowSize failed: {}", frameIndex,
+                                 SDL_GetError());
+                } else {
+                    lmx::app::WindowSize toPoints;
+                    lmx::app::WindowSize toPixels;
+                    SDL_GetWindowSize(window, &toPoints.width, &toPoints.height);
+                    SDL_GetWindowSizeInPixels(window, &toPixels.width, &toPixels.height);
+                    LMX_LOG_INFO("frame {}: resized the main window from {}x{} points ({}x{} "
+                                 "pixels) to {}x{} points ({}x{} pixels), display scale {}",
+                                 frameIndex, fromPoints.width, fromPoints.height, fromPixels.width,
+                                 fromPixels.height, toPoints.width, toPoints.height, toPixels.width,
+                                 toPixels.height, SDL_GetWindowDisplayScale(window));
+                }
             }
         }
         if (maxFrames > 0 && closeWindowsAtFrame > 0 && frameIndex == closeWindowsAtFrame) {
@@ -285,6 +323,8 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
             lastResizedExtent = {static_cast<uint32_t>(pixelWidth),
                                  static_cast<uint32_t>(pixelHeight)};
             swapchain->resize(lastResizedExtent);
+            LMX_LOG_INFO("swapchain resized to {}x{} pixels", lastResizedExtent.width,
+                         lastResizedExtent.height);
         }
         if (captureAtFrame > 0 && frameIndex == captureAtFrame) {
             shell->actions().requestCapture();
@@ -546,13 +586,14 @@ int runWindowed(const lmx::app::AppOptions& options,
         return 1;
     }
 
-    // kWindowWidth/kWindowHeight is the pre-maximize size and what --windowed keeps.
+    // kWindowedSize is the pre-maximize size and what --windowed keeps.
     SDL_WindowFlags windowFlags =
         SDL_WINDOW_METAL | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_RESIZABLE;
     if (options.maximized) {
         windowFlags |= SDL_WINDOW_MAXIMIZED;
     }
-    SDL_Window* window = SDL_CreateWindow("Luminex", kWindowWidth, kWindowHeight, windowFlags);
+    SDL_Window* window = SDL_CreateWindow("Luminex", lmx::app::kWindowedSize.width,
+                                          lmx::app::kWindowedSize.height, windowFlags);
     if (window == nullptr) {
         LMX_LOG_ERROR("SDL_CreateWindow failed: {}", SDL_GetError());
         SDL_Quit();
