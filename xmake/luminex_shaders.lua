@@ -1,7 +1,5 @@
 -- Consumer shader entries and backend library names share the component's Slang rule.
 local repository_root = path.directory(os.scriptdir())
-local pending_shaders = lmx_pending_files("shaders")
-local pending_test_shaders = lmx_pending_files("testShaders")
 
 -- Registered directly so every helper below is created in the runtime sandbox.
 function lmx_configure_shader_library(target)
@@ -16,18 +14,6 @@ function lmx_configure_shader_library(target)
     assert(kind == "app" or kind == "tests" or kind == "bench", "unknown shader entry kind: " .. kind)
 
     local function lmx_shader_entries(entry_kind)
-        local excluded = {}
-        local function exclude(patterns)
-            for _, pattern in ipairs(patterns) do
-                local files = os.files(pattern)
-                assert(#files > 0, "pending shader pattern matches no files: " .. pattern)
-                for _, file in ipairs(files) do
-                    excluded[path.absolute(file)] = true
-                end
-            end
-        end
-        exclude(pending_shaders)
-        exclude(pending_test_shaders)
         local candidates = {}
         if entry_kind == "bench" then
             candidates = {path.join(repository_root, "Shaders/Tests/FrameDataQuad.slang")}
@@ -39,15 +25,13 @@ function lmx_configure_shader_library(target)
         end
         local entries, basenames = {}, {}
         for _, file in ipairs(candidates) do
-            if entry_kind == "bench" or not excluded[path.absolute(file)] then
-                local text = assert(io.readfile(file), "cannot read shader: " .. file)
-                    :gsub("/%*.-%*/", ""):gsub("//[^\n]*", "")
-                if text:find('%[%s*shader%s*%(%s*"(%w+)"%s*%)%s*%]') then
-                    local basename = path.basename(file):lower()
-                    assert(not basenames[basename], "duplicate shader entry basename: " .. basename)
-                    basenames[basename] = true
-                    table.insert(entries, file)
-                end
+            local text = assert(io.readfile(file), "cannot read shader: " .. file)
+                :gsub("/%*.-%*/", ""):gsub("//[^\n]*", "")
+            if text:find('%[%s*shader%s*%(%s*"(%w+)"%s*%)%s*%]') then
+                local basename = path.basename(file):lower()
+                assert(not basenames[basename], "duplicate shader entry basename: " .. basename)
+                basenames[basename] = true
+                table.insert(entries, file)
             end
         end
         table.sort(entries)
@@ -274,8 +258,8 @@ function lmx_configure_shader_library(target)
         end
         return false
     end
-    -- Every prefix must still name a real entry, pending families included, so a renamed family
-    -- cannot silently fall back to the default floating-point mode.
+    -- Every prefix must still name a real entry, so a renamed family cannot silently fall back to
+    -- the default floating-point mode.
     local all_entries = os.files(path.join(repository_root, "Shaders/Passes/**.slang"))
     table.join2(all_entries, os.files(path.join(repository_root, "Shaders/Tests/*.slang")))
     for _, prefix in ipairs(precise_prefixes) do

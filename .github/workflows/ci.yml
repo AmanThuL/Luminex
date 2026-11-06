@@ -131,6 +131,13 @@ jobs:
       - name: Build test shader layouts
         run: xmake build -P . Tests
 
+      # Not a default target; building it here keeps the frame-data benchmark from rotting.
+      # --selftest checks its host-side logic without a GPU.
+      - name: Build FrameDataBench
+        run: |
+          xmake build -P . FrameDataBench
+          ./build/macosx/arm64/release/bench/FrameDataBench --selftest
+
       - name: Module and header contract
         run: |
           python3 Tools/check_module_deps.py

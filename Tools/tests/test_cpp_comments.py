@@ -203,7 +203,7 @@ class EntryForHeaderTests(unittest.TestCase):
 
     def test_source_identity_uses_entry_directory_without_mutating_entry(self) -> None:
         entry = {"file": "../Source/Engine/Gpu/Owner.cpp", "directory": "/repo/build",
-                 "arguments": ["clang++", "-g", "-O0", "-DLMX_PENDING_POST", "-I../Source"]}
+                 "arguments": ["clang++", "-g", "-O0", "-DLMX_PROBE", "-I../Source"]}
         original = json.loads(json.dumps(entry))
         foreign = {"file": "../Source/Engine/Asset/Owner.cpp", "directory": "/repo/build"}
         self.assertIs(self.entry("Source/Engine/Gpu/Owner.h", [foreign, entry]), entry)
@@ -227,7 +227,7 @@ class EntryForHeaderTests(unittest.TestCase):
     def test_ast_uses_selected_directory_and_retains_flags_and_real_findings(self) -> None:
         root = Path("/repo")
         entry = {"file": "../Source/Engine/Gpu/Probe.cpp", "directory": "/repo/build",
-                 "arguments": ["clang++", "-g", "-O0", "-DLMX_PENDING_POST", "-I../Source",
+                 "arguments": ["clang++", "-g", "-O0", "-DLMX_PROBE", "-I../Source",
                                "-c", "../Source/Engine/Gpu/Probe.cpp", "-o", "probe.o"]}
         header = root / "Source/Engine/Gpu/Probe.h"
         ast = {"kind": "FunctionDecl", "name": "undocumented",

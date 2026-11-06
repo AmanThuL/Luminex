@@ -22,12 +22,13 @@ dependency. Hosted CI selects `--rojorhi_backend=null`; Metal 4 builds and GPU e
 local device. The component's own checkers run in its repository and CI, separately from Luminex
 policy. See the [component build](../../RojoRHI/AGENTS.md) for standalone commands.
 
-On this integration branch, `xmake/port.lua` selects a visibility and light-list →
+On this integration branch, the Renderer runs a visibility and light-list →
 shadow → scene/sky/IBL → exposure → temporal reconstruction → bloom → display → light
 diagnostics → HZB → UI frame. SCENE, POST, TEMPORAL, VISIBILITY and LIGHTS have returned and are
 joined into the Renderer and App: native and vendor reconstruction, GPU classification, the HZB
 pyramid and the independent occlusion reference, and Off, Direct and Clustered local lights with
-their checked lists and diagnostics. BENCH keeps FrameDataBench dormant. The [frame
+their checked lists and diagnostics. BENCH has returned too: FrameDataBench delivers its
+per-draw blocks as frame data addressed through pushed roots. The [frame
 walkthrough](frame-pipeline.md) describes every family. Screenshots and measurement join each
 frame's retired lighting status. Partial-frame timings do not establish full-renderer parity or cost acceptance.
 

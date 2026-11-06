@@ -82,7 +82,7 @@ Rules the entry carries:
 - The component's targets are still reconciled (`RojoRHILegacy` declares `RojoRHIMetalCpp`;
   `RojoRHILegacyMetal4ImGui` adds `RojoRHILegacy` and `ImGui`; `RojoRHILegacyTests` adds `RojoRHILegacy`;
   `RojoRHI` declares `RojoRHIMetalCpp` on metal4 only; `RojoRHIImGui` adds `RojoRHI` and `ImGui`;
-  `RojoRHITests` adds `RojoRHI` and the adapter when declared; the other v2 targets add `RojoRHI`), and no Luminex target depends on a `RojoRHILegacy*` target, including inactive FrameDataBench. RHI consumers link `RojoRHI`; App also links `RojoRHIImGui`.
+  `RojoRHITests` adds `RojoRHI` and the adapter when declared; the other v2 targets add `RojoRHI`), and no Luminex target depends on a `RojoRHILegacy*` target, including FrameDataBench. RHI consumers link `RojoRHI`; App also links `RojoRHIImGui`.
   No component target can link a Luminex target without failing the closure check. `Asset`'s `forbidUndefined: rojoRHI::` still runs under `--link`.
 
 `tests` takes no header from either component suite, `RojoRHI/Tests` or `RojoRHI/Legacy/Tests`.
@@ -134,7 +134,6 @@ Ownership comes from one explicit map from unit to paths, never from inference:
 - Every source is compiled by a target, and sources listed by targets are checked even outside the walked roots. A `shared-source`
   allowance admits its exact target set only while that set still includes an owning target. Every non-vendored target declares a
   dependency contract.
-- Partial renderer builds use the strict [pending-source contract](pending-sources.md); all other coverage remains mandatory.
 - Compilation paths resolve against the entry's working directory under the selected repository root. A missing compilation
   context is a could-not-run error, never an empty include search.
 

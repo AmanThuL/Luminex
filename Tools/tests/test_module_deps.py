@@ -1751,7 +1751,7 @@ class RepositoryContractTests(unittest.TestCase):
                 with self.subTest(target=name):
                     self.assertFalse(any(dep.startswith("RojoRHILegacy") for dep in target.get("deps", [])))
 
-    def test_rhi_consumers_link_the_current_interface_including_the_inactive_benchmark(self) -> None:
+    def test_rhi_consumers_link_the_current_interface(self) -> None:
         for name in ("Engine", "Render", "Scenes", "AppModel", "App", "Tests", "FrameDataBench"):
             with self.subTest(target=name):
                 self.assertIn("RojoRHI", self.contract["targets"][name]["deps"])

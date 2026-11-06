@@ -8,12 +8,10 @@ modules are dependencies, not standalone runtime libraries.
 
 ## Compilation
 
-`xmake/luminex_shaders.lua` shares entry selection and settings across App, Tests and the dormant
-FrameDataBench target. It subtracts the pending source/test-shader patterns in `xmake/port.lua`,
-then selects files containing shader attributes. App selects DisplayTransform plus all six
-Scene/Sky and two Shadow entries. Tests adds the retained sampler/fullscreen/MRT/compute/buffer
-oracles, ShadowSmoke and SceneTableAbi. BENCH remains skipped with FrameDataQuad. VISIBILITY and
-LIGHTS entries remain excluded by their exact family patterns; the seven temporal entries build.
+`xmake/luminex_shaders.lua` shares entry selection and settings across App, Tests and the
+FrameDataBench target, selecting files containing shader attributes. App selects every
+`Shaders/Passes` entry. Tests adds every `Shaders/Tests` entry, FrameDataQuad included, as v1's
+Tests did. FrameDataBench selects only FrameDataQuad.
 
 `RojoRHI/xmake/slang.lua` owns `rojorhi.slang` and the backend compilation/package contract.
 A Metal 4 configure requires `xcodebuild -downloadComponent MetalToolchain`: Slang emits MSL,
@@ -109,8 +107,6 @@ enforces the import boundaries, the two explicit Layout roles, basenames, placem
 no-entry-point imports. Run it directly from a worktree; CI runs it in policy.
 
 ## Tests
-
-The inventory below includes pending families; `xmake/port.lua` owns the currently compiled subset.
 
 - `Tests/Render/Passes/Bloom/`: the threshold, downsample and upsample bloom shaders.
 - `Tests/Render/Passes/Display/`: the display-transform shader.
