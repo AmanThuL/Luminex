@@ -22,15 +22,14 @@ dependency. Hosted CI selects `--rojorhi_backend=null`; Metal 4 builds and GPU e
 local device. The component's own checkers run in its repository and CI, separately from Luminex
 policy. See the [component build](../../RojoRHI/AGENTS.md) for standalone commands.
 
-On this integration branch, the Renderer runs a visibility and light-list →
-shadow → scene/sky/IBL → exposure → temporal reconstruction → bloom → display → light
-diagnostics → HZB → UI frame. SCENE, POST, TEMPORAL, VISIBILITY and LIGHTS have returned and are
-joined into the Renderer and App: native and vendor reconstruction, GPU classification, the HZB
-pyramid and the independent occlusion reference, and Off, Direct and Clustered local lights with
-their checked lists and diagnostics. BENCH has returned too: FrameDataBench delivers its
-per-draw blocks as frame data addressed through pushed roots. The [frame
-walkthrough](frame-pipeline.md) describes every family. Screenshots and measurement join each
-frame's retired lighting status. Partial-frame timings do not establish full-renderer parity or cost acceptance.
+The Renderer runs its whole frame on the v2 interface: visibility and light lists → shadow →
+scene/sky/IBL → exposure → native or vendor temporal reconstruction → bloom → display → light
+diagnostics → HZB → UI, with GPU classification, the HZB pyramid and the independent occlusion
+reference, and Off, Direct and Clustered local lights with their checked lists and diagnostics.
+FrameDataBench delivers its per-draw blocks as frame data addressed through pushed roots. The
+[frame walkthrough](frame-pipeline.md) describes every stage; screenshots and measurement join each
+frame's retired lighting status. [R5](../milestones/r/r5.md) records the parity gate this frame
+passed against the last v1 build.
 
 ## Public interface
 
@@ -69,7 +68,8 @@ candidate. `resize` is preparation followed by commit.
 A changed commit validates the candidate before mutation, forgets exactly the old texture pair,
 installs both prepared owners, advances the allocation generation once and resets slot content and
 bindings. The publication buffer, published flag, publication frontier and monotonic declaration
-serial survive. Renderer resize does not yet prepare HZB with its other targets.
+serial survive. Renderer resize prepares the HZB pair with its other targets and commits them
+together, so a failed allocation leaves the pyramids and their history at the old extent.
 
 The stage, context and device outlive prepared values and graph callbacks. Replacing an allocated
 pair requires explicit graph/callback closure and the existing idle boundary; retained binding
@@ -149,9 +149,10 @@ cull/restore case omits the display read on the third of four real frames and ch
 logical and physical state persist before the read returns. Its UI-shaped draw reads display
 through FullscreenSample into a persistent exported offscreen target, without presentation.
 
-The retained frozen component suite uses `RojoRHILegacyTests`, separately from current consumer
-acceptance. The [test ledger](../milestones/r/r5-tests.md) records pending families, explicit
-replacements and measured acceptance limits.
+RojoRHI's own suites run in its repository; its T1 `[conformance]` cases are the backend acceptance
+gate that replaced checkpoint A ([ADR 0033](../decisions/0033-rojorhi-conformance-replaces-checkpoint-a.md)).
+The [test ledger](../milestones/r/r5-tests.md) maps every v1 case to its current form and explains
+each Release skip.
 
 Tracker observations come from RHI commands and truthful per-command shader resource declarations,
 not graph read declarations alone. Nested frame-arena data without exposed handles and opaque

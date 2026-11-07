@@ -78,9 +78,8 @@ xmake run -P . App
 
 `LMX_CAPTURE_PATH` must be absolute. Capture intent waits for a successful drawable acquire;
 only a successful capture is ended, after its submitted frame fence. Inspect the `.gputrace` in
-Xcode for command order, resource contents and bindings. The integration branch currently runs
-[scene-clear → display → UI](../architecture/rojorhi.md#component-boundary); pending-stage recipes
-below describe the retained full renderer, not this subset. Lighting measurements are unavailable.
+Xcode for command order, resource contents and bindings. The recipes below follow the full frame
+of the [frame walkthrough](../architecture/frame-pipeline.md).
 
 The adjacent `.schema.json` uses schema version 2: scene/camera context, genuine Luminex owner
 resource metadata, registered `uniformStructs`, and `frameRoots` containing a root name plus
@@ -100,14 +99,14 @@ the root or labelled buffer and offset it points to (`0` when unused); `manifest
 
 Escalate in this order:
 
-1. Confirm scene, camera, settings and capture frame; distinguish pending stages from missing work.
+1. Confirm scene, camera, settings and capture frame; distinguish a disabled stage from missing work.
 2. Inspect the decoded roots, their registered layouts and owner metadata.
 3. Inspect inputs/outputs in Xcode, beginning at the earliest incorrect resource.
 4. Reproduce with Metal validation; Debug `--rhi-validation` enables the RHI tracker separately.
 5. Add a narrow diagnostic if the trace cannot establish command order or state.
 
-Ported shaders use module-owned bindings, roots/Addr and view indices rather than the retained
-scene shader's buffer slots. Graph reads alone do not register shader accesses with the tracker;
+Shaders use module-owned bindings, roots/Addr and view indices; no consumer binding slot
+exists. Graph reads alone do not register shader accesses with the tracker;
 nested arena data without exposed handles and opaque adapter texture-ID reads are not fully
 tracked. A clean tracker run complements physical-state tests and native inspection.
 

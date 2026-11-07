@@ -48,13 +48,12 @@ edit across each pair except the named exposure source:
 
 | Manual variant | Auto-exposure twin | Sole intended difference |
 | --- | --- | --- |
-| `ScenePass.slang` | `ScenePassAuto.slang` | Final scene color and emissive pre-exposure read `gPass.preExposure` versus `gExposureOverride[0]`. |
+| `ScenePass.slang` | `ScenePassAuto.slang` | Final scene color and emissive pre-exposure read `gPass.preExposure` versus the persistent exposure buffer at `pass.exposure`. |
 | `ScenePassMask.slang` | `ScenePassAutoMask.slang` | The same exposure-source substitution, with identical mask coverage and two-sided shading. |
-| `Sky.slang` | `SkyAuto.slang` | Final sky radiance reads `gSky.preExposure` versus `gExposureOverride[0]`. |
+| `Sky.slang` | `SkyAuto.slang` | Final sky radiance reads `gSky.preExposure` versus the persistent exposure buffer at `root.exposure`. |
 
-In the retained pending scene shaders, auto variants declare the persistent exposure buffer at
-buffer slot 3; manual variants do not bind or reference it. That slot describes those unported
-files only; ported entries use module-owned bindings. Their existing uniform layouts stay the same. Each
+Auto variants load the exposure multiplier through their root's `exposure` address; manual variants
+never read that field. Both share one root layout per pair. Each
 pair keeps matching ordinary and motion entry points, with reactive emissive exposure following the
 same source in the scene pairs. Opaque and masked files are separate coverage variants, not this
 exposure twin relationship. Do not introduce a runtime exposure branch, generated rewriting or
