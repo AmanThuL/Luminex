@@ -363,10 +363,16 @@ def check_document_identity(reports, frozen):
     return frozen
 
 
-def checked_provenance(args, reports):
-    """Only the executable hash may differ in a parent/candidate binary control."""
+def checked_provenance(args, reports, workload=None):
+    """Check a pair's runtime provenance and return what the cell records.
+
+    A parent/candidate binary control builds each side separately, so the executable hash and
+    the shader library hashes may differ between the sides; each side's must still stay frozen
+    across pairs and cells, and the returned provenance records both sides' shader hashes.
+    Device, OS, build mode, environment, plan and scene document must match; each workload
+    loads its own scene, so the document freezes per workload."""
     parent = getattr(args, "parent", None)
-    normalized = []
+    normalized, shaders = [], []
     for side in (0, 1):
         report = reports[side]
         if parent and report.get("schemaVersion") not in (4, 5):
@@ -377,14 +383,24 @@ def checked_provenance(args, reports):
             raise ValueError("executable changed since collection freeze")
         if parent:
             del provenance["executableHash"]
+            shaders.append(provenance.pop("shaderHashes"))
         normalized.append(provenance)
     if normalized[0] != normalized[1]:
         raise ValueError("runtime provenance changed between paired sides")
     if args.frozen_provenance is not None and normalized[0] != args.frozen_provenance:
         raise ValueError("runtime provenance differs across pairs or workload cells")
-    args.frozen_document = check_document_identity(
-        [reports[0], reports[1]], getattr(args, "frozen_document", None))
-    return normalized[0]
+    frozen_shaders = getattr(args, "frozen_shader_hashes", None)
+    if parent and frozen_shaders is not None and shaders != frozen_shaders:
+        raise ValueError("shader library hashes changed across pairs or workload cells")
+    documents = getattr(args, "frozen_documents", None)
+    if documents is None:
+        documents = args.frozen_documents = {}
+    documents[workload] = check_document_identity([reports[0], reports[1]], documents.get(workload))
+    args.frozen_provenance = normalized[0]
+    if not parent:
+        return normalized[0]
+    args.frozen_shader_hashes = shaders
+    return dict(normalized[0], shaderHashes=dict(parent=shaders[0], candidate=shaders[1]))
 
 
 def encode_regressions(cells):
@@ -418,12 +434,11 @@ def collect_cell(args, workload, control, output):
         if any(report is None for report in reports.values()):
             continue
         try:
-            provenance = checked_provenance(args, reports)
+            provenance = checked_provenance(args, reports, workload)
         except ValueError as exc:
             failures.append(dict(repetition=repetition, reason=str(exc)))
             continue
         frozen_provenance = provenance
-        args.frozen_provenance = provenance
         for metric in METRICS:
             pairs[metric].append([statistics.median(sample[metric] for sample in reports[side]["samples"])
                                   for side in (0, 1)])
@@ -455,12 +470,16 @@ def binary_selftest(template):
                            repetitions=2, warmup=32, frames=256, unscored=False,
                            timeout=10, frozen_provenance=None)
     calls, accepted = [], []
+    # A parent build ships its own shader libraries, so its inventory differs from the candidate's.
+    parent_shaders = {"legacy.scene": "1" * 64, "legacy.shadow": "2" * 64}
 
     def fake_run(binary, path, plan, unscored, timeout):
         calls.append((binary, copy.deepcopy(plan)))
         report = copy.deepcopy(template)
         report.update(schemaVersion=4, plan=copy.deepcopy(plan))
         report["provenance"]["executableHash"] = args.parent_hash if binary == args.parent else args.binary_hash
+        if binary == args.parent:
+            report["provenance"]["shaderHashes"] = dict(parent_shaders)
         first = report["samples"][0]
         first.update(effectiveSubmission=plan["submission"], encodeMs=1 if binary == args.parent else 2,
                      localLightMode=plan["localLightMode"], lightingGpuMs=0,
@@ -494,6 +513,8 @@ def binary_selftest(template):
                 assert all(x[1] == calls[0][1] for x in calls)
                 assert (calls[0][1]["warmupFrames"], calls[0][1]["measuredFrames"]) == (32, 256)
                 assert calls[0][1]["submission"] == control.removeprefix("binary-")
+                assert cells[workload + "/" + control]["provenance"]["shaderHashes"] == dict(
+                    parent=parent_shaders, candidate=template["provenance"]["shaderHashes"])
         assert len(encode_regressions(cells)) == 6
         cell = copy.deepcopy(next(iter(cells.values())))
         cell["analysis"]["encodeMs"] = analyze_pairs([[2, 1]] * 12)
@@ -505,10 +526,17 @@ def binary_selftest(template):
             assert not incomplete["complete"] and not incomplete["analysis"]
             assert not encode_regressions({"incomplete": incomplete})
     pair = {0: accepted[0], 1: accepted[1]}
+    frozen_shaders = args.frozen_shader_hashes
+    args.frozen_shader_hashes = None
+    unfrozen = copy.deepcopy(pair)
+    unfrozen[1]["provenance"]["shaderHashes"].update(scene="e" * 64)
+    assert checked_provenance(args, unfrozen)["shaderHashes"]["candidate"]["scene"] == "e" * 64
+    args.frozen_shader_hashes = frozen_shaders
     for side, mutation in (
         (0, lambda r: r.update(schemaVersion=3)),
         (1, lambda r: r["provenance"].update(executableHash="d" * 64)),
         (1, lambda r: r["provenance"].update(device="different")),
+        (0, lambda r: r["provenance"]["shaderHashes"].update(scene="e" * 64)),
         (1, lambda r: r["provenance"]["shaderHashes"].update(scene="e" * 64)),
         (1, lambda r: r["provenance"]["environment"].update(UNEXPECTED="1")),
     ):
@@ -537,26 +565,36 @@ def binary_selftest(template):
             pass
         else:
             raise AssertionError("invalid allocatedUploadBytes accepted")
-    args.frozen_document = None
-    checked_provenance(args, documents)
+    args.frozen_documents = {}
+    checked_provenance(args, documents, "sponza")
+    other = copy.deepcopy(documents)
+    for report in other.values():
+        report["sceneDocument"].update(path="b.scene.gltf", sha256="d" * 64)
+    checked_provenance(args, other, "visibility-16384")
+    try:
+        checked_provenance(args, other, "sponza")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("document identity drift accepted across pairs of one workload")
     for side, mutation in ((1, lambda r: r["sceneDocument"].update(sha256="d" * 64)),
                            (1, lambda r: r.update(startingPopulation={"objects": 1}))):
         bad = copy.deepcopy(documents); mutation(bad[side])
-        args.frozen_document = None
+        args.frozen_documents = {}
         try:
             checked_provenance(args, bad)
         except ValueError:
             pass
         else:
             raise AssertionError("document identity drift accepted within a pair")
-    args.frozen_document = {"sha256": "d" * 64, "startingPopulation": None}
+    args.frozen_documents = {None: {"sha256": "d" * 64, "startingPopulation": None}}
     try:
         checked_provenance(args, documents)
     except ValueError:
         pass
     else:
         raise AssertionError("document identity drift accepted across cells")
-    args.frozen_document = None
+    args.frozen_documents = {}
     for field in ("device", "os", "buildMode", "shaderHashes", "environment"):
         bad = copy.deepcopy(pair)
         for report in bad.values():
@@ -756,7 +794,7 @@ def main():
     raw.mkdir()
     args.binary_hash = hashlib.sha256(args.binary.read_bytes()).hexdigest()
     args.parent_hash = hashlib.sha256(args.parent.read_bytes()).hexdigest() if args.parent else None
-    args.frozen_provenance = None
+    args.frozen_provenance = args.frozen_shader_hashes = None
     collection = dict(schemaVersion=3, scoredProtocol=frozen and not args.unscored,
                       binary=str(args.binary), binarySha256=args.binary_hash,
                       seed=SEED, resamples=RESAMPLES, confidence=0.95,
