@@ -142,11 +142,12 @@ def collect_cell(args, workload):
                     reason = "runtime provenance changed across pairs/workloads"
                 else:
                     args.provenance[role] = provenance
+                    # Each workload loads its own scene, so a side's document freezes per workload.
                     try:
                         identity = visibility.check_document_identity(
-                            [report], args.documents.get(role))
+                            [report], args.documents.get((workload, role)))
                         if identity is not None:
-                            args.documents[role] = identity
+                            args.documents[(workload, role)] = identity
                     except ValueError as exc:
                         reason = str(exc)
                 if reason:
@@ -283,54 +284,67 @@ class LightingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "selected parent"):
             validate_report(report, plan, True, False, parent_schema=3)
 
-    def test_zero_control_collects_schema3_or_schema4_parent_with_matching_commands(self):
+    def collect_zero(self, root, parent_schema, workloads, repetitions=1, document=None):
+        """Collect zero-control cells against fake processes; document(scene, role) names the hash."""
         from types import SimpleNamespace
         import contextlib
         import io
+
+        parent, candidate = root / "parent", root / "candidate"
+        parent.write_bytes(b"parent")
+        candidate.write_bytes(b"candidate")
+        args = SimpleNamespace(control="zero", parent=parent, binary=candidate,
+                               parent_schema=parent_schema, out=root, unscored=False,
+                               timeout=5, provenance={}, documents={}, hashes={
+                                   "parent": hashlib.sha256(parent.read_bytes()).hexdigest(),
+                                   "candidate": hashlib.sha256(candidate.read_bytes()).hexdigest()})
+        commands = []
+
+        class Process:
+            returncode = 0
+            pid = 1234
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+            def communicate(self, timeout=None):
+                return "", ""
+
+        def fake_popen(command, **_):
+            commands.append(command)
+            is_parent = command[0] == str(parent)
+            role = "parent" if is_parent else "candidate"
+            report, _ = fixture(parent_schema if is_parent else 5, mode="off")
+            report["provenance"]["executableHash"] = args.hashes[role]
+            scene = command[command.index("--scene") + 1]
+            if scene != "sponza":
+                report["plan"] = expected_plan(scene_workload[scene], "zero", "B")
+                report["plan"].update(warmupFrames=0, measuredFrames=1)
+                if report["schemaVersion"] not in (4, 5):
+                    report["plan"] = lighting_report.comparable_plan(report["schemaVersion"], report["plan"])
+            if "sceneDocument" in report and document is not None:
+                report["sceneDocument"]["sha256"] = document(scene, role)
+            Path(command[command.index("--measure") + 1]).write_text(json.dumps(report))
+            return Process()
+
+        scene_workload = {expected_plan(w, "zero", "B")["scene"]: w for w in workloads}
+        with mock.patch(__name__ + ".REPETITIONS", repetitions), \
+                mock.patch(__name__ + ".WARMUP", 0), \
+                mock.patch(__name__ + ".FRAMES", 1), \
+                mock.patch.object(subprocess, "Popen", side_effect=fake_popen), \
+                contextlib.redirect_stdout(io.StringIO()):
+            cells = [collect_cell(args, workload) for workload in workloads]
+        return cells, commands, parent
+
+    def test_zero_control_collects_schema3_or_schema4_parent_with_matching_commands(self):
         import tempfile
 
         for parent_schema in (3, 4, 5):
             with self.subTest(parent_schema=parent_schema), tempfile.TemporaryDirectory() as temp:
-                root = Path(temp)
-                parent, candidate = root / "parent", root / "candidate"
-                parent.write_bytes(b"parent")
-                candidate.write_bytes(b"candidate")
-                args = SimpleNamespace(control="zero", parent=parent, binary=candidate,
-                                       parent_schema=parent_schema, out=root, unscored=False,
-                                       timeout=5, provenance={}, documents={}, hashes={
-                                           "parent": hashlib.sha256(parent.read_bytes()).hexdigest(),
-                                           "candidate": hashlib.sha256(candidate.read_bytes()).hexdigest()})
-                commands = []
-
-                class Process:
-                    returncode = 0
-                    pid = 1234
-
-                    def __enter__(self):
-                        return self
-
-                    def __exit__(self, *_):
-                        return False
-
-                    def communicate(self, timeout=None):
-                        return "", ""
-
-                def fake_popen(command, **_):
-                    commands.append(command)
-                    is_parent = command[0] == str(parent)
-                    schema = parent_schema if is_parent else 5
-                    report, _ = fixture(schema, mode="off")
-                    report["provenance"]["executableHash"] = args.hashes[
-                        "parent" if is_parent else "candidate"]
-                    Path(command[command.index("--measure") + 1]).write_text(json.dumps(report))
-                    return Process()
-
-                with mock.patch(__name__ + ".REPETITIONS", 1), \
-                        mock.patch(__name__ + ".WARMUP", 0), \
-                        mock.patch(__name__ + ".FRAMES", 1), \
-                        mock.patch.object(subprocess, "Popen", side_effect=fake_popen), \
-                        contextlib.redirect_stdout(io.StringIO()):
-                    cell = collect_cell(args, "sponza")
+                (cell,), commands, parent = self.collect_zero(Path(temp), parent_schema, ["sponza"])
                 self.assertTrue(cell["complete"], cell["failures"])
                 self.assertEqual(len(commands), 2)
                 parent_command = next(cmd for cmd in commands if cmd[0] == str(parent))
@@ -340,6 +354,25 @@ class LightingTests(unittest.TestCase):
                 else:
                     self.assertEqual(parent_command[parent_command.index("--local-lights") + 1], "off")
                     self.assertEqual(parent_command[parent_command.index("--local-light-rig") + 1], "off")
+
+    def test_zero_control_freezes_the_scene_document_per_workload(self):
+        import tempfile
+
+        workloads = ["sponza", "san-miguel"]
+        digests = {"sponza": "c" * 64, "san-miguel": "d" * 64}
+        with tempfile.TemporaryDirectory() as temp:
+            cells, _, _ = self.collect_zero(Path(temp), 5, workloads, repetitions=2,
+                                            document=lambda scene, role: digests[scene])
+        for cell in cells:
+            self.assertTrue(cell["complete"], cell["failures"])
+        with tempfile.TemporaryDirectory() as temp:
+            cells, _, _ = self.collect_zero(
+                Path(temp), 5, workloads,
+                document=lambda scene, role: "e" * 64 if scene == "san-miguel" and role == "parent"
+                else digests[scene])
+        self.assertTrue(cells[0]["complete"], cells[0]["failures"])
+        self.assertFalse(cells[1]["complete"])
+        self.assertIn("differs between paired sides", cells[1]["failures"][0]["reason"])
 
 
 def main():
