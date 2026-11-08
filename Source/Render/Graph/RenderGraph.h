@@ -141,6 +141,11 @@ struct PassDesc {
     std::vector<TextureUseDesc> textureReads;     ///< Sampled or otherwise read textures.
     std::vector<GraphBuffer> bufferReads;         ///< Buffers consumed by the pass.
     std::vector<GraphBuffer> indirectBufferReads; ///< Buffers consumed by indirect draws.
+    /// Reads only the pass's fragment shaders make. Their barriers wait at the fragment stage
+    /// alone, so the pass's vertex work need not wait for the producer; a resource a vertex shader
+    /// reads too belongs in textureReads or bufferReads instead. Otherwise they are those reads.
+    std::vector<TextureUseDesc> fragmentTextureReads; ///< Textures only fragments read.
+    std::vector<GraphBuffer> fragmentBufferReads;     ///< Buffers only fragments read.
     /// At most one of each. A pass may declare neither, either, or both.
     std::optional<ColorAttachment> color; ///< Optional color target.
     std::optional<DepthAttachment> depth; ///< Optional depth target.
@@ -496,6 +501,7 @@ private:
         UseRole role = UseRole::Read;
         rojoRHI::SubresourceRange range;
         bool isWrite = false;
+        ReadStages stages = ReadStages::All;
     };
 
     struct Pass {
@@ -518,9 +524,9 @@ private:
 
     // Appends one flattened declaration per handle in a use list.
     void flattenTextures(std::vector<Declaration>& into, const std::vector<TextureUseDesc>& uses,
-                         UseRole role) const;
+                         UseRole role, ReadStages stages = ReadStages::All) const;
     void flattenBuffers(std::vector<Declaration>& into, const std::vector<GraphBuffer>& handles,
-                        UseRole role) const;
+                        UseRole role, ReadStages stages = ReadStages::All) const;
 
     // The rules a pass's extra colour attachments answer to on their own: how many the hardware
     // binds past attachment zero, that attachment zero is there at all, and that each extra is a

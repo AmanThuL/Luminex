@@ -50,6 +50,14 @@ enum class UseRole {
 /// Names a role in validation messages and frame dumps, in the wording the graph's diagnostics use.
 std::string_view roleName(UseRole role);
 
+/// Which shader stages of a pass make a read. It narrows only the stage mask of the barriers
+/// lowered in front of the read, never its role, version or order, so the frame dump, which
+/// prints roles, does not show it. Only a raster pass's fragment reads narrow.
+enum class ReadStages {
+    All,     ///< Every shader stage of the pass's kind: vertex and fragment for a raster pass.
+    Fragment ///< A raster pass's fragment shaders alone; its vertex work need not wait for it.
+};
+
 /// Names a format as its enumerator, so a message says D32Float rather than an integer. It lives
 /// in Engine because naming an enumerator is a consumer diagnostic concern, shared by observers.
 using engine::formatName;
@@ -92,10 +100,11 @@ struct DebugResource {
 
 /// One declared use of one resource version by one pass, in the order the pass declared it.
 struct DebugUse {
-    uint32_t resource = 0;           ///< Index into CompiledFrameDebug::resources.
-    uint32_t version = 0;            ///< The version the pass named.
-    UseRole role = UseRole::Read;    ///< What the pass does with it.
-    rojoRHI::SubresourceRange range; ///< Subresources covered; whole-resource for a buffer.
+    uint32_t resource = 0;               ///< Index into CompiledFrameDebug::resources.
+    uint32_t version = 0;                ///< The version the pass named.
+    UseRole role = UseRole::Read;        ///< What the pass does with it.
+    rojoRHI::SubresourceRange range;     ///< Subresources covered; whole-resource for a buffer.
+    ReadStages stages = ReadStages::All; ///< The shader stages that make a read.
 };
 
 /// Why a compiled frame left a declared pass out of its schedule.

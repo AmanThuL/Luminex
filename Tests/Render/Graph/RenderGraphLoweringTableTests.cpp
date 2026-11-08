@@ -6,6 +6,8 @@
 #include <catch2/catch_test_macros.hpp>
 #include <map>
 #include <string>
+#include <string_view>
+#include <variant>
 #include <vector>
 
 using namespace lmx;
@@ -198,6 +200,147 @@ TEST_CASE("the mapping table matches the design rows", "[render][graph]") {
     REQUIRE(bufferSync(BufferUse::CopySource, PassKind::Copy).access == A::CopyRead);
     REQUIRE(bufferSync(BufferUse::CopyDestination, PassKind::Copy).access == A::CopyWrite);
     REQUIRE(bufferSync(BufferUse::IndirectArgument, PassKind::Raster).stage == S::IndirectArgs);
+    // A fragment-only read narrows a raster read to the fragment stage and nothing else.
+    REQUIRE(
+        textureSync(TextureUse::ShaderRead, PassKind::Raster, false, ReadStages::Fragment).stage ==
+        S::FragmentShader);
+    REQUIRE(
+        textureSync(TextureUse::ShaderRead, PassKind::Raster, true, ReadStages::Fragment).layout ==
+        L::DepthStencilRead);
+    REQUIRE(bufferSync(BufferUse::ShaderRead, PassKind::Raster, ReadStages::Fragment).stage ==
+            S::FragmentShader);
+    REQUIRE(bufferSync(BufferUse::StorageWrite, PassKind::Raster, ReadStages::Fragment).stage ==
+            (S::VertexShader | S::FragmentShader));
+}
+
+namespace {
+//======================================================================================================================
+// The batch lowered immediately in front of the named pass, empty when the pass needs none.
+std::vector<LoweredBarrier> barriersBefore(const LoweredFrame& frame, std::string_view label) {
+    const BarriersOp* last = nullptr;
+    for (const auto& op : frame.ops) {
+        if (const auto* batch = std::get_if<BarriersOp>(&op)) {
+            last = batch;
+        } else if (const auto* run = std::get_if<RunOp>(&op)) {
+            if (run->label == label) {
+                return last ? last->barriers : std::vector<LoweredBarrier>{};
+            }
+            last = nullptr;
+        }
+    }
+    FAIL("no pass is labelled " << label);
+    return {};
+}
+
+//======================================================================================================================
+S destinationOf(const LoweredBarrier& barrier) {
+    return std::visit([](const auto& b) { return b.to.stage; }, barrier);
+}
+
+//======================================================================================================================
+uint32_t resourceOf(const LoweredBarrier& barrier) {
+    return std::visit([](const auto& b) { return b.resource; }, barrier);
+}
+} // namespace
+
+//======================================================================================================================
+// The scene pass's shape: compute produces the draw rows, arguments and light grid, the shadow pass
+// reads the rows and arguments and writes the shadow map, and the scene reads all of them, the
+// shadow map and the grid in its fragments alone.
+TEST_CASE("fragment-only reads keep the vertex stage out of a raster pass's barriers",
+          "[render][graph]") {
+    TextureStateTable states;
+    RenderGraph graph;
+    graph.bindTextureStates(states);
+    auto rows = graph.importBuffer(bufferRef(1), "rows");
+    auto args = graph.importBuffer(bufferRef(2), "args");
+    auto lights = graph.importBuffer(bufferRef(3), "lights");
+    auto grid = graph.importBuffer(bufferRef(4), "grid");
+    auto tables = graph.importBuffer(bufferRef(5), "tables");
+    auto shadowMap = graph.importPersistentTexture(
+        textureRef(6, rojoRHI::Format::D32Float, 1, 1, L::ShaderRead), "shadow map");
+    auto color = graph.importTexture(textureRef(7), "color");
+    graph.addComputePass("emit", {.bufferWrites = {rows, args}}, kNoWork);
+    graph.addComputePass("fill", {.shaderBufferReads = {lights}, .bufferWrites = {grid}}, kNoWork);
+    PassDesc shadow;
+    shadow.bufferReads = {nextVersion(rows)};
+    shadow.indirectBufferReads = {nextVersion(args)};
+    shadow.depth = DepthAttachment{.handle = shadowMap, .store = StoreOp::Store};
+    graph.addPass("shadow", shadow, kNoWork);
+    PassDesc scene;
+    scene.fragmentTextureReads = {nextVersion(shadowMap)};
+    scene.bufferReads = {nextVersion(rows)};
+    scene.fragmentBufferReads = {lights, nextVersion(grid)};
+    scene.indirectBufferReads = {nextVersion(args)};
+    SECTION("only fragment work waits for the producers") {
+        scene.color = ColorAttachment{color};
+        graph.addPass("scene", scene, kNoWork);
+        graph.exportTexture(nextVersion(color));
+        const auto frame = lower(graph);
+        const auto batch = barriersBefore(frame, "scene");
+        constexpr auto vertexWork = S::IndexInput | S::VertexShader | S::IndirectArgs;
+        for (const auto& barrier : batch) {
+            INFO("resource " << resourceOf(barrier));
+            REQUIRE((destinationOf(barrier) & vertexWork) == S::None);
+        }
+        for (const uint32_t resource : {shadowMap.index, lights.index, grid.index}) {
+            const auto found = std::ranges::find(batch, resource, resourceOf);
+            REQUIRE(found != batch.end());
+            REQUIRE(destinationOf(*found) == S::FragmentShader);
+        }
+        // The shadow pass already waited for the rows and arguments in every stage it reads.
+        REQUIRE(std::ranges::find(batch, rows.index, resourceOf) == batch.end());
+        REQUIRE(std::ranges::find(batch, args.index, resourceOf) == batch.end());
+        const auto shadowBatch = barriersBefore(frame, "shadow");
+        const auto rowBarrier = std::ranges::find(shadowBatch, rows.index, resourceOf);
+        REQUIRE(rowBarrier != shadowBatch.end());
+        REQUIRE(destinationOf(*rowBarrier) == (S::VertexShader | S::FragmentShader));
+        // The shadow map's next writer waits on the fragment reads alone.
+        const auto shadowState = std::ranges::find(frame.physicalStates, shadowMap.index,
+                                                   &TexturePhysicalFinalState::resource);
+        REQUIRE(shadowState != frame.physicalStates.end());
+        REQUIRE(shadowState->state.state.stage == S::FragmentShader);
+        // The record carries the hint beside each use; the role it dumps is unchanged.
+        const auto& uses = frame.record.debug.passes.back().uses;
+        const auto gridUse = std::ranges::find(uses, grid.index, &DebugUse::resource);
+        REQUIRE(gridUse->role == UseRole::Read);
+        REQUIRE(gridUse->stages == ReadStages::Fragment);
+        REQUIRE(std::ranges::find(uses, rows.index, &DebugUse::resource)->stages ==
+                ReadStages::All);
+    }
+    SECTION("a vertex read in the same pass still waits at the vertex stage") {
+        graph.addComputePass("tables", {.bufferWrites = {tables}}, kNoWork);
+        scene.bufferReads.push_back(nextVersion(tables));
+        scene.color = ColorAttachment{color};
+        graph.addPass("scene", scene, kNoWork);
+        graph.exportTexture(nextVersion(color));
+        const auto batch = barriersBefore(lower(graph), "scene");
+        const auto found = std::ranges::find(batch, tables.index, resourceOf);
+        REQUIRE(found != batch.end());
+        REQUIRE(destinationOf(*found) == (S::VertexShader | S::FragmentShader));
+        REQUIRE(destinationOf(*std::ranges::find(batch, grid.index, resourceOf)) ==
+                S::FragmentShader);
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("fragment-only reads dump as the reads they narrow", "[render][graph]") {
+    const auto dumpWith = [](bool fragment) {
+        RenderGraph graph;
+        auto source = graph.importTexture(textureRef(1), "source");
+        auto data = graph.importBuffer(bufferRef(2), "data");
+        auto output = graph.importTexture(textureRef(3), "output");
+        PassDesc pass;
+        (fragment ? pass.fragmentTextureReads : pass.textureReads).push_back(source);
+        (fragment ? pass.fragmentBufferReads : pass.bufferReads).push_back(data);
+        pass.color = ColorAttachment{output};
+        graph.addPass("display", pass, kNoWork);
+        graph.exportTexture(nextVersion(output));
+        auto record = graph.compileFrame(1);
+        REQUIRE(record.has_value());
+        return dumpCompiledFrame(*record);
+    };
+    REQUIRE(dumpWith(true) == dumpWith(false));
 }
 
 //======================================================================================================================

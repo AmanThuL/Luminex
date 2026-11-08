@@ -265,7 +265,8 @@ GraphResult<CompiledFrameRecord> RenderGraph::compileFrame(uint64_t frameId) con
             entry.uses.push_back({.resource = declaration.resource,
                                   .version = declaration.version,
                                   .role = declaration.role,
-                                  .range = declaration.range});
+                                  .range = declaration.range,
+                                  .stages = declaration.stages});
         }
         if (!live[index]) {
             entry.cullReason = writes ? CullReason::NoSinkReachesIt : CullReason::ProducesNothing;

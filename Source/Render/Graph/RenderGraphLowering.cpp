@@ -18,14 +18,22 @@ namespace lmx::render {
 namespace {
 
 //======================================================================================================================
-rojoRHI::Stage shaderStage(PassKind kind) {
-    return kind == PassKind::Raster ? rojoRHI::Stage::VertexShader | rojoRHI::Stage::FragmentShader
-                                    : rojoRHI::Stage::ComputeShader;
+rojoRHI::Stage shaderStage(PassKind kind, ReadStages stages = ReadStages::All) {
+    LMX_ASSERT(stages == ReadStages::All || kind == PassKind::Raster,
+               "only a raster pass's reads narrow to its fragment stage");
+    if (kind != PassKind::Raster) {
+        return rojoRHI::Stage::ComputeShader;
+    }
+    // A fragment-only read waits at the fragment stage, so the pass's vertex and tiling work may
+    // overlap its producer's tail.
+    return stages == ReadStages::Fragment
+               ? rojoRHI::Stage::FragmentShader
+               : rojoRHI::Stage::VertexShader | rojoRHI::Stage::FragmentShader;
 }
 } // namespace
 
 //======================================================================================================================
-SyncPoint textureSync(TextureUse use, PassKind kind, bool depthAspect) {
+SyncPoint textureSync(TextureUse use, PassKind kind, bool depthAspect, ReadStages stages) {
     using enum rojoRHI::Stage;
     using A = rojoRHI::Access;
     using L = rojoRHI::Layout;
@@ -37,10 +45,10 @@ SyncPoint textureSync(TextureUse use, PassKind kind, bool depthAspect) {
                    : SyncPoint{ColorAttachment, A::ColorAttachmentRead | A::ColorAttachmentWrite,
                                L::ColorAttachment};
     case TextureUse::ShaderRead:
-        return {shaderStage(kind), A::ShaderRead,
+        return {shaderStage(kind, stages), A::ShaderRead,
                 depthAspect ? L::DepthStencilRead : L::ShaderRead};
     case TextureUse::StorageRead:
-        return {shaderStage(kind), A::ShaderRead, L::ShaderWrite};
+        return {shaderStage(kind, stages), A::ShaderRead, L::ShaderWrite};
     case TextureUse::StorageWrite:
         return {shaderStage(kind), A::ShaderWrite, L::ShaderWrite};
     case TextureUse::CopySource:
@@ -57,14 +65,14 @@ SyncPoint textureSync(TextureUse use, PassKind kind, bool depthAspect) {
 }
 
 //======================================================================================================================
-SyncPoint bufferSync(BufferUse use, PassKind kind) {
+SyncPoint bufferSync(BufferUse use, PassKind kind, ReadStages stages) {
     using S = rojoRHI::Stage;
     using A = rojoRHI::Access;
     using L = rojoRHI::Layout;
     switch (use) {
     case BufferUse::ShaderRead:
     case BufferUse::StorageRead:
-        return {shaderStage(kind), A::ShaderRead, L::Undefined};
+        return {shaderStage(kind, stages), A::ShaderRead, L::Undefined};
     case BufferUse::StorageWrite:
         return {shaderStage(kind), A::ShaderRead | A::ShaderWrite, L::Undefined};
     case BufferUse::CopySource:
@@ -244,8 +252,8 @@ GraphResult<void> RenderGraph::lowerPhysical(LoweredFrame& frame, const AliasPla
             const auto index = declaration.resource;
             const auto& resource = m_resources[index];
             if (resource.kind == ResourceKind::Buffer) {
-                const auto sync =
-                    bufferSync(physicalBufferUse(pass.kind, declaration.role), pass.kind);
+                const auto sync = bufferSync(physicalBufferUse(pass.kind, declaration.role),
+                                             pass.kind, declaration.stages);
                 auto& combined = buffers[index];
                 if (!combined) {
                     combined = TextureState{sync.stage, sync.access, L::Undefined};
@@ -258,8 +266,9 @@ GraphResult<void> RenderGraph::lowerPhysical(LoweredFrame& frame, const AliasPla
             if (textures[index].empty()) {
                 textures[index].resize(frontiers[index].cells.size());
             }
-            const auto sync = textureSync(graph_detail::textureUseOf(pass.kind, declaration.role),
-                                          pass.kind, engine::isDepthFormat(resource.format));
+            const auto sync =
+                textureSync(graph_detail::textureUseOf(pass.kind, declaration.role), pass.kind,
+                            engine::isDepthFormat(resource.format), declaration.stages);
             const TextureState required{sync.stage, sync.access, sync.layout};
             const auto range = graph_detail::resolveRange(declaration.range, resource.mipLevels,
                                                           resource.arrayLayers);

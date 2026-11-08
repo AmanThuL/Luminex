@@ -336,27 +336,31 @@ void RenderGraph::checkBuffer(GraphBuffer handle) const {
 
 //======================================================================================================================
 void RenderGraph::flattenTextures(std::vector<Declaration>& into,
-                                  const std::vector<TextureUseDesc>& uses, UseRole role) const {
+                                  const std::vector<TextureUseDesc>& uses, UseRole role,
+                                  ReadStages stages) const {
     for (const TextureUseDesc& use : uses) {
         checkTexture(use.handle);
         into.push_back({.resource = use.handle.index,
                         .version = use.handle.version,
                         .role = role,
                         .range = use.range,
-                        .isWrite = isWriteRole(role)});
+                        .isWrite = isWriteRole(role),
+                        .stages = stages});
     }
 }
 
 //======================================================================================================================
 void RenderGraph::flattenBuffers(std::vector<Declaration>& into,
-                                 const std::vector<GraphBuffer>& handles, UseRole role) const {
+                                 const std::vector<GraphBuffer>& handles, UseRole role,
+                                 ReadStages stages) const {
     for (const GraphBuffer& handle : handles) {
         checkBuffer(handle);
         into.push_back({.resource = handle.index,
                         .version = handle.version,
                         .role = role,
                         .range = {},
-                        .isWrite = isWriteRole(role)});
+                        .isWrite = isWriteRole(role),
+                        .stages = stages});
     }
 }
 
@@ -365,8 +369,12 @@ void RenderGraph::addPass(std::string_view label, PassDesc desc, ExecuteFn execu
     LMX_ASSERT(static_cast<bool>(execute), "a declared pass must carry a body");
 
     std::vector<Declaration> declarations;
+    // Each fragment-only list follows its all-stage twin, so a pass that moves its reads between
+    // them declares, and dumps, its uses in the order it always did.
     flattenTextures(declarations, desc.textureReads, UseRole::Read);
+    flattenTextures(declarations, desc.fragmentTextureReads, UseRole::Read, ReadStages::Fragment);
     flattenBuffers(declarations, desc.bufferReads, UseRole::Read);
+    flattenBuffers(declarations, desc.fragmentBufferReads, UseRole::Read, ReadStages::Fragment);
     flattenBuffers(declarations, desc.indirectBufferReads, UseRole::IndirectArgument);
     // Every attachment is declared the same way -- a whole-resource write of the version it names
     // -- so only the handle and the role differ between them.
