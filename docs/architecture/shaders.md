@@ -46,7 +46,7 @@ sampler. The [shader convention](../conventions/shader-style.md) owns the retain
 
 Two leaf `rojorhi.shader_layout` probes have separate ownership roles:
 
-- `Shaders/Layout/LuminexLayout.slang` reflects Source roots for App, DisplayRoot, ScenePass112/Draw48/Sky32, ShadowPass48/Draw32 and their pointed payloads/rows.
+- `Shaders/Layout/LuminexLayout.slang` reflects Source roots for App, DisplayRoot, ScenePass112/Draw16/Sky32, ShadowPass48/Draw16 and their pointed payloads/rows.
 - `Shaders/Layout/TestLayout.slang` reflects test-only oracle roots for Tests. Its flat
   layouts cover the retained roots plus ShadowSmoke32 and SceneTableAbi48;
   MrtSmoke remains root-free.
@@ -65,8 +65,9 @@ no shader entry point.
 
 VertexStorage contains twelve scalar floats at offsets0..44/size48, mapped to the real Engine
 Vertex. loadVertex reconstructs logical vectors only. Scene and Shadow roots preserve direct
-firstEntry versus indirect drawId identity and use view/sampler indices. The SceneTableAbi oracle
-writes all116uint words per row for two rows, preserving every field, explicit padding and stride.
+firstEntry versus indirect drawId identity and use view/sampler indices; material views come from
+`MaterialRow`. The SceneTableAbi oracle writes all 124 uint words per row for two rows, preserving
+every field, explicit padding and stride.
 New C++ roots align16; pushRoot supplies GPU256 alignment. Named roots/payloads feed capture
 schema 2, which `Tools/GpuDebug` decodes by root name and address. The four scene entries add
 `AccumulateLocalLights` after the directional lights and before image-based lighting, emissive

@@ -40,7 +40,7 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-curs
 │       frame. Auto mode: only on a reset trigger
 ├─ 1. lmx.pass.shadow      depth-only → shadow map (2048², D32Float, store)
 │       unculled opaque/masked draws: ShadowDrawRoot → ShadowPassRoot Addr fields
-│       depth bias {-4.0, -32.0} (reversed-Z), light 0 only
+│       depth bias {-4.0, -32.0} (reversed-Z), set once per pass, light 0 only
 │       reversed depth: clears to 0, Greater compare, comparison sampler GreaterEqual
 ├─ 2. lmx.pass.scene       → scene color (RGBA16Float), lmx.render.motion (RG16Float, extra 0),
 │    │  lmx.render.reactive (R8Unorm, extra 1, cleared to 0) + this frame's depth slot, viewport-sized
@@ -141,11 +141,11 @@ native-only. Vendor frames record `ExternalWrite` for current colour, `ExternalR
 colour and `ShaderRead` for other depth; previous colour changes only if sampled (ADR 0017).
 
 Vertex pulling loads 48-byte VertexStorage through the vertices Addr and uses the scene's rebased uint32 index pool (base vertex 0).
-Shared CPU/Slang rows are `InstanceRow` 240 bytes, `MaterialRow` 112 and `MeshRow` 48. Instances hold current/previous/normal matrices, identity selectors, motion/bounds flags, emissive scale and
+Shared CPU/Slang rows are `InstanceRow` 240 bytes, `MaterialRow` 144 and `MeshRow` 48. A material row carries its five sampled view indices, resolved on the CPU to the scene's white or flat-normal fallback when a texture is missing. Instances hold current/previous/normal matrices, identity selectors, motion/bounds flags, emissive scale and
 world bounds; meshes hold ranges and local bounds. `Scene::meshBounds` also feeds selection framing.
 The CPU oracle reads uploaded rows: five jittered VP planes, 1e-3 world margin, no far plane. Unreliable/nonfinite inputs bypass; rejected table rows retain identity and motion.
 Renderer owns three paced GPU `DrawSubmission` pairs and three separate Upload staging pairs, retired on growth at last prepared frame + 3. Scene rows precede unculled shadows; `lmx.draw.rows`/`lmx.draw.args` expose graph reads.
-Scene/shadow flat draw roots select direct firstEntry or indirect drawId, then add instanceIndex into addressed visible/instance/material rows; records are24bytes with zero native bases.
+Scene/shadow 16-byte draw roots select direct firstEntry or indirect drawId, then add instanceIndex into addressed visible/instance/material rows; records are 24 bytes with zero native bases. Indirect and batched submission push one draw root per pass, so a run is a cached `setPipeline` plus `drawIndexedIndirect`; direct submission pushes one per run, because a vertex entry cannot read the base instance (RojoRHI ADR 0024).
 Batched stably sorts pipeline/material/mesh keys and draws one run per
 command; fragments retain a flat instance row. Sky remains separate. Counts report issued commands.
 
