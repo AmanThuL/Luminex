@@ -179,7 +179,8 @@ lmx::Result<void> Renderer::declareOcclusion(RenderGraph& graph, rojoRHI::Comman
         return {};
     PassDesc pass;
     pass.color = ColorAttachment{.handle = display, .load = LoadOp::Load, .store = StoreOp::Store};
-    pass.textureReads.emplace_back(pyramid);
+    // A fullscreen view: only the fragment stage reads.
+    pass.fragmentTextureReads.emplace_back(pyramid);
     const auto params = std::bit_cast<HzbDebugViewParams>(
         buildHzbDebugParams({.requestedLevel = static_cast<uint32_t>(view.hzbDebugLevel),
                              .levelCount = occlusion.current.levelCount,

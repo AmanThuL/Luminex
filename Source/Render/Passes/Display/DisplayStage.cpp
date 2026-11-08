@@ -78,13 +78,14 @@ void DisplayStage::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
     const auto bloomIntensity = inputs.bloomIntensity;
     PassDesc displayDesc;
     // Declaring the read is what orders this pass after the scene pass and puts the scene
-    // target's transition to a shader read in front of it; nothing here places a barrier.
-    displayDesc.textureReads.push_back(displayInput);
+    // target's transition to a shader read in front of it; nothing here places a barrier. The
+    // fullscreen triangle's vertices read nothing, so both reads are the fragment stage's alone.
+    displayDesc.fragmentTextureReads.push_back(displayInput);
     // Bloom's read is declared only when the toggle is on: an undeclared bloomResult reaches no
     // sink through this pass, so dead-pass culling drops threshold/downsample/upsample together
     // when it is off (spec 10) -- the same pattern the exposure passes above use.
     if (bloomEnabled) {
-        displayDesc.textureReads.push_back(
+        displayDesc.fragmentTextureReads.push_back(
             TextureUseDesc(bloomResult, rojoRHI::SubresourceRange{.baseMip = 0, .mipCount = 1}));
     }
     // The fullscreen triangle covers every pixel, so the clear only states an attachment load

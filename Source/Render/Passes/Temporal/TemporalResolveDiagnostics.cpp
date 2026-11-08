@@ -112,19 +112,20 @@ GraphTexture TemporalResolve::declareDebugView(RenderGraph& graph, rojoRHI::Comm
     // coverage rather than a count -- the view still reads it, and shows what the mode produced.
     const bool readsResolved = debugView == TemporalDebugView::HistoryAge;
 
+    // A fullscreen view: only the fragment stage reads.
     PassDesc debugDesc;
-    debugDesc.textureReads.push_back(inputs.motion);
+    debugDesc.fragmentTextureReads.push_back(inputs.motion);
     if (readsDiagnostic) {
-        debugDesc.textureReads.push_back(diagnostic);
+        debugDesc.fragmentTextureReads.push_back(diagnostic);
     }
     if (readsRejection) {
-        debugDesc.textureReads.push_back(outputs.rejection);
+        debugDesc.fragmentTextureReads.push_back(outputs.rejection);
     }
     if (readsReprojected) {
-        debugDesc.textureReads.push_back(outputs.reprojected);
+        debugDesc.fragmentTextureReads.push_back(outputs.reprojected);
     }
     if (readsResolved) {
-        debugDesc.textureReads.push_back(outputs.resolved);
+        debugDesc.fragmentTextureReads.push_back(outputs.resolved);
     }
     debugDesc.color = ColorAttachment{
         .handle = displayResult, .load = LoadOp::Clear, .store = StoreOp::Store, .clearColor = {}};

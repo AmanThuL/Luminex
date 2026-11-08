@@ -79,21 +79,25 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
         lmx::srgbToLinear(glm::vec3(clearColor[0], clearColor[1], clearColor[2])) * preExposure;
 
     PassDesc sceneDesc;
-    sceneDesc.textureReads.push_back(shadowRead);
+    // The vertex stage reads the tables, the visible rows and the arguments; the shadow map, the
+    // light rows, grid and index lists and the exposure are fragment reads, in the scene and sky
+    // twins alike. Their barriers therefore wait at the fragment stage, so the scene's vertex work
+    // may overlap the light clustering and shadow pass that produce them.
+    sceneDesc.fragmentTextureReads.push_back(shadowRead);
     sceneDesc.bufferReads.assign(inputs.sceneBuffers.begin(), inputs.sceneBuffers.end());
     sceneDesc.bufferReads.push_back(inputs.drawRows);
     sceneDesc.indirectBufferReads.push_back(inputs.drawArguments);
     if (inputs.lights.has_value()) {
-        sceneDesc.bufferReads.push_back(*inputs.lights);
+        sceneDesc.fragmentBufferReads.push_back(*inputs.lights);
     }
     if (inputs.lightGrid) {
-        sceneDesc.bufferReads.push_back(*inputs.lightGrid);
-        sceneDesc.bufferReads.push_back(*inputs.lightIndices);
+        sceneDesc.fragmentBufferReads.push_back(*inputs.lightGrid);
+        sceneDesc.fragmentBufferReads.push_back(*inputs.lightIndices);
     }
     // Declared only in auto mode: manual mode's shading never reads the feedback buffer (spec 9),
     // so declaring the read here always would be a lie about what the pass depends on.
     if (view.autoExposureEnabled) {
-        sceneDesc.bufferReads.push_back(exposureCurrent);
+        sceneDesc.fragmentBufferReads.push_back(exposureCurrent);
     }
     sceneDesc.color =
         ColorAttachment{.handle = sceneColor,

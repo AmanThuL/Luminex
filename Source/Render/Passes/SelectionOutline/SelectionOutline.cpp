@@ -288,7 +288,7 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
     if (!visible || (view.tables.instanceRows[selectedRow].flags & engine::kInstanceDisabled)) {
         const auto output = importTarget(graph);
         PassDesc passthrough;
-        passthrough.textureReads = {display};
+        passthrough.fragmentTextureReads = {display};
         passthrough.color = ColorAttachment{.handle = output};
         // The UI has already chosen this target. Refresh it while keeping display's terminal
         // shader-read state consistent with both ordinary outline frames and the next import.
@@ -386,7 +386,8 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
     const GraphTexture sceneDepthRead = nextVersion(sceneDepth);
     const GraphTexture output = importTarget(graph);
     PassDesc composite;
-    composite.textureReads = {display, coverageRead, selectedDepthRead, sceneDepthRead};
+    // Fullscreen, like the passthrough: only the fragment stage reads.
+    composite.fragmentTextureReads = {display, coverageRead, selectedDepthRead, sceneDepthRead};
     composite.color = ColorAttachment{.handle = output};
     const OutlineParams outlineParams = buildOutlineParams(backingScale);
     graph.addPass("lmx.pass.selection.outline", std::move(composite),

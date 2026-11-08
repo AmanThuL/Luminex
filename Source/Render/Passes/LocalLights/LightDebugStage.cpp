@@ -97,8 +97,9 @@ GraphTexture LightDebugStage::declare(RenderGraph& graph, rojoRHI::CommandList& 
                                .outputHeight = inputs.outputHeight});
     PassDesc pass;
     pass.color = ColorAttachment{.handle = inputs.output};
-    pass.textureReads = {inputs.depth, inputs.display};
-    pass.bufferReads = {inputs.lights, inputs.grid, inputs.indices};
+    // A fullscreen view: only the fragment stage reads.
+    pass.fragmentTextureReads = {inputs.depth, inputs.display};
+    pass.fragmentBufferReads = {inputs.lights, inputs.grid, inputs.indices};
     graph.addPass(
         "lmx.pass.light.debug", std::move(pass),
         [this, &commands, inputs, params](const PassResources& resources) {

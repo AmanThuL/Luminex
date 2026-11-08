@@ -14,6 +14,7 @@
 #include <fstream>
 #include <ranges>
 #include <sstream>
+#include <variant>
 
 using lmx::test::FixtureDrawItem;
 using lmx::test::FixtureSceneView;
@@ -428,6 +429,27 @@ TEST_CASE("LightLab graph declares the selected light consumers",
                        item.bufferTo == lmx::render::BufferUse::ShaderRead;
             });
             REQUIRE(barrier == clustered);
+        }
+        // The scene's vertex work does not wait for the light passes or the shadow map: the
+        // shadow pass already ordered the rows and arguments, so the batch in front of the scene
+        // holds fragment and attachment stages alone.
+        const auto lowered = graph.lower(gpu->frameNumber());
+        REQUIRE(lowered);
+        const BarriersOp* sceneBatch = nullptr;
+        for (const auto& op : lowered->ops) {
+            if (const auto* batch = std::get_if<BarriersOp>(&op))
+                sceneBatch = batch;
+            else if (const auto* run = std::get_if<RunOp>(&op);
+                     run && run->label == "lmx.pass.scene")
+                break;
+            else if (run)
+                sceneBatch = nullptr;
+        }
+        REQUIRE(sceneBatch);
+        for (const auto& barrier : sceneBatch->barriers) {
+            const auto stage = std::visit([](const auto& b) { return b.to.stage; }, barrier);
+            REQUIRE((stage & (rojoRHI::Stage::IndexInput | rojoRHI::Stage::VertexShader |
+                              rojoRHI::Stage::IndirectArgs)) == rojoRHI::Stage::None);
         }
         graph.execute(commands, gpu->frameNumber());
         gpu->submitAndEndFrame(gpuFrame4);
