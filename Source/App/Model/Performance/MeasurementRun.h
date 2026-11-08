@@ -137,6 +137,7 @@ struct MeasurementCpuSample {
 struct MeasurementSample {
     MeasurementCpuSample cpu; ///< Declaration metrics; GPU list payload resolves on retirement.
     std::vector<engine::PassTiming> passes; ///< Retired timings joined by exact frame id.
+    std::optional<double> frameGpuMs;       ///< Retired `lmx.frame` scope duration, when published.
     std::optional<render::VisibilityStatus> visibility; ///< Exact-frame retired GPU counters.
     bool retired = false; ///< Distinguishes absent timings from zero-duration timings.
     std::optional<render::LightingStatus> lighting; ///< Exact-frame retired light counts and lists.
@@ -158,8 +159,14 @@ public:
     std::optional<MeasurementFramePlan> nextFrame() const;
     /// Records one submitted frame in plan order, then advances the plan.
     bool recordCpu(MeasurementCpuSample sample);
-    /// Joins a retired RHI publication; repeated identical publications are harmless.
-    bool retire(uint64_t frameId, std::span<const engine::PassTiming> passes);
+    /// Joins a retired RHI publication; repeated identical publications are harmless. A
+    /// publication without a frame duration leaves the sample's `frameGpuMs` absent.
+    bool retire(uint64_t frameId, std::span<const engine::PassTiming> passes,
+                std::optional<double> frameGpuMs = std::nullopt);
+    /// Joins a retired publication together with its enclosing frame scope's duration.
+    bool retire(const engine::PassTimingFrame& timings) {
+        return retire(timings.frame, timings.passes, timings.frameGpuMs);
+    }
     /// Joins GPU classifier counters by exact submitted frame, independently of timings.
     bool retireVisibility(const render::VisibilityStatus& status);
     /// Joins lighting counters by declaration frame and scene, independently of other retirements.

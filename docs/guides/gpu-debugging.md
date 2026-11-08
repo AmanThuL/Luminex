@@ -215,12 +215,13 @@ Both front ends wait for GPU retirement after each submitted frame because RHI e
 newest retired timing set. Editor still renders and presents each frame; measurement pacing reduces
 overlap. JSON discloses `serialized-retirement`, joins every sample by frame ID, records actual
 extents/reconstruction and executable/shader/environment provenance, and separates beginFrame wait
-from encode time. The post-submit retirement wait is excluded; these are not realtime throughput measurements. Timed GPU sums exclude presentation, driver and untimed work.
+from encode time. The post-submit retirement wait is excluded; these are not realtime throughput measurements. Timed GPU sums exclude presentation, driver and untimed work. `frameGpuMs`, additive to schema 5, is the retired `lmx.frame` scope: it includes work outside pass scopes (Metal kernel encoders of counted draws) and overlap between passes, so it can move when `gpuSumMs` does not; frozen v1 reports omit it.
 
 The paired driver uses fresh processes, alternating AB/BA, 12 pairs, W32/N256 and a seeded 10,000-draw
 95% bootstrap interval. Cull/off, indirect/direct and batched/direct cover lab N1024/16384/65536,
 Sponza, San Miguel and TemporalLab; Sponza/San Miguel use initial cameras, the labs their rails.
 Failures remain in the output directory; no adoption rule is applied. Use `--selftest` for protocol checks.
+With `--parent`, the binary controls `binary-direct`, `binary-indirect` and `binary-batched` (the default) classify on the CPU; `binary-indirect-gpu` and `binary-batched-gpu` classify on the GPU and are selected with `--controls`. `regressions` lists `encodeMs`, and `frameGpuMs` where both binaries report it, when the paired 95% interval lies wholly on the slower side. Against a parent without `frameGpuMs` (frozen v1) the candidate's medians are kept as reported, not rated; `lighting_paired.py` and `parent_paired.py` treat it the same way, and `parent_paired.py` lists it as `candidate-only` beside each scene's `sceneCommands`/`shadowCommands` medians.
 
 ## Measure local-light costs
 

@@ -215,7 +215,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
     const auto joinRetiredTimings = [&] {
         const lmx::engine::PassTimingFrame timing = gpu.passTimings();
         frameRecords.joinTimings(timing.frame, timing.passes);
-        shell->retireMeasurement(timing.frame, timing.passes);
+        shell->retireMeasurement(timing);
     };
     uint64_t skippedFrames = 0;
     bool running = true;

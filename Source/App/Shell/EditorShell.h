@@ -219,8 +219,8 @@ public:
     /// Captures declaration-time dimensions and counts for the exact frame retained by the loop.
     FrameMetricsMetadata frameMetrics(const render::Renderer& renderer);
 
-    /// Joins exact retired GPU timings to a pending interactive measurement.
-    void retireMeasurement(uint64_t frameId, std::span<const engine::PassTiming> timings);
+    /// Joins exact retired GPU timings and the frame scope to a pending interactive measurement.
+    void retireMeasurement(const engine::PassTimingFrame& timing);
     /// Cancels an active measurement when a drawable gap breaks its contiguous frame sequence.
     void cancelMeasurementForSkippedDrawable();
     /// Joins the exact retired local-light diagnostics to their declared measurement frame.

@@ -126,11 +126,11 @@ bool EditorShell::startMeasurement(engine::GpuContext& gpu, const render::Render
     return true;
 }
 //======================================================================================================================
-void EditorShell::retireMeasurement(uint64_t frameId, std::span<const engine::PassTiming> timings) {
-    m_visibilityDisplay.observeTimings(frameId, timings);
-    m_lightingDisplay.observeTimings(frameId, timings);
+void EditorShell::retireMeasurement(const engine::PassTimingFrame& timing) {
+    m_visibilityDisplay.observeTimings(timing.frame, timing.passes);
+    m_lightingDisplay.observeTimings(timing.frame, timing.passes);
     if (m_measurement.active())
-        m_measurement.retire(frameId, timings);
+        m_measurement.retire(timing);
     finishMeasurementPlayback();
 }
 //======================================================================================================================

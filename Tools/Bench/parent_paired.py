@@ -8,7 +8,11 @@ per-frame `*GpuMs` stage both sides report are compared with the paired-median b
 visibility_paired (10,000 resamples, seed 0x4C4D5836). A metric regresses when the candidate's
 paired median is more than 5% slower and the 95% interval excludes 5%; in analyze_pairs' sign,
 where positive means the candidate costs less, that is medianDeltaPct < -5 and ci95Pct[1] < -5.
-Every attempt stays on disk beside summary.json. No collection runs in --selftest.
+A stage only the candidate reports, such as frameGpuMs against a frozen v1 parent, is listed as
+candidate-only with its medians, reported and never rated; a stage the parent reports and the
+candidate drops fails a scored gate. Each cell also keeps the sceneCommands and shadowCommands
+medians behind its timings. Every attempt stays on disk beside summary.json. No collection runs in
+--selftest.
 """
 import argparse
 import copy
@@ -27,6 +31,7 @@ from unittest import mock
 import visibility_paired as visibility
 
 SCENES = ("sponza", "material-lab", "temporal-lab", "light-lab", "visibility-lab")
+COMMAND_COUNTS = ("sceneCommands", "shadowCommands")
 OPTIONAL_SCENES = ("san-miguel",)
 REPETITIONS, WARMUP, FRAMES = 12, 32, 256
 THRESHOLD_PCT = 5.0
@@ -121,6 +126,8 @@ def check_pair(reports):
 
 def verdict(analysis):
     """Apply the parity-gate rule to one analyze_pairs result (positive = candidate cheaper)."""
+    if analysis.get("reportedBy"):
+        return analysis["reportedBy"] + "-only"
     if not analysis.get("available"):
         return "unavailable"
     median, (_, upper) = analysis["medianDeltaPct"], analysis["ci95Pct"]
@@ -155,6 +162,7 @@ def run_side(binary, path, scene, args, env):
 def collect_scene(args, scene):
     pairs, failures, metrics = {}, [], None
     only = {"parent": set(), "candidate": set()}
+    candidate_only, commands = {}, {}
     for repetition in range(args.repetitions):
         order = (0, 1) if repetition % 2 == 0 else (1, 0)
         reports = [None, None]
@@ -182,13 +190,26 @@ def collect_scene(args, scene):
         for name in metrics:
             pairs.setdefault(name, []).append(
                 [statistics.median(sample[name] for sample in report["samples"]) for report in reports])
+        for name in set(sides[1]) - set(sides[0]):
+            candidate_only.setdefault(name, []).append(
+                [None, statistics.median(sample[name] for sample in reports[1]["samples"])])
+        for name in COMMAND_COUNTS:
+            if all(name in sample for report in reports for sample in report["samples"]):
+                commands.setdefault(name, []).append(
+                    [statistics.median(sample[name] for sample in report["samples"]) for report in reports])
         print(f"{scene}: pair {repetition + 1}/{args.repetitions} {'AB' if order[0] == 0 else 'BA'}", flush=True)
     complete = not failures and metrics is not None and all(len(v) == args.repetitions for v in pairs.values())
     analysis = {name: visibility.analyze_pairs(values) for name, values in pairs.items()} if complete else {}
+    if complete:
+        analysis.update({name: visibility.analyze_optional(values) for name, values in sorted(candidate_only.items())
+                         if len(values) == args.repetitions})
     verdicts = {name: verdict(result) for name, result in analysis.items()}
     return dict(scene=scene, complete=complete, failures=failures, metrics=metrics or [],
                 onlyInParent=sorted(only["parent"]), onlyInCandidate=sorted(only["candidate"]),
-                retainedPairs=pairs, analysis=analysis, verdicts=verdicts)
+                retainedPairs={**pairs, **candidate_only}, analysis=analysis, verdicts=verdicts,
+                commands={name: dict(pairs=values, parentMedian=statistics.median(a for a, _ in values),
+                                     candidateMedian=statistics.median(b for _, b in values))
+                          for name, values in commands.items()})
 
 
 def gate(cells, scored):
@@ -220,8 +241,13 @@ def summarize(cells):
             absolute = result["absolute"]
             relative = (f"{result['medianDeltaPct']:9.2f} [{result['ci95Pct'][0]:7.2f},{result['ci95Pct'][1]:7.2f}]"
                         if result["available"] else f"{'-':>9} {'-':>17}")
-            lines.append(f"{cell['scene']:16} {name:18} {absolute['baselineMedianMs']:10.4f} "
-                         f"{absolute['candidateMedianMs']:10.4f} {relative}  {cell['verdicts'][name]}")
+            parent, candidate = (f"{absolute[key]:10.4f}" if key in absolute else f"{'-':>10}"
+                                 for key in ("baselineMedianMs" if "baselineMedianMs" in absolute else "parentMedianMs",
+                                             "candidateMedianMs"))
+            lines.append(f"{cell['scene']:16} {name:18} {parent} {candidate} {relative}  {cell['verdicts'][name]}")
+        for name, counts in cell.get("commands", {}).items():
+            lines.append(f"{cell['scene']:16} {name:18} {counts['parentMedian']:10g} {counts['candidateMedian']:10g}"
+                         f" {'-':>9} {'-':>17}  count")
     return "\n".join(lines)
 
 
@@ -356,6 +382,67 @@ class ParentPairedTests(unittest.TestCase):
                 cell = collect_scene(args, "sponza")
             self.assertFalse(cell["complete"])
             self.assertIn("instrumentation", cell["failures"][0]["reason"])
+
+    def test_frame_gpu_ms_is_candidate_only_against_v1_and_rated_between_v2_builds(self):
+        import contextlib
+        import io
+        import tempfile
+
+        def collect(frame):
+            """frame maps a side to its frameGpuMs; a side it omits reports none, as frozen v1."""
+            with tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                (root / "p").mkdir(); (root / "c").mkdir()
+                parent, candidate = root / "p" / "App", root / "c" / "App"
+                parent.write_bytes(b"parent"); candidate.write_bytes(b"candidate")
+                args = argparse.Namespace(parent=parent, binary=candidate, out=root / "out", repetitions=2,
+                                          warmup=0, frames=2, unscored=False, timeout=5, parent_env={})
+                args.out.mkdir()
+                args.hashes = {str(b): hashlib.sha256(b.read_bytes()).hexdigest() for b in (parent, candidate)}
+
+                def fake_run(cmd, cwd, env, **_):
+                    side = "parent" if cmd[0] == str(parent) else "candidate"
+                    report = fixture(executable=args.hashes[cmd[0]])
+                    for sample in report["samples"]:
+                        sample.update(sceneCommands=10 if side == "parent" else 4, shadowCommands=3)
+                        if side in frame:
+                            sample["frameGpuMs"] = frame[side]
+                    Path(cmd[cmd.index("--measure") + 1]).write_text(json.dumps(report))
+                    return subprocess.CompletedProcess(cmd, 0, "", "")
+
+                with mock.patch.object(subprocess, "run", side_effect=fake_run), \
+                        contextlib.redirect_stdout(io.StringIO()):
+                    return collect_scene(args, "sponza")
+
+        v1 = collect({"candidate": 2.5})
+        self.assertTrue(v1["complete"], v1["failures"])
+        self.assertEqual(v1["metrics"], ["encodeMs", "gpuSumMs", "sceneGpuMs", "shadowGpuMs"])
+        self.assertEqual(v1["onlyInCandidate"], ["frameGpuMs"])
+        self.assertEqual(v1["verdicts"]["frameGpuMs"], "candidate-only")
+        self.assertEqual(v1["analysis"]["frameGpuMs"]["absolute"]["candidateMedianMs"], 2.5)
+        self.assertEqual(v1["retainedPairs"]["frameGpuMs"], [[None, 2.5]] * 2)
+        result = gate([v1], True)
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["unavailable"], [])
+        self.assertEqual(result["onlyInCandidate"], [dict(scene="sponza", metric="frameGpuMs")])
+        table = summarize([v1])
+        self.assertRegex(table, r"frameGpuMs +- +2\.5000 .* candidate-only")
+        self.assertRegex(table, r"sceneCommands +10 +4 .* count")
+        self.assertEqual(v1["commands"]["sceneCommands"]["pairs"], [[10, 4]] * 2)
+        self.assertEqual(v1["commands"]["shadowCommands"]["candidateMedian"], 3)
+
+        v2 = collect({"parent": 2.0, "candidate": 2.5})
+        self.assertIn("frameGpuMs", v2["metrics"])
+        self.assertEqual(v2["onlyInCandidate"], [])
+        self.assertEqual(v2["verdicts"]["frameGpuMs"], "regression")
+        result = gate([v2], True)
+        self.assertFalse(result["passed"])
+        self.assertEqual([r["metric"] for r in result["regressions"]], ["frameGpuMs"])
+        self.assertEqual(collect({"parent": 2.0, "candidate": 2.0})["verdicts"]["frameGpuMs"], "pass")
+        dropped = collect({"parent": 2.0})
+        self.assertEqual(dropped["onlyInParent"], ["frameGpuMs"])
+        self.assertNotIn("frameGpuMs", dropped["analysis"])
+        self.assertFalse(gate([dropped], True)["passed"])
 
     def test_gate_fails_unrateable_totals_and_dropped_stages(self):
         def cell(verdicts, parent_only=(), candidate_only=()):

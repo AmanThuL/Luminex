@@ -56,9 +56,18 @@ CONTROLS.update({
 BINARY_WORKLOADS = ("sponza", "visibility-16384")
 BINARY_CONTROLS = {"binary-" + mode: ((True, mode, "cpu"),) * 2
                    for mode in ("direct", "indirect", "batched")}
+DEFAULT_BINARY_CONTROLS = tuple(BINARY_CONTROLS)
+# GPU-classified cells are opt-in, so the default binary protocol keeps its R5 length.
+BINARY_CONTROLS.update({"binary-" + mode + "-gpu": ((True, mode, "gpu"),) * 2
+                        for mode in ("indirect", "batched")})
 CONTROLS.update(BINARY_CONTROLS)
 METRICS = ("classifyMs", "prepareMs", "encodeMs", "slotWaitMs", "gpuSumMs", "visibilityGpuMs",
            "hzbGpuMs", "sceneGpuMs", "shadowGpuMs")
+# Additive schema-5 keys: a frozen parent omits them, so they are rated only when both sides
+# report them and are otherwise listed for the side that does, never gating completeness.
+OPTIONAL_METRICS = ("frameGpuMs",)
+# Draw counts behind each cell, reported beside its timings.
+COMMAND_COUNTS = ("sceneCommands", "shadowCommands")
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -91,6 +100,35 @@ def analyze_pairs(pairs):
     result.update(available=True, pairedDeltasPct=deltas,
                   medianDeltaPct=statistics.median(deltas), ci95Pct=interval(deltas))
     return result
+
+
+def optional_median(report, metric):
+    """Median of an optional metric over a validated report, or None when it does not report it."""
+    samples = report["samples"]
+    if metric not in samples[0]:
+        return None
+    return statistics.median(sample[metric] for sample in samples)
+
+
+def analyze_optional(pairs):
+    """Rate [parent, candidate] medians when both sides report the metric in every pair.
+
+    A side that never reports it (a frozen parent) leaves the other side's medians reported,
+    not rated: the result is unavailable with `reportedBy` naming the side that has it."""
+    if pairs and all(None not in pair for pair in pairs):
+        return analyze_pairs(pairs)
+    for side, name in ((1, "candidate"), (0, "parent")):
+        values = [pair[side] for pair in pairs]
+        if pairs and None not in values and all(pair[1 - side] is None for pair in pairs):
+            reason = f"{name} only; reported, not rated"
+            return {"available": False, "reason": reason, "reportedBy": name,
+                    "pairs": pairs, "pairCount": len(pairs),
+                    "absolute": {"available": False, "reason": reason,
+                                 name + "MedianMs": statistics.median(values)}}
+    reason = "not reported by either side" if all(pair == [None, None] for pair in pairs) \
+        else "reported inconsistently across pairs"
+    return {"available": False, "reason": reason, "pairs": pairs, "pairCount": len(pairs),
+            "absolute": {"available": False, "reason": reason}}
 
 
 def validate_report(report, expected, scored):
@@ -199,6 +237,11 @@ def validate_report(report, expected, scored):
                                      and p.get("label") != "lmx.pass.hzb.debug")
         for metric in METRICS:
             nonnegative_number(sample.get(metric), metric)
+        for metric in OPTIONAL_METRICS:
+            if (metric in sample) != (metric in samples[0]):
+                raise ValueError(metric + " reported on some frames only")
+            if metric in sample:
+                nonnegative_number(sample[metric], metric)
         for timing in passes:
             require_dict(timing, "pass timing")
             if not isinstance(timing.get("label"), str) or not timing["label"]:
@@ -403,18 +446,26 @@ def checked_provenance(args, reports, workload=None):
     return dict(normalized[0], shaderHashes=dict(parent=shaders[0], candidate=shaders[1]))
 
 
-def encode_regressions(cells):
-    """List only complete cells whose baseline-minus-candidate CI is wholly negative."""
-    return [dict(cell=name, metric="encodeMs", **cell["analysis"]["encodeMs"]["absolute"])
-            for name, cell in cells.items() if cell["complete"] and
-            cell["analysis"]["encodeMs"]["absolute"]["available"] and
-            cell["analysis"]["encodeMs"]["absolute"]["ci95Ms"][1] < 0]
+REGRESSION_METRICS = ("encodeMs", "frameGpuMs")
+
+
+def paired_regressions(cells):
+    """List complete cells whose baseline-minus-candidate CI is wholly negative.
+
+    encodeMs is always rated; frameGpuMs only where both sides report it."""
+    return [dict(cell=name, metric=metric, **cell["analysis"][metric]["absolute"])
+            for name, cell in cells.items() if cell["complete"]
+            for metric in REGRESSION_METRICS
+            if metric in cell["analysis"] and cell["analysis"][metric]["absolute"]["available"] and
+            cell["analysis"][metric]["absolute"]["ci95Ms"][1] < 0]
 
 
 def collect_cell(args, workload, control, output):
     pairs = {metric: [] for metric in METRICS}
+    optional = {metric: [] for metric in OPTIONAL_METRICS}
     failures = []
-    observations = {"occluded": [], "rejected": [], "pyramidBytes": []}
+    observations = {"occluded": [], "rejected": [], "pyramidBytes": [],
+                    **{name: [] for name in COMMAND_COUNTS}}
     frozen_provenance = None
     for repetition in range(args.repetitions):
         order = (0, 1) if repetition % 2 == 0 else (1, 0)
@@ -442,28 +493,40 @@ def collect_cell(args, workload, control, output):
         for metric in METRICS:
             pairs[metric].append([statistics.median(sample[metric] for sample in reports[side]["samples"])
                                   for side in (0, 1)])
+        for metric in OPTIONAL_METRICS:
+            optional[metric].append([optional_median(reports[side], metric) for side in (0, 1)])
+
+        def observed(sample, name):
+            if name in COMMAND_COUNTS:
+                return sample[name]
+            return sample["visibility"][name] if name == "pyramidBytes" else sample["visibility"]["scene"][name]
         for name in observations:
-            observations[name].append([
-                statistics.median(sample["visibility"]["scene"][name] if name != "pyramidBytes"
-                                  else sample["visibility"][name] for sample in reports[side]["samples"])
-                for side in (0, 1)])
+            observations[name].append([statistics.median(observed(sample, name) for sample in reports[side]["samples"])
+                                       for side in (0, 1)])
         print(f"{workload}/{control} pair {repetition + 1}/{args.repetitions} order={order}", flush=True)
     complete = all(len(values) == args.repetitions for values in pairs.values())
+    analysis = {metric: analyze_pairs(values) for metric, values in pairs.items()} if complete else {}
+    if complete:
+        analysis.update({metric: analyze_optional(values) for metric, values in optional.items()})
     return {"complete": complete, "failures": failures, "provenance": frozen_provenance,
-            "analysis": {metric: analyze_pairs(values) for metric, values in pairs.items()} if complete else {},
-            "retainedPairs": pairs,
+            "analysis": analysis, "retainedPairs": {**pairs, **optional},
             "observations": {name: {
-                "unit": "bytes" if name == "pyramidBytes" else "instances",
+                "unit": "bytes" if name == "pyramidBytes" else "commands" if name in COMMAND_COUNTS else "instances",
                 "pairs": values,
                 "absolute": {key.removesuffix("Ms"): value for key, value in
                              analyze_pairs(values)["absolute"].items()}}
                 for name, values in observations.items()}}
 
 
-def binary_selftest(template):
-    """Exercise collection dispatch, report validation and the binary comparison guard."""
+def binary_selftest(template, frame_gpu_ms=None):
+    """Exercise collection dispatch, report validation and the binary comparison guard.
+
+    frame_gpu_ms maps a side ("parent"/"candidate") to the frameGpuMs its reports carry; a
+    missing side omits the key, as a frozen parent does."""
     import contextlib
     import io
+
+    frame_gpu_ms = frame_gpu_ms or {}
 
     args = SimpleNamespace(parent=Path("/parent/App"), binary=Path("/candidate/App"),
                            parent_hash="a" * 64, binary_hash="c" * 64,
@@ -484,6 +547,14 @@ def binary_selftest(template):
         first.update(effectiveSubmission=plan["submission"], encodeMs=1 if binary == args.parent else 2,
                      localLightMode=plan["localLightMode"], lightingGpuMs=0,
                      liveLightCount=16 if plan["localLightRig"] else 0)
+        side = "parent" if binary == args.parent else "candidate"
+        if side in frame_gpu_ms:
+            first["frameGpuMs"] = frame_gpu_ms[side]
+        if plan["classify"] == "gpu":
+            first.update(effectiveClassify="gpu", visibilityGpuMs=0.25, gpuSumMs=1.25,
+                         listBytes=8, reservedListBytes=16)
+            first["passes"] = [*first["passes"], dict(label="lmx.pass.visibility.classify", gpuMs=0.25)]
+            first["visibility"].update(classify="gpu", retired=True)
         first["lighting"] = dict(frameId=1, sceneGeneration=1, requestedMode=plan["localLightMode"],
                                   effectiveMode="clustered" if first["liveLightCount"] else "off",
                                   liveLightCount=first["liveLightCount"], retired=True,
@@ -512,19 +583,39 @@ def binary_selftest(template):
                 assert [x[0] for x in calls] == [args.parent, args.binary, args.binary, args.parent]
                 assert all(x[1] == calls[0][1] for x in calls)
                 assert (calls[0][1]["warmupFrames"], calls[0][1]["measuredFrames"]) == (32, 256)
-                assert calls[0][1]["submission"] == control.removeprefix("binary-")
+                mode = control.removeprefix("binary-")
+                assert calls[0][1]["submission"] == mode.removesuffix("-gpu")
+                assert calls[0][1]["classify"] == ("gpu" if mode.endswith("-gpu") else "cpu")
+                frame = cells[workload + "/" + control]["analysis"]["frameGpuMs"]
+                if len(frame_gpu_ms) == 2:
+                    assert frame["available"] and frame["absolute"]["candidateMedianMs"] == frame_gpu_ms["candidate"]
+                elif frame_gpu_ms:
+                    assert not frame["available"] and frame["reportedBy"] == "candidate"
+                    assert frame["absolute"]["candidateMedianMs"] == frame_gpu_ms["candidate"]
+                else:
+                    assert not frame["available"] and frame["reason"] == "not reported by either side"
+                assert cells[workload + "/" + control]["observations"]["sceneCommands"]["pairs"] == [[1, 1]] * 2
                 assert cells[workload + "/" + control]["provenance"]["shaderHashes"] == dict(
                     parent=parent_shaders, candidate=template["provenance"]["shaderHashes"])
-        assert len(encode_regressions(cells)) == 6
+        regressions = paired_regressions(cells)
+        slower_frame = len(frame_gpu_ms) == 2 and frame_gpu_ms["candidate"] > frame_gpu_ms["parent"]
+        cell_count = len(BINARY_WORKLOADS) * len(BINARY_CONTROLS)
+        assert len(regressions) == cell_count * (2 if slower_frame else 1)
+        assert {row["metric"] for row in regressions} == ({"encodeMs", "frameGpuMs"} if slower_frame else {"encodeMs"})
         cell = copy.deepcopy(next(iter(cells.values())))
         cell["analysis"]["encodeMs"] = analyze_pairs([[2, 1]] * 12)
-        assert not encode_regressions({"faster": cell})
+        cell["analysis"]["frameGpuMs"] = analyze_pairs([[2, 1]] * 12)
+        assert not paired_regressions({"faster": cell})
         cell["analysis"]["encodeMs"] = analyze_pairs([[1, 1]] * 12)
-        assert not encode_regressions({"equal": cell})
+        assert not paired_regressions({"equal": cell})
+        cell["analysis"]["frameGpuMs"] = analyze_pairs([[1, 1.5]] * 12)
+        assert [row["metric"] for row in paired_regressions({"frame": cell})] == ["frameGpuMs"]
+        cell["analysis"]["frameGpuMs"] = analyze_optional([[None, 1.5]] * 12)
+        assert not paired_regressions({"candidate-only": cell})
         with mock.patch(__name__ + ".run_side", return_value=(None, {"failure": "process failed"})):
             incomplete = collect_cell(args, "sponza", "binary-direct", Path(tmp))
             assert not incomplete["complete"] and not incomplete["analysis"]
-            assert not encode_regressions({"incomplete": incomplete})
+            assert not paired_regressions({"incomplete": incomplete})
     pair = {0: accepted[0], 1: accepted[1]}
     frozen_shaders = args.frozen_shader_hashes
     args.frozen_shader_hashes = None
@@ -745,7 +836,47 @@ def selftest():
         else:
             raise AssertionError("duplicate selector accepted")
     assert unique_selection("sponza,san-miguel", WORKLOADS, "workload") == ["sponza", "san-miguel"]
+    framed = copy.deepcopy(report)
+    framed["samples"][0]["frameGpuMs"] = 1.5
+    validate_report(framed, plan, True)
+    assert optional_median(framed, "frameGpuMs") == 1.5 and optional_median(report, "frameGpuMs") is None
+    two_frames = dict(plan, measuredFrames=2)
+    for value in (-1, float("nan"), True, None):
+        bad = copy.deepcopy(framed)
+        bad["samples"][0]["frameGpuMs"] = value
+        try:
+            validate_report(bad, plan, True)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("invalid frameGpuMs accepted")
+    partial = copy.deepcopy(framed)
+    partial["plan"] = two_frames
+    second = copy.deepcopy(report["samples"][0])
+    second.update(ordinal=1, frameId=2, sequenceFrame=1)
+    second["visibility"]["frameId"] = 2
+    partial["samples"].append(second)
+    try:
+        validate_report(partial, two_frames, True)
+    except ValueError as exc:
+        assert "some frames only" in str(exc)
+    else:
+        raise AssertionError("frameGpuMs on some frames only accepted")
+    assert analyze_optional([[1.0, 0.5]] * 12)["medianDeltaPct"] == 50
+    candidate_only = analyze_optional([[None, 0.5], [None, 0.75]])
+    assert not candidate_only["available"] and candidate_only["reportedBy"] == "candidate"
+    assert candidate_only["absolute"] == {"available": False, "reason": "candidate only; reported, not rated",
+                                          "candidateMedianMs": 0.625}
+    assert analyze_optional([[0.5, None]] * 2)["reportedBy"] == "parent"
+    assert analyze_optional([[None, 0.5], [0.5, 0.5]])["reason"] == "reported inconsistently across pairs"
+    assert analyze_optional([[None, None]] * 2)["reason"] == "not reported by either side"
+    assert DEFAULT_BINARY_CONTROLS == ("binary-direct", "binary-indirect", "binary-batched")
+    assert CONTROLS["binary-indirect-gpu"] == ((True, "indirect", "gpu"),) * 2
+    assert CONTROLS["binary-batched-gpu"] == ((True, "batched", "gpu"),) * 2
     binary_selftest(report)
+    binary_selftest(report, {"candidate": 2.0})
+    binary_selftest(report, {"parent": 2.0, "candidate": 2.0})
+    binary_selftest(report, {"parent": 2.0, "candidate": 2.5})
     print("visibility_paired.py --selftest: all checks passed")
     return 0
 
@@ -770,7 +901,7 @@ def main():
     if args.workloads is None:
         args.workloads = ",".join(BINARY_WORKLOADS if args.parent else DEFAULT_WORKLOADS)
     if args.controls is None:
-        args.controls = ",".join(BINARY_CONTROLS if args.parent else DEFAULT_CONTROLS)
+        args.controls = ",".join(DEFAULT_BINARY_CONTROLS if args.parent else DEFAULT_CONTROLS)
     try:
         workloads = unique_selection(args.workloads, WORKLOADS, "workload")
         controls = unique_selection(args.controls, CONTROLS, "control")
@@ -807,8 +938,11 @@ def main():
     if args.parent:
         collection.update(parent=str(args.parent), parentSha256=args.parent_hash,
                           comparison="same settings, parent A and candidate B",
-                          regressionMetric="encodeMs", regressions=[],
-                          cpuCommandScope="CPU classification; identical submission mode on both binaries")
+                          regressionMetrics=list(REGRESSION_METRICS), regressions=[],
+                          optionalMetrics="frameGpuMs is rated only when both binaries report it; "
+                                          "a frozen parent without it leaves it candidate-only",
+                          cpuCommandScope="identical submission mode and classifier on both binaries; "
+                                          "-gpu cells classify on the GPU")
     destination = args.out / "analysis.json"
     for workload in workloads:
         for control in controls:
@@ -816,12 +950,12 @@ def main():
             collection["complete"] = len(collection["cells"]) == len(workloads) * len(controls) and all(
                 cell["complete"] for cell in collection["cells"].values())
             if args.parent:
-                collection["regressions"] = encode_regressions(collection["cells"])
+                collection["regressions"] = paired_regressions(collection["cells"])
             destination.write_text(json.dumps(collection, indent=2) + "\n")
     complete = all(cell["complete"] for cell in collection["cells"].values())
     print(f"Wrote {destination}; complete={complete}")
     if args.parent:
-        print("encodeMs regressions: " + ", ".join(row["cell"] for row in collection["regressions"]))
+        print("regressions: " + ", ".join(row["cell"] + " " + row["metric"] for row in collection["regressions"]))
     return 0 if complete else 1
 
 
