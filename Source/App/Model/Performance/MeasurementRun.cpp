@@ -216,7 +216,8 @@ bool MeasurementRun::recordCpu(MeasurementCpuSample sample) {
 }
 
 //======================================================================================================================
-bool MeasurementRun::retire(uint64_t frameId, std::span<const engine::PassTiming> passes) {
+bool MeasurementRun::retire(uint64_t frameId, std::span<const engine::PassTiming> passes,
+                            std::optional<double> frameGpuMs) {
     if (!active())
         return false;
     if (m_lastFrameId != 0 && frameId > m_lastFrameId) {
@@ -233,6 +234,10 @@ bool MeasurementRun::retire(uint64_t frameId, std::span<const engine::PassTiming
         cancel("Measured frame has missing or invalid GPU pass timings");
         return false;
     }
+    if (frameGpuMs && !validTime(*frameGpuMs)) {
+        cancel("Measured frame has an invalid GPU frame duration");
+        return false;
+    }
     if (!found->cpu.expectedPasses.empty() &&
         (passes.size() != found->cpu.expectedPasses.size() ||
          !std::equal(
@@ -246,13 +251,15 @@ bool MeasurementRun::retire(uint64_t frameId, std::span<const engine::PassTiming
             !std::equal(passes.begin(), passes.end(), found->passes.begin(),
                         [](const auto& a, const auto& b) {
                             return a.label == b.label && a.gpuMilliseconds == b.gpuMilliseconds;
-                        })) {
+                        }) ||
+            found->frameGpuMs != frameGpuMs) {
             cancel("Conflicting duplicate GPU timing publication");
             return false;
         }
         return true;
     }
     found->passes.assign(passes.begin(), passes.end());
+    found->frameGpuMs = frameGpuMs;
     found->retired = true;
     completeIfReady();
     return true;

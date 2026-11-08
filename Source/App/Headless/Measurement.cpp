@@ -195,7 +195,7 @@ int runMeasurement(const AppOptions& options) {
             run.cancel(prepared.error().message);
             gpu.submitAndEndFrame(gpuFrame);
             const engine::PassTimingFrame timings = gpu.passTimings();
-            run.retire(timings.frame, timings.passes);
+            run.retire(timings);
             break;
         }
         std::vector<engine::DrawItem> items;
@@ -223,7 +223,7 @@ int runMeasurement(const AppOptions& options) {
             run.cancel(declared.error().message);
             gpu.submitAndEndFrame(gpuFrame);
             const engine::PassTimingFrame timings = gpu.passTimings();
-            run.retire(timings.frame, timings.passes);
+            run.retire(timings);
             break;
         }
         declaration.graph().exportTexture(declaration.displayColor());
@@ -237,7 +237,7 @@ int runMeasurement(const AppOptions& options) {
                                  record, view.skySphere.has_value(), (*renderer)->temporalStatus(),
                                  (*renderer)->lightingStatus()));
         const engine::PassTimingFrame timings = gpu.passTimings();
-        run.retire(timings.frame, timings.passes);
+        run.retire(timings);
         if (options.temporal == TemporalMode::Vendor &&
             (*renderer)->temporalStatus().vendorFallback != render::VendorFallback::None) {
             run.cancel("Requested vendor reconstruction fell back during measurement");
@@ -266,7 +266,7 @@ int runMeasurement(const AppOptions& options) {
             engine::Frame drainFrame = gpu.beginFrame();
             gpu.submitAndEndFrame(drainFrame);
             const engine::PassTimingFrame timings = gpu.passTimings();
-            run.retire(timings.frame, timings.passes);
+            run.retire(timings);
         }
         run.finishDrain();
     }

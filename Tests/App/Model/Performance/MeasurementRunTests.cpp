@@ -128,6 +128,43 @@ TEST_CASE("Declared pass inventory is required at retirement", "[app][measuremen
 }
 
 //======================================================================================================================
+TEST_CASE("Retired frame scope is reported as frameGpuMs beside the pass sum",
+          "[app][measurement]") {
+    MeasurementRun run;
+    REQUIRE(run.start({.warmupFrames = 0, .measuredFrames = 2}, testProvenance()));
+    REQUIRE(run.recordCpu({.frameId = 1, .sequenceFrame = 0, .lighting = {.frameNumber = 1}}));
+    REQUIRE(run.recordCpu({.frameId = 2, .sequenceFrame = 1, .lighting = {.frameNumber = 2}}));
+    const std::array<lmx::engine::PassTiming, 2> passes = {{{"shadow", 0.25}, {"scene", 1.5}}};
+    SECTION("a publication with its frame scope") {
+        REQUIRE(run.retire({.frame = 1, .passes = passes, .frameGpuMs = 2.5}));
+        REQUIRE(run.retire({.frame = 1, .passes = passes, .frameGpuMs = 2.5}));
+        REQUIRE(run.samples()[0].frameGpuMs == 2.5);
+        REQUIRE_FALSE(run.samples()[1].frameGpuMs);
+        const std::string json = run.json();
+        REQUIRE(json.contains(R"("gpuSumMs":1.75,"frameGpuMs":2.5,"renderWidth")"));
+        REQUIRE(json.contains(R"("gpuSumMs":null,"renderWidth")"));
+        REQUIRE(json.contains(R"("frameGpuMs":"lmx.frame scope duration)"));
+    }
+    SECTION("a publication without one keeps the key absent") {
+        REQUIRE(run.retire(1, passes));
+        REQUIRE_FALSE(run.samples()[0].frameGpuMs);
+        REQUIRE(run.json().contains(R"("gpuSumMs":1.75,"renderWidth")"));
+        REQUIRE(run.state() == MeasurementState::Draining);
+    }
+    SECTION("an invalid frame duration cancels") {
+        REQUIRE_FALSE(run.retire({.frame = 1,
+                                  .passes = passes,
+                                  .frameGpuMs = std::numeric_limits<double>::quiet_NaN()}));
+        REQUIRE(run.state() == MeasurementState::Cancelled);
+    }
+    SECTION("a duplicate with a different frame duration cancels") {
+        REQUIRE(run.retire({.frame = 1, .passes = passes, .frameGpuMs = 2.5}));
+        REQUIRE_FALSE(run.retire({.frame = 1, .passes = passes, .frameGpuMs = 3.0}));
+        REQUIRE(run.state() == MeasurementState::Cancelled);
+    }
+}
+
+//======================================================================================================================
 TEST_CASE("Measurement instrumentation and interactive scoring are explicit",
           "[app][measurement]") {
     MeasurementProvenance provenance;

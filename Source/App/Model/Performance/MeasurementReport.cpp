@@ -41,6 +41,8 @@ std::string MeasurementRun::json() const {
         "through endFrame commit; excludes slot wait and post-submit retirement "
         "wait\",\"slotWaitMs\":\"beginFrame including timing publication\",\"gpuSumMs\":\"sum "
         "of timed passes; excludes presentation, driver and untimed work; not throughput\","
+        "\"frameGpuMs\":\"lmx.frame scope duration; includes work outside pass scopes and "
+        "overlap between passes; optional, absent when no frame scope retired\","
         "\"visibilityGpuMs\":\"sum of matched lmx.pass.visibility.* timings; GPU preparation\","
         "\"hzbGpuMs\":\"sum of lmx.pass.hzb.* reduction/publication timings; excludes debug\","
         "\"lightingGpuMs\":\"sum of exact-frame lmx.pass.light.* timings; separate from scene\"},"
@@ -114,6 +116,9 @@ std::string MeasurementRun::json() const {
         for (const auto& pass : sample.passes)
             sum += pass.gpuMilliseconds;
         out += sample.retired ? std::format("{}", sum) : "null";
+        // Additive to schema 5: absent when the retired publication carried no frame scope.
+        if (sample.retired && sample.frameGpuMs)
+            out += std::format(",\"frameGpuMs\":{}", *sample.frameGpuMs);
         out += std::format(
             ",\"renderWidth\":{},\"renderHeight\":{},\"outputWidth\":{},\"outputHeight\":{},"
             "\"effectiveScale\":{},\"effectiveReconstruction\":{},\"vendorFallback\":{}",

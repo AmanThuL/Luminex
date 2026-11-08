@@ -120,6 +120,7 @@ def run_side(binary, path, plan, candidate, unscored, timeout, parent_schema=3):
 
 def collect_cell(args, workload):
     pairs = {name: [] for name in METRICS}
+    optional = {name: [] for name in visibility.OPTIONAL_METRICS}
     observations = []
     failures = []
     for repetition in range(REPETITIONS):
@@ -168,6 +169,8 @@ def collect_cell(args, workload):
             continue
         for name in pairs:
             pairs[name].append([statistics.median(metric(sample, name) for sample in reports[side]["samples"]) for side in ("A", "B")])
+        for name in optional:
+            optional[name].append([visibility.optional_median(reports[side], name) for side in ("A", "B")])
         observation = dict(repetition=repetition, order="".join(order))
         for side in ("A", "B"):
             samples = reports[side]["samples"]
@@ -180,9 +183,12 @@ def collect_cell(args, workload):
         observations.append(observation)
         print(f"{workload}: pair {repetition + 1}/12 {''.join(order)}", flush=True)
     complete = not failures and all(len(values) == REPETITIONS for values in pairs.values())
-    return dict(workload=workload, complete=complete, failures=failures, retainedPairs=pairs,
-                observations=observations,
-                analysis={name: visibility.analyze_pairs(values) for name, values in pairs.items()} if complete else {})
+    analysis = {name: visibility.analyze_pairs(values) for name, values in pairs.items()} if complete else {}
+    if complete:
+        # A frozen zero-control parent omits frameGpuMs: the candidate's is reported, not rated.
+        analysis.update({name: visibility.analyze_optional(values) for name, values in optional.items()})
+    return dict(workload=workload, complete=complete, failures=failures, retainedPairs={**pairs, **optional},
+                observations=observations, analysis=analysis)
 
 
 def fixture(schema=5, mode="direct"):
@@ -284,8 +290,10 @@ class LightingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "selected parent"):
             validate_report(report, plan, True, False, parent_schema=3)
 
-    def collect_zero(self, root, parent_schema, workloads, repetitions=1, document=None):
-        """Collect zero-control cells against fake processes; document(scene, role) names the hash."""
+    def collect_zero(self, root, parent_schema, workloads, repetitions=1, document=None, frame_gpu_ms=None):
+        """Collect zero-control cells against fake processes; document(scene, role) names the hash.
+
+        frame_gpu_ms maps a role to the frameGpuMs its reports carry; an absent role omits it."""
         from types import SimpleNamespace
         import contextlib
         import io
@@ -327,6 +335,9 @@ class LightingTests(unittest.TestCase):
                     report["plan"] = lighting_report.comparable_plan(report["schemaVersion"], report["plan"])
             if "sceneDocument" in report and document is not None:
                 report["sceneDocument"]["sha256"] = document(scene, role)
+            if role in (frame_gpu_ms or {}):
+                for sample in report["samples"]:
+                    sample["frameGpuMs"] = frame_gpu_ms[role]
             Path(command[command.index("--measure") + 1]).write_text(json.dumps(report))
             return Process()
 
@@ -354,6 +365,26 @@ class LightingTests(unittest.TestCase):
                 else:
                     self.assertEqual(parent_command[parent_command.index("--local-lights") + 1], "off")
                     self.assertEqual(parent_command[parent_command.index("--local-light-rig") + 1], "off")
+
+    def test_frame_gpu_ms_is_rated_on_both_sides_and_reported_for_a_candidate_only(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as temp:
+            (cell,), _, _ = self.collect_zero(Path(temp), 5, ["sponza"], repetitions=2,
+                                              frame_gpu_ms={"parent": 2.0, "candidate": 1.5})
+        self.assertTrue(cell["complete"], cell["failures"])
+        self.assertTrue(cell["analysis"]["frameGpuMs"]["available"])
+        self.assertEqual(cell["analysis"]["frameGpuMs"]["medianDeltaPct"], 25)
+        for parent_schema in (3, 5):
+            with self.subTest(parent_schema=parent_schema), tempfile.TemporaryDirectory() as temp:
+                (cell,), _, _ = self.collect_zero(Path(temp), parent_schema, ["sponza"], repetitions=2,
+                                                  frame_gpu_ms={"candidate": 1.5})
+                self.assertTrue(cell["complete"], cell["failures"])
+                frame = cell["analysis"]["frameGpuMs"]
+                self.assertFalse(frame["available"])
+                self.assertEqual(frame["reportedBy"], "candidate")
+                self.assertEqual(frame["absolute"]["candidateMedianMs"], 1.5)
+                self.assertEqual(cell["retainedPairs"]["frameGpuMs"], [[None, 1.5]] * 2)
 
     def test_zero_control_freezes_the_scene_document_per_workload(self):
         import tempfile
