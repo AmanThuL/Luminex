@@ -83,13 +83,21 @@ channels. No table writeback precedes emission.
 | --- | --- | --- | --- |
 | Color attachment | ColorAttachment | ColorAttachmentRead \| ColorAttachmentWrite | ColorAttachment |
 | Depth attachment | DepthStencil | DepthStencilRead \| DepthStencilWrite | DepthStencilWrite |
-| ShaderRead | VertexShader \| FragmentShader for raster; ComputeShader otherwise | ShaderRead | ShaderRead; DepthStencilRead for depth |
-| StorageRead / StorageWrite | Same shader stages | ShaderRead / ShaderWrite | ShaderWrite |
+| ShaderRead | VertexShader \| FragmentShader for raster, FragmentShader for a fragment-only read; ComputeShader otherwise | ShaderRead | ShaderRead; DepthStencilRead for depth |
+| StorageRead / StorageWrite | Same shader stages; a write is never narrowed | ShaderRead / ShaderWrite | ShaderWrite |
 | CopySource / CopyDestination | Copy | CopyRead / CopyWrite | CopySrc / CopyDst |
 | ExternalRead / ExternalWrite | ComputeShader | ShaderRead / ShaderWrite | ShaderRead / ShaderWrite |
 | Buffer IndirectArgument | IndirectArgs | IndirectArgs | — |
 
-Raster shader stages remain conservative. Each physical barrier batch becomes one `barrier` call
+A raster read is both shader stages unless the pass declares it in `PassDesc::fragmentTextureReads`
+or `fragmentBufferReads`. Those reads lower to FragmentShader alone, and the record carries the
+hint as `DebugUse::stages`; the dump prints roles, so it does not show it. Metal 4 waits for a
+render pass's barrier at the stages its destination names, so the scene's vertex work does not wait
+for the light clustering and shadow pass, whose shadow map, light rows, grid, index lists and
+exposure only its fragments read. The shadow pass orders the rows and arguments first, so the
+scene's batch holds no vertex stage. The fullscreen passes (display, selection passthrough and
+outline, the light, temporal and HZB debug views) declare their reads the same way, since their
+vertex shader reads only the vertex index. Each physical barrier batch becomes one `barrier` call
 with global, buffer and texture arrays. Buffer alias dependencies use global barriers; aliased
 textures discard from Undefined with the prior occupant's frontier stages (All fallback) and None
 source access. The prior buffer-write dependency remains effective.
