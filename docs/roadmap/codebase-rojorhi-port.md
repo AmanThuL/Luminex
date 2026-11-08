@@ -1,6 +1,6 @@
 # Codebase Refactoring — RojoRHI Interface Port (R5)
 
-**Status**: Proposed
+**Status**: Accepted
 
 Third file of Part III of the [rendering roadmap](../roadmap.md).
 [Module Boundaries](codebase-module-boundaries.md) holds the module contract and R1;
@@ -24,6 +24,10 @@ takes no work outside R5 until R5.5 integrates.
 tag `r5-v1-reference`: tests at ledger-adjusted counts, images within Luminex's `strict` and
 vendor profiles with byte identity reported per case, 600-frame smokes with no validation message,
 and paired costs not slower beyond noise.
+
+**State:** R5.1–R5.5 are implemented, and R5.5 passed the parity gate and was accepted on
+2026-11-08 with one recorded image exception ([record](../milestones/r/r5.md),
+[test ledger](../milestones/r/r5-tests.md)). R5.6 and R5.7 remain.
 
 **Defer:** Luminex on D3D12; new rendering features; scene-pass deduplication, which
 [ADR 0027](../decisions/0027-scene-pass-deduplication-defer.md) owns; mesh shaders; async compute

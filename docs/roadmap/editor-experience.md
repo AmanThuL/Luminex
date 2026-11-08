@@ -255,7 +255,7 @@ Implemented; on 2026-10-02 the owner authorized integration by squash merge afte
 
 ## UX6 — Scene authoring
 
-**Placement:** [UX5](#ux5--agent-session) → UX6 → N1. The owner asked for the proposal on 2026-10-02 and placed it before N1 on 2026-10-03, answering the record's open decisions the same day. The owner accepted the [record](../milestones/ux/ux6.md) and authorized execution on 2026-10-03; the owner authorized integration on 2026-10-04 after a [milestone review](../milestones/ux/ux6-review-validation.md) and its fixes, and the executor plan is closed. [Validation](../milestones/ux/ux6-validation.md) retains 10/15 original parent parity, 15/15 accepted-reference parity, LightLab 5/5 and incomplete native completion; the outcome and gates below bind.
+**Placement:** [UX5](#ux5--agent-session) → UX6 → [R5](codebase-rojorhi-port.md) → N1. The owner asked for the proposal on 2026-10-02 and placed it before N1 on 2026-10-03, answering the record's open decisions the same day. The owner accepted the [record](../milestones/ux/ux6.md) and authorized execution on 2026-10-03; the owner authorized integration on 2026-10-04 after a [milestone review](../milestones/ux/ux6-review-validation.md) and its fixes, and the executor plan is closed. [Validation](../milestones/ux/ux6-validation.md) retains 10/15 original parent parity, 15/15 accepted-reference parity, LightLab 5/5 and incomplete native completion; the outcome and gates below bind.
 
 **Outcome:** lab objects are saved in the scene document; each object and light says whether it may move; an operator moves a movable subject with a viewport gizmo and cannot move a static one.
 

@@ -2,7 +2,7 @@
 
 **Status**: Implemented
 
-This walkthrough covers the full-stage frame the [integration branch](rojorhi.md#component-boundary) builds: CPU or GPU visibility and clustered light lists → shadow → scene/sky/IBL with local lights → exposure → native or vendor temporal reconstruction → bloom → display → light diagnostics → HZB build → UI. Native TAA, CPU culling, indirect submission and Clustered local lighting are the retained defaults; vendor reconstruction shares temporal inputs. The [local-light default decision](../milestones/m7/m7.5-validation.md#default-decision) follows the passed lossless-list and scoped exact-image gates; Direct remains the reference.
+This walkthrough covers the frame the Renderer builds on [RojoRHI](rojorhi.md#component-boundary): CPU or GPU visibility and clustered light lists → shadow → scene/sky/IBL with local lights → exposure → native or vendor temporal reconstruction → bloom → display → light diagnostics → HZB build → UI. Native TAA, CPU culling, indirect submission and Clustered local lighting are the retained defaults; vendor reconstruction shares temporal inputs. The [local-light default decision](../milestones/m7/m7.5-validation.md#default-decision) follows the passed lossless-list and scoped exact-image gates; Direct remains the reference.
 ## The frame at a glance
 
 A fresh `RenderGraph` imports targets, five geometry/material scene buffers (plus lights when live), two submission buffers, persistent histogram/exposure buffers and the drawable. Renderer composes the stages below; graph compilation
