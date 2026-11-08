@@ -1630,9 +1630,6 @@ class RepositoryContractTests(unittest.TestCase):
                 "RojoRHI",
                 "RojoRHIBench",
                 "RojoRHIImGui",
-                "RojoRHILegacy",
-                "RojoRHILegacyMetal4ImGui",
-                "RojoRHILegacyTests",
                 "RojoRHILtoProbe",
                 "RojoRHIMetalCpp",
                 "RojoRHITests",
@@ -1743,13 +1740,6 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertEqual(
             self.contract["targets"]["Scenes"]["deps"], ["Core", "RojoRHI", "RojoRHIMetalCpp", "Asset", "Engine"]
         )
-
-    def test_no_luminex_target_depends_on_a_legacy_rhi_target(self) -> None:
-        component = set(self.contract["externals"]["rhi"]["targets"])
-        for name, target in self.contract["targets"].items():
-            if name not in component:
-                with self.subTest(target=name):
-                    self.assertFalse(any(dep.startswith("RojoRHILegacy") for dep in target.get("deps", [])))
 
     def test_rhi_consumers_link_the_current_interface(self) -> None:
         for name in ("Engine", "Render", "Scenes", "AppModel", "App", "Tests", "FrameDataBench"):

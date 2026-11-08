@@ -349,9 +349,6 @@
         "RojoRHI",
         "RojoRHIBench",
         "RojoRHIImGui",
-        "RojoRHILegacy",
-        "RojoRHILegacyMetal4ImGui",
-        "RojoRHILegacyTests",
         "RojoRHILtoProbe",
         "RojoRHIMetalCpp",
         "RojoRHITests"
@@ -397,20 +394,8 @@
         "rojoRHI::"
       ]
     },
-    "RojoRHILegacy": {
-      "deps": [
-        "RojoRHIMetalCpp"
-      ]
-    },
     "RojoRHIMetalCpp": {
       "deps": []
-    },
-    "RojoRHILegacyMetal4ImGui": {
-      "deps": [
-        "RojoRHILegacy",
-        "RojoRHIMetalCpp",
-        "ImGui"
-      ]
     },
     "Render": {
       "deps": [
@@ -447,12 +432,6 @@
         "AppModel",
         "Engine",
         "Scenes"
-      ]
-    },
-    "RojoRHILegacyTests": {
-      "deps": [
-        "RojoRHILegacy",
-        "RojoRHIMetalCpp"
       ]
     },
     "RojoRHI": {
