@@ -177,17 +177,22 @@ GraphTexture ShadowStage::declare(RenderGraph& graph, rojoRHI::CommandList& comm
                 const auto pipeline = masked ? m_maskShadowPipelines[item.doubleSided ? 1 : 0].get()
                                              : m_shadowPipeline.get();
                 if (pipeline != bound) {
+                    const bool first = bound == rojoRHI::Pipeline{};
                     commands.setPipeline(pipeline);
                     bound = pipeline;
+                    if (first) {
+                        // Reversed depth pushes casters away from the light; the slope spans the
+                        // PCF kernel. Every shadow pipeline enables depth bias, and the values
+                        // persist across setPipeline to the end of the pass, so one call serves
+                        // every draw.
+                        commands.setDepthBias(-4.0f, -32.0f, 0.0f);
+                    }
                 }
                 if (direct) {
                     engine::registerFrameRoot(
                         "ShadowDrawRoot", commands.pushRoot(ShadowDrawRoot{
                                               .pass = passAddress, .firstEntry = run.firstEntry}));
                 }
-                // Reversed depth pushes casters away from the light; the slope spans the PCF
-                // kernel.
-                commands.setDepthBias(-4.0f, -32.0f, 0.0f);
 #ifndef NDEBUG
                 // The view the material row names: the item's diffuse, else the white fallback.
                 const auto* diffuse = item.diffuse ? item.diffuse : view.tables.whiteTexture;
