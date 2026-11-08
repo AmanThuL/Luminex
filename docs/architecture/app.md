@@ -209,10 +209,12 @@ window. The shell consumes layout-reset intent at the next frame's start.
 [Native menus](app-design-system.md#menus-and-frame-boundaries) share `MenuModel` and
 `runMenuCommand` with the ImGui menu renderer. CPU UI and keyboard ownership finish before drawable
 acquisition. A skipped drawable still calls `UpdatePlatformWindows` and applies appearance, with
-no platform GPU render. Presented frames render platform windows after the main `endFrame`.
-The vendored Metal 4 ImGui backend uses one command buffer and per-slot event per detached window.
-Its maintained patch quarantines each slot's uploaded vertex/index buffers in `usedBuffers` until
-that slot is revisited; platform events and main-frame pacing precede reuse or eviction.
+no platform GPU render. RojoRHI's ImGui adapter (`RojoRHIImGui`) records detached windows on the
+main frame's list and presents them after the main drawable, before `endFrame`; it owns their
+swapchains through `SurfaceCallbacks`, while SDL owns the native windows
+([frame order](rojorhi.md#luminex-side-integration)). Smoke hooks drive the same paths:
+`LMX_MAX_FRAMES`, `--open-window`, `LMX_CLOSE_WINDOWS_AT_FRAME` and `LMX_RESIZE_WINDOW_AT_FRAME`,
+which shrinks the main window to 800×600 points and restores 1280×720 points 100 frames later.
 
 The Render Graph panel coordinates its detached window with separate units for canvas ownership, selection details and
 the dump. Its canvas draws a `GraphLayout` on a vendored `ImGuiNodeEditor` canvas ([ADR

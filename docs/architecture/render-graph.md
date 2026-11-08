@@ -134,7 +134,7 @@ records without discarding the display/bloom reader dependencies.
 On successful target replacement, only the deliberate logical use carries forward; the new
 identity's physical cells come from its own creation fact. Equal-identity resize retains its full
 entry, and failed resize preserves the old targets and all states. Owners forget released
-identities. Pending stages retain their conceptual final-use policy until their ports resume.
+identities.
 Readback consumes and restores exact current physical ranges rather than treating creation layout
 or a nominal logical use as the current state.
 

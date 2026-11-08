@@ -10,8 +10,8 @@ modules are dependencies, not standalone runtime libraries.
 
 `xmake/luminex_shaders.lua` shares entry selection and settings across App, Tests and the
 FrameDataBench target, selecting files containing shader attributes. App selects every
-`Shaders/Passes` entry. Tests adds every `Shaders/Tests` entry, FrameDataQuad included, as v1's
-Tests did. FrameDataBench selects only FrameDataQuad.
+`Shaders/Passes` entry. Tests adds every `Shaders/Tests` entry, FrameDataQuad included.
+FrameDataBench selects only FrameDataQuad.
 
 `RojoRHI/xmake/slang.lua` owns `rojorhi.slang` and the backend compilation/package contract.
 A Metal 4 configure requires `xcodebuild -downloadComponent MetalToolchain`: Slang emits MSL,
@@ -21,6 +21,12 @@ package extension is `.d3d12lib`, without implying consumer hardware acceptance 
 `LMX_SHADER_LIBRARY_EXTENSION` selects the suffix used by
 `GpuContext::loadShaderLibrary` for `Shaders/<basename><extension>`.
 
+Every `Visibility*`, `Hzb*` and `LightCluster*` entry, and every `Occlusion*` entry except
+`OcclusionReference`, compiles with precise floating point through the rule's `slang.precise_files`,
+so ordered fp32 sums stay separately rounded on every backend. The selection is a basename-prefix
+predicate, so a new entry of those families is included without a list edit, and the build fails if
+a prefix names no entry.
+
 Targets retain separate shader directories; the adapter keeps its embedded shader and
 `rojorhi-imgui` directory. Runtime basenames stay flat and case-insensitively unique. The shared
 rule receives the public `RojoRHI/Shaders/RojoRHI` module and Common/family search paths; test
@@ -28,7 +34,7 @@ entries additionally see their oracle-root modules. Module edits participate in 
 
 ## Roots and reflection
 
-Ported entries `import RojoRHI;` and read typed roots with `rojoRHI::root<T>()`. The module owns
+Every entry does `import RojoRHI;` and read typed roots with `rojoRHI::root<T>()`. The module owns
 all backend bindings; consumer entries declare no binding/register numbers. Buffers use `Addr`
 with `load/store`, and textures/samplers use view/sampler indices through the module helpers.
 `uploadFrameData` returns an Addr for nested constants; `pushRoot` supplies the draw/dispatch root.
@@ -49,7 +55,7 @@ The rule reflects Metal, SPIR-V scalar layout and HLSL, maps probe names to C++ 
 `ShaderLayout.h` for the target's real assertion TU. This is layout validation; HLSL reflection
 alone does not establish DXIL execution. Layout probes have an ordinary probe function and no
 shader attribute, are not runtime entries, and cannot be imported. Production/Common modules
-cannot import Tests roots. Pending families keep their probe sections until their roots are ported.
+cannot import Tests roots.
 
 ## Shaders/Common/
 
@@ -62,7 +68,7 @@ Vertex. loadVertex reconstructs logical vectors only. Scene and Shadow roots pre
 firstEntry versus indirect drawId identity and use view/sampler indices. The SceneTableAbi oracle
 writes all116uint words per row for two rows, preserving every field, explicit padding and stride.
 New C++ roots align16; pushRoot supplies GPU256 alignment. Named roots/payloads feed capture
-schema2; the old decoder remains unsupported until its migration. The four scene entries add
+schema 2, which `Tools/GpuDebug` decodes by root name and address. The four scene entries add
 `AccumulateLocalLights` after the directional lights and before image-based lighting, emissive
 and pre-exposure; it loads the 136-byte `LocalLightParams` and, by mode, the light rows (Direct)
 or the rows, grid and index lists (Clustered) through ScenePassRoot's addresses, and Off loads
