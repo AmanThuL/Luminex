@@ -54,7 +54,7 @@ live only in `docs/roadmap.md` and its linked parts under `docs/roadmap/`.
   or `--rojorhi_backend=null` for hosted/CPU checks. Build: `xmake -P .`; run: `xmake run -P . App`.
   Current consumer suites: `xmake test -P . Tests/unit Tests/gpu`; Null `Tests/unit` is CPU-only,
   while Metal `Tests/unit` contains device cases. Name groups instead of a plain `xmake test`.
-  Luminex links `RojoRHI` and app-shell's `RojoRHIImGui`, retaining no first-party Legacy edge; standalone commands: `RojoRHI/AGENTS.md`.
+  Luminex links `RojoRHI` and app-shell's `RojoRHIImGui`; standalone commands: `RojoRHI/AGENTS.md`.
 - **Gotcha**: Tests has `set_default(false)`: first `xmake build -P . Tests`, then use CWD `build/macosx/arm64/<mode>/test` for direct execution/shader lookup.
   GPU regression uses `[gpu]~[.]`; hidden diagnostics require explicit filters.
 - Theme colors: `python3 Tools/Theme/generate_tokens.py --check` validates generated C++/Figma outputs; `--audit` prints 48 contrast pairs. CI runs freshness; root policy runs `Tools/check_literal_colors.py`. Shape/density/type are shared C++ constants, not generated colors.
@@ -222,7 +222,7 @@ ScenePass/ScenePassAuto, ScenePassMask/ScenePassAutoMask, ShadowPass/ShadowPassM
 HistogramAccumulate, ExposureSeed, ExposureResolve, BloomThreshold/BloomDownsample/BloomUpsample,
 DisplayTransform, TemporalReproject, TemporalResolve, TemporalUpscale, SpatialUpscale, TemporalDebugView, VendorTemporalPack (with module TemporalCommon),
 SelectionMask and SelectionOutline (editor-only).
-`Shaders/Tests/` owns FrameDataQuad and the sampler/shadow/fullscreen/MRT/compute-image/buffer-hazard/full-field scene-table ABI oracles. `RojoRHI/Legacy/Shaders/Tests/` is the RHI component's own tree over `Modules/Shadow.slang`: Triangle, the cube/render-area/compute/indirect/binding-limit smoke shaders, and frozen component oracle copies independent of the consumer root ABI. LightClusterCount/Scan/Fill feed the scene passes' address-based local-light loop and LightDebugView draws its diagnostics, and `Shaders/Tests/PunctualLightOracle` holds the shipped punctual light against its CPU mirror. Runtime basenames stay unchanged; frame walkthrough: `docs/architecture/frame-pipeline.md`.
+`Shaders/Tests/` owns FrameDataQuad and the sampler/shadow/fullscreen/MRT/compute-image/buffer-hazard/full-field scene-table ABI oracles. `RojoRHI/Shaders/Tests/` is the RHI component's own tree of conformance shaders over its public `RojoRHI` module. LightClusterCount/Scan/Fill feed the scene passes' address-based local-light loop and LightDebugView draws its diagnostics, and `Shaders/Tests/PunctualLightOracle` holds the shipped punctual light against its CPU mirror. Runtime basenames stay unchanged; frame walkthrough: `docs/architecture/frame-pipeline.md`.
 ## Hard rules
 - C++23. No Metal 3 fallback (`MTLGPUFamilyMetal4` required). 3 frames in flight.
 - Expected failures return checked `lmx::Result<T>`; local misuse uses `LMX_ASSERT`, RHI valid usage is checked in Debug. GPU objects always get labels.
