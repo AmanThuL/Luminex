@@ -133,12 +133,12 @@ private:
                 return meshIds.at(mesh);
             };
             const uint32_t normal = 0xffff8080u;
-            rojoRHI::TextureMip mip{.data = &normal, .bytesPerRow = 4};
+            const rojoRHI::TextureData mip{.bytes = std::as_bytes(std::span(&normal, 1)),
+                                           .bytesPerRow = 4};
             auto marker = engine::GpuTexture::create(device,
-                                                     {.width = 1,
-                                                      .height = 1,
-                                                      .format = rojoRHI::Format::RGBA8Unorm,
-                                                      .sampled = true,
+                                                     {.format = rojoRHI::Format::RGBA8Unorm,
+                                                      .extent = {1, 1, 1},
+                                                      .usage = rojoRHI::TextureUsage::Sampled,
                                                       .label = "lmx.test.scene.normalPresence"},
                                                      std::span{&mip, 1});
             REQUIRE(marker);

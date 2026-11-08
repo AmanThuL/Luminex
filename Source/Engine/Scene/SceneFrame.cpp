@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <span>
 #include <vector>
 
 namespace lmx::engine {
@@ -43,19 +44,18 @@ lmx::Result<void> Scene::finalize(rojoRHI::Device& device) {
     }
     auto vertexBuffer = GpuBuffer::create(device,
                                           {.size = vertices.size() * sizeof(engine::Vertex),
-                                           .storageRead = true,
-                                           .cpuReadback = true,
+                                           .memory = rojoRHI::Memory::Gpu,
                                            .label = "lmx.scene.vertices"},
-                                          vertices.data());
+                                          std::as_bytes(std::span(vertices)));
     if (!vertexBuffer) {
         return std::unexpected(std::move(vertexBuffer.error()));
     }
     auto indexBuffer = GpuBuffer::create(device,
                                          {.size = indices.size() * sizeof(uint32_t),
-                                          .storageRead = true,
-                                          .cpuReadback = true,
+                                          .memory = rojoRHI::Memory::Gpu,
+                                          .usage = rojoRHI::BufferUsage::Index,
                                           .label = "lmx.scene.indices"},
-                                         indices.data());
+                                         std::as_bytes(std::span(indices)));
     if (!indexBuffer) {
         return std::unexpected(std::move(indexBuffer.error()));
     }

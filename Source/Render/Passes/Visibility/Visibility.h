@@ -11,15 +11,22 @@
 #include "Render/Passes/Occlusion/OcclusionCheck.h"
 #include "Render/Passes/Occlusion/OcclusionHistory.h"
 #include <array>
+#include <memory>
 #include <span>
 #include <vector>
 
 namespace lmx::engine {
+class GpuContext;
 /// Candidate geometry and texture bindings supplied by SceneView.
 struct DrawItem;
 } // namespace lmx::engine
 
 namespace lmx::render {
+struct OcclusionDeclarationAssociation;
+/// Creates an opaque declaration identity shared by production and independent reference owners.
+std::shared_ptr<const OcclusionDeclarationAssociation>
+createOcclusionDeclarationAssociation(engine::GpuContext& gpu, uint64_t frame,
+                                      uint64_t sceneGeneration);
 /// Outward distance added to each normalized clipping half-space, in world units.
 constexpr float kVisibilityGuardWorldUnits = 1e-3f;
 /// Device that classifies candidate bounds.
@@ -94,18 +101,24 @@ struct SubmissionStats {
     uint32_t instancedRuns = 0;          ///< Runs with more than one instance.
     uint64_t listBytes = 0;              ///< Bytes written to this frame's row list.
     uint64_t argumentBytes = 0;          ///< Bytes written to this frame's arguments.
-    uint64_t allocatedListBytes = 0;     ///< All three active slot allocations.
-    uint64_t allocatedArgumentBytes = 0; ///< All three active slot allocations.
-    uint32_t pendingReleaseBuffers = 0;  ///< Replaced buffers awaiting retirement.
-    uint64_t candidateBytes = 0;         ///< Logical candidate table bytes.
-    uint64_t runBytes = 0;               ///< Logical run table bytes.
-    uint64_t chunkBytes = 0;             ///< Logical chunk table bytes.
-    uint64_t stateBytes = 0;             ///< State storage bytes.
-    uint64_t counterBytes = 0;           ///< Counter storage bytes.
-    uint32_t growthEvents = 0;           ///< Cumulative paired slot growth count.
+    uint64_t allocatedListBytes = 0;     ///< All three active GPU destination allocations.
+    uint64_t allocatedArgumentBytes = 0; ///< All three active GPU destination allocations.
+    uint64_t allocatedUploadBytes = 0;   ///< All six active Upload staging allocations.
+    uint32_t pendingReleaseBuffers = 0;  ///< Replaced GPU destinations awaiting retirement.
+    /// Replaced Upload staging buffers awaiting retirement.
+    uint32_t pendingReleaseUploadBuffers = 0;
+    uint64_t candidateBytes = 0; ///< Logical candidate table bytes.
+    uint64_t runBytes = 0;       ///< Logical run table bytes.
+    uint64_t chunkBytes = 0;     ///< Logical chunk table bytes.
+    uint64_t stateBytes = 0;     ///< State storage bytes.
+    uint64_t counterBytes = 0;   ///< Counter storage bytes.
+    uint32_t growthEvents = 0;   ///< Cumulative paired slot growth count.
 };
 /// Renderer-owned diagnostics for the last declared frame.
 struct VisibilityStatus {
+    std::shared_ptr<const OcclusionDeclarationAssociation>
+        occlusionAssociation; ///< Exact declaration identity, independent of repeated frame
+                              ///< numbers.
     OcclusionCheckResult occlusionCheck; ///< Independent retired reference result.
     bool occlusionEnabled = false;       ///< Declaration requested previous-frame rejection.
     bool occlusionCheckEnabled = false;  ///< Independent direct reference requested.

@@ -1,5 +1,7 @@
 #include "Support/GpuTestSupport.h"
+#include "Support/LocalLightOracleRoots.h"
 
+#include "Engine/Gpu/GpuOwned.h"
 #include "Engine/Lights/LocalLight.h"
 #include "Engine/Lights/LocalLightMath.h"
 #include "Engine/Scene/SceneTables.h"
@@ -11,9 +13,11 @@
 #include <glm/vec4.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <numbers>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -21,27 +25,7 @@ namespace {
 
 using namespace lmx;
 
-// Mirrors Shaders/Tests/PunctualLightOracle.slang's PunctualSample. Each glm::vec3 is followed by a
-// scalar so both sides see the same 16-byte-aligned structured-buffer stride.
-struct PunctualSample {
-    engine::LightRow light;
-    glm::vec3 position{0.0f};
-    float pad0 = 0.0f;
-    glm::vec3 normal{0.0f};
-    float pad1 = 0.0f;
-    glm::vec3 toEye{0.0f};
-    float pad2 = 0.0f;
-    glm::vec3 baseColour{0.0f};
-    float metallic = 0.0f;
-    glm::vec3 f0{0.0f};
-    float alpha = 0.0f;
-};
-static_assert(sizeof(PunctualSample) == 144);
-static_assert(offsetof(PunctualSample, position) == 64);
-static_assert(offsetof(PunctualSample, normal) == 80);
-static_assert(offsetof(PunctualSample, toEye) == 96);
-static_assert(offsetof(PunctualSample, baseColour) == 112);
-static_assert(offsetof(PunctualSample, f0) == 128);
+using lmx::test::PunctualSample;
 
 // How one sample is allowed to differ from the CPU mirror. The three kinds are not a convenience:
 // they record which zeros the light model actually promises, and a case declares its kind here
@@ -367,44 +351,58 @@ TEST_CASE("the punctual light shader matches its CPU mirror over a fixed sample 
     INFO(errorOf(library));
     REQUIRE(library);
     auto pipeline =
-        gpu->device().createComputePipeline({.library = library->get(),
-                                             .computeEntry = "computeMain",
-                                             .threadsPerThreadgroup = {1, 1, 1},
-                                             .label = "lmx.test.punctualLight.pipeline"});
+        engine::adoptGpu(gpu->device(), gpu->device().createPipeline(rojoRHI::ComputePipelineDesc{
+                                            .compute = {library->get(), "computeMain"},
+                                            .label = "lmx.test.punctualLight.pipeline"}));
     INFO(errorOf(pipeline));
     REQUIRE(pipeline);
 
-    auto sampleBuffer = gpu->device().createBuffer({.size = samples.size() * sizeof(PunctualSample),
-                                                    .label = "lmx.test.punctualLight.samples"},
-                                                   samples.data());
+    auto sampleBuffer = engine::GpuBuffer::create(gpu->device(),
+                                                  {.size = samples.size() * sizeof(PunctualSample),
+                                                   .memory = rojoRHI::Memory::Upload,
+                                                   .label = "lmx.test.punctualLight.samples"},
+                                                  std::as_bytes(std::span(samples)));
     INFO(errorOf(sampleBuffer));
     REQUIRE(sampleBuffer);
-    auto output = lmx::engine::GpuBuffer::create(gpu->device(),
-                                                 {.size = samples.size() * sizeof(glm::vec4),
-                                                  .storageWrite = true,
-                                                  .cpuReadback = true,
-                                                  .label = "lmx.test.punctualLight.output"},
-                                                 nullptr);
+    auto output =
+        engine::GpuBuffer::create(gpu->device(), {.size = samples.size() * sizeof(glm::vec4),
+                                                  .usage = rojoRHI::BufferUsage::ShaderWrite,
+                                                  .label = "lmx.test.punctualLight.output"});
     INFO(errorOf(output));
     REQUIRE(output);
 
-    constexpr uint32_t kSampleSlot = 1;
     auto gpuFrame1 = gpu->beginFrame();
     auto& commands = gpuFrame1.commands;
-    commands.beginComputePass("lmx.test.punctualLight.evaluate");
-    commands.bindComputePipeline(**pipeline);
-    commands.bindStorageBuffer(0, output->rhi(), rojoRHI::StorageAccess::Write);
-    commands.bindBuffer(kSampleSlot, **sampleBuffer);
+    commands.beginScope("lmx.test.punctualLight.evaluate");
+    commands.setPipeline(pipeline->get());
+    commands.pushRoot(lmx::test::PunctualLightRoot{.samples = sampleBuffer->address(),
+                                                   .output = output->address()});
+#ifndef NDEBUG
+    const std::array accesses{rojoRHI::ResourceAccess{.buffer = sampleBuffer->rhi(),
+                                                      .size = sampleBuffer->desc().size,
+                                                      .stage = rojoRHI::Stage::ComputeShader,
+                                                      .access = rojoRHI::Access::ShaderRead},
+                              rojoRHI::ResourceAccess{.buffer = output->rhi(),
+                                                      .size = output->desc().size,
+                                                      .stage = rojoRHI::Stage::ComputeShader,
+                                                      .access = rojoRHI::Access::ShaderWrite}};
+    commands.declareAccess(accesses);
+#endif
     commands.dispatch(static_cast<uint32_t>(samples.size()), 1, 1);
-    commands.endComputePass();
+    commands.endScope();
     gpu->submitAndEndFrame(gpuFrame1);
     gpu->waitIdle();
 
     std::vector<glm::vec4> actual(samples.size());
     {
         const auto readbackBytes = lmx::render::readbackNow(
-            *gpu, *output, lmx::render::BufferUse::StorageWrite, lmx::render::wholeBuffer(*output));
-        std::memcpy(actual.data(), readbackBytes.data(), actual.size() * sizeof(glm::vec4));
+            *gpu, *output,
+            lmx::render::SyncPoint{rojoRHI::Stage::ComputeShader, rojoRHI::Access::ShaderWrite,
+                                   rojoRHI::Layout::Undefined},
+            lmx::render::wholeBuffer(*output));
+        INFO(errorOf(readbackBytes));
+        REQUIRE(readbackBytes);
+        std::memcpy(actual.data(), readbackBytes->data(), actual.size() * sizeof(glm::vec4));
     }
 
     for (size_t index = 0; index < samples.size(); ++index) {

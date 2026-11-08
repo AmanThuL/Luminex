@@ -1,14 +1,15 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file SceneStagePipelines.cpp
-/// @brief Creates scene and sky pipeline variants and immutable light fallbacks.
+/// @brief Creates scene and sky pipeline variants with explicit raster states.
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Render/Passes/Scene/SceneStage.h"
 
 #include "Engine/Gpu/GpuOwned.h"
 
-#include "Render/Passes/LocalLights/LightClusters.h"
 #include "Render/Passes/Temporal/TemporalResolve.h"
+
+#include <array>
 
 #include <format>
 #include <utility>
@@ -20,36 +21,6 @@ lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(engine::GpuContext& 
                                                             rojoRHI::Format sceneColorFormat) {
     rojoRHI::Device& device = gpu.device();
     std::unique_ptr<SceneStage> self(new SceneStage);
-
-    // Minimal immutable storage keeps every declared slot valid when its selection path is unused.
-    {
-        const engine::LightRow freeRow;
-        auto rows = engine::GpuBuffer::create(
-            device, {.size = sizeof(freeRow), .label = "lmx.render.localLightFallbackRows"},
-            &freeRow);
-        if (!rows) {
-            return std::unexpected(rows.error());
-        }
-        self->m_fallbackLightRows = std::move(*rows);
-
-        const ClusterRecord emptyRecord;
-        auto grid = engine::GpuBuffer::create(
-            device, {.size = sizeof(emptyRecord), .label = "lmx.render.localLightFallbackGrid"},
-            &emptyRecord);
-        if (!grid) {
-            return std::unexpected(grid.error());
-        }
-        self->m_fallbackClusterGrid = std::move(*grid);
-
-        constexpr uint32_t kEmptyIndex = 0;
-        auto indices = engine::GpuBuffer::create(
-            device, {.size = sizeof(kEmptyIndex), .label = "lmx.render.localLightFallbackIndices"},
-            &kEmptyIndex);
-        if (!indices) {
-            return std::unexpected(indices.error());
-        }
-        self->m_fallbackClusterIndices = std::move(*indices);
-    }
 
     {
         auto library = gpu.loadShaderLibrary("ScenePass");
@@ -79,43 +50,36 @@ lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(engine::GpuContext& 
         }
         self->m_skyAutoLibrary = std::move(*library);
     }
-    const auto makeScenePipeline = [&](rojoRHI::ShaderLibrary* library, rojoRHI::FillMode fill,
+    const std::array<rojoRHI::ColorTarget, 1> colors{{{.format = sceneColorFormat}}};
+    const std::array<rojoRHI::ColorTarget, 3> motionColors{
+        {{.format = sceneColorFormat}, {.format = kMotionFormat}, {.format = kReactiveFormat}}};
+    const auto makeScenePipeline = [&](rojoRHI::ShaderLibrary library, rojoRHI::FillMode fill,
                                        const char* label) {
         return engine::adoptGpu(
-            device.createGraphicsPipeline({.library = library,
-                                           .vertexEntry = "vertexMain",
-                                           .fragmentEntry = "fragmentMain",
-                                           .colorFormat = sceneColorFormat,
-                                           .depthFormat = rojoRHI::Format::D32Float,
-                                           .depthTestEnable = true,
-                                           .depthWriteEnable = true,
-                                           .fillMode = fill,
-                                           .cullMode = rojoRHI::CullMode::Back,
-                                           // Reversed depth: the pass clears to 0 and the
-                                           // nearer fragment is the larger one.
-                                           .depthCompare = rojoRHI::DepthCompare::Greater,
-                                           .label = label}));
+            device,
+            device.createPipeline({.vertex = {library, "vertexMain"},
+                                   .fragment = {library, "fragmentMain"},
+                                   .raster = {.cull = rojoRHI::CullMode::Back, .fill = fill},
+                                   .depthStencil = {.depthTest = true,
+                                                    .depthWrite = true,
+                                                    .depthCompare = rojoRHI::CompareOp::Greater},
+                                   .colors = colors,
+                                   .depthFormat = rojoRHI::Format::D32Float,
+                                   .label = label}));
     };
-    // The motion twin of makeScenePipeline: the motion entry points, and the motion target as a
-    // second colour attachment. Compiled up front rather than on the frame temporal is first
-    // enabled, because a pipeline compile in the middle of a frame is a hitch a toggle should not
-    // cost.
-    const auto makeSceneMotionPipeline = [&](rojoRHI::ShaderLibrary* library,
-                                             rojoRHI::FillMode fill, const char* label) {
-        return engine::adoptGpu(device.createGraphicsPipeline(
-            {.library = library,
-             .vertexEntry = "vertexMainMotion",
-             .fragmentEntry = "fragmentMainMotion",
-             .colorFormat = sceneColorFormat,
-             .extraColorFormats = {kMotionFormat, kReactiveFormat, rojoRHI::Format::Unknown},
-             .extraColorCount = 2,
-             .depthFormat = rojoRHI::Format::D32Float,
-             .depthTestEnable = true,
-             .depthWriteEnable = true,
-             .fillMode = fill,
-             .cullMode = rojoRHI::CullMode::Back,
-             .depthCompare = rojoRHI::DepthCompare::Greater,
-             .label = label}));
+    const auto makeSceneMotionPipeline = [&](rojoRHI::ShaderLibrary library, rojoRHI::FillMode fill,
+                                             const char* label) {
+        return engine::adoptGpu(
+            device,
+            device.createPipeline({.vertex = {library, "vertexMainMotion"},
+                                   .fragment = {library, "fragmentMainMotion"},
+                                   .raster = {.cull = rojoRHI::CullMode::Back, .fill = fill},
+                                   .depthStencil = {.depthTest = true,
+                                                    .depthWrite = true,
+                                                    .depthCompare = rojoRHI::CompareOp::Greater},
+                                   .colors = motionColors,
+                                   .depthFormat = rojoRHI::Format::D32Float,
+                                   .label = label}));
     };
     {
         auto pipeline = makeScenePipeline(self->m_sceneLibrary.get(), rojoRHI::FillMode::Solid,
@@ -193,18 +157,18 @@ lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(engine::GpuContext& 
 
     // Sky vertices force z == 0, the reversed far plane: use GreaterEqual so they survive the
     // pass's own 0 clear, render inside faces, and avoid rewriting the unchanged depth value.
-    const auto makeSkyPipeline = [&](rojoRHI::ShaderLibrary* library, const char* label) {
+    const auto makeSkyPipeline = [&](rojoRHI::ShaderLibrary library, const char* label) {
         return engine::adoptGpu(
-            device.createGraphicsPipeline({.library = library,
-                                           .vertexEntry = "vertexMain",
-                                           .fragmentEntry = "fragmentMain",
-                                           .colorFormat = sceneColorFormat,
-                                           .depthFormat = rojoRHI::Format::D32Float,
-                                           .depthTestEnable = true,
-                                           .depthWriteEnable = false,
-                                           .cullMode = rojoRHI::CullMode::None,
-                                           .depthCompare = rojoRHI::DepthCompare::GreaterEqual,
-                                           .label = label}));
+            device, device.createPipeline(
+                        {.vertex = {library, "vertexMain"},
+                         .fragment = {library, "fragmentMain"},
+                         .raster = {.cull = rojoRHI::CullMode::None},
+                         .depthStencil = {.depthTest = true,
+                                          .depthWrite = false,
+                                          .depthCompare = rojoRHI::CompareOp::GreaterOrEqual},
+                         .colors = colors,
+                         .depthFormat = rojoRHI::Format::D32Float,
+                         .label = label}));
     };
     {
         auto pipeline = makeSkyPipeline(self->m_skyLibrary.get(), "lmx.render.skyPipeline");
@@ -223,20 +187,18 @@ lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(engine::GpuContext& 
         self->m_skyPipelineAuto = std::move(*pipeline);
     }
 
-    const auto makeSkyMotionPipeline = [&](rojoRHI::ShaderLibrary* library, const char* label) {
-        return engine::adoptGpu(device.createGraphicsPipeline(
-            {.library = library,
-             .vertexEntry = "vertexMainMotion",
-             .fragmentEntry = "fragmentMainMotion",
-             .colorFormat = sceneColorFormat,
-             .extraColorFormats = {kMotionFormat, kReactiveFormat, rojoRHI::Format::Unknown},
-             .extraColorCount = 2,
-             .depthFormat = rojoRHI::Format::D32Float,
-             .depthTestEnable = true,
-             .depthWriteEnable = false,
-             .cullMode = rojoRHI::CullMode::None,
-             .depthCompare = rojoRHI::DepthCompare::GreaterEqual,
-             .label = label}));
+    const auto makeSkyMotionPipeline = [&](rojoRHI::ShaderLibrary library, const char* label) {
+        return engine::adoptGpu(
+            device, device.createPipeline(
+                        {.vertex = {library, "vertexMainMotion"},
+                         .fragment = {library, "fragmentMainMotion"},
+                         .raster = {.cull = rojoRHI::CullMode::None},
+                         .depthStencil = {.depthTest = true,
+                                          .depthWrite = false,
+                                          .depthCompare = rojoRHI::CompareOp::GreaterOrEqual},
+                         .colors = motionColors,
+                         .depthFormat = rojoRHI::Format::D32Float,
+                         .label = label}));
     };
     {
         auto pipeline =
@@ -266,24 +228,24 @@ lmx::Result<std::unique_ptr<SceneStage>> SceneStage::create(engine::GpuContext& 
                 for (uint32_t wireframe = 0; wireframe < 2; ++wireframe) {
                     const uint32_t index = doubleSided * 8 + automatic * 4 + motion * 2 + wireframe;
                     const auto label = std::format("lmx.render.maskScenePipeline.{}", index);
-                    auto pipeline = engine::adoptGpu(device.createGraphicsPipeline(
-                        {.library = self->m_maskSceneLibraries[automatic].get(),
-                         .vertexEntry = motion ? "vertexMainMotion" : "vertexMain",
-                         .fragmentEntry = motion ? "fragmentMainMotion" : "fragmentMain",
-                         .colorFormat = sceneColorFormat,
-                         .extraColorFormats = {motion ? kMotionFormat : rojoRHI::Format::Unknown,
-                                               motion ? kReactiveFormat : rojoRHI::Format::Unknown,
-                                               rojoRHI::Format::Unknown},
-                         .extraColorCount = motion ? 2u : 0u,
-                         .depthFormat = rojoRHI::Format::D32Float,
-                         .depthTestEnable = true,
-                         .depthWriteEnable = true,
-                         .fillMode =
-                             wireframe ? rojoRHI::FillMode::Wireframe : rojoRHI::FillMode::Solid,
-                         .cullMode =
-                             doubleSided ? rojoRHI::CullMode::None : rojoRHI::CullMode::Back,
-                         .depthCompare = rojoRHI::DepthCompare::Greater,
-                         .label = label}));
+                    auto pipeline = engine::adoptGpu(
+                        device,
+                        device.createPipeline(
+                            {.vertex = {self->m_maskSceneLibraries[automatic].get(),
+                                        motion ? "vertexMainMotion" : "vertexMain"},
+                             .fragment = {self->m_maskSceneLibraries[automatic].get(),
+                                          motion ? "fragmentMainMotion" : "fragmentMain"},
+                             .raster = {.cull = doubleSided ? rojoRHI::CullMode::None
+                                                            : rojoRHI::CullMode::Back,
+                                        .fill = wireframe ? rojoRHI::FillMode::Wireframe
+                                                          : rojoRHI::FillMode::Solid},
+                             .depthStencil = {.depthTest = true,
+                                              .depthWrite = true,
+                                              .depthCompare = rojoRHI::CompareOp::Greater},
+                             .colors = motion ? std::span<const rojoRHI::ColorTarget>{motionColors}
+                                              : std::span<const rojoRHI::ColorTarget>{colors},
+                             .depthFormat = rojoRHI::Format::D32Float,
+                             .label = label}));
                     if (!pipeline) {
                         return std::unexpected(pipeline.error());
                     }

@@ -9,27 +9,56 @@
 #include "Render/Passes/Bloom/BloomStage.h"
 #include "Render/Passes/Display/DisplayStage.h"
 #include "Render/Passes/Exposure/ExposureStage.h"
+#include "Render/Passes/Visibility/GpuVisibility.h"
 #include "Render/Renderer/RendererInternal.h"
 
 namespace lmx::render {
 //======================================================================================================================
-GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& commands,
-                                     const engine::Camera& camera, const SceneView& view) {
+lmx::Result<GraphTexture> Renderer::declarePasses(RenderGraph& graph,
+                                                  rojoRHI::CommandList& commands,
+                                                  const engine::Camera& camera,
+                                                  const SceneView& view) {
     // Bound first, so every persistent import of the frame -- the renderer's, its stages' and any a
     // caller declares into the same graph afterwards -- reads the uses earlier frames left.
     graph.bindTextureStates(m_textureStates);
     const RendererFrameState state = deriveFrameState(camera, view);
+    // The diagnostic pipeline is created before anything of this frame is declared.
+    if (view.lightDebugView != engine::LightDebugView::Off &&
+        view.localLightMode == engine::LocalLightMode::Clustered &&
+        view.tables.liveLightCount != 0 && !m_lightDebug) {
+        auto stage = LightDebugStage::create(m_gpu);
+        if (!stage)
+            return std::unexpected(stage.error());
+        m_lightDebug = std::move(*stage);
+    }
     const RendererFrameImports imports = importFrameResources(graph, commands, view, state);
 
-    const auto lightClusters = prepareLighting(graph, commands, view, imports.lightsImport,
-                                               state.extents, state.cameraState);
+    auto lighting = prepareLighting(graph, commands, view, imports.lightsImport, state.extents,
+                                    state.cameraState);
+    if (!lighting)
+        return std::unexpected(lighting.error());
+    const LightClusterOutputs& lightClusters = lighting->clusters;
+
     const auto planes =
         extractFrustumPlanes(state.temporalEnabled ? state.cameraState.viewProjectionJittered
                                                    : state.cameraState.viewProjection);
-    m_previousPyramid = prepareOcclusion(graph, camera, view, state.extents, state.cameraState);
-    const auto drawBuffers = prepareVisibility(graph, commands, view, planes, imports.sceneBuffers);
-    const auto drawRows = drawBuffers[0];
-    const auto drawArguments = drawBuffers[1];
+
+    auto occlusion =
+        prepareOcclusion(graph, commands, camera, view, state.extents, state.cameraState);
+    if (!occlusion) {
+        // The graph will never execute, so its light-list declaration never records.
+        abandonLighting(*lighting);
+        return std::unexpected(occlusion.error());
+    }
+
+    auto visibility =
+        prepareVisibility(graph, commands, view, planes, imports.sceneBuffers, *occlusion);
+    if (!visibility) {
+        abandonLighting(*lighting);
+        return std::unexpected(visibility.error());
+    }
+    const auto drawRows = visibility->buffers[0];
+    const auto drawArguments = visibility->buffers[1];
 
     const GraphTexture shadowRead =
         m_shadowStage->declare(graph, commands, view,
@@ -152,11 +181,6 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& c
                              .bloomEnabled = view.bloomEnabled,
                              .bloomIntensity = view.bloomIntensity});
     if (lightDebugEnabled) {
-        if (!m_lightDebug) {
-            auto stage = LightDebugStage::create(m_gpu);
-            LMX_ASSERT(stage.has_value(), stage.error().message);
-            m_lightDebug = std::move(*stage);
-        }
         LightClusterParams clusterParams;
         clusterParams.rowCount = view.tables.lightRowCount;
         clusterParams.activeWidth = state.extents.renderWidth;
@@ -168,7 +192,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& c
              .depth = nextVersion(imports.sceneDepth),
              .display = nextVersion(displayDestination),
              .output = imports.displayColor,
-             .lights = *imports.lightsImport,
+             .lights = imports.lightsImport.value(),
              .grid = lightClusters.grid,
              .indices = lightClusters.indices,
              .clusters = clusterParams,
@@ -180,25 +204,39 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& c
     }
 
     // HZB follows every temporal depth consumer in the stable graph schedule.
-    declareOcclusion(graph, commands, view, nextVersion(imports.sceneDepth), displayResult);
+    const auto declaredOcclusion = declareOcclusion(
+        graph, commands, view, nextVersion(imports.sceneDepth), displayResult, *occlusion);
+    if (!declaredOcclusion) {
+        // Nothing has recorded yet: cancel the visibility intent explicitly rather than leave an
+        // unrecorded entry for retirement to drop once the abandoned graph releases its callbacks.
+        if (visibility->declaration)
+            m_gpuVisibility->discardUnrecorded(*visibility->declaration);
+        abandonLighting(*lighting);
+        return std::unexpected(declaredOcclusion.error());
+    }
 
     recordFrameStatus(state);
+    commitVisibility(std::move(*visibility), std::move(*occlusion));
+    commitLighting(std::move(*lighting));
     return displayResult;
 }
 
 //======================================================================================================================
-void Renderer::render(rojoRHI::CommandList& commands, const engine::Camera& camera,
-                      const SceneView& view) {
+lmx::Result<void> Renderer::render(rojoRHI::CommandList& commands, const engine::Camera& camera,
+                                   const SceneView& view) {
     // declarePasses() always declares bloom's transients (spec 10: it is an ordinary graph pass
     // whether or not a caller's own graph has a pool), so this convenience path needs one of its
-    // own -- the caller already opened this frame with Device::beginFrame() before calling here,
-    // which is what m_transientPool.beginFrame() requires.
+    // own -- the caller already opened this frame with GpuContext::beginFrame() before calling
+    // here, which is what m_transientPool.beginFrame() requires.
     m_transientPool.beginFrame();
     RenderGraph graph(m_transientPool);
-    const GraphTexture displayColor = declarePasses(graph, commands, camera, view);
+    const auto displayColor = declarePasses(graph, commands, camera, view);
+    if (!displayColor)
+        return std::unexpected(displayColor.error());
     // The display-transformed image is this frame's whole result, so it is what the graph roots.
-    graph.exportTexture(displayColor);
+    graph.exportTexture(*displayColor);
     graph.execute(commands, m_gpu.frameNumber());
+    return {};
 }
 
 } // namespace lmx::render

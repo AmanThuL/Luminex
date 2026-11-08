@@ -1,88 +1,95 @@
 #include "Support/RenderGraphTestSupport.h"
+#include "Support/TestGpu.h"
 
 //======================================================================================================================
 // The whole encoding contract in one frame's shape: the declared order is the reverse of the
 // scheduled one, each pass becomes one labelled render pass carrying its own attachments, the body
 // runs inside it, and the shadow map's render-target-to-sampled transition lands between the two.
-TEST_CASE("execute encodes the schedule as labelled render passes", "[render][graph]") {
-    FakeTexture shadowMap{1024, 1024, "shadowMap"};
-    FakeTexture color{64, 64, "sceneColor"};
-    FakeTexture depth{64, 64, "sceneDepth"};
+TEST_CASE("execute encodes the schedule as labelled render passes", "[render][graph][device]") {
+    auto gpu = createTestGpu();
+    auto shadowMap = createTestTexture(
+        *gpu, rojoRHI::Format::D32Float,
+        rojoRHI::TextureUsage::DepthStencil | rojoRHI::TextureUsage::Sampled, 1024, 1024);
+    auto color =
+        createTestTexture(*gpu, rojoRHI::Format::BGRA8Unorm, rojoRHI::TextureUsage::RenderTarget);
+    auto depth =
+        createTestTexture(*gpu, rojoRHI::Format::D32Float, rojoRHI::TextureUsage::DepthStencil);
     RenderGraph graph;
-    const GraphTexture shadow =
-        graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
-    const GraphTexture sceneColor =
-        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
-    const GraphTexture sceneDepth =
-        graph.importTexture(depth, rojoRHI::Format::D32Float, "sceneDepth");
+    const GraphTexture shadow = graph.importTexture(shadowMap.ref(), "shadowMap");
+    const GraphTexture sceneColor = graph.importTexture(color.ref(), "sceneColor");
+    const GraphTexture sceneDepth = graph.importTexture(depth.ref(), "sceneDepth");
 
-    RecordingCommandList commands;
-    rojoRHI::Texture* resolvedShadow = nullptr;
+    std::vector<std::string> bodies;
+    rojoRHI::Texture resolvedShadow;
 
     PassDesc scene;
     scene.textureReads.push_back(nextVersion(shadow));
     scene.color = ColorAttachment{.handle = sceneColor, .clearColor = {0.05f, 0.07f, 0.10f, 1.0f}};
     scene.depth = DepthAttachment{.handle = sceneDepth};
     graph.addPass("lmx.pass.scene", scene, [&](const PassResources& resources) {
-        commands.events.push_back("body scene");
+        bodies.push_back("body scene");
         const auto texture = resources.texture(nextVersion(shadow));
-        REQUIRE(texture.has_value());
-        resolvedShadow = *texture;
+        resolvedShadow = texture.texture;
     });
 
     PassDesc shadowPass;
     shadowPass.depth = DepthAttachment{.handle = shadow, .store = StoreOp::Store};
     graph.addPass("lmx.pass.shadow", shadowPass,
-                  [&commands](const PassResources&) { commands.events.push_back("body shadow"); });
+                  [&bodies](const PassResources&) { bodies.push_back("body shadow"); });
 
     graph.exportTexture(nextVersion(sceneColor));
 
-    REQUIRE(
-        describe(lowered(graph)) ==
-        std::vector<std::string>{"scope lmx.frame", "begin lmx.pass.shadow", "run lmx.pass.shadow",
-                                 "end", "barrier shadowMap RenderTarget->ShaderRead",
-                                 "begin lmx.pass.scene", "run lmx.pass.scene", "end", "end scope"});
+    const auto snapshot = lowered(graph);
+    REQUIRE(passEvents(snapshot) ==
+            std::vector<std::string>{"scope lmx.frame", "begin lmx.pass.shadow",
+                                     "run lmx.pass.shadow", "end", "begin lmx.pass.scene",
+                                     "run lmx.pass.scene", "end", "end scope"});
+    REQUIRE(logicalTransitions(snapshot.record) ==
+            std::vector<std::string>{"barrier shadowMap RenderTarget->ShaderRead"});
 
-    graph.execute(commands, 1);
-
-    REQUIRE(commands.events ==
-            std::vector<std::string>{"begin lmx.pass.shadow", "body shadow", "end",
-                                     "barrier shadowMap RenderTarget->ShaderRead",
-                                     "begin lmx.pass.scene", "body scene", "end"});
-    REQUIRE(resolvedShadow == &shadowMap);
-
-    REQUIRE(commands.passes.size() == 2);
-    REQUIRE(commands.passes[0].colorTarget == nullptr);
-    REQUIRE(commands.passes[0].depthTarget == &shadowMap);
-    REQUIRE(commands.passes[0].storeDepth);
-    // Forwarded from DepthAttachment's default, which is the reversed convention's far plane --
-    // not rojoRHI::RenderPassDesc's own 1.0, which this pass would otherwise have inherited.
-    REQUIRE(commands.passes[0].clearDepth == 0.0f);
-
-    REQUIRE(commands.passes[1].colorTarget == &color);
-    REQUIRE(commands.passes[1].depthTarget == &depth);
-    REQUIRE(commands.passes[1].clear);
-    REQUIRE_FALSE(commands.passes[1].storeDepth);
-    REQUIRE(commands.passes[1].clearColor[0] == 0.05f);
-    REQUIRE(commands.passes[1].clearColor[1] == 0.07f);
-    REQUIRE(commands.passes[1].clearColor[2] == 0.10f);
-    REQUIRE(commands.passes[1].clearColor[3] == 1.0f);
+    auto recording = gpu->beginFrame();
+    graph.execute(recording.commands, recording.number);
+    gpu->submitAndEndFrame(recording);
+    gpu->waitIdle();
+    REQUIRE(bodies == std::vector<std::string>{"body shadow", "body scene"});
+    REQUIRE(resolvedShadow == shadowMap.rhi());
+    const auto passes = renderPasses(snapshot);
+    REQUIRE(passes.size() == 2);
+    REQUIRE_FALSE(passes[0].color.has_value());
+    REQUIRE(snapshot.resources[passes[0].depth->resource].texture.texture == shadowMap.rhi());
+    REQUIRE(passes[0].depth->store == StoreOp::Store);
+    REQUIRE(passes[0].depth->clearDepth == 0.0f);
+    REQUIRE(snapshot.resources[passes[1].color->resource].texture.texture == color.rhi());
+    REQUIRE(snapshot.resources[passes[1].depth->resource].texture.texture == depth.rhi());
+    REQUIRE(passes[1].color->load == LoadOp::Clear);
+    REQUIRE(passes[1].depth->store == StoreOp::Discard);
+    REQUIRE(passes[1].color->clearColor == std::array<float, 4>{0.05f, 0.07f, 0.10f, 1.0f});
+    const auto barriers = textureBarriers(snapshot);
+    REQUIRE(barriers.size() == 4);
+    const auto read = std::ranges::find_if(barriers, [&](const auto& barrier) {
+        return barrier.resource == shadow.index &&
+               barrier.to.layout == rojoRHI::Layout::DepthStencilRead;
+    });
+    REQUIRE(read != barriers.end());
+    REQUIRE(read->from.access ==
+            (rojoRHI::Access::DepthStencilRead | rojoRHI::Access::DepthStencilWrite));
+    REQUIRE(read->to.access == rojoRHI::Access::ShaderRead);
 }
 
 //======================================================================================================================
 // The barrier is a state transition of the texture, not a property of one read: the second reader
 // finds the shadow map already readable, so a second barrier would be pure cost.
 TEST_CASE("execute transitions a sampled render target once", "[render][graph]") {
-    FakeTexture shadowMap{1024, 1024, "shadowMap"};
-    FakeTexture firstColor{64, 64, "first"};
-    FakeTexture secondColor{64, 64, "second"};
+    auto shadowMap = textureFixture(1024, 1024, "shadowMap");
+    auto firstColor = textureFixture(64, 64, "first");
+    auto secondColor = textureFixture(64, 64, "second");
     RenderGraph graph;
     const GraphTexture shadow =
-        graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
+        graph.importTexture(formatted(shadowMap, rojoRHI::Format::D32Float), "shadowMap");
     const GraphTexture first =
-        graph.importTexture(firstColor, rojoRHI::Format::BGRA8Unorm, "first");
+        graph.importTexture(formatted(firstColor, rojoRHI::Format::BGRA8Unorm), "first");
     const GraphTexture second =
-        graph.importTexture(secondColor, rojoRHI::Format::BGRA8Unorm, "second");
+        graph.importTexture(formatted(secondColor, rojoRHI::Format::BGRA8Unorm), "second");
 
     PassDesc shadowPass;
     shadowPass.depth = DepthAttachment{.handle = shadow, .store = StoreOp::Store};
@@ -101,22 +108,23 @@ TEST_CASE("execute transitions a sampled render target once", "[render][graph]")
 
     const LoweredFrame frame = lowered(graph);
 
-    REQUIRE(describe(frame) ==
-            std::vector<std::string>{
-                "scope lmx.frame", "begin lmx.pass.shadow", "run lmx.pass.shadow", "end",
-                "barrier shadowMap RenderTarget->ShaderRead", "begin lmx.pass.first",
-                "run lmx.pass.first", "end", "begin lmx.pass.second", "run lmx.pass.second", "end",
-                "end scope"});
+    REQUIRE(passEvents(frame) ==
+            std::vector<std::string>{"scope lmx.frame", "begin lmx.pass.shadow",
+                                     "run lmx.pass.shadow", "end", "begin lmx.pass.first",
+                                     "run lmx.pass.first", "end", "begin lmx.pass.second",
+                                     "run lmx.pass.second", "end", "end scope"});
+    REQUIRE(logicalTransitions(frame.record) ==
+            std::vector<std::string>{"barrier shadowMap RenderTarget->ShaderRead"});
 }
 
 //======================================================================================================================
 // Exporting roots a result for the caller to read once the queue drains, which is not a shader read
 // by another pass -- so it is not what the barrier is for.
-TEST_CASE("execute emits no barrier for a texture only exported", "[render][graph]") {
-    FakeTexture color{64, 64, "sceneColor"};
+TEST_CASE("export adds no barrier after the texture's producing pass", "[render][graph]") {
+    auto color = textureFixture(64, 64, "sceneColor");
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(formatted(color, rojoRHI::Format::BGRA8Unorm), "sceneColor");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
@@ -125,8 +133,19 @@ TEST_CASE("execute emits no barrier for a texture only exported", "[render][grap
 
     const LoweredFrame frame = lowered(graph);
 
-    REQUIRE(describe(frame) == std::vector<std::string>{"scope lmx.frame", "begin lmx.pass.scene",
-                                                        "run lmx.pass.scene", "end", "end scope"});
+    REQUIRE(passEvents(frame) == std::vector<std::string>{"scope lmx.frame", "begin lmx.pass.scene",
+                                                          "run lmx.pass.scene", "end",
+                                                          "end scope"});
+    REQUIRE(logicalTransitions(frame.record) == std::vector<std::string>{});
+    const auto barriers = textureBarriers(frame);
+    REQUIRE(barriers.size() == 1);
+    REQUIRE(barriers.front().from.layout == rojoRHI::Layout::Undefined);
+    REQUIRE(barriers.front().to.layout == rojoRHI::Layout::ColorAttachment);
+    const auto begin = std::ranges::find_if(
+        frame.ops, [](const auto& op) { return std::holds_alternative<BeginRenderPassOp>(op); });
+    REQUIRE(begin != frame.ops.end());
+    REQUIRE(begin != frame.ops.begin());
+    REQUIRE(std::holds_alternative<BarriersOp>(*std::prev(begin)));
 }
 
 //======================================================================================================================
@@ -136,12 +155,13 @@ TEST_CASE("execute emits no barrier for a texture only exported", "[render][grap
 // owes a write-after-read barrier before it overwrites the texture, and "other" symmetrically owes
 // one before "resample" for the same reason.
 TEST_CASE("execute transitions a render target again after it is rewritten", "[render][graph]") {
-    FakeTexture pingPong{64, 64, "pingPong"};
-    FakeTexture other{64, 64, "other"};
+    auto pingPong = textureFixture(64, 64, "pingPong");
+    auto other = textureFixture(64, 64, "other");
     RenderGraph graph;
     const GraphTexture target =
-        graph.importTexture(pingPong, rojoRHI::Format::BGRA8Unorm, "pingPong");
-    const GraphTexture scratch = graph.importTexture(other, rojoRHI::Format::BGRA8Unorm, "other");
+        graph.importTexture(formatted(pingPong, rojoRHI::Format::BGRA8Unorm), "pingPong");
+    const GraphTexture scratch =
+        graph.importTexture(formatted(other, rojoRHI::Format::BGRA8Unorm), "other");
 
     PassDesc write;
     write.color = ColorAttachment{.handle = target};
@@ -166,28 +186,20 @@ TEST_CASE("execute transitions a render target again after it is rewritten", "[r
 
     const LoweredFrame frame = lowered(graph);
 
-    REQUIRE(describe(frame) ==
-            std::vector<std::string>{"scope lmx.frame",
-                                     "begin lmx.pass.write",
-                                     "run lmx.pass.write",
-                                     "end",
-                                     "barrier pingPong RenderTarget->ShaderRead",
-                                     "begin lmx.pass.sample",
-                                     "run lmx.pass.sample",
-                                     "end",
+    REQUIRE(passEvents(frame) ==
+            std::vector<std::string>{"scope lmx.frame", "begin lmx.pass.write",
+                                     "run lmx.pass.write", "end", "begin lmx.pass.sample",
+                                     "run lmx.pass.sample", "end", "begin lmx.pass.rewrite",
+                                     "run lmx.pass.rewrite", "end", "begin lmx.pass.resample",
+                                     "run lmx.pass.resample", "end", "end scope"});
+    REQUIRE(logicalTransitions(frame.record) ==
+            std::vector<std::string>{"barrier pingPong RenderTarget->ShaderRead",
                                      "barrier other RenderTarget->ShaderRead",
                                      "barrier pingPong RenderTarget->RenderTarget",
                                      "barrier pingPong ShaderRead->RenderTarget",
-                                     "begin lmx.pass.rewrite",
-                                     "run lmx.pass.rewrite",
-                                     "end",
                                      "barrier pingPong RenderTarget->ShaderRead",
                                      "barrier other RenderTarget->RenderTarget",
-                                     "barrier other ShaderRead->RenderTarget",
-                                     "begin lmx.pass.resample",
-                                     "run lmx.pass.resample",
-                                     "end",
-                                     "end scope"});
+                                     "barrier other ShaderRead->RenderTarget"});
 }
 
 //======================================================================================================================
@@ -196,8 +208,8 @@ TEST_CASE("execute transitions a render target again after it is rewritten", "[r
 // write-after-read barrier the write could retire before the read that depends on the prior
 // contents does; deriveTransitions now owes one before the writing pass.
 TEST_CASE("execute barriers a buffer write after an earlier read", "[render][graph]") {
-    FakeBuffer exposureBuffer{16, "exposure"};
-    FakeBuffer sceneColorBuffer{16, "sceneColor"};
+    auto exposureBuffer = bufferFixture(16, "exposure");
+    auto sceneColorBuffer = bufferFixture(16, "sceneColor");
     RenderGraph graph;
     const GraphBuffer exposure = graph.importBuffer(exposureBuffer, "exposure");
     const GraphBuffer sceneColor = graph.importBuffer(sceneColorBuffer, "sceneColor");
@@ -218,11 +230,12 @@ TEST_CASE("execute barriers a buffer write after an earlier read", "[render][gra
 
     const LoweredFrame frame = lowered(graph);
 
-    REQUIRE(describe(frame) == std::vector<std::string>{
-                                   "scope lmx.frame", "scope lmx.pass.scene", "run lmx.pass.scene",
-                                   "end scope", "barrier exposure StorageRead->StorageWrite",
-                                   "scope lmx.pass.resolve", "run lmx.pass.resolve", "end scope",
-                                   "end scope"});
+    REQUIRE(passEvents(frame) ==
+            std::vector<std::string>{"scope lmx.frame", "scope lmx.pass.scene",
+                                     "run lmx.pass.scene", "end scope", "scope lmx.pass.resolve",
+                                     "run lmx.pass.resolve", "end scope", "end scope"});
+    REQUIRE(logicalTransitions(frame.record) ==
+            std::vector<std::string>{"barrier exposure StorageRead->StorageWrite"});
 }
 
 //======================================================================================================================
@@ -231,13 +244,13 @@ TEST_CASE("execute barriers a buffer write after an earlier read", "[render][gra
 // remembered reader would name whichever read last, leaving the other unordered against the write;
 // the write owes a barrier from *each* distinct reading use, in the order the reads happened.
 TEST_CASE("a buffer write is barriered after every kind of earlier read", "[render][graph]") {
-    FakeBuffer exposureBuffer{16, "exposure"};
-    FakeTexture sceneColorTarget{64, 64, "sceneColor"};
-    FakeBuffer histogramBuffer{1024, "histogram"};
+    auto exposureBuffer = bufferFixture(16, "exposure");
+    auto sceneColorTarget = textureFixture(64, 64, "sceneColor");
+    auto histogramBuffer = bufferFixture(1024, "histogram");
     RenderGraph graph;
     const GraphBuffer exposure = graph.importBuffer(exposureBuffer, "exposure");
-    const GraphTexture sceneColor =
-        graph.importTexture(sceneColorTarget, rojoRHI::Format::RGBA16Float, "sceneColor");
+    const GraphTexture sceneColor = graph.importTexture(
+        formatted(sceneColorTarget, rojoRHI::Format::RGBA16Float), "sceneColor");
     const GraphBuffer histogram = graph.importBuffer(histogramBuffer, "histogram");
 
     // A raster read of the buffer: the shipped scene pass's exposure override.
@@ -270,28 +283,29 @@ TEST_CASE("a buffer write is barriered after every kind of earlier read", "[rend
     REQUIRE(record.debug.transitions[0].beforePass == 2);
     REQUIRE(record.debug.transitions[1].beforePass == 2);
 
-    REQUIRE(describe(frame) == std::vector<std::string>{
-                                   "scope lmx.frame", "begin lmx.pass.scene", "run lmx.pass.scene",
-                                   "end", "scope lmx.pass.histogram", "run lmx.pass.histogram",
-                                   "end scope", "barrier exposure ShaderRead->StorageWrite",
-                                   "barrier exposure StorageRead->StorageWrite",
-                                   "scope lmx.pass.resolve", "run lmx.pass.resolve", "end scope",
-                                   "end scope"});
+    REQUIRE(passEvents(frame) ==
+            std::vector<std::string>{
+                "scope lmx.frame", "begin lmx.pass.scene", "run lmx.pass.scene", "end",
+                "scope lmx.pass.histogram", "run lmx.pass.histogram", "end scope",
+                "scope lmx.pass.resolve", "run lmx.pass.resolve", "end scope", "end scope"});
+    REQUIRE(logicalTransitions(frame.record) ==
+            std::vector<std::string>{"barrier exposure ShaderRead->StorageWrite",
+                                     "barrier exposure StorageRead->StorageWrite"});
 }
 
 //======================================================================================================================
 // The same rule on the texture path, where the pending reads carry subresource ranges: each range a
 // write overlaps keeps the use that read it, so a write over both of them names both.
 TEST_CASE("a texture write is barriered after every kind of earlier read", "[render][graph]") {
-    FakeTexture sceneColorTarget{64, 64, "sceneColor"};
-    FakeBuffer histogramBuffer{1024, "histogram"};
-    FakeTexture displayTarget{64, 64, "display"};
+    auto sceneColorTarget = textureFixture(64, 64, "sceneColor");
+    auto histogramBuffer = bufferFixture(1024, "histogram");
+    auto displayTarget = textureFixture(64, 64, "display");
     RenderGraph graph;
-    const GraphTexture sceneColor =
-        graph.importTexture(sceneColorTarget, rojoRHI::Format::RGBA16Float, "sceneColor");
+    const GraphTexture sceneColor = graph.importTexture(
+        formatted(sceneColorTarget, rojoRHI::Format::RGBA16Float), "sceneColor");
     const GraphBuffer histogram = graph.importBuffer(histogramBuffer, "histogram");
     const GraphTexture display =
-        graph.importTexture(displayTarget, rojoRHI::Format::BGRA8Unorm, "display");
+        graph.importTexture(formatted(displayTarget, rojoRHI::Format::BGRA8Unorm), "display");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
@@ -331,16 +345,18 @@ TEST_CASE("a texture write is barriered after every kind of earlier read", "[ren
     REQUIRE(record.debug.transitions[4].beforePass == 3);
     REQUIRE(record.debug.transitions[4].textureFrom == lmx::render::TextureUse::ShaderRead);
 
-    REQUIRE(describe(frame) ==
+    REQUIRE(passEvents(frame) ==
             std::vector<std::string>{
                 "scope lmx.frame", "begin lmx.pass.scene", "run lmx.pass.scene", "end",
-                "barrier sceneColor RenderTarget->StorageRead", "scope lmx.pass.histogram",
-                "run lmx.pass.histogram", "end scope",
-                "barrier sceneColor RenderTarget->ShaderRead", "begin lmx.pass.display",
-                "run lmx.pass.display", "end", "barrier sceneColor RenderTarget->StorageWrite",
-                "barrier sceneColor StorageRead->StorageWrite",
-                "barrier sceneColor ShaderRead->StorageWrite", "scope lmx.pass.overwrite",
+                "scope lmx.pass.histogram", "run lmx.pass.histogram", "end scope",
+                "begin lmx.pass.display", "run lmx.pass.display", "end", "scope lmx.pass.overwrite",
                 "run lmx.pass.overwrite", "end scope", "end scope"});
+    REQUIRE(logicalTransitions(frame.record) ==
+            std::vector<std::string>{"barrier sceneColor RenderTarget->StorageRead",
+                                     "barrier sceneColor RenderTarget->ShaderRead",
+                                     "barrier sceneColor RenderTarget->StorageWrite",
+                                     "barrier sceneColor StorageRead->StorageWrite",
+                                     "barrier sceneColor ShaderRead->StorageWrite"});
 }
 
 //======================================================================================================================
@@ -348,7 +364,7 @@ TEST_CASE("a texture write is barriered after every kind of earlier read", "[ren
 // not be barriered against itself: the read this pass records is not visible to its own write
 // check, only to a later pass's.
 TEST_CASE("a pass reading and writing one buffer owes itself no barrier", "[render][graph]") {
-    FakeBuffer histogram{1024, "histogram"};
+    auto histogram = bufferFixture(1024, "histogram");
     RenderGraph graph;
     const GraphBuffer bins = graph.importBuffer(histogram, "histogram");
 
@@ -360,9 +376,10 @@ TEST_CASE("a pass reading and writing one buffer owes itself no barrier", "[rend
 
     const LoweredFrame frame = lowered(graph);
 
-    REQUIRE(describe(frame) ==
+    REQUIRE(passEvents(frame) ==
             std::vector<std::string>{"scope lmx.frame", "scope lmx.pass.accumulate",
                                      "run lmx.pass.accumulate", "end scope", "end scope"});
+    REQUIRE(logicalTransitions(frame.record) == std::vector<std::string>{});
 }
 
 //======================================================================================================================
@@ -374,14 +391,16 @@ TEST_CASE("a pass reading and writing one buffer owes itself no barrier", "[rend
 // with nothing to barrier against.
 TEST_CASE("a write-after-read barrier survives an unrelated write to a disjoint range",
           "[render][graph]") {
-    FakeTexture chain{64, 64, "chain", 4};
-    FakeTexture other{64, 64, "other"};
+    auto chain = textureFixture(64, 64, "chain", 4);
+    auto other = textureFixture(64, 64, "other");
     RenderGraph graph;
-    const GraphTexture bloom = graph.importTexture(chain, rojoRHI::Format::RGBA16Float, "bloom");
-    const GraphTexture sink = graph.importTexture(other, rojoRHI::Format::BGRA8Unorm, "other");
+    const GraphTexture bloom =
+        graph.importTexture(formatted(chain, rojoRHI::Format::RGBA16Float), "bloom");
+    const GraphTexture sink =
+        graph.importTexture(formatted(other, rojoRHI::Format::BGRA8Unorm), "other");
 
-    static constexpr rojoRHI::TextureSubresourceRange kMip0{.baseMipLevel = 0, .mipLevelCount = 1};
-    static constexpr rojoRHI::TextureSubresourceRange kMip3{.baseMipLevel = 3, .mipLevelCount = 1};
+    static constexpr rojoRHI::SubresourceRange kMip0{.baseMip = 0, .mipCount = 1};
+    static constexpr rojoRHI::SubresourceRange kMip3{.baseMip = 3, .mipCount = 1};
 
     // A: reads mip 0, and writes a separate texture so it is not dead work no sink reaches.
     PassDesc readA;
@@ -405,11 +424,14 @@ TEST_CASE("a write-after-read barrier survives an unrelated write to a disjoint 
 
     const LoweredFrame frame = lowered(graph);
 
-    REQUIRE(describe(frame) == std::vector<std::string>{
-                                   "scope lmx.frame", "begin lmx.pass.a", "run lmx.pass.a", "end",
-                                   "scope lmx.pass.b", "run lmx.pass.b", "end scope",
-                                   "barrier bloom mips[0..0] layers[0..] ShaderRead->StorageWrite",
-                                   "scope lmx.pass.c", "run lmx.pass.c", "end scope", "end scope"});
+    REQUIRE(passEvents(frame) ==
+            std::vector<std::string>{"scope lmx.frame", "begin lmx.pass.a", "run lmx.pass.a", "end",
+                                     "scope lmx.pass.b", "run lmx.pass.b", "end scope",
+                                     "scope lmx.pass.c", "run lmx.pass.c", "end scope",
+                                     "end scope"});
+    REQUIRE(
+        logicalTransitions(frame.record) ==
+        std::vector<std::string>{"barrier bloom mips[0..0] layers[0..] ShaderRead->StorageWrite"});
 }
 
 //======================================================================================================================
@@ -420,16 +442,17 @@ TEST_CASE("a write-after-read barrier survives an unrelated write to a disjoint 
 // -- only mip 0 was. Erasing the whole 0-3 entry on D's overlap (rather than subtracting mip 0 from
 // it) would leave E wrongly finding nothing owed.
 TEST_CASE("a write-after-read barrier survives a partial-overlap discharge", "[render][graph]") {
-    FakeTexture chain{64, 64, "chain", 4};
-    FakeTexture other{64, 64, "other"};
+    auto chain = textureFixture(64, 64, "chain", 4);
+    auto other = textureFixture(64, 64, "other");
     RenderGraph graph;
-    const GraphTexture bloom = graph.importTexture(chain, rojoRHI::Format::RGBA16Float, "bloom");
-    const GraphTexture sink = graph.importTexture(other, rojoRHI::Format::BGRA8Unorm, "other");
+    const GraphTexture bloom =
+        graph.importTexture(formatted(chain, rojoRHI::Format::RGBA16Float), "bloom");
+    const GraphTexture sink =
+        graph.importTexture(formatted(other, rojoRHI::Format::BGRA8Unorm), "other");
 
-    static constexpr rojoRHI::TextureSubresourceRange kMips0to3{.baseMipLevel = 0,
-                                                                .mipLevelCount = 4};
-    static constexpr rojoRHI::TextureSubresourceRange kMip0{.baseMipLevel = 0, .mipLevelCount = 1};
-    static constexpr rojoRHI::TextureSubresourceRange kMip2{.baseMipLevel = 2, .mipLevelCount = 1};
+    static constexpr rojoRHI::SubresourceRange kMips0to3{.baseMip = 0, .mipCount = 4};
+    static constexpr rojoRHI::SubresourceRange kMip0{.baseMip = 0, .mipCount = 1};
+    static constexpr rojoRHI::SubresourceRange kMip2{.baseMip = 2, .mipCount = 1};
 
     // A: reads mips 0-3 in one declaration, and writes a separate texture so it is not dead work no
     // sink reaches.
@@ -455,12 +478,15 @@ TEST_CASE("a write-after-read barrier survives a partial-overlap discharge", "[r
 
     const LoweredFrame frame = lowered(graph);
 
-    REQUIRE(describe(frame) == std::vector<std::string>{
-                                   "scope lmx.frame", "begin lmx.pass.a", "run lmx.pass.a", "end",
-                                   "barrier bloom mips[0..0] layers[0..] ShaderRead->StorageWrite",
-                                   "scope lmx.pass.d", "run lmx.pass.d", "end scope",
-                                   "barrier bloom mips[2..2] layers[0..] ShaderRead->StorageWrite",
-                                   "scope lmx.pass.e", "run lmx.pass.e", "end scope", "end scope"});
+    REQUIRE(passEvents(frame) ==
+            std::vector<std::string>{"scope lmx.frame", "begin lmx.pass.a", "run lmx.pass.a", "end",
+                                     "scope lmx.pass.d", "run lmx.pass.d", "end scope",
+                                     "scope lmx.pass.e", "run lmx.pass.e", "end scope",
+                                     "end scope"});
+    REQUIRE(
+        logicalTransitions(frame.record) ==
+        std::vector<std::string>{"barrier bloom mips[0..0] layers[0..] ShaderRead->StorageWrite",
+                                 "barrier bloom mips[2..2] layers[0..] ShaderRead->StorageWrite"});
 }
 
 //======================================================================================================================
@@ -469,14 +495,16 @@ TEST_CASE("a write-after-read barrier survives a partial-overlap discharge", "[r
 // nothing -- confirming the subtraction in the case above does not manufacture a spurious barrier
 // when there is truly nothing left pending.
 TEST_CASE("a fully covered read is completely discharged", "[render][graph]") {
-    FakeTexture chain{64, 64, "chain", 4};
-    FakeTexture other{64, 64, "other"};
+    auto chain = textureFixture(64, 64, "chain", 4);
+    auto other = textureFixture(64, 64, "other");
     RenderGraph graph;
-    const GraphTexture bloom = graph.importTexture(chain, rojoRHI::Format::RGBA16Float, "bloom");
-    const GraphTexture sink = graph.importTexture(other, rojoRHI::Format::BGRA8Unorm, "other");
+    const GraphTexture bloom =
+        graph.importTexture(formatted(chain, rojoRHI::Format::RGBA16Float), "bloom");
+    const GraphTexture sink =
+        graph.importTexture(formatted(other, rojoRHI::Format::BGRA8Unorm), "other");
 
-    static constexpr rojoRHI::TextureSubresourceRange kMip0{.baseMipLevel = 0, .mipLevelCount = 1};
-    static constexpr rojoRHI::TextureSubresourceRange kMip1{.baseMipLevel = 1, .mipLevelCount = 1};
+    static constexpr rojoRHI::SubresourceRange kMip0{.baseMip = 0, .mipCount = 1};
+    static constexpr rojoRHI::SubresourceRange kMip1{.baseMip = 1, .mipCount = 1};
 
     // A: reads mip 0 only, and writes a separate texture so it is not dead work no sink reaches.
     PassDesc readA;
@@ -499,11 +527,14 @@ TEST_CASE("a fully covered read is completely discharged", "[render][graph]") {
 
     const LoweredFrame frame = lowered(graph);
 
-    REQUIRE(describe(frame) == std::vector<std::string>{
-                                   "scope lmx.frame", "begin lmx.pass.a", "run lmx.pass.a", "end",
-                                   "barrier bloom mips[0..0] layers[0..] ShaderRead->StorageWrite",
-                                   "scope lmx.pass.d", "run lmx.pass.d", "end scope",
-                                   "scope lmx.pass.e", "run lmx.pass.e", "end scope", "end scope"});
+    REQUIRE(passEvents(frame) ==
+            std::vector<std::string>{"scope lmx.frame", "begin lmx.pass.a", "run lmx.pass.a", "end",
+                                     "scope lmx.pass.d", "run lmx.pass.d", "end scope",
+                                     "scope lmx.pass.e", "run lmx.pass.e", "end scope",
+                                     "end scope"});
+    REQUIRE(
+        logicalTransitions(frame.record) ==
+        std::vector<std::string>{"barrier bloom mips[0..0] layers[0..] ShaderRead->StorageWrite"});
 }
 
 //======================================================================================================================
@@ -514,25 +545,28 @@ TEST_CASE("a fully covered read is completely discharged", "[render][graph]") {
 // that tells the two range rules apart: "one transition per write" would leave the second reader
 // unordered, and only the second reader's own barrier states the dependency it actually has.
 TEST_CASE("each reader of a distinct range gets its own transition", "[render][graph]") {
-    FakeTexture chain{64, 64, "chain", 4};
-    FakeTexture first{64, 64, "first"};
-    FakeTexture second{64, 64, "second"};
+    auto chain = textureFixture(64, 64, "chain", 4);
+    auto first = textureFixture(64, 64, "first");
+    auto second = textureFixture(64, 64, "second");
     RenderGraph graph;
-    const GraphTexture bloom = graph.importTexture(chain, rojoRHI::Format::RGBA16Float, "bloom");
-    const GraphTexture a = graph.importTexture(first, rojoRHI::Format::BGRA8Unorm, "first");
-    const GraphTexture b = graph.importTexture(second, rojoRHI::Format::BGRA8Unorm, "second");
+    const GraphTexture bloom =
+        graph.importTexture(formatted(chain, rojoRHI::Format::RGBA16Float), "bloom");
+    const GraphTexture a =
+        graph.importTexture(formatted(first, rojoRHI::Format::BGRA8Unorm), "first");
+    const GraphTexture b =
+        graph.importTexture(formatted(second, rojoRHI::Format::BGRA8Unorm), "second");
 
     ComputePassDesc write;
     write.textureWrites.push_back(bloom);
     graph.addComputePass("lmx.pass.write", write, kNoWork);
 
     PassDesc readMip0;
-    readMip0.textureReads.push_back({nextVersion(bloom), {.baseMipLevel = 0, .mipLevelCount = 1}});
+    readMip0.textureReads.push_back({nextVersion(bloom), {.baseMip = 0, .mipCount = 1}});
     readMip0.color = ColorAttachment{.handle = a};
     graph.addPass("lmx.pass.readMip0", readMip0, kNoWork);
 
     PassDesc readMip1;
-    readMip1.textureReads.push_back({nextVersion(bloom), {.baseMipLevel = 1, .mipLevelCount = 1}});
+    readMip1.textureReads.push_back({nextVersion(bloom), {.baseMip = 1, .mipCount = 1}});
     readMip1.color = ColorAttachment{.handle = b};
     graph.addPass("lmx.pass.readMip1", readMip1, kNoWork);
 
@@ -544,17 +578,19 @@ TEST_CASE("each reader of a distinct range gets its own transition", "[render][g
 
     REQUIRE(record.debug.transitions.size() == 2);
     REQUIRE(record.debug.transitions[0].beforePass == 1);
-    REQUIRE(record.debug.transitions[0].range.baseMipLevel == 0);
+    REQUIRE(record.debug.transitions[0].range.baseMip == 0);
     REQUIRE(record.debug.transitions[1].beforePass == 2);
-    REQUIRE(record.debug.transitions[1].range.baseMipLevel == 1);
+    REQUIRE(record.debug.transitions[1].range.baseMip == 1);
 
-    REQUIRE(describe(frame) ==
-            std::vector<std::string>{
-                "scope lmx.frame", "scope lmx.pass.write", "run lmx.pass.write", "end scope",
-                "barrier bloom mips[0..0] layers[0..] StorageWrite->ShaderRead",
-                "begin lmx.pass.readMip0", "run lmx.pass.readMip0", "end",
-                "barrier bloom mips[1..1] layers[0..] StorageWrite->ShaderRead",
-                "begin lmx.pass.readMip1", "run lmx.pass.readMip1", "end", "end scope"});
+    REQUIRE(passEvents(frame) ==
+            std::vector<std::string>{"scope lmx.frame", "scope lmx.pass.write",
+                                     "run lmx.pass.write", "end scope", "begin lmx.pass.readMip0",
+                                     "run lmx.pass.readMip0", "end", "begin lmx.pass.readMip1",
+                                     "run lmx.pass.readMip1", "end", "end scope"});
+    REQUIRE(
+        logicalTransitions(frame.record) ==
+        std::vector<std::string>{"barrier bloom mips[0..0] layers[0..] StorageWrite->ShaderRead",
+                                 "barrier bloom mips[1..1] layers[0..] StorageWrite->ShaderRead"});
 }
 
 //======================================================================================================================
@@ -566,13 +602,16 @@ TEST_CASE("each reader of a distinct range gets its own transition", "[render][g
 // reaches the second reader too. Neither condition alone is enough; the two cases below are what
 // each of them rules out.
 TEST_CASE("a reader enclosed by an earlier transition gets none", "[render][graph]") {
-    FakeTexture chain{64, 64, "chain", 4};
-    FakeTexture first{64, 64, "first"};
-    FakeTexture second{64, 64, "second"};
+    auto chain = textureFixture(64, 64, "chain", 4);
+    auto first = textureFixture(64, 64, "first");
+    auto second = textureFixture(64, 64, "second");
     RenderGraph graph;
-    const GraphTexture bloom = graph.importTexture(chain, rojoRHI::Format::RGBA16Float, "bloom");
-    const GraphTexture a = graph.importTexture(first, rojoRHI::Format::BGRA8Unorm, "first");
-    const GraphTexture b = graph.importTexture(second, rojoRHI::Format::BGRA8Unorm, "second");
+    const GraphTexture bloom =
+        graph.importTexture(formatted(chain, rojoRHI::Format::RGBA16Float), "bloom");
+    const GraphTexture a =
+        graph.importTexture(formatted(first, rojoRHI::Format::BGRA8Unorm), "first");
+    const GraphTexture b =
+        graph.importTexture(formatted(second, rojoRHI::Format::BGRA8Unorm), "second");
 
     ComputePassDesc write;
     write.textureWrites.push_back(bloom);
@@ -584,7 +623,7 @@ TEST_CASE("a reader enclosed by an earlier transition gets none", "[render][grap
     graph.addPass("lmx.pass.readAll", readAll, kNoWork);
 
     PassDesc readMip2;
-    readMip2.textureReads.push_back({nextVersion(bloom), {.baseMipLevel = 2, .mipLevelCount = 1}});
+    readMip2.textureReads.push_back({nextVersion(bloom), {.baseMip = 2, .mipCount = 1}});
     readMip2.color = ColorAttachment{.handle = b};
     graph.addPass("lmx.pass.readMip2", readMip2, kNoWork);
 
@@ -595,12 +634,13 @@ TEST_CASE("a reader enclosed by an earlier transition gets none", "[render][grap
     const CompiledFrameRecord& record = frame.record;
 
     REQUIRE(record.debug.transitions.size() == 1);
-    REQUIRE(describe(frame) == std::vector<std::string>{
-                                   "scope lmx.frame", "scope lmx.pass.write", "run lmx.pass.write",
-                                   "end scope", "barrier bloom StorageWrite->ShaderRead",
-                                   "begin lmx.pass.readAll", "run lmx.pass.readAll", "end",
-                                   "begin lmx.pass.readMip2", "run lmx.pass.readMip2", "end",
-                                   "end scope"});
+    REQUIRE(passEvents(frame) ==
+            std::vector<std::string>{"scope lmx.frame", "scope lmx.pass.write",
+                                     "run lmx.pass.write", "end scope", "begin lmx.pass.readAll",
+                                     "run lmx.pass.readAll", "end", "begin lmx.pass.readMip2",
+                                     "run lmx.pass.readMip2", "end", "end scope"});
+    REQUIRE(logicalTransitions(frame.record) ==
+            std::vector<std::string>{"barrier bloom StorageWrite->ShaderRead"});
 }
 
 //======================================================================================================================
@@ -612,15 +652,15 @@ TEST_CASE("a reader enclosed by an earlier transition gets none", "[render][grap
 // it against the scene pass's writes.
 TEST_CASE("a reader of another stage class is not covered by an earlier transition",
           "[render][graph]") {
-    FakeTexture sceneColorTarget{64, 64, "sceneColor"};
-    FakeBuffer histogramBuffer{1024, "histogram"};
-    FakeTexture displayTarget{64, 64, "display"};
+    auto sceneColorTarget = textureFixture(64, 64, "sceneColor");
+    auto histogramBuffer = bufferFixture(1024, "histogram");
+    auto displayTarget = textureFixture(64, 64, "display");
     RenderGraph graph;
-    const GraphTexture sceneColor =
-        graph.importTexture(sceneColorTarget, rojoRHI::Format::RGBA16Float, "sceneColor");
+    const GraphTexture sceneColor = graph.importTexture(
+        formatted(sceneColorTarget, rojoRHI::Format::RGBA16Float), "sceneColor");
     const GraphBuffer histogram = graph.importBuffer(histogramBuffer, "histogram");
     const GraphTexture display =
-        graph.importTexture(displayTarget, rojoRHI::Format::BGRA8Unorm, "display");
+        graph.importTexture(formatted(displayTarget, rojoRHI::Format::BGRA8Unorm), "display");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
@@ -650,13 +690,14 @@ TEST_CASE("a reader of another stage class is not covered by an earlier transiti
     REQUIRE(record.debug.transitions[1].beforePass == 2);
     REQUIRE(record.debug.transitions[1].textureTo == lmx::render::TextureUse::ShaderRead);
 
-    REQUIRE(describe(frame) == std::vector<std::string>{
-                                   "scope lmx.frame", "begin lmx.pass.scene", "run lmx.pass.scene",
-                                   "end", "barrier sceneColor RenderTarget->StorageRead",
-                                   "scope lmx.pass.histogram", "run lmx.pass.histogram",
-                                   "end scope", "barrier sceneColor RenderTarget->ShaderRead",
-                                   "begin lmx.pass.display", "run lmx.pass.display", "end",
-                                   "end scope"});
+    REQUIRE(passEvents(frame) ==
+            std::vector<std::string>{
+                "scope lmx.frame", "begin lmx.pass.scene", "run lmx.pass.scene", "end",
+                "scope lmx.pass.histogram", "run lmx.pass.histogram", "end scope",
+                "begin lmx.pass.display", "run lmx.pass.display", "end", "end scope"});
+    REQUIRE(logicalTransitions(frame.record) ==
+            std::vector<std::string>{"barrier sceneColor RenderTarget->StorageRead",
+                                     "barrier sceneColor RenderTarget->ShaderRead"});
 }
 
 //======================================================================================================================
@@ -665,13 +706,13 @@ TEST_CASE("a reader of another stage class is not covered by an earlier transiti
 // exposure buffer's seeded value is read by the scene raster pass and then by the histogram
 // dispatch, and each owes a barrier of its own.
 TEST_CASE("a buffer reader of another stage class is not covered either", "[render][graph]") {
-    FakeBuffer exposureBuffer{16, "exposure"};
-    FakeTexture sceneColorTarget{64, 64, "sceneColor"};
-    FakeBuffer histogramBuffer{1024, "histogram"};
+    auto exposureBuffer = bufferFixture(16, "exposure");
+    auto sceneColorTarget = textureFixture(64, 64, "sceneColor");
+    auto histogramBuffer = bufferFixture(1024, "histogram");
     RenderGraph graph;
     const GraphBuffer exposure = graph.importBuffer(exposureBuffer, "exposure");
-    const GraphTexture sceneColor =
-        graph.importTexture(sceneColorTarget, rojoRHI::Format::RGBA16Float, "sceneColor");
+    const GraphTexture sceneColor = graph.importTexture(
+        formatted(sceneColorTarget, rojoRHI::Format::RGBA16Float), "sceneColor");
     const GraphBuffer histogram = graph.importBuffer(histogramBuffer, "histogram");
 
     ComputePassDesc seed;
@@ -700,12 +741,14 @@ TEST_CASE("a buffer reader of another stage class is not covered either", "[rend
     REQUIRE(record.debug.transitions[0].bufferTo == lmx::render::BufferUse::ShaderRead);
     REQUIRE(record.debug.transitions[1].bufferTo == lmx::render::BufferUse::StorageRead);
 
-    REQUIRE(describe(frame) ==
-            std::vector<std::string>{
-                "scope lmx.frame", "scope lmx.pass.seed", "run lmx.pass.seed", "end scope",
-                "barrier exposure StorageWrite->ShaderRead", "begin lmx.pass.scene",
-                "run lmx.pass.scene", "end", "barrier exposure StorageWrite->StorageRead",
-                "scope lmx.pass.histogram", "run lmx.pass.histogram", "end scope", "end scope"});
+    REQUIRE(passEvents(frame) ==
+            std::vector<std::string>{"scope lmx.frame", "scope lmx.pass.seed", "run lmx.pass.seed",
+                                     "end scope", "begin lmx.pass.scene", "run lmx.pass.scene",
+                                     "end", "scope lmx.pass.histogram", "run lmx.pass.histogram",
+                                     "end scope", "end scope"});
+    REQUIRE(logicalTransitions(frame.record) ==
+            std::vector<std::string>{"barrier exposure StorageWrite->ShaderRead",
+                                     "barrier exposure StorageWrite->StorageRead"});
 }
 
 //======================================================================================================================
@@ -714,13 +757,13 @@ TEST_CASE("a buffer reader of another stage class is not covered either", "[rend
 // instead, and this frame's first reader is barriered against it as if the write were its own.
 TEST_CASE("a buffer imported with a prior producer transitions before its first reader",
           "[render][graph]") {
-    FakeBuffer exposureBuffer{16, "exposure"};
-    FakeTexture sceneColorTarget{64, 64, "sceneColor"};
+    auto exposureBuffer = bufferFixture(16, "exposure");
+    auto sceneColorTarget = textureFixture(64, 64, "sceneColor");
     RenderGraph graph;
     const GraphBuffer exposure =
         graph.importBuffer(exposureBuffer, "exposure", lmx::render::BufferUse::StorageWrite);
-    const GraphTexture sceneColor =
-        graph.importTexture(sceneColorTarget, rojoRHI::Format::RGBA16Float, "sceneColor");
+    const GraphTexture sceneColor = graph.importTexture(
+        formatted(sceneColorTarget, rojoRHI::Format::RGBA16Float), "sceneColor");
 
     PassDesc scene;
     scene.bufferReads.push_back(exposure);
@@ -738,10 +781,11 @@ TEST_CASE("a buffer imported with a prior producer transitions before its first 
     REQUIRE(record.debug.transitions[0].bufferTo == lmx::render::BufferUse::ShaderRead);
 
     // The barrier leads the frame: nothing precedes the pass that consumes it.
-    REQUIRE(describe(frame) == std::vector<std::string>{"scope lmx.frame",
-                                                        "barrier exposure StorageWrite->ShaderRead",
-                                                        "begin lmx.pass.scene",
-                                                        "run lmx.pass.scene", "end", "end scope"});
+    REQUIRE(passEvents(frame) == std::vector<std::string>{"scope lmx.frame", "begin lmx.pass.scene",
+                                                          "run lmx.pass.scene", "end",
+                                                          "end scope"});
+    REQUIRE(logicalTransitions(frame.record) ==
+            std::vector<std::string>{"barrier exposure StorageWrite->ShaderRead"});
 }
 
 //======================================================================================================================
@@ -749,12 +793,12 @@ TEST_CASE("a buffer imported with a prior producer transitions before its first 
 // import that claims no prior producer states no cross-frame edge, so a reader of it is barriered
 // against nothing. Same frame as above, differing only in which import overload it used.
 TEST_CASE("a buffer imported without a prior producer transitions nothing", "[render][graph]") {
-    FakeBuffer exposureBuffer{16, "exposure"};
-    FakeTexture sceneColorTarget{64, 64, "sceneColor"};
+    auto exposureBuffer = bufferFixture(16, "exposure");
+    auto sceneColorTarget = textureFixture(64, 64, "sceneColor");
     RenderGraph graph;
     const GraphBuffer exposure = graph.importBuffer(exposureBuffer, "exposure");
-    const GraphTexture sceneColor =
-        graph.importTexture(sceneColorTarget, rojoRHI::Format::RGBA16Float, "sceneColor");
+    const GraphTexture sceneColor = graph.importTexture(
+        formatted(sceneColorTarget, rojoRHI::Format::RGBA16Float), "sceneColor");
 
     PassDesc scene;
     scene.bufferReads.push_back(exposure);
@@ -766,16 +810,18 @@ TEST_CASE("a buffer imported without a prior producer transitions nothing", "[re
     const CompiledFrameRecord& record = frame.record;
 
     REQUIRE(record.debug.transitions.empty());
-    REQUIRE(describe(frame) == std::vector<std::string>{"scope lmx.frame", "begin lmx.pass.scene",
-                                                        "run lmx.pass.scene", "end", "end scope"});
+    REQUIRE(passEvents(frame) == std::vector<std::string>{"scope lmx.frame", "begin lmx.pass.scene",
+                                                          "run lmx.pass.scene", "end",
+                                                          "end scope"});
+    REQUIRE(logicalTransitions(frame.record) == std::vector<std::string>{});
 }
 
 //======================================================================================================================
 // The histogram's terminal access is a resolve read, not its earlier accumulate write. Carry that
 // exact use across frames so a following clear gets a WAR barrier and another read gets none.
 TEST_CASE("a buffer import carries its previous-frame read", "[render][graph]") {
-    FakeBuffer persistent{256, "persistent"};
-    FakeBuffer output{256, "output"};
+    auto persistent = bufferFixture(256, "persistent");
+    auto output = bufferFixture(256, "output");
 
     SECTION("prior read before current write") {
         RenderGraph graph;
@@ -814,16 +860,16 @@ TEST_CASE("a buffer import carries its previous-frame read", "[render][graph]") 
 // Persistent render targets are reused while earlier command buffers remain in flight. Their last
 // access seeds the fresh graph: read/write conflicts cross that boundary, while two reads do not.
 TEST_CASE("a texture import carries its previous-frame access", "[render][graph]") {
-    FakeTexture persistent{64, 64, "persistent"};
-    FakeTexture output{64, 64, "output"};
+    auto persistent = textureFixture(64, 64, "persistent");
+    auto output = textureFixture(64, 64, "output");
 
     SECTION("prior read before current write") {
         TextureStateTable states;
-        states.set(persistent, lmx::render::TextureUse::ShaderRead);
+        states.setLogicalUse(persistent.texture, lmx::render::TextureUse::ShaderRead);
         RenderGraph graph;
         graph.bindTextureStates(states);
-        const GraphTexture texture =
-            graph.importPersistentTexture(persistent, rojoRHI::Format::BGRA8Unorm, "persistent");
+        const GraphTexture texture = graph.importPersistentTexture(
+            formatted(persistent, rojoRHI::Format::BGRA8Unorm), "persistent");
         PassDesc overwrite;
         overwrite.color = ColorAttachment{.handle = texture};
         graph.addPass("lmx.pass.overwrite", overwrite, kNoWork);
@@ -838,11 +884,11 @@ TEST_CASE("a texture import carries its previous-frame access", "[render][graph]
 
     SECTION("prior read before current loaded attachment") {
         TextureStateTable states;
-        states.set(persistent, lmx::render::TextureUse::ShaderRead);
+        states.setLogicalUse(persistent.texture, lmx::render::TextureUse::ShaderRead);
         RenderGraph graph;
         graph.bindTextureStates(states);
-        const GraphTexture texture =
-            graph.importPersistentTexture(persistent, rojoRHI::Format::BGRA8Unorm, "persistent");
+        const GraphTexture texture = graph.importPersistentTexture(
+            formatted(persistent, rojoRHI::Format::BGRA8Unorm), "persistent");
         PassDesc loadAndOverwrite;
         loadAndOverwrite.color =
             ColorAttachment{.handle = texture, .load = LoadOp::Load, .store = StoreOp::Store};
@@ -858,13 +904,13 @@ TEST_CASE("a texture import carries its previous-frame access", "[render][graph]
 
     SECTION("prior write before current read") {
         TextureStateTable states;
-        states.set(persistent, lmx::render::TextureUse::RenderTarget);
+        states.setLogicalUse(persistent.texture, lmx::render::TextureUse::RenderTarget);
         RenderGraph graph;
         graph.bindTextureStates(states);
-        const GraphTexture texture =
-            graph.importPersistentTexture(persistent, rojoRHI::Format::BGRA8Unorm, "persistent");
+        const GraphTexture texture = graph.importPersistentTexture(
+            formatted(persistent, rojoRHI::Format::BGRA8Unorm), "persistent");
         const GraphTexture color =
-            graph.importTexture(output, rojoRHI::Format::BGRA8Unorm, "output");
+            graph.importTexture(formatted(output, rojoRHI::Format::BGRA8Unorm), "output");
         PassDesc sample;
         sample.textureReads.push_back(texture);
         sample.color = ColorAttachment{.handle = color};
@@ -880,13 +926,13 @@ TEST_CASE("a texture import carries its previous-frame access", "[render][graph]
 
     SECTION("prior read before current read") {
         TextureStateTable states;
-        states.set(persistent, lmx::render::TextureUse::ShaderRead);
+        states.setLogicalUse(persistent.texture, lmx::render::TextureUse::ShaderRead);
         RenderGraph graph;
         graph.bindTextureStates(states);
-        const GraphTexture texture =
-            graph.importPersistentTexture(persistent, rojoRHI::Format::BGRA8Unorm, "persistent");
+        const GraphTexture texture = graph.importPersistentTexture(
+            formatted(persistent, rojoRHI::Format::BGRA8Unorm), "persistent");
         const GraphTexture color =
-            graph.importTexture(output, rojoRHI::Format::BGRA8Unorm, "output");
+            graph.importTexture(formatted(output, rojoRHI::Format::BGRA8Unorm), "output");
         PassDesc sample;
         sample.textureReads.push_back(texture);
         sample.color = ColorAttachment{.handle = color};

@@ -4,8 +4,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Scene/Scene.h"
+#include "Render/Gpu/Readback.h"
 #include "Render/Renderer/SceneViewBuilder.h"
-#include "Support/GpuTestSupport.h"
+#include "Support/TestGpu.h"
 
 #include <cstring>
 
@@ -43,12 +44,11 @@ TEST_CASE("Scene coverage invalidates every geometry and mask edit", "[gpu][scen
     const auto secondMaterial = scene.addMaterial({});
     const auto id = scene.addObject({.mesh = firstMesh, .material = firstMaterial});
     const std::array<uint8_t, 4> pixels{255, 255, 255, 0};
-    const rojoRHI::TextureMip mip{.data = pixels.data(), .bytesPerRow = 4};
+    const rojoRHI::TextureData mip{.bytes = std::as_bytes(std::span(pixels)), .bytesPerRow = 4};
     auto texture = lmx::engine::GpuTexture::create(*device,
-                                                   {.width = 1,
-                                                    .height = 1,
-                                                    .format = rojoRHI::Format::RGBA8Unorm,
-                                                    .sampled = true,
+                                                   {.format = rojoRHI::Format::RGBA8Unorm,
+                                                    .extent = {1, 1, 1},
+                                                    .usage = rojoRHI::TextureUsage::Sampled,
                                                     .label = "lmx.test.coverage.alpha"},
                                                    std::span(&mip, 1));
     REQUIRE(texture);
@@ -210,10 +210,15 @@ TEST_CASE("object enabled rows reach every paced slot and raw field edits invali
             const auto tables = scene.tables();
             std::vector<engine::InstanceRow> rows(tables.instanceCapacity);
             {
-                const auto bytes = lmx::render::readbackNow(*gpu, *tables.instances,
-                                                            lmx::render::BufferUse::ShaderRead,
-                                                            {0, rows.size() * sizeof(rows[0])});
-                std::memcpy(rows.data(), bytes.data(), rows.size() * sizeof(rows[0]));
+                const auto beforeRead = gpu->frameNumber();
+                const auto bytes =
+                    lmx::render::readbackNow(*gpu, *tables.instances, lmx::render::SyncPoint{},
+                                             {0, rows.size() * sizeof(rows[0])});
+                INFO(errorOf(bytes));
+                REQUIRE(bytes.has_value());
+                REQUIRE(bytes->size() == rows.size() * sizeof(rows[0]));
+                std::memcpy(rows.data(), bytes->data(), rows.size() * sizeof(rows[0]));
+                REQUIRE(gpu->frameNumber() == beforeRead);
             }
             REQUIRE(((rows[id.slot].flags & engine::kInstanceDisabled) == 0) == enabled);
             REQUIRE(scene.objects[0].id == id);

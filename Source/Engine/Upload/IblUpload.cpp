@@ -29,7 +29,7 @@ constexpr float kMaxHalf = 65504.0f;
 
 //======================================================================================================================
 // Uploads a cube chain as RGBA16Float. `chain` is mip-major (chain[0] is the base level); the
-// staging buffers stay alive across createTexture because TextureMip only borrows their storage.
+// staging buffers stay alive across createTexture because TextureData only borrows their storage.
 lmx::Result<GpuTexture> uploadCubeChain(rojoRHI::Device& device,
                                         std::span<const asset::ibl::CpuCubemap> chain,
                                         const std::string& label) {
@@ -58,21 +58,22 @@ lmx::Result<GpuTexture> uploadCubeChain(rojoRHI::Device& device,
         }
     }
 
-    std::vector<rojoRHI::TextureMip> mips;
+    std::vector<rojoRHI::TextureData> mips;
     mips.reserve(staging.size());
     for (uint32_t face = 0; face < asset::ibl::kCubeFaceCount; ++face) {
         for (uint32_t mip = 0; mip < mipCount; ++mip) {
-            mips.push_back({.data = staging[size_t{face} * mipCount + mip].data(),
-                            .bytesPerRow = uint64_t{chain[mip].faceSize} * kHalf4Stride});
+            mips.push_back(
+                {.bytes = std::as_bytes(std::span(staging[size_t{face} * mipCount + mip])),
+                 .bytesPerRow = uint64_t{chain[mip].faceSize} * kHalf4Stride});
         }
     }
     return GpuTexture::create(device,
-                              {.width = chain[0].faceSize,
-                               .height = chain[0].faceSize,
+                              {.type = rojoRHI::TextureType::Cube,
                                .format = rojoRHI::Format::RGBA16Float,
-                               .kind = rojoRHI::TextureKind::Cube,
-                               .mipLevels = mipCount,
-                               .sampled = true,
+                               .extent = {chain[0].faceSize, chain[0].faceSize, 1},
+                               .mips = mipCount,
+                               .layers = asset::ibl::kCubeFaceCount,
+                               .usage = rojoRHI::TextureUsage::Sampled,
                                .label = label},
                               mips);
 }
@@ -85,15 +86,14 @@ lmx::Result<GpuTexture> uploadDfgLut(rojoRHI::Device& device, const std::vector<
         halves[texel * 2] = glm::packHalf1x16(lut[texel].x);
         halves[texel * 2 + 1] = glm::packHalf1x16(lut[texel].y);
     }
-    const rojoRHI::TextureMip mip{.data = halves.data(),
-                                  .bytesPerRow = uint64_t{size} * kHalf2Stride};
-    const std::array<rojoRHI::TextureMip, 1> mips = {mip};
+    const rojoRHI::TextureData mip{.bytes = std::as_bytes(std::span(halves)),
+                                   .bytesPerRow = uint64_t{size} * kHalf2Stride};
+    const std::array<rojoRHI::TextureData, 1> mips = {mip};
     return GpuTexture::create(device,
-                              {.width = size,
-                               .height = size,
-                               .format = rojoRHI::Format::RG16Float,
-                               .mipLevels = 1,
-                               .sampled = true,
+                              {.format = rojoRHI::Format::RG16Float,
+                               .extent = {size, size, 1},
+                               .mips = 1,
+                               .usage = rojoRHI::TextureUsage::Sampled,
                                .label = label},
                               mips);
 }

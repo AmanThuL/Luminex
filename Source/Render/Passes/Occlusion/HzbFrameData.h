@@ -10,6 +10,9 @@
 
 namespace lmx::render {
 
+/// Returns the ceil-sized active dimension at pyramid level; source extent is nonzero.
+uint32_t hzbLevelExtent(uint32_t sourceExtent, uint32_t level);
+
 /// Mirrors Shaders/Passes/Occlusion/HzbReduce.slang's constant block.
 struct HzbReduceParams {
     uint32_t sourceWidth;       ///< Source mip width, pixels.

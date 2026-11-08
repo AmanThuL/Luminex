@@ -25,10 +25,6 @@
 #include <span>
 #include <string_view>
 
-namespace rojoRHI {
-class Texture;
-}
-
 namespace lmx::render {
 
 /// Runtime-selectable, not a pipeline permutation: it is a uniform the shader branches on, so the

@@ -1,4 +1,4 @@
-#include "Support/GpuTestSupport.h"
+#include "Support/TestGpu.h"
 #include <catch2/catch_test_macros.hpp>
 
 #include "App/Model/Scene/EditorSelection.h"

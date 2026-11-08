@@ -2,16 +2,15 @@
 /// @file CaptureSchema.h
 /// @brief Declares the capture-schema vocabulary Luminex code registers uniform layouts in.
 //----------------------------------------------------------------------------------------------------------------------
-/// Luminex code names only these types. On RojoRHI v1 they forward to the backend's capture schema
-/// singleton, because the backend owns the resource and frame-data records and writes the sidecar
-/// at `endCapture`. The switch to v2 replaces the bodies with a Luminex writer keyed by root-struct
-/// name and address.
-
 #pragma once
+
+#include <rojoRHI/RHI.h>
 
 #include <array>
 #include <cstdint>
+#include <filesystem>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace lmx::engine {
@@ -23,10 +22,9 @@ struct SchemaUniformField {
     std::string type;         ///< Shader scalar, vector, or matrix type name.
 };
 
-/// Describes a captured uniform structure and its argument-table slot.
+/// Describes a captured root structure by name and byte layout.
 struct SchemaUniformStruct {
     std::string name;                       ///< Stable uniform structure name.
-    uint32_t slot = 0;                      ///< Argument-table buffer slot.
     uint32_t sizeBytes = 0;                 ///< Total structure size in bytes.
     std::vector<SchemaUniformField> fields; ///< Ordered field layout.
 };
@@ -47,5 +45,27 @@ void registerUniformStruct(SchemaUniformStruct layout);
 
 /// Sets the scene, camera and light context the sidecar records for the captured frame.
 void setCaptureContext(SchemaContext context);
+
+/// Registers owned texture metadata keyed by resource kind and handle bits; copies the label.
+/// Calls are serialized on the renderer-owning thread for Luminex's single active device.
+void registerCaptureResource(rojoRHI::Texture texture, const rojoRHI::TextureDesc& desc);
+/// Registers owned buffer metadata keyed separately from texture handles; copies the label.
+void registerCaptureResource(rojoRHI::Buffer buffer, const rojoRHI::BufferDesc& desc);
+/// Removes a logically released texture; missing or null handles are harmless.
+void unregisterCaptureResource(rojoRHI::Texture texture);
+/// Removes a logically released buffer; missing or null handles are harmless.
+void unregisterCaptureResource(rojoRHI::Buffer buffer);
+/// Opens a capture record window, clearing roots and context while preserving resources/layouts.
+/// No record window may already be open.
+void beginCaptureFrameRecords();
+/// Registers a named root address once per name/address pair; ignored outside a record window.
+void registerFrameRoot(std::string_view rootName, rojoRHI::Addr addr);
+/// Closes the open record window, retaining its roots and context for serialization.
+void endCaptureFrameRecords();
+/// Atomically replaces a sidecar with schema version two; returns false and logs I/O failure.
+/// Does not mutate registry state. Nonfinite context numbers become JSON null.
+bool writeCaptureSchema(const std::filesystem::path& path);
+/// Clears test registry state; requires no live registered owners or active real capture.
+void resetCaptureSchemaForTest();
 
 } // namespace lmx::engine

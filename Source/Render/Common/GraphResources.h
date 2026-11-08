@@ -1,6 +1,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file GraphResources.h
-/// @brief Unwraps declared graph resources with the graph error preserved on failure.
+/// @brief Resolves declared graph resources from immutable pass snapshots.
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
@@ -9,16 +9,27 @@
 
 namespace lmx::render {
 
-// The graph owns the lookup contract; keep its diagnostic when a callback names an invalid handle.
-inline rojoRHI::Texture& texture(const PassResources& resources, GraphTexture handle) {
-    auto result = resources.texture(handle);
-    LMX_ASSERT(result.has_value(), result.error().message);
-    return **result;
+/// Returns the texture identity, view and creation metadata for a declared graph version.
+inline engine::TextureRef texture(const PassResources& resources, GraphTexture handle) {
+    return resources.texture(handle);
 }
-inline rojoRHI::Buffer& buffer(const PassResources& resources, GraphBuffer handle) {
-    auto result = resources.buffer(handle);
-    LMX_ASSERT(result.has_value(), result.error().message);
-    return **result;
+/// Returns the buffer identity for a declared graph version.
+inline rojoRHI::Buffer buffer(const PassResources& resources, GraphBuffer handle) {
+    return resources.buffer(handle);
+}
+/// Returns the sampled view for a declared graph version; an absent view is misuse.
+inline rojoRHI::ViewIndex view(const PassResources& resources, GraphTexture handle) {
+    return resources.view(handle);
+}
+/// Returns a created storage view for the declared version and mip.
+inline rojoRHI::ViewIndex storageView(const PassResources& resources, GraphTexture handle,
+                                      uint32_t mip) {
+    return resources.storageView(handle, mip);
+}
+/// Returns the cached GPU address at an in-bounds byte offset of the declared buffer.
+inline rojoRHI::Addr address(const PassResources& resources, GraphBuffer handle,
+                             uint64_t offset = 0) {
+    return resources.address(handle, offset);
 }
 
 } // namespace lmx::render

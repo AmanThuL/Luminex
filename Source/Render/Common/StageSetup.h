@@ -20,28 +20,30 @@
 
 namespace lmx::render {
 
-// Existing fullscreen-triangle entry with no depth attachment or face culling.
-rojoRHI::GraphicsPipelineDesc fullscreenPipelineDesc(rojoRHI::ShaderLibrary* library,
-                                                     std::string_view fragmentEntry,
-                                                     rojoRHI::Format colorFormat,
-                                                     std::string_view label);
+/// Creates a fullscreen-triangle pipeline with no depth attachment or face culling.
+/// The library must outlive the returned pipeline; creation failures retain their original detail.
+lmx::Result<engine::GpuOwned<rojoRHI::Pipeline>>
+createFullscreenPipeline(rojoRHI::Device device, rojoRHI::ShaderLibrary library,
+                         std::string_view fragmentEntry, rojoRHI::Format colorFormat,
+                         std::string_view label);
 
-// Initializes one two-dimensional texel or all six cube faces from the same source bytes.
+/// Initializes one two-dimensional texel or all six cube faces from the same source bytes.
 lmx::Result<engine::GpuTexture> createTexel(rojoRHI::Device& device, rojoRHI::Format format,
-                                            rojoRHI::TextureKind kind,
+                                            rojoRHI::TextureType kind,
                                             std::span<const std::byte> bytes,
                                             std::string_view label);
 
-// Libraries outlive the pipelines that were created from them, as in each stage owner.
+/// Keeps libraries alive until after the pipelines created from them are released.
 struct ComputePipelines {
-    std::vector<engine::GpuOwned<rojoRHI::ShaderLibrary>> libraries;
-    std::vector<engine::GpuOwned<rojoRHI::ComputePipeline>> pipelines;
+    std::vector<engine::GpuOwned<rojoRHI::ShaderLibrary>>
+        libraries; ///< Shader libraries in caller order.
+    std::vector<engine::GpuOwned<rojoRHI::Pipeline>>
+        pipelines; ///< Corresponding compute pipelines.
 };
 
-// Creates each named library followed by its pipeline, in the caller's order.
+/// Creates each named library followed by its pipeline, in the caller's order.
 lmx::Result<ComputePipelines> createComputePipelines(engine::GpuContext& gpu,
                                                      std::span<const char* const> names,
-                                                     std::string_view labelPrefix,
-                                                     uint32_t (*threadsFor)(uint32_t));
+                                                     std::string_view labelPrefix);
 
 } // namespace lmx::render

@@ -3,55 +3,45 @@
 // at half the scene's resolution into mip 0 of the graph's bloom chain texture. A 2x2 box read
 // keeps the prefilter itself from aliasing before the downsample chain gets a chance to.
 //
-// Slots: texture 0 scene color; storage texture 0 bloom mip 0; buffer 0 params.
+// The address root carries this dispatch's parameters and exact mip view indices.
 
-struct BloomThresholdParams
-{
-    float threshold; // Luminance below this contributes nothing (Render Settings "Bloom threshold").
-    uint srcWidth;    // Scene color extent.
-    uint srcHeight;
-    uint dstWidth;    // Bloom mip 0 extent, ~ half the scene's.
-    uint dstHeight;
-};
-
-[[vk::binding(0, 0)]]
-Texture2D<float4> gSceneColor : register(t0); // → MSL [[texture(0)]]
-
-[[vk::binding(1, 0)]]
-RWTexture2D<float4> gBloomMip0 : register(u1); // → MSL [[texture(1)]]
-
-[[vk::binding(0, 0)]]
-ConstantBuffer<BloomThresholdParams> gParams : register(b0); // → MSL [[buffer(0)]]
+import RojoRHI;
+import BloomRoots;
 
 static const float3 kLuminanceWeights = float3(0.2126, 0.7152, 0.0722);
 
 //======================================================================================================================
-float3 loadClamped(uint2 coord, uint2 extent)
+float3 loadClamped(Texture2D<float4> sceneColor, uint2 coord, uint2 extent)
 {
     uint2 clamped = min(coord, extent - uint2(1, 1));
-    return gSceneColor.Load(int3(int2(clamped), 0)).rgb;
+    return sceneColor.Load(int3(int2(clamped), 0)).rgb;
 }
 
 [shader("compute")]
 [numthreads(8, 8, 1)]
 void computeBloomThreshold(uint3 tid: SV_DispatchThreadID)
 {
-    if (tid.x >= gParams.dstWidth || tid.y >= gParams.dstHeight)
+    let root = rojoRHI::root<BloomThresholdRoot>();
+    let params = rojoRHI::load<BloomThresholdParams>(root.paramsAddr, 0);
+    let sceneColor = rojoRHI::texture2D<float4>(root.sceneColor);
+    let destination = rojoRHI::rwTexture2D<float4>(root.destination);
+    if (tid.x >= params.dstWidth || tid.y >= params.dstHeight)
     {
         return;
     }
 
-    uint2 srcExtent = uint2(gParams.srcWidth, gParams.srcHeight);
+    uint2 srcExtent = uint2(params.srcWidth, params.srcHeight);
     uint2 base = tid.xy * 2u;
-    float3 color = (loadClamped(base, srcExtent) + loadClamped(base + uint2(1, 0), srcExtent) +
-                    loadClamped(base + uint2(0, 1), srcExtent) +
-                    loadClamped(base + uint2(1, 1), srcExtent)) *
+    float3 color = (loadClamped(sceneColor, base, srcExtent) +
+                    loadClamped(sceneColor, base + uint2(1, 0), srcExtent) +
+                    loadClamped(sceneColor, base + uint2(0, 1), srcExtent) +
+                    loadClamped(sceneColor, base + uint2(1, 1), srcExtent)) *
                    0.25;
 
     float luminance = dot(color, kLuminanceWeights);
     // Soft knee-free threshold: the fraction of luminance above the cutoff carries through
     // unchanged, so a probe well above threshold keeps its own color rather than saturating to
     // white -- what the bloom energy oracle checks against a CPU-side prediction.
-    float contribution = max(luminance - gParams.threshold, 0.0) / max(luminance, 1e-4);
-    gBloomMip0[tid.xy] = float4(color * contribution, 1.0);
+    float contribution = max(luminance - params.threshold, 0.0) / max(luminance, 1e-4);
+    destination[tid.xy] = float4(color * contribution, 1.0);
 }

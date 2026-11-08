@@ -3,8 +3,8 @@
 #include "Render/Renderer/SceneViewBuilder.h"
 #include "Scenes/CatalogScenes.h"
 #include "Scenes/SceneLibrary.h"
-#include "Support/GpuTestSupport.h"
 #include "Support/SceneDocumentTestSupport.h"
+#include "Support/TestGpu.h"
 #include <array>
 
 //======================================================================================================================
@@ -275,12 +275,12 @@ TEST_CASE("LightLab append preserves the saved material field and its bounds",
     auto* device = &gpu->device();
     REQUIRE(gpu);
     engine::Scene scene;
-    auto texture = engine::GpuTexture::create(*device, {.width = kSize,
-                                                        .height = kSize,
-                                                        .format = rojoRHI::Format::BGRA8Unorm,
-                                                        .renderTarget = true,
-                                                        .cpuReadback = true,
-                                                        .label = "UX6.saved-field-texture"});
+    constexpr uint32_t kSavedTextureExtent = 64;
+    auto texture = engine::GpuTexture::create(
+        *device, {.format = rojoRHI::Format::BGRA8Unorm,
+                  .extent = {kSavedTextureExtent, kSavedTextureExtent, 1},
+                  .usage = rojoRHI::TextureUsage::RenderTarget,
+                  .label = "UX6.saved-field-texture"});
     REQUIRE(texture);
     const auto textureId = scene.addTexture(std::move(*texture));
     const auto materialId = scene.addMaterial({.diffuse = textureId, .roughness = 0.85f});

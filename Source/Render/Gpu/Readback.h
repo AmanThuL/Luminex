@@ -1,23 +1,22 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file Readback.h
-/// @brief Declares recorded and immediate GPU readback that names each resource's current use.
+/// @brief Declares deferred readback outcomes and preserving copies with exact physical state.
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
 
+#include "Core/Diagnostics/Result.h"
 #include "Engine/Gpu/GpuBuffer.h"
 #include "Engine/Gpu/GpuContext.h"
 #include "Engine/Gpu/GpuTexture.h"
-#include "Render/Graph/ResourceUse.h"
+#include "Render/Graph/RenderGraphLowering.h"
+#include "Render/Graph/TextureStateTable.h"
 
-#include <rojoRHI/Buffer.h>
-#include <rojoRHI/CommandList.h>
-#include <rojoRHI/Format.h>
-#include <rojoRHI/Texture.h>
-#include <rojoRHI/TextureDesc.h>
+#include <rojoRHI/RHI.h>
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <type_traits>
 #include <vector>
@@ -30,76 +29,64 @@ struct BufferRegion {
     uint64_t size = 0;   ///< Number of bytes in the range.
 };
 
-/// One readback recorded into a frame, resolved once that frame has retired.
-///
-/// Callers treat a ticket as opaque: they get it from `recordReadback`, keep or move it until the
-/// frame retires and pass it to `resolve`, and never build one or read its fields. The switch to
-/// v2 adds the staging copy as a handle into a pool the GPU context owns. Exactly one of `buffer`
-/// and `texture` is set; a texture ticket covers level 0, tightly packed. The ticket names the
-/// object the owner held when it was recorded, never the owner: an owner can be handed a new object
-/// while a readback is still pending, as draw-list growth does, and the resolve must read the
-/// object the frame wrote. That object must outlive the resolve.
+/// Opaque shared storage for a recorded copy, mapped source, empty operation or causal error.
+struct ReadbackOperation;
+
+/// One deferred readback outcome; a default ticket has no recorded operation and cannot resolve.
+/// Copies share staging ownership; retain a copy through resolution.
+/// The context/device must outlive every copy of the ticket.
+/// A mapped source must remain alive and unmodified until resolution; a staged source must remain
+/// alive until its recorded frame retires. Metadata names the identity recorded, not its owner.
 struct ReadbackTicket {
-    rojoRHI::Buffer* buffer = nullptr;   ///< Buffer read back, or null for a texture.
-    rojoRHI::Texture* texture = nullptr; ///< Texture read back, or null for a buffer.
-    BufferRegion region;                 ///< Bytes the resolve copies out.
-    uint64_t frame = 0;                  ///< Frame the readback was recorded in.
+    rojoRHI::Buffer buffer{};   ///< Recorded buffer identity, or null for a texture.
+    rojoRHI::Texture texture{}; ///< Recorded texture identity, or null for a buffer.
+    BufferRegion region;        ///< Original buffer region or packed mip-zero texture bytes.
+    uint64_t frame = 0;         ///< Actual frame whose completion makes the bytes available.
+
+private:
+    friend struct ReadbackAccess;
+    std::shared_ptr<ReadbackOperation> m_operation;
 };
 
-/// Returns the bytes a texel of `format` occupies when read back tightly packed.
-///
-/// Named apart from RojoRHI v1's `bytesPerPixel`, so code that uses both namespaces stays
-/// unambiguous.
-///
-/// Matches RojoRHI v1's own table for every format it reads back; a block-compressed, depth or
-/// unknown format has no packed texel and returns 0.
+/// Returns packed texel bytes, including D32Float and RGB10A2; stencil/BC/Undefined return zero.
 uint32_t packedTexelBytes(rojoRHI::Format format);
-
-/// Returns the tightly packed size of level 0 of a texture described by `desc`.
+/// Returns tightly packed mip-zero bytes for one two-dimensional slice of desc.
 uint64_t packedTextureBytes(const rojoRHI::TextureDesc& desc);
-
-/// Returns the region that spans all of `buffer`, from offset zero.
+/// Returns the byte region covering the complete buffer.
 BufferRegion wholeBuffer(const engine::GpuBuffer& buffer);
 
-/// Builds the ticket for reading `region` of `buffer` back after `frame` retires; the region must
-/// lie inside the buffer.
-///
-/// Internal to the readback seam and its tests: callers obtain tickets from `recordReadback`.
+/// Creates internal source metadata; a nonempty Gpu source still needs a recorded staging copy.
+/// Mapped source metadata borrows the actual pointer and requires source lifetime through resolve.
 ReadbackTicket makeReadbackTicket(const engine::GpuBuffer& buffer, BufferRegion region,
                                   uint64_t frame);
-/// Builds the ticket for reading level 0 of `texture` back after `frame` retires; internal to the
-/// readback seam and its tests, as the buffer form is.
+/// Creates internal texture metadata; a staging copy must be attached before it can resolve.
 ReadbackTicket makeReadbackTicket(const engine::GpuTexture& texture, uint64_t frame);
+/// Creates a deferred causal failure, used when staging creation fails before any copy commands.
+ReadbackTicket makeReadbackTicket(Error error);
 
-/// Records a readback of `region` of `buffer` into the open frame's `commands`.
-///
-/// `current` is the use the frame last recorded on the buffer before this point. On RojoRHI v1
-/// nothing is recorded and `current` is unused: the ticket names the open frame, and `resolve`
-/// reads the buffer itself. The switch to v2 records here the barrier out of `current`, the copy
-/// into a readback buffer and the barrier back, without touching callers.
+/// Records a preserving buffer copy, or borrows mapped Upload/Readback bytes until frame
+/// retirement. Gpu copies require four-byte aligned offset/size; empty regions record no allocation
+/// or command. current names the actual prior stage/access frontier; its layout member is unused.
 ReadbackTicket recordReadback(engine::GpuContext& gpu, rojoRHI::CommandList& commands,
-                              const engine::GpuBuffer& buffer, BufferUse current,
+                              const engine::GpuBuffer& buffer, SyncPoint current,
                               BufferRegion region);
-/// Records a readback of level 0 of `texture` into the open frame's `commands`.
-///
-/// `current` is the use the frame last recorded on the texture before this point; v1 ignores it
-/// as the buffer form does.
+/// Records a preserving mip-zero/layer-zero texture copy using exact known table state.
 ReadbackTicket recordReadback(engine::GpuContext& gpu, rojoRHI::CommandList& commands,
-                              const engine::GpuTexture& texture, TextureUse current);
+                              const engine::GpuTexture& texture, const TextureStateTable& current);
+/// Records the same copy with exact known mip-zero/layer-zero state, without holes or overlaps.
+/// Undefined cannot be preserved. A restored None/None frontier needs a host frame wait before
+/// later GPU use, or an explicit dependency establishing that later use. Other cells are untouched.
+ReadbackTicket recordReadback(engine::GpuContext& gpu, rojoRHI::CommandList& commands,
+                              const engine::GpuTexture& texture,
+                              std::span<const TextureRangeState> current);
 
-/// Copies the bytes `ticket` names into `destination`.
-///
-/// A texture destination holds exactly `ticket.region.size` bytes. A buffer destination holds at
-/// most that many and receives the region's leading bytes: it serves a caller that learns from the
-/// retired frame itself how much of the region is defined, as a count read back first.
-///
-/// The caller resolves only after the ticket's frame has retired. On RojoRHI v1 this is the
-/// blocking readback; a buffer ticket must start at offset zero because v1 reads a buffer's leading
-/// bytes only. Bytes are `uint8_t`, as `readbackNow` returns them.
-void resolve(engine::GpuContext& gpu, const ReadbackTicket& ticket, std::span<uint8_t> destination);
+/// Waits for the recorded frame and copies into destination, or returns the unchanged causal error.
+/// Texture destinations must hold all packed bytes; buffer destinations may take a leading subset.
+/// Default or metadata-only Gpu tickets are misuse; a recorded empty ticket is a valid success.
+Result<void> resolve(engine::GpuContext& gpu, const ReadbackTicket& ticket,
+                     std::span<uint8_t> destination);
 
-/// Views `values` as the `uint8_t` bytes a resolve fills, as `std::as_writable_bytes` views them as
-/// `std::byte`, so a typed destination is filled in place without a staging copy.
+/// Views writable trivially-copyable values as the uint8 bytes resolve fills.
 template <typename T, std::size_t Extent>
 std::span<uint8_t> resolveBytes(std::span<T, Extent> values) {
     static_assert(std::is_trivially_copyable_v<T> && !std::is_const_v<T>,
@@ -107,18 +94,16 @@ std::span<uint8_t> resolveBytes(std::span<T, Extent> values) {
     return {reinterpret_cast<uint8_t*>(values.data()), values.size_bytes()};
 }
 
-/// Waits for the GPU to go idle and returns level 0 of `texture`, tightly packed.
-///
-/// Valid only outside a frame: an open frame would never complete under the wait. RojoRHI v1
-/// cannot check that, so the caller must. `current` is the texture's use at that point, unused on
-/// v1, which reads the texture directly.
-std::vector<uint8_t> readbackNow(engine::GpuContext& gpu, const engine::GpuTexture& texture,
-                                 TextureUse current);
-/// Waits for the GPU to go idle and returns `region` of `buffer`.
-///
-/// Valid only outside a frame, as the texture form is. `region` must lie inside the buffer; on
-/// RojoRHI v1 it must also start at offset zero, and `current` is unused.
-std::vector<uint8_t> readbackNow(engine::GpuContext& gpu, const engine::GpuBuffer& buffer,
-                                 BufferUse current, BufferRegion region);
+/// Reads one texture slice outside a frame, restoring its exact known table state.
+Result<std::vector<uint8_t>> readbackNow(engine::GpuContext& gpu, const engine::GpuTexture& texture,
+                                         const TextureStateTable& current);
+/// Reads one texture slice outside a frame with exact explicit mip-zero/layer-zero state.
+/// A private copy frame is submitted and waited; allocation failure consumes no frame.
+Result<std::vector<uint8_t>> readbackNow(engine::GpuContext& gpu, const engine::GpuTexture& texture,
+                                         std::span<const TextureRangeState> current);
+/// Reads a buffer region outside a frame; mapped reads wait but consume no frame.
+/// Gpu copies require four-byte aligned offset/size; unaligned mapped regions are supported.
+Result<std::vector<uint8_t>> readbackNow(engine::GpuContext& gpu, const engine::GpuBuffer& buffer,
+                                         SyncPoint current, BufferRegion region);
 
 } // namespace lmx::render

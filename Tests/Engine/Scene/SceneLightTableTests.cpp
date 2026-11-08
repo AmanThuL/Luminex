@@ -4,7 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Scene/Scene.h"
-#include "Support/GpuTestSupport.h"
+#include "Render/Gpu/Readback.h"
+#include "Support/TestGpu.h"
 #include <rojoRHI/RHI.h>
 
 #include <cstring>
@@ -32,9 +33,14 @@ engine::LightRow readLightRow(engine::GpuContext& gpu, const engine::GpuBuffer& 
                               uint32_t slot) {
     std::vector<engine::LightRow> rows(slot + 1);
     {
-        const auto bytes = lmx::render::readbackNow(gpu, buffer, lmx::render::BufferUse::ShaderRead,
+        const auto beforeRead = gpu.frameNumber();
+        const auto bytes = lmx::render::readbackNow(gpu, buffer, lmx::render::SyncPoint{},
                                                     {0, rows.size() * sizeof(engine::LightRow)});
-        std::memcpy(rows.data(), bytes.data(), rows.size() * sizeof(engine::LightRow));
+        INFO(errorOf(bytes));
+        REQUIRE(bytes.has_value());
+        REQUIRE(bytes->size() == rows.size() * sizeof(engine::LightRow));
+        std::memcpy(rows.data(), bytes->data(), rows.size() * sizeof(engine::LightRow));
+        REQUIRE(gpu.frameNumber() == beforeRead);
     }
     return rows[slot];
 }
@@ -302,9 +308,14 @@ TEST_CASE("Updating a local light marks its row dirty in every paced frame slot"
         REQUIRE(buffer != nullptr);
         engine::LightRow row{};
         {
-            const auto bytes = lmx::render::readbackNow(
-                *gpu, *buffer, lmx::render::BufferUse::ShaderRead, {0, sizeof(row)});
-            std::memcpy(&row, bytes.data(), sizeof(row));
+            const auto beforeRead = gpu->frameNumber();
+            const auto bytes =
+                lmx::render::readbackNow(*gpu, *buffer, lmx::render::SyncPoint{}, {0, sizeof(row)});
+            INFO(errorOf(bytes));
+            REQUIRE(bytes.has_value());
+            REQUIRE(bytes->size() == sizeof(row));
+            std::memcpy(&row, bytes->data(), sizeof(row));
+            REQUIRE(gpu->frameNumber() == beforeRead);
         }
         REQUIRE(row.position.x == 7.0f);
     }

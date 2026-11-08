@@ -7,7 +7,7 @@
 
 #include "Core/Diagnostics/Result.h"
 
-#include <rojoRHI/Result.h>
+#include <rojoRHI/RHI.h>
 
 namespace lmx::engine {
 

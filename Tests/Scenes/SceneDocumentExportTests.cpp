@@ -11,8 +11,8 @@
 #include "Core/Util/Sha256.h"
 #include "Engine/Asset/Document/Orientation.h"
 #include "Support/EngineTestSupport.h"
-#include "Support/GraphTestSupport.h"
 #include "Support/SceneDocumentFixtures.h"
+#include "Support/TestGpu.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -142,7 +142,7 @@ asset::SceneDocument exportFixture(const fs::path& root) {
 }
 
 //======================================================================================================================
-engine::LoadedScene loadFixture(FakeDevice& device, const fs::path& root,
+engine::LoadedScene loadFixture(rojoRHI::Device& device, const fs::path& root,
                                 const asset::SceneDocument& doc, std::string_view name = "input") {
     const auto path = root / (std::string(name) + ".scene.gltf");
     REQUIRE(asset::saveSceneDocument(doc, path));
@@ -189,8 +189,9 @@ const asset::DocOverride& findOverride(const asset::SceneDocument& doc, uint32_t
 } // namespace
 
 //======================================================================================================================
-TEST_CASE("unedited export preserves loaded fields and canonical bytes", "[scene-export]") {
-    FakeDevice device;
+TEST_CASE("unedited export preserves loaded fields and canonical bytes", "[scene-export][device]") {
+    auto gpu = createTestGpu();
+    auto device = gpu->device();
     const auto root = fixtureRoot();
     auto loaded = loadFixture(device, root, exportFixture(root));
     app::SceneSession session;
@@ -215,8 +216,9 @@ TEST_CASE("unedited export preserves loaded fields and canonical bytes", "[scene
 
 //======================================================================================================================
 TEST_CASE("persistent edits then exact restoration become clean despite generation changes",
-          "[scene-export]") {
-    FakeDevice device;
+          "[scene-export][device]") {
+    auto gpu = createTestGpu();
+    auto device = gpu->device();
     const auto root = fixtureRoot();
     auto loaded = loadFixture(device, root, exportFixture(root));
     app::SceneSession session;
@@ -277,8 +279,9 @@ TEST_CASE("persistent edits then exact restoration become clean despite generati
 
 //======================================================================================================================
 TEST_CASE("saved object group light and look edits survive reader and reinstantiation",
-          "[scene-export]") {
-    FakeDevice device;
+          "[scene-export][device]") {
+    auto gpu = createTestGpu();
+    auto device = gpu->device();
     const auto root = fixtureRoot();
     auto loaded = loadFixture(device, root, exportFixture(root));
     app::SceneSession session;
@@ -361,8 +364,10 @@ TEST_CASE("saved object group light and look edits survive reader and reinstanti
 }
 
 //======================================================================================================================
-TEST_CASE("generated and animated previews never enter the saved document", "[scene-export]") {
-    FakeDevice device;
+TEST_CASE("generated and animated previews never enter the saved document",
+          "[scene-export][device]") {
+    auto gpu = createTestGpu();
+    auto device = gpu->device();
     const auto root = fixtureRoot();
     auto loaded = loadFixture(device, root, exportFixture(root));
     app::SceneSession session;
@@ -421,8 +426,9 @@ TEST_CASE("generated and animated previews never enter the saved document", "[sc
 }
 
 //======================================================================================================================
-TEST_CASE("CLI lights remain clean until persisted values change", "[scene-export]") {
-    FakeDevice device;
+TEST_CASE("CLI lights remain clean until persisted values change", "[scene-export][device]") {
+    auto gpu = createTestGpu();
+    auto device = gpu->device();
     const auto root = fixtureRoot();
     auto loaded = loadFixture(device, root, exportFixture(root));
     app::SceneSession session;
@@ -451,8 +457,9 @@ TEST_CASE("CLI lights remain clean until persisted values change", "[scene-expor
 
 //======================================================================================================================
 TEST_CASE("export rejects divergent primitive poses rather than losing one edit",
-          "[scene-export]") {
-    FakeDevice device;
+          "[scene-export][device]") {
+    auto gpu = createTestGpu();
+    auto device = gpu->device();
     const auto root = fixtureRoot();
     auto loaded = loadFixture(device, root, exportFixture(root));
     const auto state = scenes::initialDocumentState(loaded);
@@ -469,8 +476,9 @@ TEST_CASE("export rejects divergent primitive poses rather than losing one edit"
 
 //======================================================================================================================
 TEST_CASE("saved camera uses only the explicit rest camera and preserves untouched lens fields",
-          "[scene-export]") {
-    FakeDevice device;
+          "[scene-export][device]") {
+    auto gpu = createTestGpu();
+    auto device = gpu->device();
     const auto root = fixtureRoot();
     auto doc = exportFixture(root);
     doc.nodes.push_back({.name = "Second camera", .camera = 0});
@@ -507,8 +515,10 @@ TEST_CASE("saved camera uses only the explicit rest camera and preserves untouch
 }
 
 //======================================================================================================================
-TEST_CASE("shared light definitions split only for a changed bound node", "[scene-export]") {
-    FakeDevice device;
+TEST_CASE("shared light definitions split only for a changed bound node",
+          "[scene-export][device]") {
+    auto gpu = createTestGpu();
+    auto device = gpu->device();
     const auto root = fixtureRoot();
     auto doc = exportFixture(root);
     doc.nodes[5].light = doc.nodes[4].light;
@@ -536,8 +546,9 @@ TEST_CASE("shared light definitions split only for a changed bound node", "[scen
 }
 
 //======================================================================================================================
-TEST_CASE("nonfinite or non-unit orientation export fails explicitly", "[scene-export]") {
-    FakeDevice device;
+TEST_CASE("nonfinite or non-unit orientation export fails explicitly", "[scene-export][device]") {
+    auto gpu = createTestGpu();
+    auto device = gpu->device();
     const auto root = fixtureRoot();
     auto loaded = loadFixture(device, root, exportFixture(root));
     auto state = scenes::initialDocumentState(loaded);
@@ -581,8 +592,9 @@ std::optional<glm::vec3> directionWithoutExactQuaternion() {
 
 //======================================================================================================================
 TEST_CASE("directions without an exact quaternion save the nearest one and are reported",
-          "[scene-export]") {
-    FakeDevice device;
+          "[scene-export][device]") {
+    auto gpu = createTestGpu();
+    auto device = gpu->device();
     const auto root = fixtureRoot();
     auto loaded = loadFixture(device, root, exportFixture(root));
     const auto state = scenes::initialDocumentState(loaded);
@@ -612,8 +624,10 @@ TEST_CASE("directions without an exact quaternion save the nearest one and are r
 }
 
 //======================================================================================================================
-TEST_CASE("a saved camera yaw beyond a half turn wraps and stays exportable", "[scene-export]") {
-    FakeDevice device;
+TEST_CASE("a saved camera yaw beyond a half turn wraps and stays exportable",
+          "[scene-export][device]") {
+    auto gpu = createTestGpu();
+    auto device = gpu->device();
     const auto root = fixtureRoot();
     auto loaded = loadFixture(device, root, exportFixture(root));
     auto state = scenes::initialDocumentState(loaded);
@@ -630,8 +644,9 @@ TEST_CASE("a saved camera yaw beyond a half turn wraps and stays exportable", "[
 
 //======================================================================================================================
 TEST_CASE("nonfinite look values fail export instead of aborting the dirty comparison",
-          "[scene-export]") {
-    FakeDevice device;
+          "[scene-export][device]") {
+    auto gpu = createTestGpu();
+    auto device = gpu->device();
     const auto root = fixtureRoot();
     auto loaded = loadFixture(device, root, exportFixture(root));
     const auto state = scenes::initialDocumentState(loaded);
@@ -643,8 +658,9 @@ TEST_CASE("nonfinite look values fail export instead of aborting the dirty compa
 }
 
 //======================================================================================================================
-TEST_CASE("noncanonical input is clean and saves the canonical model", "[scene-export]") {
-    FakeDevice device;
+TEST_CASE("noncanonical input is clean and saves the canonical model", "[scene-export][device]") {
+    auto gpu = createTestGpu();
+    auto device = gpu->device();
     const auto root = fixtureRoot();
     auto loaded = loadFixture(device, root, exportFixture(root));
     const auto canonical = readText(loaded.path);
@@ -679,8 +695,9 @@ TEST_CASE("dirty compares animation buffer bytes as well as canonical JSON", "[s
 
 //======================================================================================================================
 TEST_CASE("successful save adoption uses the new override before the immutable pose baseline",
-          "[scene-export]") {
-    FakeDevice device;
+          "[scene-export][device]") {
+    auto gpu = createTestGpu();
+    auto device = gpu->device();
     const auto root = fixtureRoot();
     auto loaded = loadFixture(device, root, exportFixture(root));
     app::SceneSession session;
@@ -715,8 +732,8 @@ TEST_CASE("successful save adoption uses the new override before the immutable p
 //======================================================================================================================
 TEST_CASE("saved mesh export preserves loaded bits and independently persists edits",
           "[gpu][scene-export][ux6-mesh-export]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
+    auto device = gpu->device();
     auto doc = test::contentDocument();
     doc.nodes[1].mobility = asset::DocMobility::Movable;
     doc.nodes[1].rotation = glm::quat(-.5f, -.5f, -.5f, -.5f);
@@ -725,7 +742,7 @@ TEST_CASE("saved mesh export preserves loaded bits and independently persists ed
     REQUIRE(asset::saveSceneDocument(doc, path));
     auto read = asset::readSceneDocument(path);
     REQUIRE(read);
-    auto loaded = engine::instantiateSceneDocument(**device, *read, path, {});
+    auto loaded = engine::instantiateSceneDocument(device, *read, path, {});
     REQUIRE(loaded);
     app::SceneSession session;
     session.activate(*loaded, app::SceneActivationMotion::Reset);
@@ -771,7 +788,7 @@ TEST_CASE("saved mesh export preserves loaded bits and independently persists ed
     REQUIRE(asset::saveSceneDocument(result, path));
     read = asset::readSceneDocument(path);
     REQUIRE(read);
-    auto reloaded = engine::instantiateSceneDocument(**device, *read, path, {});
+    auto reloaded = engine::instantiateSceneDocument(device, *read, path, {});
     REQUIRE(reloaded);
     const auto& before = session.scene().objects[object];
     const auto& after = reloaded->scene->objects[reloaded->binding.nodes[1].objects.front()];
@@ -783,14 +800,14 @@ TEST_CASE("saved mesh export preserves loaded bits and independently persists ed
         CHECK(std::bit_cast<uint32_t>(before.scale[k]) == std::bit_cast<uint32_t>(after.scale[k]));
     }
     CHECK(after.enabled == before.enabled);
-    device->get()->waitIdle();
+    gpu->waitIdle();
 }
 
 //======================================================================================================================
 TEST_CASE("mesh TRS animation excludes pose export but emissive animation does not",
           "[gpu][scene-export][ux6-mesh-export]") {
-    auto device = rojoRHI::createDevice();
-    REQUIRE(device);
+    auto gpu = createTestGpu();
+    auto device = gpu->device();
     auto doc = test::contentDocument();
     bool rigid = false;
     SECTION("rigid track owns pose") {
@@ -811,7 +828,7 @@ TEST_CASE("mesh TRS animation excludes pose export but emissive animation does n
     }
     const auto path = fixtureRoot() / "animated-mesh-export.scene.gltf";
     REQUIRE(asset::saveSceneDocument(doc, path));
-    auto loaded = engine::instantiateSceneDocument(**device, doc, path, {});
+    auto loaded = engine::instantiateSceneDocument(device, doc, path, {});
     INFO((loaded ? "ok" : loaded.error().message));
     REQUIRE(loaded);
     app::SceneSession session;
@@ -841,7 +858,7 @@ TEST_CASE("mesh TRS animation excludes pose export but emissive animation does n
     result = exported(*loaded, session);
     CHECK_FALSE(result.nodes[1].enabled);
     CHECK(result.nodes[1].translation.x == (rigid ? doc.nodes[1].translation.x : 9.f));
-    device->get()->waitIdle();
+    gpu->waitIdle();
 }
 
 //======================================================================================================================
@@ -912,8 +929,9 @@ TEST_CASE("mesh export keeps own enabled state under a disabled ancestor",
 
 //======================================================================================================================
 TEST_CASE("mobility follows nearest source override and export preserves authored values",
-          "[scene-export][ux6-mobility]") {
-    FakeDevice device;
+          "[scene-export][ux6-mobility][device]") {
+    auto gpu = createTestGpu();
+    auto device = gpu->device();
     const auto root = fixtureRoot();
     auto doc = exportFixture(root);
     doc.schemaVersion = 2;

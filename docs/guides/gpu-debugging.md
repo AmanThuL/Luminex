@@ -51,8 +51,7 @@ See [workspace recovery](editor-workspace.md#workspace-recovery) for persistence
 Console retains 2,000 messages / 2 MiB, truncating payloads at 16 KiB on a UTF-8 boundary. UTC time and severity accompany each entry. The T/D/I/W/E/C chips count each retained severity and select
 that level and above; search is a case-insensitive substring filter. Scroll up to hold the displayed rows while logging continues. Return to the bottom or click `↓ N new` to resume; the chip stays
 visible even at zero. More > Clear empties messages/counters while keeping filters and freeze state; new arrivals then count from Clear. More > Copy visible copies matching displayed messages,
-including when frozen. Nonzero eviction/truncation counts print below the header; full statistics are in search help. Header counts may trail newly displayed rows by one frame. Search executes no
-commands.
+including when frozen. Nonzero eviction/truncation counts print below the header; full statistics are in search help. Header counts may trail newly displayed rows by one frame. Search executes no commands.
 
 The selection outline follows visible geometry, including depth occlusion and masked cutouts. Foreground occlusion cuts never become silhouette edges; border endpoints are depth-tested. App adds
 `lmx.pass.selection.coverage`, `lmx.pass.selection.visibility` and `lmx.pass.selection.outline` to a separate SDR target. Their costs appear in graph/timing records; scene targets and temporal history
@@ -74,38 +73,42 @@ MTL_CAPTURE_ENABLED=1 \
 LMX_CAPTURE_AT_FRAME=30 \
 LMX_MAX_FRAMES=40 \
 LMX_CAPTURE_PATH=/tmp/luminex-frame.gputrace \
-xmake run App
-
-python3 Tools/GpuDebug/gputrace_dump.py \
-  /tmp/luminex-frame.gputrace \
-  --out /tmp/luminex-frame-dump
+xmake run -P . App
 ```
 
-`LMX_CAPTURE_PATH` must be absolute. The capture covers one frame. To reproduce an upscaled frame,
-add `--render-scale <0.5..1.0>` (offscreen) or `LMX_DYNAMIC_RESOLUTION_BUDGET_MS=<ms>` (a windowed
-run, letting the controller pick the scale the captured frame lands at); the manifest and dumped
-images then show `lmx.pass.temporal.upscale`'s inputs and the scene pass's render area/scissor
-instead of the native resolve's. Inspect the generated manifest first, then decoded uniforms and resource images. The capture's schema sidecar records one
-`frameDataUploads` entry per `bindFrameData` call in the captured frame (page label, slot, offset,
-size, alignment, and GPU address), which is what to check when tracing an upload to its page; the
-dump tool's decoded output remains `uniforms.json`. Treat label joins and positional frame-data-page
-joins with the confidence recorded in the manifest; the Metal capture bundle is not a documented interchange format.
+`LMX_CAPTURE_PATH` must be absolute. Capture intent waits for a successful drawable acquire;
+only a successful capture is ended, after its submitted frame fence. Inspect the `.gputrace` in
+Xcode for command order, resource contents and bindings. The recipes below follow the full frame
+of the [frame walkthrough](../architecture/frame-pipeline.md).
+
+The adjacent `.schema.json` uses schema version 2: scene/camera context, genuine Luminex owner
+resource metadata, registered `uniformStructs`, and `frameRoots` containing a root name plus
+`Addr` lo/hi. It has no slot/page or `frameDataUploads` channel. Owner metadata describes creation;
+use actual command state when diagnosing synchronization. See the
+[GPU ownership layer](../architecture/engine.md) for registration and lifetimes.
+
+```bash
+python3 Tools/GpuDebug/gputrace_dump.py /tmp/luminex-frame.gputrace --out /tmp/luminex-frame-dump
+```
+
+The trace records every buffer's GPU address, length and label, so the decoder finds the buffer
+holding each root's `Addr` (usually a `rojorhi.frameArena.page`) and decodes the root's named
+struct from the bytes the GPU saw. `uniforms.json` lists root values, naming each `Addr` field by
+the root or labelled buffer and offset it points to (`0` when unused); `manifest.json`'s
+`frameRoots` counts roots by name with each undecoded root's reason. Schema-1 sidecars are rejected.
 
 Escalate in this order:
 
-1. Confirm the selected scene, camera, render settings, and capture frame.
-2. Check manifest anomalies and finiteness/range of decoded uniforms.
-3. Inspect pass inputs and outputs, beginning at the earliest incorrect resource.
-4. Reproduce with Metal validation enabled.
-5. Add a narrow engine-side diagnostic or inspect the capture in Xcode when the dump cannot establish
-   command order or binding state.
+1. Confirm scene, camera, settings and capture frame; distinguish a disabled stage from missing work.
+2. Inspect the decoded roots, their registered layouts and owner metadata.
+3. Inspect inputs/outputs in Xcode, beginning at the earliest incorrect resource.
+4. Reproduce with Metal validation; Debug `--rhi-validation` enables the RHI tracker separately.
+5. Add a narrow diagnostic if the trace cannot establish command order or state.
 
-Metal4 argument tables clear texture slots at each render/compute pass before binding the resources that pass uses. This prevents unused slots from naming retired transient textures
-when Xcode enumerates bindings. Draw/dispatch snapshots preserve earlier work. On Xcode 26.6,
-use **Bound** resources for inspection; **Accessed** mode is unavailable for Metal4. Scene draws
-show vertices at b0, the 16-byte firstEntry selector at b1, visible instance-row indices at b4,
-240-byte instances at b5 and 112-byte materials at b6; local lights/grid/indices at b8/b9/b10 and the 136-byte LocalLightParams frame-data block at b11. Indirect commands use firstInstance as the
-absolute list offset; batched argument indices differ from list offsets. Mesh rows are 48 bytes.
+Shaders use module-owned bindings, roots/Addr and view indices; no consumer binding slot
+exists. Graph reads alone do not register shader accesses with the tracker;
+nested arena data without exposed handles and opaque adapter texture-ID reads are not fully
+tracked. A clean tracker run complements physical-state tests and native inspection.
 
 Keep captures and dump directories outside the repository. A postmortem records only the durable symptom, evidence, root cause, correction, and prevention.
 
@@ -141,8 +144,8 @@ the current automated dump does not recover MetalFX's private encoder names. The
 and `.outputCopy`; that copy belongs to the external pass's GPU timing. Graph dumps describe the
 declared external operation, not the vendor's private encoders. Use Xcode to inspect opaque encoder ordering or fence state when the decoded manifest cannot establish them.
 
-The dump tool currently cannot decode the HDR, motion or reactive formats or recover packed transients from placement-heap contents. Its legacy expected scene-color label and shadow-depth
-recompute may also report errors on this renderer. Preserve these findings with the capture; they are distinct from runtime Metal validation and do not establish a reconstruction failure.
+The dump tool currently cannot decode the HDR, motion or reactive formats or recover packed transients from placement-heap contents; its anomaly checks read the SDR
+`lmx.render.displayColor` and reversed depth, where every depth target clears to 0. Preserve these findings with the capture; they are distinct from runtime Metal validation and do not establish a reconstruction failure.
 
 Motion, reprojection error and reprojected history are engine diagnostics. The latter adds `lmx.pass.temporal.reprojectedHistory` under vendor mode; rejection, blend weight and per-pixel
 history age are native-only. CLI combinations of those views with `--temporal metalfx` are usage
@@ -228,9 +231,10 @@ Measurement JSON schema 5 retains the frozen local-light mode/rig/lab/check/view
 python3 Tools/Bench/lighting_paired.py --binary /absolute/frozen/candidate/App --control local --out /absolute/new-local-costs
 python3 Tools/Bench/lighting_paired.py --binary /absolute/frozen/candidate/App --control zero --parent /absolute/frozen/parent/App --out /absolute/new-zero-costs
 python3 Tools/Bench/lighting_paired.py --selftest
+python3 Tools/Bench/parent_paired.py --parent /absolute/frozen/parent/App --binary /absolute/frozen/candidate/App --out /absolute/new-parent-costs
 ```
 
-Local control covers LightLab 64/256/1024/4096 with rail motion and Sponza with its rig. Zero control covers the six frozen visibility workloads, using the schema-3 parent and schema-4 candidate with local lighting Off and explicit Sponza rig off. Current Sponza off retains authored allocation and uses a changed camera; preserve the frozen binaries for historical costs. Both fix Native TAA, 1280×720, scale 1, W32/N256, twelve fresh-process AB/BA pairs and 10,000 bootstrap resamples with seed `0x4C4D5836`. `--workloads` selects a subset, which is not the complete inventory. Keep each binary beside its shaders; output must be new. Receipts and raw JSON retain failed attempts; provenance is checked and costs never choose a default. Run without concurrent builds/tests/GPU work; these serialized-retirement timings do not measure throughput.
+Local control covers LightLab 64/256/1024/4096 with rail motion and Sponza with its rig. Zero control covers the six frozen visibility workloads, using the schema-3 parent and schema-4 candidate with local lighting Off and explicit Sponza rig off. Current Sponza off retains authored allocation and uses a changed camera; preserve the frozen binaries for historical costs. Both fix Native TAA, 1280×720, scale 1, W32/N256, twelve fresh-process AB/BA pairs and 10,000 bootstrap resamples with seed `0x4C4D5836`. `--workloads` selects a subset, which is not the complete inventory. Keep each binary beside its shaders; output must be new. Receipts and raw JSON retain failed attempts; provenance is checked and costs never choose a default. Run without concurrent builds/tests/GPU work; these serialized-retirement timings do not measure throughput. Select `--parent-schema 5` for a schema-5 parent. `parent_paired.py` runs each of Sponza, MaterialLab, TemporalLab, LightLab and VisibilityLab with only `--scene`, W32/N256 on a parent and a candidate App under the same protocol, requires complete schema-5 reports with equal plans and documents, and flags a regression on `encodeMs`, `gpuSumMs` or any shared `*GpuMs` stage when the candidate's paired median is more than 5% slower and the 95% interval excludes 5%. `--parent-env KEY=VALUE` sets a variable for parent processes only (unscored runs). Scored runs refuse every `DYLD_` variable, and the frozen v1 App has no `LC_RPATH` for its `@rpath` SDL3, so scored comparisons use a copy beside the frozen tree: `cp -p` the App, `install_name_tool -add_rpath @executable_path`, `codesign --force -s -`, and symlink `libSDL3.0.dylib`, `Shaders`, `Fonts`, `Icons` and `Assets` next to it; record both App hashes, the `otool -l` diff (one `LC_RPATH` plus the signature) and the shader hashes in a README beside the copy.
 Scored headless measurement refuses enabled Metal/DYLD/capture instrumentation, including `LMX_LIGHT_CHECK_DUMP`, and requires complete binary/shader provenance. `--light-check` or a non-off `--light-view` requires `--unscored` under `--measure`; the paired driver also accepts `--unscored` for instrumented diagnostics. Editor measurements are always interactive/unscored, disable Hierarchy/Inspector edits and freeze the first declared enabled population; starting with disabled lights is valid. Neither the unscored option nor a timing result relaxes correctness checks.
 
 ## Automated tool tests
@@ -239,7 +243,7 @@ Scored headless measurement refuses enabled Metal/DYLD/capture instrumentation, 
 python3 -m unittest discover -s Tools/GpuDebug/tests -v
 ```
 
-These tests validate the parsers and report generation without requiring a GPU capture session. The separate [ImGui buffer probe](../../RojoRHI/Tools/ImGuiBufferProbe/README.md) checks real Metal4 UI upload lifetime and an old-policy failure control; it requires a GPU.
+These tests validate the parsers and report generation without a GPU capture session; hosted CI runs them in the policy job. The separate [ImGui buffer probe](../../RojoRHI/Tools/ImGuiBufferProbe/README.md) checks real Metal4 UI upload lifetime and an old-policy failure control; it requires a GPU.
 
 ## Parity checks
 

@@ -1,6 +1,6 @@
 # ADR 0009: Portability checkpoint A freezes eight semantic areas behind one test tag
 
-**Status**: Accepted (2026-08-11) · **Roadmap**: ../roadmap.md (M5)
+**Status**: Superseded by [ADR 0033](0033-rojorhi-conformance-replaces-checkpoint-a.md) (2026-11-08); accepted 2026-08-11 · **Roadmap**: ../roadmap.md (M5)
 
 ## Context
 

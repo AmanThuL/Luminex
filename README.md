@@ -59,10 +59,11 @@ Also included:
 
 ## Quick start
 
-Needs Apple Silicon, macOS 26 and Xcode 26.
+Needs Apple Silicon, macOS 26, Xcode 26 and its offline Metal toolchain.
 
 ```bash
 brew install xmake
+xcodebuild -downloadComponent MetalToolchain
 git clone --recursive https://github.com/AmanThuL/Luminex.git && cd Luminex
 xmake setup               # pinned dependencies and sample scenes; rerun when a pull adds one
 xmake && xmake run App    # opens the editor on Sponza

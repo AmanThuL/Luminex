@@ -1,67 +1,64 @@
 // Safe-math fixed-slot visibility; explicit resources keep reflection exact.
+import RojoRHI;
+import VisibilityRoots;
 import Visibility;
 import SceneTables;
-[[vk::binding(0, 0)]] StructuredBuffer<CandidateRecord> gCandidates : register(t0);
-[[vk::binding(1, 0)]] StructuredBuffer<RunRecord> gRuns : register(t1);
-[[vk::binding(2, 0)]] StructuredBuffer<ChunkRecord> gChunks : register(t2);
-[[vk::binding(3, 0)]] StructuredBuffer<InstanceRow> gInstances : register(t3);
-[[vk::binding(4, 0)]] StructuredBuffer<MeshRow> gMeshes : register(t4);
-[[vk::binding(5, 0)]] StructuredBuffer<VisibilityViewParams> gViews : register(t5);
-[[vk::binding(6, 0)]] ConstantBuffer<VisibilityParams> gParams : register(b6);
-[[vk::binding(7, 0)]] RWStructuredBuffer<uint> gStates : register(u7);
-[[vk::binding(8, 0)]] RWStructuredBuffer<uint> gCounters : register(u8);
-[[vk::binding(11, 0)]] RWStructuredBuffer<uint> gRows : register(u11);
-[[vk::binding(12, 0)]] RWStructuredBuffer<uint> gArguments : register(u12);
 uint viewForCandidate(uint candidate)
 {
-    return candidate >= gViews[1].firstCandidate ? 1u : 0u;
+    let root = rojoRHI::root<VisibilityEmitRoot>();
+    return candidate >= (rojoRHI::load<VisibilityViewParams>(root.viewsAddr, 1)).firstCandidate ? 1u : 0u;
 }
 void count(uint view, uint word, uint value)
 {
-    uint ignored;
-    InterlockedAdd(gCounters[view * kVisibilityCounterWords + word], value, ignored);
+    let root = rojoRHI::root<VisibilityEmitRoot>();
+    rojoRHI::atomicAdd(root.countersAddr, view * kVisibilityCounterWords + word, value);
 }
 void writeArgument(uint index, uint first, uint retained, MeshRow mesh)
 {
-    if (index >= gParams.argumentCapacity) return;
-    uint base = index * 5u;
-    bool geometry = retained != 0u || gParams.layout != 0u;
-    gArguments[base] = geometry ? mesh.indexCount : 0u;
-    gArguments[base + 1u] = retained;
-    gArguments[base + 2u] = geometry ? mesh.firstIndex : 0u;
-    gArguments[base + 3u] = 0u;
-    gArguments[base + 4u] = geometry ? first : 0u;
+    let root = rojoRHI::root<VisibilityEmitRoot>();
+    let params = rojoRHI::load<VisibilityParams>(root.paramsAddr, 0);
+    if (index >= params.argumentCapacity) return;
+    uint base = index * 6u;
+    bool geometry = retained != 0u || params.layout != 0u;
+    rojoRHI::store<uint>(root.argumentsAddr, base, geometry ? first : 0u);
+    rojoRHI::store<uint>(root.argumentsAddr, base + 1u, geometry ? mesh.indexCount : 0u);
+    rojoRHI::store<uint>(root.argumentsAddr, base + 2u, retained);
+    rojoRHI::store<uint>(root.argumentsAddr, base + 3u, geometry ? mesh.firstIndex : 0u);
+    rojoRHI::store<uint>(root.argumentsAddr, base + 4u, 0u);
+    rojoRHI::store<uint>(root.argumentsAddr, base + 5u, 0u);
 }
 [shader("compute")]
 [numthreads(256, 1, 1)]
 void computeMain(uint3 group : SV_GroupID, uint lane : SV_GroupIndex)
 {
-    uint totalChunks = gViews[1].firstChunk + gViews[1].chunkCount;
+    let root = rojoRHI::root<VisibilityEmitRoot>();
+    let params = rojoRHI::load<VisibilityParams>(root.paramsAddr, 0);
+    uint totalChunks = (rojoRHI::load<VisibilityViewParams>(root.viewsAddr, 1)).firstChunk + (rojoRHI::load<VisibilityViewParams>(root.viewsAddr, 1)).chunkCount;
     if (group.x >= totalChunks) return;
-    ChunkRecord chunk = gChunks[group.x];
+    ChunkRecord chunk = (rojoRHI::load<ChunkRecord>(root.chunksAddr, group.x));
     uint candidate = chunk.firstCandidate + lane;
     bool valid = lane < chunk.candidateCount;
     uint retained = 0u;
-    if (valid && candidate < gParams.stateCapacity)
-        retained = (gStates[candidate] & 3u) != 1u ? 1u : 0u;
+    if (valid && candidate < params.stateCapacity)
+        retained = ((rojoRHI::load<uint>(root.statesAddr, candidate)) & 3u) != 1u ? 1u : 0u;
     if (!valid) return;
-    CandidateRecord record = gCandidates[candidate];
-    RunRecord run = gRuns[record.run];
+    CandidateRecord record = (rojoRHI::load<CandidateRecord>(root.candidatesAddr, candidate));
+    RunRecord run = (rojoRHI::load<RunRecord>(root.runsAddr, record.run));
     uint view = viewForCandidate(candidate);
 
     uint position = candidate;
-    bool fits = position < gParams.rowCapacity && run.argumentIndex < gParams.argumentCapacity;
-    if (candidate < gParams.rowCapacity &&
-        (gInstances[record.instanceRow].flags & kInstanceDisabled) == 0u)
-        gRows[candidate] = record.instanceRow;
+    bool fits = position < params.rowCapacity && run.argumentIndex < params.argumentCapacity;
+    if (candidate < params.rowCapacity &&
+        ((rojoRHI::load<InstanceRow>(root.instancesAddr, record.instanceRow)).flags & kInstanceDisabled) == 0u)
+        rojoRHI::store<uint>(root.rowsAddr, candidate, record.instanceRow);
     if (retained != 0u)
     {
-        if (fits) { gRows[position] = record.instanceRow; count(view, 7u, 1u); }
+        if (fits) { rojoRHI::store<uint>(root.rowsAddr, position, record.instanceRow); count(view, 7u, 1u); }
         else count(view, 9u, 1u);
     }
-    MeshRow mesh = gMeshes[gInstances[record.instanceRow].meshRow];
+    MeshRow mesh = (rojoRHI::load<MeshRow>(root.meshesAddr, (rojoRHI::load<InstanceRow>(root.instancesAddr, record.instanceRow)).meshRow));
     {
         writeArgument(run.argumentIndex, candidate, fits ? retained : 0u, mesh);
-        if (retained != 0u) count(view, run.argumentIndex < gParams.argumentCapacity ? 8u : 10u, fits ? 1u : (run.argumentIndex >= gParams.argumentCapacity ? 1u : 0u));
+        if (retained != 0u) count(view, run.argumentIndex < params.argumentCapacity ? 8u : 10u, fits ? 1u : (run.argumentIndex >= params.argumentCapacity ? 1u : 0u));
     }
 }

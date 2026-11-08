@@ -1,0 +1,371 @@
+{
+ "version": 2,
+ "context": {
+  "sceneName": "Sponza",
+  "frameIndex": 6,
+  "cameraPos": [
+   8.5,
+   1.6,
+   0.6
+  ],
+  "boundingSphere": [
+   -0.6051893,
+   6.514953,
+   -0.3869052,
+   23.184864
+  ],
+  "light0Direction": [
+   0.5773503,
+   -0.5773503,
+   0.5773502
+  ],
+  "light0Strength": [
+   0.44798842,
+   0.44798842,
+   0.44798842
+  ],
+  "shadowFilter": "PCF"
+ },
+ "resources": [],
+ "uniformStructs": [
+  {
+   "name": "LocalLightParams",
+   "sizeBytes": 136,
+   "fields": [
+    {
+     "name": "mode",
+     "offsetBytes": 0,
+     "type": "uint"
+    },
+    {
+     "name": "rowCount",
+     "offsetBytes": 4,
+     "type": "uint"
+    },
+    {
+     "name": "gridX",
+     "offsetBytes": 8,
+     "type": "uint"
+    },
+    {
+     "name": "gridY",
+     "offsetBytes": 12,
+     "type": "uint"
+    },
+    {
+     "name": "gridZ",
+     "offsetBytes": 16,
+     "type": "uint"
+    },
+    {
+     "name": "activeOriginX",
+     "offsetBytes": 20,
+     "type": "uint"
+    },
+    {
+     "name": "activeOriginY",
+     "offsetBytes": 24,
+     "type": "uint"
+    },
+    {
+     "name": "activeWidth",
+     "offsetBytes": 28,
+     "type": "uint"
+    },
+    {
+     "name": "activeHeight",
+     "offsetBytes": 32,
+     "type": "uint"
+    },
+    {
+     "name": "sliceDepth",
+     "offsetBytes": 36,
+     "type": "float[25]"
+    }
+   ]
+  },
+  {
+   "name": "PassUniforms",
+   "sizeBytes": 400,
+   "fields": [
+    {
+     "name": "viewProj",
+     "offsetBytes": 0,
+     "type": "float4x4"
+    },
+    {
+     "name": "shadowTransform",
+     "offsetBytes": 64,
+     "type": "float4x4"
+    },
+    {
+     "name": "eyePos",
+     "offsetBytes": 128,
+     "type": "float3"
+    },
+    {
+     "name": "eyePadding",
+     "offsetBytes": 140,
+     "type": "float"
+    },
+    {
+     "name": "time",
+     "offsetBytes": 144,
+     "type": "float"
+    },
+    {
+     "name": "preExposure",
+     "offsetBytes": 148,
+     "type": "float"
+    },
+    {
+     "name": "alignmentPadding",
+     "offsetBytes": 152,
+     "type": "float[2]"
+    },
+    {
+     "name": "lights[0].strength",
+     "offsetBytes": 160,
+     "type": "float3"
+    },
+    {
+     "name": "lights[0].direction",
+     "offsetBytes": 176,
+     "type": "float3"
+    },
+    {
+     "name": "lights[1].strength",
+     "offsetBytes": 192,
+     "type": "float3"
+    },
+    {
+     "name": "lights[1].direction",
+     "offsetBytes": 208,
+     "type": "float3"
+    },
+    {
+     "name": "lights[2].strength",
+     "offsetBytes": 224,
+     "type": "float3"
+    },
+    {
+     "name": "lights[2].direction",
+     "offsetBytes": 240,
+     "type": "float3"
+    },
+    {
+     "name": "shadowFilter",
+     "offsetBytes": 256,
+     "type": "int"
+    },
+    {
+     "name": "shadowCaster",
+     "offsetBytes": 260,
+     "type": "int"
+    },
+    {
+     "name": "tailPadding",
+     "offsetBytes": 264,
+     "type": "int[2]"
+    },
+    {
+     "name": "viewProjUnjittered",
+     "offsetBytes": 272,
+     "type": "float4x4"
+    },
+    {
+     "name": "previousViewProjUnjittered",
+     "offsetBytes": 336,
+     "type": "float4x4"
+    }
+   ]
+  },
+  {
+   "name": "SceneDrawRoot",
+   "sizeBytes": 48,
+   "fields": [
+    {
+     "name": "pass",
+     "offsetBytes": 0,
+     "type": "Addr"
+    },
+    {
+     "name": "firstEntry",
+     "offsetBytes": 8,
+     "type": "uint"
+    },
+    {
+     "name": "baseColor",
+     "offsetBytes": 12,
+     "type": "uint"
+    },
+    {
+     "name": "normal",
+     "offsetBytes": 16,
+     "type": "uint"
+    },
+    {
+     "name": "metalRough",
+     "offsetBytes": 20,
+     "type": "uint"
+    },
+    {
+     "name": "occlusion",
+     "offsetBytes": 24,
+     "type": "uint"
+    },
+    {
+     "name": "emissive",
+     "offsetBytes": 28,
+     "type": "uint"
+    },
+    {
+     "name": "indirect",
+     "offsetBytes": 32,
+     "type": "uint"
+    },
+    {
+     "name": "padding0",
+     "offsetBytes": 36,
+     "type": "uint"
+    },
+    {
+     "name": "padding1",
+     "offsetBytes": 40,
+     "type": "uint"
+    },
+    {
+     "name": "padding2",
+     "offsetBytes": 44,
+     "type": "uint"
+    }
+   ]
+  },
+  {
+   "name": "ScenePassRoot",
+   "sizeBytes": 112,
+   "fields": [
+    {
+     "name": "vertices",
+     "offsetBytes": 0,
+     "type": "Addr"
+    },
+    {
+     "name": "visibleRows",
+     "offsetBytes": 8,
+     "type": "Addr"
+    },
+    {
+     "name": "instances",
+     "offsetBytes": 16,
+     "type": "Addr"
+    },
+    {
+     "name": "materials",
+     "offsetBytes": 24,
+     "type": "Addr"
+    },
+    {
+     "name": "passUniforms",
+     "offsetBytes": 32,
+     "type": "Addr"
+    },
+    {
+     "name": "exposure",
+     "offsetBytes": 40,
+     "type": "Addr"
+    },
+    {
+     "name": "lights",
+     "offsetBytes": 48,
+     "type": "Addr"
+    },
+    {
+     "name": "lightGrid",
+     "offsetBytes": 56,
+     "type": "Addr"
+    },
+    {
+     "name": "lightIndices",
+     "offsetBytes": 64,
+     "type": "Addr"
+    },
+    {
+     "name": "localLightParams",
+     "offsetBytes": 72,
+     "type": "Addr"
+    },
+    {
+     "name": "shadow",
+     "offsetBytes": 80,
+     "type": "uint"
+    },
+    {
+     "name": "irradiance",
+     "offsetBytes": 84,
+     "type": "uint"
+    },
+    {
+     "name": "prefilteredEnv",
+     "offsetBytes": 88,
+     "type": "uint"
+    },
+    {
+     "name": "dfg",
+     "offsetBytes": 92,
+     "type": "uint"
+    },
+    {
+     "name": "linearSampler",
+     "offsetBytes": 96,
+     "type": "uint"
+    },
+    {
+     "name": "shadowSampler",
+     "offsetBytes": 100,
+     "type": "uint"
+    },
+    {
+     "name": "iblSampler",
+     "offsetBytes": 104,
+     "type": "uint"
+    },
+    {
+     "name": "padding",
+     "offsetBytes": 108,
+     "type": "uint"
+    }
+   ]
+  }
+ ],
+ "frameRoots": [
+  {
+   "name": "PassUniforms",
+   "addr": {
+    "lo": 369303184,
+    "hi": 256
+   }
+  },
+  {
+   "name": "LocalLightParams",
+   "addr": {
+    "lo": 369303584,
+    "hi": 256
+   }
+  },
+  {
+   "name": "ScenePassRoot",
+   "addr": {
+    "lo": 369303728,
+    "hi": 256
+   }
+  },
+  {
+   "name": "SceneDrawRoot",
+   "addr": {
+    "lo": 369304064,
+    "hi": 256
+   }
+  }
+ ]
+}

@@ -20,26 +20,23 @@ constexpr float kExposureLogLuminanceMax = 4.0f;
 /// baker's sampling rate.
 constexpr float kExposureFrameSeconds = 1.0f / 60.0f;
 
-/// Mirrors Shaders/Passes/Exposure/HistogramAccumulate.slang's HistogramParams. Every field is a
-/// scalar, so HLSL cbuffer packing (which Slang's Metal path still follows) leaves them contiguous
-/// -- no vector field ever forces a gap here.
+/// Mirrors ExposureRoots.slang's address-loaded HistogramParams; scalar fields stay contiguous.
 struct HistogramParams {
     float logLuminanceMin; ///< 0 -- log2 luminance of the first bin.
     float logLuminanceMax; ///< 4 -- log2 luminance of the last bin.
     uint32_t width;        ///< 8 -- metered rectangle width, pixels.
     uint32_t height;       ///< 12 -- metered rectangle height, pixels.
 };
-static_assert(sizeof(HistogramParams) == 16,
-              "must match HistogramAccumulate.slang's HistogramParams");
+static_assert(sizeof(HistogramParams) == 16, "must match ExposureRoots.slang's HistogramParams");
 
-/// Mirrors Shaders/Passes/Exposure/ExposureSeed.slang's ExposureSeedParams.
+/// Mirrors Shaders/Passes/Exposure/ExposureRoots.slang's ExposureSeedParams.
 struct ExposureSeedParams {
     float exposure; ///< 0 -- the multiplier written into the exposure buffer.
 };
 static_assert(sizeof(ExposureSeedParams) == 4,
-              "must match ExposureSeed.slang's ExposureSeedParams");
+              "must match ExposureRoots.slang's ExposureSeedParams");
 
-/// Mirrors Shaders/Passes/Exposure/ExposureResolve.slang's ExposureResolveParams.
+/// Mirrors Shaders/Passes/Exposure/ExposureRoots.slang's ExposureResolveParams.
 struct ExposureResolveParams {
     float lowPercentile;   ///< 0 -- histogram percentile metering starts at, 0 to 1.
     float highPercentile;  ///< 4 -- histogram percentile metering stops at, 0 to 1.
@@ -55,7 +52,7 @@ struct ExposureResolveParams {
     float pad;             ///< 44 -- rounds the block to 48 bytes; always 0.
 };
 static_assert(sizeof(ExposureResolveParams) == 48,
-              "must match ExposureResolve.slang's ExposureResolveParams");
+              "must match ExposureRoots.slang's ExposureResolveParams");
 
 /// Plain values the exposure resolve parameters are built from, all from the scene view.
 struct ExposureResolveInputs {

@@ -16,8 +16,11 @@
 #include "Render/Passes/LocalLights/LightDebugStage.h"
 #include "Render/Passes/LocalLights/LightingStatus.h"
 #include "Render/Passes/Occlusion/HzbStage.h"
+
 #include "Render/Passes/Scene/DrawSubmission.h"
+
 #include "Render/Passes/Scene/SceneStage.h"
+
 #include "Render/Passes/Shadow/ShadowStage.h"
 #include "Render/Passes/Temporal/Temporal.h"
 #include "Render/Passes/Temporal/TemporalHistory.h"
@@ -41,6 +44,8 @@ class ExposureStage;
 class GpuVisibility;
 /// Owns independent direct ID visibility validation.
 class OcclusionReference;
+/// Exposes the renderer's resize candidates to the resize atomicity test.
+struct RendererResizeAccess;
 /// Owns the renderer's bloom pipelines and transient pass declarations.
 class BloomStage;
 /// Owns the renderer's display transform and disabled-bloom fallback.
@@ -50,9 +55,15 @@ class DisplayStage;
 struct RendererFrameState;
 // Graph-local imports shared only by the renderer implementation units.
 struct RendererFrameImports;
+// Staged occlusion facts and graph bindings for one declaration.
+struct RendererOcclusionFrame;
+// Staged visibility status and draw buffers for one declaration.
+struct RendererVisibilityFrame;
+// Staged lighting status and light lists for one declaration.
+struct RendererLightingFrame;
 
 /// Capture tooling, not part of rendering: publishes the draw stages' uniform-block layouts
-/// (including masked variants) (name, slot, size, every field's offset and type) through
+/// (including masked variants) (name, size, every field's offset and type) through
 /// engine::registerUniformStruct, so the capture sidecar can name the bytes a .gputrace holds
 /// instead of leaving them a hex dump.
 ///
@@ -77,13 +88,15 @@ public:
     /// Releases the frame-owned stages after the caller has completed GPU work.
     ~Renderer();
 
-    /// cpuReadback puts the color target in shared storage so Texture::readback() works. It exists
-    /// for the GPU tests and the --screenshot path; the windowed App leaves it false.
+    /// cpuReadback enables diagnostic results for GPU tests and the screenshot path.
+    /// Target storage stays in GPU memory; readback uses explicit staging copies.
     static lmx::Result<std::unique_ptr<Renderer>> create(engine::GpuContext& gpu, uint32_t width,
                                                          uint32_t height, bool cpuReadback = false);
 
-    /// Recreates the scene targets -- and the motion and history targets alongside them -- at the
-    /// new size. The shadow map is fixed-size and untouched.
+    /// Recreates the scene targets -- and the motion and history targets and, once a frame has
+    /// enabled occlusion, both depth pyramids alongside them -- at the new size. The shadow map is
+    /// fixed-size and untouched. Every replacement is allocated before any is adopted, so a failed
+    /// allocation leaves the renderer entirely at its old extent.
     /// The caller guarantees the GPU is idle (Device::waitIdle) first: frames still in flight hold
     /// the old textures in their residency set and their encoders, and dropping them here would
     /// free memory the GPU is reading.
@@ -96,16 +109,31 @@ public:
     ///
     /// Nothing is encoded here. The pass bodies run when the graph executes, and they encode into
     /// `commands` -- so the graph must be executed on that same command list, and `camera`, `view`,
-    /// and everything `view` borrows must outlive that call.
-    GraphTexture declarePasses(RenderGraph& graph, rojoRHI::CommandList& commands,
-                               const engine::Camera& camera, const SceneView& view);
+    /// and everything `view` borrows must outlive that call. Creation or retirement failure returns
+    /// its causal error; the caller must not execute or export a failed declaration.
+    ///
+    /// A failure is not rolled back. Visibility and lighting status, occlusion source facts,
+    /// temporal status and the pyramid stage's slots advance only for a frame that declares, and
+    /// unrecorded GPU visibility and light-list declarations are discarded; but a failure after
+    /// draw submission has prepared leaves its rows, the prefix copies it already recorded on
+    /// `commands` and its recorded read uses advanced. Every application caller treats the failure
+    /// as terminal.
+    ///
+    /// A successful declaration must be executed. A caller that abandons it instead -- dropping the
+    /// graph unexecuted -- cannot recover the renderer: the frame's light-cluster declaration stays
+    /// pending with no recorded readback, so every later light retirement fails. Visibility, by
+    /// contrast, drops such a declaration.
+    lmx::Result<GraphTexture> declarePasses(RenderGraph& graph, rojoRHI::CommandList& commands,
+                                            const engine::Camera& camera, const SceneView& view);
 
     /// Renders one frame into this renderer's own targets: declarePasses into a graph of nothing
     /// else, compiled and executed on the spot. It is what a caller with no passes of its own wants
     /// -- the offscreen capture path and the tests; a caller that has its own pass declares against
     /// declarePasses instead, so the graph orders the whole frame rather than half of it.
-    void render(rojoRHI::CommandList& commands, const engine::Camera& camera,
-                const SceneView& view);
+    /// Returns declaration errors without exporting or executing the graph. The caller still owns
+    /// submission and completion of the acquired device frame on either outcome.
+    lmx::Result<void> render(rojoRHI::CommandList& commands, const engine::Camera& camera,
+                             const SceneView& view);
 
     /// The finished, display-encoded image: what the viewport shows and what a screenshot reads.
     const engine::GpuTexture& colorTarget();
@@ -125,10 +153,11 @@ public:
     const engine::GpuTexture& hdrColorTexture();
 
     /// The last declared frame's depth buffer, D32Float and reversed (near = 1, falling toward 0
-    /// with distance). Held past the scene pass and sampled rather than discarded, so a caller can
-    /// invert a texel back to a view-space distance as z_view = -nearZ / d -- which is what pins
-    /// the projection's convention against real geometry. Barrier it to ShaderRead before sampling:
-    /// render() declares no read of it, so the graph has emitted no transition.
+    /// with distance). After a producing pass, a caller can invert a texel back to a view-space
+    /// distance as z_view = -nearZ / d, pinning the projection's convention against real geometry.
+    /// Consult textureStates() for each cell's actual layout and frontier before reading it.
+    /// Graph-declared depth shader reads use DepthStencilRead; a slot no frame has rendered into
+    /// yet may still be Undefined and cannot be read back preserving contents.
     ///
     /// Depth ping-pongs by declared temporal frame parity, so this is the slot the frame just
     /// declared rendered into; a frame with temporal off renders into slot 0. Like the scene
@@ -140,19 +169,29 @@ public:
     /// describes the frame just declared rather than the one about to be.
     TemporalStatus temporalStatus() const { return m_temporalStatus; }
 
-    /// Owned camera/shadow visibility and command statistics for the last declared frame.
+    /// Owned camera/shadow visibility and command statistics for the last successfully declared
+    /// frame. A failed declaration leaves the previous frame's status in place.
     const VisibilityStatus& visibilityStatus() const { return m_visibilityStatus; }
-    /// Takes exact-frame GPU results retired by the most recent declaration or explicit drain.
+    /// Takes exact-frame GPU results retired by the most recent declaration or explicit drain, in
+    /// frame order, each already joined with its independent occlusion reference.
     std::vector<VisibilityStatus> takeRetiredVisibility();
     /// Reads all submitted visibility results after the caller has completed Device::waitIdle.
-    void drainVisibilityAfterIdle();
+    /// A readback or reference-join error publishes nothing and is sticky: the failing frames
+    /// stay pending, so every later retirement -- this drain or the next declarePasses -- returns
+    /// the same error. Callers treat it as terminal for the renderer's visibility work.
+    lmx::Result<void> drainVisibilityAfterIdle();
 
-    /// Local-light selection and context of the last declared frame.
+    /// Local-light selection and context of the last successfully declared frame; a failed
+    /// declaration leaves the previous frame's status in place.
     const LightingStatus& lightingStatus() const { return m_lightingStatus; }
-    /// Moves completed lighting contexts to the caller; consume regularly as for visibility.
+    /// Moves completed lighting contexts to the caller, in frame order; consume regularly as for
+    /// visibility. Every record reached it through a joined retirement, so taking cannot fail.
     std::vector<LightingStatus> takeRetiredLighting();
     /// Reads every submitted lighting result after the caller has completed Device::waitIdle.
-    void drainLightingAfterIdle();
+    /// A light-list readback error publishes nothing for its frame or any later one and is
+    /// sticky: those frames stay pending, so every later retirement -- this drain or the next
+    /// declarePasses -- returns the same error. Callers treat it as terminal.
+    lmx::Result<void> drainLightingAfterIdle();
 
     /// The frame's motion target in kMotionFormat, allocated with the scene targets and so never
     /// null after a successful create(). Borrowed: the renderer owns it and replaces it on
@@ -174,10 +213,8 @@ public:
     /// they allocate.
     TextureStateTable& textureStates() { return m_textureStates; }
 
-    /// The persistent kExposureBufferFloats pair the frame's exposure passes keep. Created with
-    /// the renderer and never replaced, so it is never null. Readable from the CPU only when
-    /// create() was given cpuReadback -- the tests and the offscreen path; the windowed App never
-    /// reads it back, which is the whole point of keeping the feedback GPU-resident.
+    /// Borrows the exposure stage's persistent kExposureBufferFloats GPU pair. Created with the
+    /// renderer and retained across resize; diagnostic CPU reads use explicit staging copies.
     const engine::GpuBuffer& exposureBufferOwner();
 
     /// Returns the current target width in pixels.
@@ -203,29 +240,58 @@ private:
                                               const SceneView& view,
                                               const RendererFrameState& state);
     void recordFrameStatus(const RendererFrameState& state);
-    std::array<GraphBuffer, 2> prepareVisibility(RenderGraph& graph, rojoRHI::CommandList& commands,
-                                                 const SceneView& view, const FrustumPlanes& planes,
-                                                 std::span<const GraphBuffer> sceneBuffers);
+    lmx::Result<RendererVisibilityFrame>
+    prepareVisibility(RenderGraph& graph, rojoRHI::CommandList& commands, const SceneView& view,
+                      const FrustumPlanes& planes, std::span<const GraphBuffer> sceneBuffers,
+                      const RendererOcclusionFrame& occlusion);
+    // Publishes a fully declared frame's visibility status and occlusion facts.
+    void commitVisibility(RendererVisibilityFrame&& visibility, RendererOcclusionFrame&& occlusion);
 
-    LightClusterOutputs prepareLighting(RenderGraph& graph, rojoRHI::CommandList& commands,
-                                        const SceneView& view, std::optional<GraphBuffer> lights,
-                                        const FrameExtents& extents,
-                                        const CameraFrameState& cameraState);
-    void retireLightingThrough(uint64_t frame);
+    // Retires the frame three back, creates the cluster owner when first needed and declares this
+    // frame's light lists; publishes nothing, so a failure leaves no status or pending record.
+    lmx::Result<RendererLightingFrame>
+    prepareLighting(RenderGraph& graph, rojoRHI::CommandList& commands, const SceneView& view,
+                    std::optional<GraphBuffer> lights, const FrameExtents& extents,
+                    const CameraFrameState& cameraState);
+    // Discards a prepared frame's unrecorded light-list declaration when the frame fails.
+    void abandonLighting(const RendererLightingFrame& lighting);
+    // Publishes a fully declared frame's lighting status and its pending retirement record.
+    void commitLighting(RendererLightingFrame&& lighting);
+    // Joins every pending status through `frame` with its retired light lists, in frame order. A
+    // cluster retirement failure keeps that status and every later one pending; records already
+    // taken from the cluster owner stay held until their status joins.
+    lmx::Result<void> retireLightingThrough(uint64_t frame);
 
-    GraphTexture prepareOcclusion(RenderGraph& graph, const engine::Camera& camera,
-                                  const SceneView& view, const FrameExtents& extents,
-                                  const CameraFrameState& cameraState);
-    void declareOcclusion(RenderGraph& graph, rojoRHI::CommandList& commands, const SceneView& view,
-                          GraphTexture depth, GraphTexture& display);
-    // Creates the motion and reactive attachments at the current extent, replacing any pair
-    // already held. Called from resize() -- and so from create(), which resizes once -- so both
-    // exist for every frame whether or not it declares the temporal path.
-    //
-    // Its own function rather than resize()'s body because the two allocations answer to
-    // kMotionFormat and kReactiveFormat rather than to the scene targets'.
-    lmx::Result<void> createTemporalTargets();
+    // Creates every occlusion owner the frame needs and stages its history facts; declares no
+    // pass, so a failure leaves no live declaration behind.
+    lmx::Result<RendererOcclusionFrame>
+    prepareOcclusion(RenderGraph& graph, rojoRHI::CommandList& commands,
+                     const engine::Camera& camera, const SceneView& view,
+                     const FrameExtents& extents, const CameraFrameState& cameraState);
+    // Declares the independent reference, the pyramid build and the debug view. The reference's
+    // readback allocation is the only failure, and it precedes the build.
+    lmx::Result<void> declareOcclusion(RenderGraph& graph, rojoRHI::CommandList& commands,
+                                       const SceneView& view, GraphTexture depth,
+                                       GraphTexture& display, RendererOcclusionFrame& occlusion);
 
+    // The motion and reactive attachments at one extent, allocated but not yet adopted.
+    struct TemporalTargets {
+        engine::GpuTexture motion;
+        engine::GpuTexture reactive;
+    };
+    // Allocates the motion and reactive attachments at `width` x `height`. resize() -- and so
+    // create(), which resizes once -- calls it, so both exist for every frame whether or not it
+    // declares the temporal path. Its own function rather than resize()'s body because the two
+    // allocations answer to kMotionFormat and kReactiveFormat rather than to the scene targets'.
+    lmx::Result<TemporalTargets> createTemporalTargets(uint32_t width, uint32_t height) const;
+    // Adopts the attachments and both temporal slot pairs that resize() allocated, forgetting the
+    // outgoing identities' state entries and seeding the replacements'. It reports no error and
+    // allocates no GPU object -- only the state table's own storage, which throws as any
+    // allocation does -- which is what lets resize() allocate everything first and commit it all
+    // at once.
+    void adoptTemporalTargets(TemporalTargets targets, TemporalSlots slots);
+
+    friend struct RendererResizeAccess;
     engine::GpuContext& m_gpu;
     // render()'s own pool for bloom's transients, since a caller without a graph of its own (the
     // --screenshot path, most GPU tests) has no pool to hand declarePasses(); a caller building a
@@ -238,6 +304,7 @@ private:
     TextureStateTable m_textureStates;
     std::unique_ptr<ShadowStage> m_shadowStage;
     std::unique_ptr<SceneStage> m_sceneStage;
+
     // Stage owners retain callback inputs and persistent feedback through graph execution.
     std::unique_ptr<ExposureStage> m_exposureStage;
     std::unique_ptr<BloomStage> m_bloomStage;
@@ -247,6 +314,7 @@ private:
     engine::GpuTexture m_hdrColor;
     engine::GpuTexture m_color;
     engine::GpuTexture m_shadowMap;
+
     // Allocated with the scene targets and replaced by resize() like them, whether or not any
     // frame declares the temporal path: the allocation is permanent and reported through
     // TemporalStatus::historyBytes. Freeing on disable would drop memory the frames still in
@@ -257,19 +325,19 @@ private:
     // into included -- and every pass that reads or writes them. Created with the renderer and
     // resized alongside the scene targets, so its slots always share their extent.
     std::unique_ptr<TemporalResolve> m_temporalResolve;
-    // The "nothing here" textures every draw binds when a material or a scene leaves a slot empty.
-    // They exist because the fragment shader reads every texture slot unconditionally (Slang gives
-    // every entry point the file's whole global set), so an empty slot has to hold something that
-    // shades to the right answer rather than nothing at all: white is the identity for the
-    // material factors, a flat normal leaves the tangent frame alone, and a black cube plus a zero
-    // DFG table make both image-based terms vanish.
+
+    // Roots select these owned views whenever a material or environment has no texture. White
+    // preserves material factors, the flat normal preserves the tangent frame when sampled, and
+    // a black cube plus zero DFG makes both image-based terms vanish. Owners outlive submitted
+    // readers, including views selected independently by each draw.
     engine::GpuTexture m_whiteTexture;
     engine::GpuTexture m_flatNormalTexture;
     engine::GpuTexture m_blackCubeTexture;
     engine::GpuTexture m_zeroDfgTexture;
-    engine::GpuOwned<rojoRHI::Sampler> m_linearSampler;
-    engine::GpuOwned<rojoRHI::Sampler> m_shadowSampler;
-    engine::GpuOwned<rojoRHI::Sampler> m_iblSampler;
+    engine::GpuOwned<rojoRHI::SamplerIndex> m_linearSampler;
+    engine::GpuOwned<rojoRHI::SamplerIndex> m_shadowSampler;
+    engine::GpuOwned<rojoRHI::SamplerIndex> m_iblSampler;
+
     // What the previous declared frame was, recorded every frame -- temporal on or off -- because
     // that is what makes re-enabling distinguishable from the first frame ever declared.
     std::optional<FrameSignature> m_previousSignature;
@@ -282,18 +350,18 @@ private:
     uint64_t m_declaredFrames = 0;
     TemporalStatus m_temporalStatus;
     DrawSubmission m_drawSubmission;
+
+    // Retirement joins m_gpuVisibility and m_occlusionReference in one transaction, so the
+    // reference exists only beside the production owner it checks.
     std::unique_ptr<GpuVisibility> m_gpuVisibility;
     std::unique_ptr<HzbStage> m_hzbStage;
     std::unique_ptr<OcclusionReference> m_occlusionReference;
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_hzbDebugLibrary;
-    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_hzbDebugPipeline;
+    engine::GpuOwned<rojoRHI::Pipeline> m_hzbDebugPipeline;
+    // Facts of the pyramid the last successfully declared frame built; a failed declaration
+    // leaves them, and the two values below, at the previous frame's.
     HzbSource m_occlusionSource;
-    HzbSource m_currentOcclusionSource;
-    OcclusionParams m_occlusionParams;
-    OcclusionInvalidReason m_occlusionReason = OcclusionInvalidReason::Disabled;
-    GraphTexture m_previousPyramid;
     bool m_occlusionPreviouslyEnabled = false;
-    bool m_occlusionStrictView = false;
     std::optional<glm::mat4> m_previousOcclusionViewProjection;
     VisibilityStatus m_visibilityStatus;
     std::unique_ptr<LightClusterStage> m_lightClusters;
@@ -301,6 +369,8 @@ private:
     LightingStatus m_lightingStatus;
     std::vector<LightingStatus> m_pendingLighting;
     std::vector<LightingStatus> m_retiredLighting;
+    // Taken from m_lightClusters but not yet joined with their declared status.
+    std::vector<RetiredLightClusters> m_retiredClusters;
     uint32_t m_width = 0;
     uint32_t m_height = 0;
     bool m_cpuReadback = false;

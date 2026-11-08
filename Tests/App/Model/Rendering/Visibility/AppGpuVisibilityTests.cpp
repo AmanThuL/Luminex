@@ -27,6 +27,9 @@ render::VisibilityStatus retiredStatus(uint64_t frame = 10) {
         .candidates = 2, .bypassed = {0, 0, 2, 0, 0}, .emittedRows = 2, .emittedCommands = 2};
     status.submission.listBytes = 12;
     status.submission.allocatedListBytes = 128;
+    status.submission.allocatedUploadBytes = 896;
+    status.submission.pendingReleaseBuffers = 6;
+    status.submission.pendingReleaseUploadBuffers = 6;
     return status;
 }
 //======================================================================================================================
@@ -111,6 +114,12 @@ TEST_CASE("Delayed GPU display never attributes old rows to replacement identiti
     }));
     REQUIRE(std::ranges::any_of(fields, [](const auto& f) {
         return f.label == "List / argument allocation" && f.value == "128 / 0 B";
+    }));
+    REQUIRE(std::ranges::any_of(fields, [](const auto& f) {
+        return f.label == "Upload staging allocation" && f.value == "896 B";
+    }));
+    REQUIRE(std::ranges::any_of(fields, [](const auto& f) {
+        return f.label == "Pending destination / upload buffers" && f.value == "6 / 6";
     }));
     display.clear();
     display.retire(retired);

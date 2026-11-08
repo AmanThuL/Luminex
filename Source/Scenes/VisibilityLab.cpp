@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <span>
 #include <string>
 
 namespace lmx::scenes {
@@ -99,12 +100,12 @@ asset::AssetResult<void> appendVisibilityLab(rojoRHI::Device& device, engine::Sc
         scene->addMesh(makeIcosphere(), "VisibilityLab.icosphere")};
     const std::array<uint8_t, 16> maskPixels{255, 255, 255, 255, 255, 255, 255, 0,
                                              255, 255, 255, 0,   255, 255, 255, 255};
-    const rojoRHI::TextureMip maskMip{.data = maskPixels.data(), .bytesPerRow = 8};
+    const rojoRHI::TextureData maskMip{.bytes = std::as_bytes(std::span(maskPixels)),
+                                       .bytesPerRow = 8};
     auto mask = engine::GpuTexture::create(device,
-                                           {.width = 2,
-                                            .height = 2,
-                                            .format = rojoRHI::Format::RGBA8Unorm_sRGB,
-                                            .sampled = true,
+                                           {.format = rojoRHI::Format::RGBA8Unorm_sRGB,
+                                            .extent = {2, 2, 1},
+                                            .usage = rojoRHI::TextureUsage::Sampled,
                                             .label = "VisibilityLab.mask"},
                                            std::span(&maskMip, 1));
     if (!mask) {

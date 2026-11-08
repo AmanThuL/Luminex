@@ -22,7 +22,7 @@ resources
 sinks
   export r9 v1
   export r7 v1
-  present r2 v2
+  export r2 v2
 passes
   p0 compute "lmx.pass.exposure.seed"
     write r9 v0

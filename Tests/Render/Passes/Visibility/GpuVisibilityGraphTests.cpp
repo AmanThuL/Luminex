@@ -17,7 +17,7 @@ TEST_CASE("GPU visibility declares writers and precise draw consumers in both la
         REQUIRE(scene);
         auto renderer = Renderer::create(*gpu, kSize, kSize, true);
         REQUIRE(renderer);
-        TransientPool pool(gpu->device());
+        TransientPool pool(*gpu);
         auto commandsFrame = gpu->beginFrame();
         auto& commands = commandsFrame.commands;
         REQUIRE((*scene)->prepareFrame(gpu->frameNumber()));
@@ -29,7 +29,12 @@ TEST_CASE("GPU visibility declares writers and precise draw consumers in both la
         pool.beginFrame();
         RenderGraph graph(pool);
         const auto camera = lmx::engine::cameraFromScene((*scene)->initialCamera);
-        graph.presentTexture((*renderer)->declarePasses(graph, commands, camera, view));
+        const auto declared = (*renderer)->declarePasses(graph, commands, camera, view);
+        if (!declared)
+            gpu->submitAndEndFrame(commandsFrame);
+        INFO(errorOf(declared));
+        REQUIRE(declared);
+        graph.presentTexture(*declared);
         const auto record = graph.compileFrame(gpu->frameNumber());
         INFO((record ? "" : record.error().message));
         REQUIRE(record);
@@ -55,7 +60,8 @@ TEST_CASE("GPU visibility declares writers and precise draw consumers in both la
         };
         REQUIRE(transition("lmx.draw.rows", lmx::render::BufferUse::ShaderRead));
         REQUIRE(transition("lmx.draw.args", lmx::render::BufferUse::IndirectArgument));
-        graph.execute(commands, gpu->frameNumber());
+        // The display target carries a shader-read final use, which a presenting graph cannot
+        // lower, so the dumped frame compiles without executing, as the temporal goldens do.
         gpu->submitAndEndFrame(commandsFrame);
         gpu->waitIdle();
         const auto name = mode == SubmissionMode::Batched ? "frame-visibility-batched.txt"
@@ -82,10 +88,15 @@ TEST_CASE("empty GPU views preserve readable diagnostics as graph sinks",
     view.classifyMode = ClassifyMode::Gpu;
     view.submission = SubmissionMode::Batched;
     view.bloomEnabled = false;
-    TransientPool pool(gpu->device());
+    TransientPool pool(*gpu);
     pool.beginFrame();
     RenderGraph graph(pool);
-    graph.exportTexture((*renderer)->declarePasses(graph, commands, lmx::engine::Camera{}, view));
+    const auto declared = (*renderer)->declarePasses(graph, commands, lmx::engine::Camera{}, view);
+    if (!declared)
+        gpu->submitAndEndFrame(commandsFrame);
+    INFO(errorOf(declared));
+    REQUIRE(declared);
+    graph.exportTexture(*declared);
     const auto record = graph.compileFrame(gpu->frameNumber());
     INFO((record ? "" : record.error().message));
     REQUIRE(record);

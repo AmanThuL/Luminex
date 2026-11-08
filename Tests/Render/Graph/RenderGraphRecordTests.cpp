@@ -1,18 +1,19 @@
 #include "Support/RenderGraphTestSupport.h"
+#include "Support/TestGpu.h"
 
 //======================================================================================================================
 // The record is the frame as compilation saw it: what was imported, what each pass declared, and in
 // which order it runs. An observer reads it without the graph, so everything it needs has to be in
 // it -- names included, since a resource index alone names nothing to a reader.
 TEST_CASE("compileFrame records the declarations it compiled", "[render][graph]") {
-    FakeTexture shadowMap{1024, 1024, "shadowMap"};
-    FakeTexture color{64, 64, "sceneColor"};
-    FakeBuffer storage{256, "instances"};
+    auto shadowMap = textureFixture(1024, 1024, "shadowMap");
+    auto color = textureFixture(64, 64, "sceneColor");
+    auto storage = bufferFixture(256, "instances");
     RenderGraph graph;
     const GraphTexture shadow =
-        graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
+        graph.importTexture(formatted(shadowMap, rojoRHI::Format::D32Float), "shadowMap");
     const GraphTexture sceneColor =
-        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(formatted(color, rojoRHI::Format::BGRA8Unorm), "sceneColor");
     const GraphBuffer instances = graph.importBuffer(storage, "instances");
 
     PassDesc scene;
@@ -60,18 +61,19 @@ TEST_CASE("compileFrame records the declarations it compiled", "[render][graph]"
 }
 
 //======================================================================================================================
-// The record's transitions are the barriers, not a second opinion about them: execute() emits what
-// compilation recorded, so an inspector reading the record and a capture of the frame describe the
-// same synchronisation.
-TEST_CASE("execute emits exactly the transitions the record lists", "[render][graph]") {
-    FakeTexture shadowMap{1024, 1024, "shadowMap"};
-    FakeTexture color{64, 64, "sceneColor"};
-    FakeBuffer storage{256, "histogram"};
+// Emission returns the unchanged logical observer rows; physical dependencies are asserted
+// independently, including depth first-use work absent from those rows.
+TEST_CASE("execute emits exactly the transitions the record lists", "[render][graph][device]") {
+    auto gpu = createTestGpu();
+    auto shadowMap = createTestTexture(
+        *gpu, rojoRHI::Format::D32Float,
+        rojoRHI::TextureUsage::DepthStencil | rojoRHI::TextureUsage::Sampled, 1024, 1024);
+    auto color =
+        createTestTexture(*gpu, rojoRHI::Format::BGRA8Unorm, rojoRHI::TextureUsage::RenderTarget);
+    auto storage = createTestBuffer(*gpu, 256, rojoRHI::BufferUsage::None);
     RenderGraph graph;
-    const GraphTexture shadow =
-        graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
-    const GraphTexture sceneColor =
-        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
+    const GraphTexture shadow = graph.importTexture(shadowMap.ref(), "shadowMap");
+    const GraphTexture sceneColor = graph.importTexture(color.ref(), "sceneColor");
     const GraphBuffer bins = graph.importBuffer(storage, "histogram");
 
     PassDesc shadowPass;
@@ -103,27 +105,42 @@ TEST_CASE("execute emits exactly the transitions the record lists", "[render][gr
     REQUIRE(record.debug.transitions[1].bufferFrom == lmx::render::BufferUse::CopyDestination);
     REQUIRE(record.debug.transitions[1].bufferTo == lmx::render::BufferUse::ShaderRead);
 
-    REQUIRE(
-        describe(frame) ==
-        std::vector<std::string>{"scope lmx.frame", "begin lmx.pass.shadow", "run lmx.pass.shadow",
-                                 "end", "scope lmx.pass.clear", "run lmx.pass.clear", "end scope",
-                                 "barrier shadowMap RenderTarget->ShaderRead",
-                                 "barrier histogram CopyDestination->ShaderRead",
-                                 "begin lmx.pass.scene", "run lmx.pass.scene", "end", "end scope"});
+    REQUIRE(passEvents(frame) ==
+            std::vector<std::string>{"scope lmx.frame", "begin lmx.pass.shadow",
+                                     "run lmx.pass.shadow", "end", "scope lmx.pass.clear",
+                                     "run lmx.pass.clear", "end scope", "begin lmx.pass.scene",
+                                     "run lmx.pass.scene", "end", "end scope"});
+    REQUIRE(logicalTransitions(frame.record) ==
+            std::vector<std::string>{"barrier shadowMap RenderTarget->ShaderRead",
+                                     "barrier histogram CopyDestination->ShaderRead"});
 
-    RecordingCommandList commands;
-    const CompiledFrameRecord executed = graph.execute(commands, 7);
+    auto recording = gpu->beginFrame();
+    const auto executed = graph.execute(recording.commands, 7);
+    gpu->submitAndEndFrame(recording);
+    gpu->waitIdle();
     REQUIRE(executed.frameId == 7);
+    REQUIRE(logicalTransitions(executed) == logicalTransitions(record));
+    const auto barriers = textureBarriers(frame);
+    REQUIRE(barriers.size() == 3);
+    const auto sampled = std::ranges::find_if(barriers, [&](const auto& barrier) {
+        return barrier.resource == shadow.index &&
+               barrier.to.layout == rojoRHI::Layout::DepthStencilRead;
+    });
+    REQUIRE(sampled != barriers.end());
+    REQUIRE(sampled->from.access ==
+            (rojoRHI::Access::DepthStencilRead | rojoRHI::Access::DepthStencilWrite));
+    REQUIRE(sampled->to.access == rojoRHI::Access::ShaderRead);
+    REQUIRE(bufferBarriers(frame).size() == 1);
 }
 
 //======================================================================================================================
 // The frame number stamps the record and takes no part in compiling it, so two frames declaring the
 // same passes differ in nothing else -- which is what lets a dump be compared across runs.
 TEST_CASE("the frame id changes nothing else about a record", "[render][graph]") {
-    FakeTexture color{64, 64, "sceneColor"};
+    auto color = textureFixture(64, 64, "sceneColor");
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(formatted(color, rojoRHI::Format::BGRA8Unorm), "sceneColor");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
@@ -146,10 +163,10 @@ TEST_CASE("the frame id changes nothing else about a record", "[render][graph]")
 // Nothing roots this frame, so nothing in it is asked for. The passes are valid, and that is the
 // point: culling is about what the frame is for, not about whether it is well formed.
 TEST_CASE("a graph with no sink schedules nothing", "[render][graph]") {
-    FakeTexture color{64, 64, "sceneColor"};
+    auto color = textureFixture(64, 64, "sceneColor");
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(formatted(color, rojoRHI::Format::BGRA8Unorm), "sceneColor");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
@@ -167,17 +184,17 @@ TEST_CASE("a graph with no sink schedules nothing", "[render][graph]") {
 // chain that does not is dropped whole. Both reasons appear, and the record keeps the culled passes
 // in declaration order so an observer can see what was left out and why.
 TEST_CASE("only the passes a sink reaches are scheduled", "[render][graph]") {
-    FakeTexture color{64, 64, "sceneColor"};
-    FakeTexture displayed{64, 64, "displayColor"};
-    FakeTexture unused{64, 64, "unusedTarget"};
-    FakeBuffer probe{256, "probe"};
+    auto color = textureFixture(64, 64, "sceneColor");
+    auto displayed = textureFixture(64, 64, "displayColor");
+    auto unused = textureFixture(64, 64, "unusedTarget");
+    auto probe = bufferFixture(256, "probe");
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(formatted(color, rojoRHI::Format::BGRA8Unorm), "sceneColor");
     const GraphTexture displayColor =
-        graph.importTexture(displayed, rojoRHI::Format::BGRA8Unorm, "displayColor");
+        graph.importTexture(formatted(displayed, rojoRHI::Format::BGRA8Unorm), "displayColor");
     const GraphTexture orphan =
-        graph.importTexture(unused, rojoRHI::Format::BGRA8Unorm, "unusedTarget");
+        graph.importTexture(formatted(unused, rojoRHI::Format::BGRA8Unorm), "unusedTarget");
     const GraphBuffer stats = graph.importBuffer(probe, "probe");
 
     PassDesc scene;
@@ -228,10 +245,12 @@ TEST_CASE("only the passes a sink reaches are scheduled", "[render][graph]") {
 // Culling is a function of the declarations, so the same declarations answer the same way whichever
 // order the sinks were declared in and however many times compilation is asked.
 TEST_CASE("culling answers the same way every time", "[render][graph]") {
-    const auto build = [](RenderGraph& graph, FakeTexture& first, FakeTexture& second,
-                          bool exportFirst) {
-        const GraphTexture a = graph.importTexture(first, rojoRHI::Format::BGRA8Unorm, "a");
-        const GraphTexture b = graph.importTexture(second, rojoRHI::Format::BGRA8Unorm, "b");
+    const auto build = [](RenderGraph& graph, const engine::TextureRef& first,
+                          const engine::TextureRef& second, bool exportFirst) {
+        const GraphTexture a =
+            graph.importTexture(formatted(first, rojoRHI::Format::BGRA8Unorm), "a");
+        const GraphTexture b =
+            graph.importTexture(formatted(second, rojoRHI::Format::BGRA8Unorm), "b");
         PassDesc writeA;
         writeA.color = ColorAttachment{.handle = a};
         graph.addPass("lmx.pass.a", writeA, kNoWork);
@@ -247,8 +266,8 @@ TEST_CASE("culling answers the same way every time", "[render][graph]") {
         }
     };
 
-    FakeTexture first{64, 64, "a"};
-    FakeTexture second{64, 64, "b"};
+    auto first = textureFixture(64, 64, "a");
+    auto second = textureFixture(64, 64, "b");
 
     RenderGraph forward;
     build(forward, first, second, true);
@@ -270,14 +289,16 @@ TEST_CASE("culling answers the same way every time", "[render][graph]") {
 //======================================================================================================================
 // A culled pass emits nothing at all -- not the scope, not the body, and not the barrier a read of
 // its output would otherwise have justified.
-TEST_CASE("execute runs none of a culled pass", "[render][graph]") {
-    FakeTexture color{64, 64, "sceneColor"};
-    FakeTexture unused{64, 64, "unusedTarget"};
+TEST_CASE("execute runs none of a culled pass", "[render][graph][device]") {
+    auto gpu = createTestGpu();
+    auto color =
+        createTestTexture(*gpu, rojoRHI::Format::BGRA8Unorm, rojoRHI::TextureUsage::RenderTarget);
+    auto unused =
+        createTestTexture(*gpu, rojoRHI::Format::BGRA8Unorm,
+                          rojoRHI::TextureUsage::RenderTarget | rojoRHI::TextureUsage::Sampled);
     RenderGraph graph;
-    const GraphTexture sceneColor =
-        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
-    const GraphTexture orphan =
-        graph.importTexture(unused, rojoRHI::Format::BGRA8Unorm, "unusedTarget");
+    const GraphTexture sceneColor = graph.importTexture(color.ref(), "sceneColor");
+    const GraphTexture orphan = graph.importTexture(unused.ref(), "unusedTarget");
 
     bool orphanRan = false;
     PassDesc orphaned;
@@ -288,31 +309,35 @@ TEST_CASE("execute runs none of a culled pass", "[render][graph]") {
     PassDesc scene;
     scene.textureReads.push_back(nextVersion(orphan));
     scene.color = ColorAttachment{.handle = sceneColor};
-    graph.addPass("lmx.pass.scene", scene, kNoWork);
+    bool culledRan = false;
+    graph.addPass("lmx.pass.scene", scene, [&](const PassResources&) { culledRan = true; });
 
     // Roots the orphan's own output rather than the scene's, so the scene pass is the culled one
     // and the transition its read would have justified goes with it.
     graph.exportTexture(nextVersion(orphan));
 
-    RecordingCommandList commands;
-    graph.execute(commands, 1);
-
+    auto recording = gpu->beginFrame();
+    graph.execute(recording.commands, recording.number);
+    gpu->submitAndEndFrame(recording);
+    gpu->waitIdle();
     REQUIRE(orphanRan);
-    REQUIRE(commands.events == std::vector<std::string>{"begin lmx.pass.orphan", "end"});
-    REQUIRE(describe(lowered(graph)) ==
+    REQUIRE_FALSE(culledRan);
+    const auto snapshot = lowered(graph);
+    REQUIRE(passEvents(snapshot) ==
             std::vector<std::string>{"scope lmx.frame", "begin lmx.pass.orphan",
                                      "run lmx.pass.orphan", "end", "end scope"});
+    REQUIRE(logicalTransitions(snapshot.record) == std::vector<std::string>{});
 }
 
 //======================================================================================================================
 // Presentation and readback root work exactly as an export does; they are separate kinds because
 // what a frame does with a result is part of what the frame declared, not a detail of the export.
 TEST_CASE("presentation and readback root work like an export", "[render][graph]") {
-    FakeTexture drawable{64, 64, "drawable"};
-    FakeBuffer histogram{1024, "histogram"};
+    auto drawable = textureFixture(64, 64, "drawable");
+    auto histogram = bufferFixture(1024, "histogram");
     RenderGraph graph;
     const GraphTexture backbuffer =
-        graph.importTexture(drawable, rojoRHI::Format::BGRA8Unorm, "drawable");
+        graph.importTexture(formatted(drawable, rojoRHI::Format::BGRA8Unorm), "drawable");
     const GraphBuffer bins = graph.importBuffer(histogram, "histogram");
 
     PassDesc ui;
@@ -341,12 +366,12 @@ TEST_CASE("presentation and readback root work like an export", "[render][graph]
 // presented drawable nothing drew into is as broken as an exported one, and the message has to name
 // the declaration the caller actually made.
 TEST_CASE("a sink naming a version no pass wrote is rejected", "[render][graph]") {
-    FakeTexture drawable{64, 64, "drawable"};
-    FakeBuffer histogram{1024, "histogram"};
+    auto drawable = textureFixture(64, 64, "drawable");
+    auto histogram = bufferFixture(1024, "histogram");
 
     RenderGraph presented;
     const GraphTexture backbuffer =
-        presented.importTexture(drawable, rojoRHI::Format::BGRA8Unorm, "drawable");
+        presented.importTexture(formatted(drawable, rojoRHI::Format::BGRA8Unorm), "drawable");
     presented.presentTexture(nextVersion(backbuffer));
     const auto presentFailure = presented.compile();
     REQUIRE_FALSE(presentFailure.has_value());
@@ -366,13 +391,13 @@ TEST_CASE("a sink naming a version no pass wrote is rejected", "[render][graph]"
 // is still a pass the caller wrote down wrong, and reporting it only once a sink happens to reach
 // it would make the failure depend on unrelated declarations.
 TEST_CASE("a culled pass is still validated", "[render][graph]") {
-    FakeTexture color{64, 64, "sceneColor"};
-    FakeTexture shadowMap{1024, 1024, "shadowMap"};
+    auto color = textureFixture(64, 64, "sceneColor");
+    auto shadowMap = textureFixture(1024, 1024, "shadowMap");
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(formatted(color, rojoRHI::Format::BGRA8Unorm), "sceneColor");
     const GraphTexture shadow =
-        graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
+        graph.importTexture(formatted(shadowMap, rojoRHI::Format::D32Float), "shadowMap");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};

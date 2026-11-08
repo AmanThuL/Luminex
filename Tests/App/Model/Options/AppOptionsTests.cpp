@@ -140,6 +140,7 @@ TEST_CASE("app options reject unknown arguments", "[app][options]") {
             "<sponza|material-lab|temporal-lab|san-miguel|visibility-lab|"
             "light-lab|path>"
             "] [--windowed] [--session] [--appearance <auto|light|dark>] "
+            "[--open-window <performance|graph|gallery|session>] "
             "[--frames <N>] [--temporal <off|raw|taa|metalfx>] "
             "[--temporal-view <off|motion|reprojection|reprojected|rejection|weight|age>] "
             "[--render-scale <0.5..1.0>] [--capture-sequence <directory> --warmup <N> "
@@ -761,4 +762,77 @@ TEST_CASE("appearance rejects offscreen modes naming the windowed editor", "[app
             REQUIRE(result.error().message.contains("windowed editor"));
         }
     }
+}
+
+//======================================================================================================================
+TEST_CASE("--open-window opens a detached tool window", "[app][options]") {
+    const std::array<std::string_view, 5> arguments{"--windowed", "--open-window", "performance",
+                                                    "--open-window", "graph"};
+    const auto parsed = parseAppOptions(arguments);
+    REQUIRE(parsed);
+    CHECK_FALSE(parsed->maximized);
+    CHECK(parsed->openWindows ==
+          std::vector{DetachedWindow::Performance, DetachedWindow::RenderGraph});
+
+    const std::array<std::string_view, 6> others{"--open-window", "gallery",       "--open-window",
+                                                 "session",       "--open-window", "gallery"};
+    const auto repeated = parseAppOptions(others);
+    REQUIRE(repeated);
+    CHECK(repeated->openWindows == std::vector{DetachedWindow::StyleGallery,
+                                               DetachedWindow::Session,
+                                               DetachedWindow::StyleGallery});
+    const auto defaults = parseAppOptions({});
+    REQUIRE(defaults);
+    CHECK(defaults->openWindows.empty());
+}
+
+//======================================================================================================================
+TEST_CASE("--open-window rejects unknown names and headless runs", "[app][options]") {
+    for (const auto value : {"console", "", "--windowed"}) {
+        const std::array<std::string_view, 2> arguments{"--open-window", value};
+        const auto parsed = parseAppOptions(arguments);
+        REQUIRE_FALSE(parsed);
+        CHECK(parsed.error().message.find("performance|graph|gallery|session") !=
+              std::string::npos);
+    }
+    const auto missing = parseAppOptions(std::array<std::string_view, 1>{"--open-window"});
+    REQUIRE_FALSE(missing);
+    CHECK(missing.error().message.find("performance|graph|gallery|session") != std::string::npos);
+    for (const auto mode : {"--screenshot", "--capture-sequence", "--measure"}) {
+        const std::array<std::string_view, 4> arguments{mode, "out.png", "--open-window",
+                                                        "performance"};
+        const auto parsed = parseAppOptions(arguments);
+        REQUIRE_FALSE(parsed);
+        CHECK(parsed.error().message == "--open-window is only available in the windowed editor");
+        const std::array<std::string_view, 4> reversed{"--open-window", "performance", mode,
+                                                       "out.png"};
+        const auto reversedParsed = parseAppOptions(reversed);
+        REQUIRE_FALSE(reversedParsed);
+        CHECK(reversedParsed.error().message ==
+              "--open-window is only available in the windowed editor");
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("--rhi-validation is refused in Release builds", "[app][options]") {
+    CHECK_FALSE(parseAppOptions({})->rhiValidation);
+    const auto enabled = parseAppOptions(std::array<std::string_view, 1>{"--rhi-validation"});
+#ifdef NDEBUG
+    REQUIRE_FALSE(enabled);
+    CHECK(enabled.error().message == "--rhi-validation needs a Debug build");
+#else
+    REQUIRE(enabled);
+    CHECK(enabled->rhiValidation);
+    const auto screenshot = parseAppOptions(
+        std::array<std::string_view, 3>{"--rhi-validation", "--screenshot", "out.png"});
+    REQUIRE(screenshot);
+    CHECK(screenshot->rhiValidation);
+    for (const auto arguments :
+         {std::array<std::string_view, 3>{"--rhi-validation", "--measure", "out.json"},
+          std::array<std::string_view, 3>{"--measure", "out.json", "--rhi-validation"}}) {
+        const auto measurement = parseAppOptions(arguments);
+        REQUIRE(measurement);
+        CHECK_FALSE(measurement->rhiValidation);
+    }
+#endif
 }

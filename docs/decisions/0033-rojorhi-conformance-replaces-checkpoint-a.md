@@ -1,6 +1,6 @@
 # ADR 0033: RojoRHI's conformance suite replaces portability checkpoint A
 
-**Status**: Proposed · **Roadmap**: [R5](../roadmap/codebase-rojorhi-port.md#r5--luminex-runs-on-the-rojorhi-v2-interface) ·
+**Status**: Accepted (2026-11-08) · **Roadmap**: [R5](../roadmap/codebase-rojorhi-port.md#r5--luminex-runs-on-the-rojorhi-v2-interface) ·
 **Record**: [RojoRHI v2 port](../milestones/r/r5.md)
 
 ## Context
@@ -35,21 +35,21 @@ Each area maps to the RojoRHI T1 files that cover it at `v0.1.0`:
 | Area | RojoRHI `[conformance]` coverage | Gap |
 |---|---|---|
 | Upload and layout | [Copy](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/CopyConformanceTests.cpp) (buffer-to-texture regions with row pitch and offset, layers, cube faces, slices, BC1 blocks); [InitialData](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/InitialDataConformanceTests.cpp) (every mip and layer, cube faces); [AbiCompute](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/AbiComputeConformanceTests.cpp) (BC1 sampling, the cube face a direction selects) | none |
-| Resource views | [AbiCompute](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/AbiComputeConformanceTests.cpp) (layer views of 1D, 2D and cube arrays, format and depth-aspect views); [WriteOnly](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/WriteOnlyConformanceTests.cpp) (storage views); [RenderPass](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/RenderPassConformanceTests.cpp) (an attachment's mip and layer, a cube face as a layer) | no case samples or stores through a view of one mip of a multi-mip texture |
+| Resource views | [AbiCompute](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/AbiComputeConformanceTests.cpp) (layer views of 1D, 2D and cube arrays, format and depth-aspect views); [WriteOnly](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/WriteOnlyConformanceTests.cpp) (storage views); [RenderPass](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/RenderPassConformanceTests.cpp) (an attachment's mip and layer, a cube face as a layer) | closed: [AbiCompute](https://github.com/AmanThuL/rojo-rhi/blob/72819e6a80302002d66be1304b51aaf2746355dd/Tests/Conformance/AbiComputeConformanceTests.cpp) samples, loads and stores through views of mip 1 alone (RojoRHI #134) |
 | sRGB | [AbiCompute](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/AbiComputeConformanceTests.cpp) (linear and BC1 textures through sRGB views and the reverse); [Copy](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/CopyConformanceTests.cpp) (sRGB to linear partner bit for bit) | none |
-| Reversed-Z | [Draw](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/DrawConformanceTests.cpp) and [Format](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/FormatConformanceTests.cpp) write and keep D32Float depth | no case runs a Greater depth test that keeps the nearer fragment |
-| Storage hazards | [GraphicsBarrier](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/GraphicsBarrierConformanceTests.cpp) (compute buffer and record writes read by draws, attachments read by later passes and dispatches); [Barrier](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/BarrierConformanceTests.cpp) and [Fill](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/FillConformanceTests.cpp) (copies and kernel fills ordered by barriers) | no case orders a storage texture written by one dispatch before a later dispatch or draw, or reads a GPU-written mip chain |
+| Reversed-Z | [Draw](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/DrawConformanceTests.cpp) and [Format](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/FormatConformanceTests.cpp) write and keep D32Float depth | closed: [Draw](https://github.com/AmanThuL/rojo-rhi/blob/72819e6a80302002d66be1304b51aaf2746355dd/Tests/Conformance/DrawConformanceTests.cpp) runs Greater and GreaterOrEqual over depth cleared to 0 (RojoRHI #134) |
+| Storage hazards | [GraphicsBarrier](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/GraphicsBarrierConformanceTests.cpp) (compute buffer and record writes read by draws, attachments read by later passes and dispatches); [Barrier](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/BarrierConformanceTests.cpp) and [Fill](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/FillConformanceTests.cpp) (copies and kernel fills ordered by barriers) | closed for ordering: [GraphicsBarrier](https://github.com/AmanThuL/rojo-rhi/blob/72819e6a80302002d66be1304b51aaf2746355dd/Tests/Conformance/GraphicsBarrierConformanceTests.cpp) reads a dispatch's storage-texture writes in the next dispatch and the next pass's fragment stage (RojoRHI #134); no T1 case reads a GPU-written mip chain level by level, which Luminex's HZB GPU cases cover |
 | Load/store behavior | [RenderPass](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/RenderPassConformanceTests.cpp) (Clear, Load and Store per attachment); [Draw](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/DrawConformanceTests.cpp) (a DontCare load); [GraphicsBarrier](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/GraphicsBarrierConformanceTests.cpp) (a depth attachment sampled after its pass) | none; the transient cases stay in Luminex |
 | Indirect arguments | [Indirect](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/IndirectConformanceTests.cpp) (direct, indexed and GPU-written counted draws); [Dispatch](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/DispatchConformanceTests.cpp) (`dispatchIndirect` from a GPU-written record) | none; v2's vertex index excludes the base vertex, which Luminex never sets |
-| Frame-slot retirement | [Frame](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/FrameConformanceTests.cpp) (pacing at two and three frames in flight, deferred destruction); [Handoff](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/HandoffConformanceTests.cpp) (other queues' work joined before a frame retires) | no T1 case keeps per-frame uploads intact across many overlapping frames; RojoRHI's Null contract tier covers uploads across slot reuse |
+| Frame-slot retirement | [Frame](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/FrameConformanceTests.cpp) (pacing at two and three frames in flight, deferred destruction); [Handoff](https://github.com/AmanThuL/rojo-rhi/blob/v0.1.0/Tests/Conformance/HandoffConformanceTests.cpp) (other queues' work joined before a frame retires) | closed: [Frame](https://github.com/AmanThuL/rojo-rhi/blob/72819e6a80302002d66be1304b51aaf2746355dd/Tests/Conformance/FrameConformanceTests.cpp) keeps each in-flight frame's uploads intact at two and three frames in flight (RojoRHI #134) |
 
-The gaps are RojoRHI's to close, tracked in
-[rojo-rhi issue 133](https://github.com/AmanThuL/rojo-rhi/issues/133); they do not block this
-decision, because T1 is RojoRHI's gate and Luminex keeps its own GPU suite over the same behavior.
+The gaps were RojoRHI's to close, tracked in
+[rojo-rhi issue 133](https://github.com/AmanThuL/rojo-rhi/issues/133); its cases are in the
+RojoRHI commit Luminex pins at R5's integration, linked above, and pass on Metal 4. Luminex keeps
+its own GPU suite over the same behavior.
 
-Once accepted, at R5's integration, this ADR supersedes ADR 0009, and ADR 0009's status line then
-reads "Superseded by" a link to this ADR, changed in that integration. ADR 0009 is unchanged until
-then.
+This ADR supersedes ADR 0009, whose status line reads "Superseded by" a link to this ADR from R5's
+integration.
 
 ## Consequences
 

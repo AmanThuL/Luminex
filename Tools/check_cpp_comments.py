@@ -13,9 +13,9 @@ from typing import Any
 
 
 try:
-    from .check_module_deps import load_contract
+    from .check_module_deps import load_contract, owner_of
 except ImportError:
-    from check_module_deps import load_contract
+    from check_module_deps import load_contract, owner_of
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,7 +44,7 @@ def project_cpp_files(root: Path) -> list[Path]:
     return sorted(files)
 
 
-def public_header_files(root: Path) -> list[Path]:
+def public_header_files(root: Path, contract: dict | None = None) -> list[Path]:
     """Return headers whose declarations form project API.
 
     Source visibility follows the module contract.
@@ -52,8 +52,9 @@ def public_header_files(root: Path) -> list[Path]:
     source = (root / "Source").rglob("*.h") if (root / "Source").is_dir() else ()
     contract_path = root / "Tools/module_contract.json"
     private: set[str] = set()
-    if contract_path.exists():
+    if contract is None and contract_path.exists():
         contract = load_contract(contract_path, root)
+    if contract is not None:
         private = {header for unit in contract["units"].values() for header in unit["privateHeaders"]}
     private_identities = set()
     for name in private:
@@ -234,40 +235,50 @@ def _compile_entries(path: Path) -> list[dict[str, Any]]:
         raise RuntimeError(f"cannot read compilation database {path}: {exc}") from exc
 
 
-def _root_relative(file: str, root: Path) -> str:
-    path = Path(file)
-    if path.is_absolute():
-        try:
-            path = path.relative_to(root)
-        except ValueError:
-            return path.as_posix()
-    return path.as_posix()
+def _root_relative(file: str, root: Path, directory: Path | None = None) -> str:
+    path = (directory or root) / file
+    try:
+        return path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return path.resolve().as_posix()
 
 
-def _entry_for_header(header: Path, entries: list[dict[str, Any]], root: Path) -> dict[str, Any]:
+def _entry_for_header(
+    header: Path, entries: list[dict[str, Any]], root: Path, contract: dict
+) -> dict[str, Any]:
     relative = header.relative_to(root)
-    if relative.parts[0] in {"Source", "Experiments"}:
-        module = "/".join(relative.parts[:2])
-    else:
-        module = relative.parts[0]
-    # Anchor at the root: the mounted component has module directories of the same name.
-    candidates = [entry for entry in entries if _root_relative(entry["file"], root).startswith(f"{module}/")]
+    unit = owner_of(relative, contract)
+    if unit is None:
+        raise RuntimeError(f"no unit owns {relative.as_posix()}")
+    candidates: list[tuple[str, dict[str, Any]]] = []
+    for entry in entries:
+        directory = (root / Path(entry.get("directory") or root)).resolve()
+        source = _root_relative(entry["file"], root, directory)
+        if owner_of(Path(source), contract) == unit:
+            candidates.append((source, entry))
     if not candidates:
-        candidates = entries
-    if not candidates:
-        raise RuntimeError("compilation database is empty")
-    stem_matches = [entry for entry in candidates if Path(entry["file"]).stem == header.stem]
-    return (stem_matches or candidates)[0]
+        raise RuntimeError(f"no compiled source found for unit {unit} to check {relative.as_posix()}")
+    # Prefer a counterpart only within the declared owner, then keep selection stable across DB order.
+    return min(
+        candidates,
+        key=lambda item: (Path(item[0]).stem != header.stem, item[0], json.dumps(item[1], sort_keys=True)),
+    )[1]
 
 
 def _ast_for_header(
-    header: Path, entries: list[dict[str, Any]], root: Path
+    header: Path, entries: list[dict[str, Any]], root: Path, contract: dict | None = None
 ) -> tuple[list[dict[str, Any]], str | None]:
-    entry = _entry_for_header(header, entries, root)
+    if contract is None:
+        contract = load_contract(root / "Tools/module_contract.json", root)
+    try:
+        entry = _entry_for_header(header, entries, root, contract)
+    except RuntimeError as exc:
+        return [], str(exc)
+    directory = (root / Path(entry.get("directory") or root)).resolve()
     arguments = list(entry.get("arguments", []))
     if not arguments:
         return [], "compilation database entry has no argument vector"
-    source = entry["file"]
+    source = _root_relative(entry["file"], root, directory)
     command: list[str] = []
     skip = False
     for argument in arguments:
@@ -276,13 +287,13 @@ def _ast_for_header(
             continue
         if argument == "-o":
             skip = True
-        elif argument != "-c" and argument != source:
+        elif argument != "-c" and (argument.startswith("-") or _root_relative(argument, root, directory) != source):
             command.append(argument)
     command.extend(
         [
             "-x",
             "c++",
-            header.relative_to(root).as_posix(),
+            header.relative_to(root).as_posix() if directory == root else str(header),
             "-fsyntax-only",
             "-fparse-all-comments",
             "-Wdocumentation",
@@ -293,22 +304,36 @@ def _ast_for_header(
             "-ast-dump-filter=lmx",
         ]
     )
-    result = subprocess.run(command, cwd=root, capture_output=True, text=True, check=False)
+    result = subprocess.run(command, cwd=directory, capture_output=True, text=True, check=False)
     if result.returncode:
         return [], result.stderr.strip() or "Clang failed without diagnostics"
     try:
-        return _json_objects(result.stdout), None
+        objects = _json_objects(result.stdout)
     except json.JSONDecodeError as exc:
         return [], f"cannot decode Clang AST: {exc}"
+    if directory != root:
+        def normalize_files(value: Any) -> None:
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    if key == "file" and isinstance(child, str):
+                        value[key] = _root_relative(child, root, directory)
+                    else:
+                        normalize_files(child)
+            elif isinstance(value, list):
+                for child in value:
+                    normalize_files(child)
+        normalize_files(objects)
+    return objects, None
 
 
 def compiler_public_api_findings(root: Path, compile_commands: Path) -> list[str]:
     """Compile exported headers and report missing or malformed public API documentation."""
     entries = _compile_entries(compile_commands)
+    contract = load_contract(root / "Tools/module_contract.json", root)
     findings: list[str] = []
-    for header in public_header_files(root):
+    for header in public_header_files(root, contract):
         relative = header.relative_to(root)
-        ast, error = _ast_for_header(header, entries, root)
+        ast, error = _ast_for_header(header, entries, root, contract)
         if error:
             findings.append(f"{relative}: public-header documentation compile failed:\n{error}")
             continue

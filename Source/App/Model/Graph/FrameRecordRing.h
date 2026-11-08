@@ -41,7 +41,7 @@ struct RetainedFrame {
     render::CompiledFrameRecord record; ///< The frame as compilation described it.
     /// Per-pass GPU times, in the order the frame began its passes, or empty until they retire.
     /// Copied rather than borrowed: the rows engine::GpuContext::passTimings() returns are
-    /// invalidated by the next beginFrame(), and this outlives several of those.
+    /// invalidated by the next endFrame(), and this outlives several of those.
     std::vector<engine::PassTiming> timings;
     std::optional<FrameMetricsMetadata> metrics; ///< Declaration-time editor context, if supplied.
     bool timed = false; ///< Whether `timings` has been joined; distinguishes it from a timed frame
@@ -60,8 +60,8 @@ public:
     ///
     /// One more than the three that can be in flight, because a timing publication names a frame
     /// that has already *retired* -- the frame just past the in-flight window. Retaining exactly
-    /// three would evict each frame's record on the beginFrame() that publishes its timings, which
-    /// is the one moment the record is needed.
+    /// three would evict that record when retain() stores the new frame, before endFrame()
+    /// publishes the retired timings needed to join it.
     static constexpr size_t kCapacity = 4;
 
     /// Retains one compiled frame, evicting the oldest once kCapacity are held. Frames are expected

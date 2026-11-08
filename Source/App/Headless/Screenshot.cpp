@@ -14,7 +14,9 @@
 #include "App/Model/Rendering/Visibility/VisibilityDiagnostics.h"
 #include "App/Model/Scene/SceneDefaults.h"
 #include "App/Model/Scene/SceneSession.h"
+#include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"
+#include "Core/Diagnostics/Result.h"
 #include "Core/Util/Parse.h"
 #include "Engine/Asset/Image/BmpImage.h"
 #include "Engine/Asset/Image/PngImage.h"
@@ -34,6 +36,7 @@
 #include <format>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -71,7 +74,17 @@ bool writeCaptureImage(const std::filesystem::path& path, const std::vector<uint
 }
 
 //======================================================================================================================
-// A flat readback is a scene-independent liveness failure without imposing a golden image.
+// Resolves a copy recorded on a captured frame's own command list into its packed BGRA bytes.
+Result<std::vector<uint8_t>> resolveCapture(engine::GpuContext& gpu,
+                                            const render::ReadbackTicket& ticket) {
+    std::vector<uint8_t> pixels(ticket.region.size);
+    if (auto resolved = render::resolve(gpu, ticket, pixels); !resolved)
+        return std::unexpected(resolved.error());
+    return pixels;
+}
+
+//======================================================================================================================
+// Compare every BGRA texel without imposing a particular rendered image.
 bool isFlatImage(const std::vector<uint8_t>& bgra) {
     if (bgra.size() < 4) {
         return true;
@@ -143,13 +156,13 @@ int runOffscreen(AppOptions options) {
             return 1;
         }
     }
-    auto context = engine::GpuContext::create({});
+    auto context = engine::GpuContext::create({.validation = options.rhiValidation});
     if (!context) {
         LMX_LOG_ERROR("createDevice failed: {}", context.error().message);
         return 1;
     }
     engine::GpuContext& gpu = **context;
-    LMX_LOG_INFO("Metal 4 device: {}", gpu.device().deviceName());
+    LMX_LOG_INFO("Metal 4 device: {}", gpu.device().capabilities().adapterName);
 
     scenes::SceneLibrary library(
         gpu, options.generatorOverrides.instances, options.generatorOverrides.occluders,
@@ -169,9 +182,10 @@ int runOffscreen(AppOptions options) {
     LMX_LOG_INFO("scene: {} ({} objects)", activeScene->name, activeScene->objects.size());
 
     // The renderer dies before its frame transients and their pool, while the device is alive.
-    render::TransientPool transientPool(gpu.device());
+    render::TransientPool transientPool(gpu);
 
-    // Shared storage permits direct CPU readback after GPU completion.
+    // Each captured frame records a preserving copy of its display target; it resolves once the
+    // frame has completed.
     auto renderer = render::Renderer::create(gpu, kScreenshotWidth, kScreenshotHeight,
                                              /*cpuReadback=*/true);
     if (!renderer) {
@@ -200,7 +214,7 @@ int runOffscreen(AppOptions options) {
         std::ofstream file(options.captureSequencePath / "manifest.json", std::ios::trunc);
         if (!file)
             return false;
-        file << captureManifestJson(options, gpu.device().deviceName(),
+        file << captureManifestJson(options, gpu.device().capabilities().adapterName,
                                     (*renderer)->displayDomain(), kScreenshotWidth,
                                     kScreenshotHeight, hasCameraTrack, records, complete,
                                     sceneDocumentPath, loadedSnapshot.hash, failure);
@@ -209,6 +223,10 @@ int runOffscreen(AppOptions options) {
     };
     options.localLightRig = session.localLightRigEnabled();
     FrameRecordRing frameRecords;
+    const auto joinRetiredTimings = [&] {
+        const engine::PassTimingFrame timing = gpu.passTimings();
+        frameRecords.joinTimings(timing.frame, timing.passes);
+    };
     DynamicResolutionState resolutionState;
     render::ResolutionController resolutionController;
 
@@ -225,6 +243,8 @@ int runOffscreen(AppOptions options) {
         return 1;
     }
     const uint32_t totalFrames = sequence ? sequence->warmup + frames : frames;
+    // The single screenshot's copy, recorded on the last frame and resolved after the loop.
+    std::optional<render::ReadbackTicket> finalCapture;
     for (uint32_t frame = 0; frame < totalFrames; ++frame) {
         if (sequence) {
             session.prepareSequenceFrame(frame);
@@ -234,13 +254,12 @@ int runOffscreen(AppOptions options) {
 
         engine::Frame gpuFrame = gpu.beginFrame();
         rojoRHI::CommandList& commands = gpuFrame.commands;
-        const engine::PassTimingFrame timings = gpu.passTimings();
-        frameRecords.joinTimings(timings.frame, timings.passes);
         applyDynamicResolution(resolutionState, resolutionController, resolutionSettings,
                                frameRecords.newestTimedFrame());
         if (auto prepared = session.prepareFrame(gpu.frameNumber()); !prepared) {
             LMX_LOG_ERROR("scene table preparation failed: {}", prepared.error().message);
             gpu.submitAndEndFrame(gpuFrame);
+            joinRetiredTimings();
             gpu.waitIdle();
             return 1;
         }
@@ -271,21 +290,45 @@ int runOffscreen(AppOptions options) {
                                         ? (**scaleStep).scale
                                         : resolutionSettings.renderScale;
 
-        render::FrameDeclaration declared(transientPool, **renderer, commands, camera, view,
-                                          /*poolingEnabled=*/true);
+        render::FrameDeclaration declared(transientPool, commands, /*poolingEnabled=*/true);
+        if (auto declaration = declared.declare(**renderer, camera, view); !declaration) {
+            LMX_LOG_ERROR("frame declaration failed: {}", declaration.error().message);
+            gpu.submitAndEndFrame(gpuFrame);
+            joinRetiredTimings();
+            gpu.waitIdle();
+            if (sequence)
+                writeManifest(false, declaration.error().message);
+            return 1;
+        }
         declared.graph().exportTexture(declared.displayColor());
         frameRecords.retain(declared.execute());
+        // A captured frame copies its picture on its own command list, after its passes. A copy
+        // frame of its own would consume a frame number, so the next frame's occlusion would find
+        // a gap in its source clock and the sequence's frame ids would skip one per capture.
+        std::optional<render::ReadbackTicket> capture;
+        if (sequence ? frame >= sequence->warmup : frame + 1 == totalFrames)
+            capture = render::recordReadback(gpu, commands, (*renderer)->colorTarget(),
+                                             (*renderer)->textureStates());
         if (options.dynamicResolution)
             resolutionController.declared(gpu.frameNumber());
         gpu.submitAndEndFrame(gpuFrame);
+        joinRetiredTimings();
 
-        // readback() has no synchronization; wait until the GPU releases the shared target, and
-        // commitFrame() must not promote this frame's motion to "previous" before the GPU has
-        // actually consumed it.
+        // The scene's previous pose is committed only after the submitted frame has consumed it.
         gpu.waitIdle();
         session.commitFrame();
-        (*renderer)->drainVisibilityAfterIdle();
-        (*renderer)->drainLightingAfterIdle();
+        if (auto retired = (*renderer)->drainVisibilityAfterIdle(); !retired) {
+            LMX_LOG_ERROR("visibility retirement failed: {}", retired.error().message);
+            if (sequence)
+                writeManifest(false, retired.error().message);
+            return 1;
+        }
+        if (auto retired = (*renderer)->drainLightingAfterIdle(); !retired) {
+            LMX_LOG_ERROR("lighting retirement failed: {}", retired.error().message);
+            if (sequence)
+                writeManifest(false, retired.error().message);
+            return 1;
+        }
         captureLighting = (*renderer)->lightingStatus();
         for (const auto& retired : (*renderer)->takeRetiredLighting()) {
             if (retired.frameNumber == captureLighting.frameNumber)
@@ -332,16 +375,22 @@ int runOffscreen(AppOptions options) {
                 const uint32_t ordinal = frame - sequence->warmup;
                 const std::string filename = std::format(
                     "frame-{:06}.{}", ordinal, captureFormatName(sequence->captureFormat));
-                const auto pixels = render::readbackNow(gpu, (*renderer)->colorTarget(),
-                                                        render::TextureUse::RenderTarget);
-                if (!writeCaptureImage(sequence->captureSequencePath / filename, pixels,
-                                       (*renderer)->displayDomain(),
-                                       captureFrameMetadataJson(
-                                           sceneId, frames, frame, temporal, temporalView,
-                                           view.temporal.renderScale, status,
-                                           gpu.device().deviceName(), visibilityEnabled, submission,
-                                           labInstances, classifyMode, classifyCheck,
-                                           &captureVisibility, &options, &captureLighting))) {
+                const auto readback = resolveCapture(gpu, *capture);
+                if (!readback) {
+                    writeManifest(false, readback.error().message);
+                    LMX_LOG_ERROR("capture readback failed: {}", readback.error().message);
+                    return 1;
+                }
+                const auto& pixels = *readback;
+                if (!writeCaptureImage(
+                        sequence->captureSequencePath / filename, pixels,
+                        (*renderer)->displayDomain(),
+                        captureFrameMetadataJson(sceneId, frames, frame, temporal, temporalView,
+                                                 view.temporal.renderScale, status,
+                                                 gpu.device().capabilities().adapterName,
+                                                 visibilityEnabled, submission, labInstances,
+                                                 classifyMode, classifyCheck, &captureVisibility,
+                                                 &options, &captureLighting))) {
                     return 1;
                 }
                 records.push_back(captureRecordJson(ordinal, frame, camera, view, status, filename,
@@ -357,6 +406,8 @@ int runOffscreen(AppOptions options) {
                 }
             }
         }
+        if (capture && !sequence)
+            finalCapture = std::move(capture);
     }
     if (lightDump.is_open()) {
         lightDump.flush();
@@ -374,18 +425,23 @@ int runOffscreen(AppOptions options) {
         return writeManifest(true) ? 0 : 1;
     }
 
-    // The display pass wrote the target last, as a render target; nothing read it afterwards.
-    const auto pixels =
-        render::readbackNow(gpu, (*renderer)->colorTarget(), render::TextureUse::RenderTarget);
+    LMX_ASSERT(finalCapture.has_value(), "a screenshot renders at least one frame");
+    const auto readback = resolveCapture(gpu, *finalCapture);
+    if (!readback) {
+        LMX_LOG_ERROR("screenshot readback failed: {}", readback.error().message);
+        return 1;
+    }
+    const auto& pixels = *readback;
 
     // Preserve flat output as debugging evidence before reporting liveness failure.
-    if (!writeCaptureImage(outPath, pixels, (*renderer)->displayDomain(),
-                           captureFrameMetadataJson(
-                               sceneId, frames, frames - 1, temporal, temporalView,
-                               (*renderer)->temporalStatus().renderScale,
-                               (*renderer)->temporalStatus(), gpu.device().deviceName(),
-                               visibilityEnabled, submission, labInstances, classifyMode,
-                               classifyCheck, &captureVisibility, &options, &captureLighting))) {
+    if (!writeCaptureImage(
+            outPath, pixels, (*renderer)->displayDomain(),
+            captureFrameMetadataJson(sceneId, frames, frames - 1, temporal, temporalView,
+                                     (*renderer)->temporalStatus().renderScale,
+                                     (*renderer)->temporalStatus(),
+                                     gpu.device().capabilities().adapterName, visibilityEnabled,
+                                     submission, labInstances, classifyMode, classifyCheck,
+                                     &captureVisibility, &options, &captureLighting))) {
         return 1;
     }
     LMX_LOG_INFO("screenshot written: {} ({}x{}, {} bytes of pixels)", outPath.string(),

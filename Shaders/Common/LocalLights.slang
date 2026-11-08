@@ -2,8 +2,10 @@
 // exactly zero, so preserving row order preserves the nonzero floating-point summation order.
 module LocalLights;
 
+import RojoRHI;
 import Lighting;
 import SceneTables;
+import LocalLightTypes;
 
 // Mirrors lmx::engine::LocalLightMode.
 public static const uint kLocalLightModeOff = 0u;
@@ -14,32 +16,6 @@ public static const uint kLocalLightModeClustered = 2u;
 // at least one intersecting light, so a reader masks it off before iterating.
 public static const uint kClusterTruncatedBit = 0x80000000u;
 
-// Mirrors lmx::render::ClusterRecord: one froxel's range in the flat index list.
-public struct ClusterRecord
-{
-    public uint offset;
-    public uint count;
-};
-
-// Mirrors lmx::render::LocalLightParams (Source/Render/SceneStage.cpp). `mode` is a runtime
-// integer rather than a pipeline permutation, following the shadow filter's precedent, so
-// switching paths compiles nothing. The grid dimensions and `sliceDepth` are filled every frame
-// whatever the mode, so the block is fully defined even where no lookup reads it.
-public struct LocalLightParams
-{
-    public uint mode;      // kLocalLightMode*
-    public uint rowCount;  // addressable light rows, including free slots
-    public uint gridX;     // froxel columns
-    public uint gridY;     // froxel rows
-    public uint gridZ;     // depth slices
-    public uint activeOriginX;
-    public uint activeOriginY;
-    public uint activeWidth;
-    public uint activeHeight;
-    // Reversed-Z boundary depths, one per slice plus the closing boundary; never increasing.
-    public float sliceDepth[25];
-};
-
 //======================================================================================================================
 // The froxel holding a fragment, in the flat order `(slice * gridY + y) * gridX + x`.
 //
@@ -48,7 +24,12 @@ public struct LocalLightParams
 // clamp then folds a pixel before the active origin into the last tile, exactly as the mirror
 // documents. The slice is the lowest `s` whose boundary pair brackets the rasterised depth, and a
 // depth no slice claims falls into the open last slice.
-public uint LocalLightCluster(LocalLightParams params, float4 svPosition)
+//
+// The boundary table is read in place, word `sliceDepthWord + s` of `sliceDepthBase`, so `params`'
+// own `sliceDepth` is never read. Indexing a loaded copy's array with the loop counter would place
+// the whole copy in thread memory, which Metal keeps on the stack for every shaded fragment.
+public uint LocalLightCluster(LocalLightParams params, rojoRHI::Addr sliceDepthBase,
+                              uint sliceDepthWord, float4 svPosition)
 {
     uint pixelX = (uint)svPosition.x - params.activeOriginX;
     uint pixelY = (uint)svPosition.y - params.activeOriginY;
@@ -59,7 +40,9 @@ public uint LocalLightCluster(LocalLightParams params, float4 svPosition)
     uint slice = params.gridZ - 1u;
     for (uint s = 0u; s < params.gridZ; ++s)
     {
-        if (params.sliceDepth[s] >= svPosition.z && svPosition.z > params.sliceDepth[s + 1u])
+        float nearDepth = rojoRHI::load<float>(sliceDepthBase, sliceDepthWord + s);
+        float farDepth = rojoRHI::load<float>(sliceDepthBase, sliceDepthWord + s + 1u);
+        if (nearDepth >= svPosition.z && svPosition.z > farDepth)
         {
             slice = s;
             break;
@@ -72,13 +55,15 @@ public uint LocalLightCluster(LocalLightParams params, float4 svPosition)
 // The local-light sum for one shaded surface, before pre-exposure. `Off` visits no row and returns
 // exact +0, which is the additive identity for every value the scene pass can already hold -- that
 // is what lets a scene with no local lights render byte for byte what it rendered before this
-// module existed.
-public float3 AccumulateLocalLights(LocalLightParams params, StructuredBuffer<LightRow> lights,
-                                    StructuredBuffer<ClusterRecord> grid,
-                                    StructuredBuffer<uint> indices, float4 svPosition,
+// module existed. `paramsAddr` addresses the frame's `LocalLightParams`; `lights`, `grid` and
+// `indices` address the light rows, the froxel records and the index lists; a path loads only what
+// it selects, so Off loads none and Direct no list.
+public float3 AccumulateLocalLights(rojoRHI::Addr paramsAddr, rojoRHI::Addr lights,
+                                    rojoRHI::Addr grid, rojoRHI::Addr indices, float4 svPosition,
                                     float3 position, float3 normal, float3 toEye, float3 baseColor,
                                     float3 f0, float metallic, float alpha)
 {
+    LocalLightParams params = rojoRHI::load<LocalLightParams>(paramsAddr, 0);
     // Conservative isotropic NDF filtering (Tokuyoshi/Kaplanyan 2021, equation 13):
     // https://jcgt.org/published/0010/02/02/ . The normal's pixel footprint broadens only the
     // punctual lobe; authored roughness and the existing directional/IBL paths stay unchanged.
@@ -99,7 +84,10 @@ public float3 AccumulateLocalLights(LocalLightParams params, StructuredBuffer<Li
     }
     else if (clustered)
     {
-        ClusterRecord record = grid[LocalLightCluster(params, svPosition)];
+        ClusterRecord record =
+            rojoRHI::load<ClusterRecord>(grid, LocalLightCluster(params, paramsAddr,
+                                                                 kLocalLightParamsSliceDepthWord,
+                                                                 svPosition));
         offset = record.offset;
         count = record.count & ~kClusterTruncatedBit;
     }
@@ -107,9 +95,9 @@ public float3 AccumulateLocalLights(LocalLightParams params, StructuredBuffer<Li
     float3 sum = float3(0.0f);
     for (uint i = 0u; i < count; ++i)
     {
-        uint index = clustered ? indices[offset + i] : i;
-        sum += ComputePunctualLight(lights[index], position, normal, toEye, baseColor, f0, metallic,
-                                    filteredAlpha);
+        uint index = clustered ? rojoRHI::load<uint>(indices, offset + i) : i;
+        sum += ComputePunctualLight(rojoRHI::load<LightRow>(lights, index), position, normal, toEye,
+                                    baseColor, f0, metallic, filteredAlpha);
     }
     return sum;
 }

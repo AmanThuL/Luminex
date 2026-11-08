@@ -6,7 +6,8 @@
 #include "Core/Math/Aabb.h"
 #include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Scene/Scene.h"
-#include "Support/GpuTestSupport.h"
+#include "Render/Gpu/Readback.h"
+#include "Support/TestGpu.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -89,9 +90,14 @@ TEST_CASE("prepared bounds are canonical uploaded rows and static slots converge
     REQUIRE(tables.instanceCapacity >= 2);
     std::array<engine::InstanceRow, 2> uploaded;
     {
+        const auto beforeRead = gpu->frameNumber();
         const auto bytes = lmx::render::readbackNow(
-            *gpu, *tables.instances, lmx::render::BufferUse::ShaderRead, {0, sizeof(uploaded)});
-        std::memcpy(uploaded.data(), bytes.data(), sizeof(uploaded));
+            *gpu, *tables.instances, lmx::render::SyncPoint{}, {0, sizeof(uploaded)});
+        INFO(errorOf(bytes));
+        REQUIRE(bytes.has_value());
+        REQUIRE(bytes->size() == sizeof(uploaded));
+        std::memcpy(uploaded.data(), bytes->data(), sizeof(uploaded));
+        REQUIRE(gpu->frameNumber() == beforeRead);
     }
     REQUIRE(std::memcmp(uploaded.data(), tables.instanceRows.data(), sizeof(uploaded)) == 0);
     REQUIRE(uploaded[0].worldBoundsMin.x == Catch::Approx(8.5f));

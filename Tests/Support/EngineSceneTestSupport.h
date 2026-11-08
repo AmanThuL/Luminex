@@ -115,16 +115,22 @@ inline std::vector<uint8_t> readMipLevel1(GpuContext& gpu, const GpuTexture& tex
     REQUIRE(destination.has_value());
     auto library = gpu.loadShaderLibrary("SamplerSmoke");
     REQUIRE(library.has_value());
-    auto pipeline = gpu.device().createGraphicsPipeline({.library = library->get(),
-                                                         .vertexEntry = "vertexMain",
-                                                         .fragmentEntry = "fragmentMipLevel1",
-                                                         .colorFormat = rojoRHI::Format::BGRA8Unorm,
-                                                         .label = "lmx.test.fallbackMipPipeline"});
+    const rojoRHI::ColorTarget color{.format = rojoRHI::Format::BGRA8Unorm};
+    auto pipeline =
+        adoptGpu(gpu.device(), gpu.device().createPipeline(rojoRHI::GraphicsPipelineDesc{
+                                   .vertex = {library->get(), "vertexMain"},
+                                   .fragment = {library->get(), "fragmentMipLevel1"},
+                                   .raster = {.cull = rojoRHI::CullMode::Back},
+                                   .depthStencil = {.depthCompare = rojoRHI::CompareOp::Less},
+                                   .colors = std::span(&color, 1),
+                                   .label = "lmx.test.fallbackMipPipeline"}));
     REQUIRE(pipeline.has_value());
-    auto sampler = gpu.device().createSampler(
-        {.addressMode = rojoRHI::AddressMode::Clamp, .label = "lmx.test.fallbackMipSampler"});
+    auto sampler = adoptGpu(
+        gpu.device(), gpu.device().createSampler({.address = rojoRHI::SamplerAddress::ClampToEdge,
+                                                  .label = "lmx.test.fallbackMipSampler"}));
     REQUIRE(sampler.has_value());
-    return renderSampledImage(gpu, **pipeline, /*textureSlot=*/0, texture, **sampler, *destination);
+    lmx::render::TextureStateTable states;
+    return renderSampledImage(gpu, pipeline->get(), texture, sampler->get(), *destination, states);
 }
 
 } // namespace

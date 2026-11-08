@@ -7,6 +7,8 @@
 
 #include "Render/Passes/Visibility/VisibilityTables.h"
 
+#include <rojoRHI/RHI.h>
+
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -18,7 +20,7 @@ namespace lmx::render {
 struct VisibilityParamsInputs {
     bool dense = false;          ///< Batched submission: dense layout; otherwise sparse.
     uint64_t rowBufferBytes = 0; ///< Size of the draw row buffer, bytes; four bytes per row.
-    /// Size of the draw argument buffer, bytes; twenty per argument.
+    /// Size of the draw argument buffer, bytes; sizeof the public indexed-indirect argument type.
     uint64_t argumentBufferBytes = 0;
     uint32_t stateCapacity = 0;  ///< State words the paced slot holds.
     uint32_t candidateCount = 0; ///< Combined scene and shadow candidates.
@@ -27,13 +29,14 @@ struct VisibilityParamsInputs {
 };
 
 /// Builds the visibility parameters: layout one when dense, rows and arguments as the buffer sizes
-/// divided by four and twenty bytes, then each capacity capped by its override ceiling when one is
+/// divided by four and sizeof(rojoRHI::DrawIndexedIndirectArgs), then capped by their override when
 /// set. The view count keeps its default of two and the padding stays zero.
 inline VisibilityParams buildVisibilityParams(const VisibilityParamsInputs& inputs) {
     VisibilityParams params{.layout = inputs.dense ? 1u : 0u,
                             .rowCapacity = static_cast<uint32_t>(inputs.rowBufferBytes / 4),
                             .argumentCapacity =
-                                static_cast<uint32_t>(inputs.argumentBufferBytes / 20),
+                                static_cast<uint32_t>(inputs.argumentBufferBytes /
+                                                      sizeof(rojoRHI::DrawIndexedIndirectArgs)),
                             .stateCapacity = inputs.stateCapacity,
                             .candidateCount = inputs.candidateCount};
     if (inputs.capacityOverride) {

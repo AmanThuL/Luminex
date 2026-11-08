@@ -1,4 +1,6 @@
 // Test-only: triangles writing two or three colour attachments in one pass.
+import RojoRHI;
+
 struct VSOutput
 {
     float4 position : SV_Position;
@@ -11,8 +13,9 @@ struct FSOutput
 };
 
 [shader("vertex")]
-VSOutput vertexMain(uint vid: SV_VertexID)
+VSOutput vertexMain(rojoRHI::VertexIds ids)
 {
+    uint vid = rojoRHI::vertexIndex(ids);
     // Three-vertex fullscreen triangle.
     float2 uv = float2((vid << 1) & 2, vid & 2);
     VSOutput o;
@@ -46,8 +49,9 @@ struct FSOutputTriple
 static const float2 kTriangle[3] = { float2(0.0, 0.5), float2(-0.5, -0.5), float2(0.5, -0.5) };
 
 [shader("vertex")]
-VSOutput vertexMainTriple(uint vid: SV_VertexID)
+VSOutput vertexMainTriple(rojoRHI::VertexIds ids)
 {
+    uint vid = rojoRHI::vertexIndex(ids);
     VSOutput o;
     o.position = float4(kTriangle[vid], 0.0, 1.0);
     return o;

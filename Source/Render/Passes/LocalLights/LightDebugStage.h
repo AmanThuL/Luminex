@@ -3,11 +3,15 @@
 /// @brief Declares post-display froxel diagnostics over the scene's actual depth and light lists.
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
+
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Gpu/GpuContext.h"
+#include "Engine/Gpu/GpuOwned.h"
 #include "Engine/Lights/LocalLight.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/LocalLights/LightClusters.h"
+
+#include <memory>
 
 namespace lmx::render {
 /// Borrowed graph inputs; injectable list handles let fixtures test missing and truncated entries.
@@ -28,9 +32,13 @@ struct LightDebugInputs {
 /// Owns the lazily requested diagnostic shader; leaves HDR and temporal history untouched.
 class LightDebugStage {
 public:
-    /// Loads the ordinary fast-math diagnostic shader and creates its opaque display pipeline.
+    /// Registers the address-root and parameter layouts for capture, without a GPU device.
+    static void registerLayoutsForCapture();
+    /// Loads the ordinary fast-math diagnostic shader, creates its opaque display pipeline and
+    /// registers its address-root and parameter layouts for capture.
     static lmx::Result<std::unique_ptr<LightDebugStage>> create(engine::GpuContext& gpu);
-    /// Declares one post-display raster pass and returns the produced output version.
+    /// Declares one post-display raster pass and returns the produced output version. The pass
+    /// uploads its parameters once and carries every input in a LightDebugRoot.
     GraphTexture declare(RenderGraph& graph, rojoRHI::CommandList& commands,
                          const LightDebugInputs& inputs);
 
@@ -38,6 +46,6 @@ private:
     LightDebugStage() = default;
 
     engine::GpuOwned<rojoRHI::ShaderLibrary> m_library;
-    engine::GpuOwned<rojoRHI::GraphicsPipeline> m_pipeline;
+    engine::GpuOwned<rojoRHI::Pipeline> m_pipeline;
 };
 } // namespace lmx::render

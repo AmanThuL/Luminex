@@ -13,87 +13,22 @@
 // nothing encodes or tone maps, and the alpha channel of the colour history is the per-pixel
 // accumulation age, not coverage.
 //
-// Slots are the resolve's: textures 0 scene colour, 1 depth, 2 previous depth, 3 motion, 4
-// reactive, 5 history; storage textures 6 output, 7 rejection, 8 reprojected; sampler 0 clamped
-// linear; buffers 0 exposure pair (read), 1 params. The render-extent inputs (0-4) are read inside
-// their origin-anchored active rectangle; the history and all three outputs are at the output
-// extent.
+// The address root is the resolve's TemporalResolveRoot: parameters, the persistent exposure pair
+// (read), the scene colour, depth, previous depth, motion, reactive and history views, the storage
+// views of the output and the two diagnostics, and the clamped linear sampler. The render-extent
+// inputs are read inside their origin-anchored active rectangle; the history and all three
+// outputs are at the output extent.
+import RojoRHI;
 import Motion;
 import TemporalCommon;
-
-struct TemporalUpscaleParams
-{
-    // Shaders/Passes/Temporal/TemporalResolve.slang's TemporalResolveParams, field for field and in
-    // its order, so the two kernels' blocks stay comparable and the CPU mirror grows by appending
-    // only.
-    uint width;  // Active render extent, which every render-extent input is read within.
-    uint height;
-    uint historyValid;      // 0 on a reset frame: steps 2-5, 7 and 8 are skipped and no history is read.
-    uint writeDiagnostics;  // Bit 0 writes rejection; bit 1 writes reprojected history.
-    // Unjittered, so a reconstructed world position does not carry the frame's sub-pixel offset.
-    float4x4 inverseViewProjection;
-    float4x4 previousViewProjection;
-    // The previous frame's positive near-plane distance. Both sides of the disocclusion comparison
-    // are depths in the *previous* frame's clip space, so one near plane inverts both of them.
-    float previousNearZ;
-    // The resolve's trailing float3, spelled as three floats because fields follow it here: this
-    // target lays a struct out naturally, where a float3 takes 16-byte alignment and would push
-    // everything appended below off the offsets the CPU mirror computes. Three floats occupy the
-    // same twelve bytes and keep the block above a multiple of 16, which is what the pad is for.
-    float pad[3];
-    // Appended by this kernel.
-    uint outputWidth;  // Dispatch bound: one invocation per output pixel.
-    uint outputHeight;
-    uint allocatedWidth;  // Allocation of every render-extent input, which their UVs are taken over.
-    uint allocatedHeight;
-    uint previousRenderWidth;  // The extent the previous depth slot was rendered at.
-    uint previousRenderHeight;
-    // Where the jittered raster placed the scene, in render texels of texture space: the CPU-side
-    // jitterTexelOffset(jitter) of Source/Render/Temporal.h.
-    float2 jitterOffset;
-};
-
-[[vk::binding(0, 0)]]
-Texture2D<float4> gSceneColor : register(t0); // → MSL [[texture(0)]]
-
-[[vk::binding(1, 0)]]
-Texture2D<float> gDepth : register(t1); // → MSL [[texture(1)]]
-
-[[vk::binding(2, 0)]]
-Texture2D<float> gPreviousDepth : register(t2); // → MSL [[texture(2)]]
-
-[[vk::binding(3, 0)]]
-Texture2D<float2> gMotion : register(t3); // → MSL [[texture(3)]]
-
-[[vk::binding(4, 0)]]
-Texture2D<float> gReactive : register(t4); // → MSL [[texture(4)]]
-
-[[vk::binding(5, 0)]]
-Texture2D<float4> gHistory : register(t5); // → MSL [[texture(5)]]
-
-[[vk::binding(6, 0)]]
-RWTexture2D<float4> gOutput : register(u6); // → MSL [[texture(6)]]
-
-[[vk::binding(7, 0)]]
-RWTexture2D<float4> gRejection : register(u7); // → MSL [[texture(7)]]
-
-[[vk::binding(8, 0)]]
-RWTexture2D<float4> gReprojected : register(u8); // → MSL [[texture(8)]]
-
-[[vk::binding(0, 1)]]
-SamplerState gLinearSampler : register(s0); // → MSL [[sampler(0)]]
-
-[[vk::binding(0, 0)]]
-StructuredBuffer<float> gExposure : register(t0); // → MSL [[buffer(0)]]
-
-[[vk::binding(1, 0)]]
-ConstantBuffer<TemporalUpscaleParams> gParams : register(b1); // → MSL [[buffer(1)]]
+import TemporalRoots;
 
 // Five-tap Catmull-Rom over the output-extent history. Copied from
 // Shaders/Passes/Temporal/TemporalResolve.slang's sampleHistoryCatmullRom, which stays the source
 // of truth for the weights, the five-tap renormalisation and the negative-lobe clamp: the copy
 // exists because the fetch names its own texture, not because the two differ.
-float3 sampleHistoryCatmullRom(float2 uv, float2 extent)
+float3 sampleHistoryCatmullRom(Texture2D<float4> historyTexture, SamplerState linearSampler,
+                               float2 uv, float2 extent)
 {
     float2 samplePosition = uv * extent;
     float2 texelCenter = floor(samplePosition - 0.5) + 0.5;
@@ -111,12 +46,14 @@ float3 sampleHistoryCatmullRom(float2 uv, float2 extent)
     float2 uv3 = (texelCenter + 2.0) / extent;
     float2 uv12 = (texelCenter + offset12) / extent;
 
-    float3 result = gHistory.SampleLevel(gLinearSampler, float2(uv12.x, uv0.y), 0.0).rgb *
+    float3 result = historyTexture.SampleLevel(linearSampler, float2(uv12.x, uv0.y), 0.0).rgb *
                     (w12.x * w0.y);
-    result += gHistory.SampleLevel(gLinearSampler, float2(uv0.x, uv12.y), 0.0).rgb * (w0.x * w12.y);
-    result += gHistory.SampleLevel(gLinearSampler, uv12, 0.0).rgb * (w12.x * w12.y);
-    result += gHistory.SampleLevel(gLinearSampler, float2(uv3.x, uv12.y), 0.0).rgb * (w3.x * w12.y);
-    result += gHistory.SampleLevel(gLinearSampler, float2(uv12.x, uv3.y), 0.0).rgb *
+    result += historyTexture.SampleLevel(linearSampler, float2(uv0.x, uv12.y), 0.0).rgb *
+              (w0.x * w12.y);
+    result += historyTexture.SampleLevel(linearSampler, uv12, 0.0).rgb * (w12.x * w12.y);
+    result += historyTexture.SampleLevel(linearSampler, float2(uv3.x, uv12.y), 0.0).rgb *
+              (w3.x * w12.y);
+    result += historyTexture.SampleLevel(linearSampler, float2(uv12.x, uv3.y), 0.0).rgb *
               (w12.x * w3.y);
     float weightSum = w12.x * (w0.y + w12.y + w3.y) + (w0.x + w3.x) * w12.y;
     return max(result / weightSum, 0.0);
@@ -126,17 +63,18 @@ float3 sampleHistoryCatmullRom(float2 uv, float2 extent)
 // Shaders/Passes/Temporal/SpatialUpscale.slang's activeUv: the clamp keeps every tap's bilinear
 // footprint inside the active rectangle, and the division is by the *allocated* extent because that
 // is the texture the UV addresses.
-float2 activeUv(float2 position)
+float2 activeUv(TemporalUpscaleParams params, float2 position)
 {
-    float2 render = float2(float(gParams.width), float(gParams.height));
-    float2 allocated = float2(float(gParams.allocatedWidth), float(gParams.allocatedHeight));
+    float2 render = float2(float(params.width), float(params.height));
+    float2 allocated = float2(float(params.allocatedWidth), float(params.allocatedHeight));
     return clamp(position, float2(0.5, 0.5), render - 0.5) / allocated;
 }
 
 // Five-tap Catmull-Rom over the render image, at a position in render texels. It is
 // Shaders/Passes/Temporal/SpatialUpscale.slang's sampleCurrentCatmullRom exactly, which is what
 // makes the spatial reference and this kernel differ by the accumulation alone.
-float3 sampleCurrentCatmullRom(float2 samplePosition)
+float3 sampleCurrentCatmullRom(TemporalUpscaleParams params, Texture2D<float4> sceneColorTexture,
+                               SamplerState linearSampler, float2 samplePosition)
 {
     float2 texelCenter = floor(samplePosition - 0.5) + 0.5;
     float2 f = samplePosition - texelCenter;
@@ -153,15 +91,23 @@ float3 sampleCurrentCatmullRom(float2 samplePosition)
     float2 p3 = texelCenter + 2.0;
     float2 p12 = texelCenter + offset12;
 
-    float3 result =
-        gSceneColor.SampleLevel(gLinearSampler, activeUv(float2(p12.x, p0.y)), 0.0).rgb *
-        (w12.x * w0.y);
-    result += gSceneColor.SampleLevel(gLinearSampler, activeUv(float2(p0.x, p12.y)), 0.0).rgb *
+    float3 result = sceneColorTexture
+                        .SampleLevel(linearSampler, activeUv(params, float2(p12.x, p0.y)), 0.0)
+                        .rgb *
+                    (w12.x * w0.y);
+    result += sceneColorTexture
+                  .SampleLevel(linearSampler, activeUv(params, float2(p0.x, p12.y)), 0.0)
+                  .rgb *
               (w0.x * w12.y);
-    result += gSceneColor.SampleLevel(gLinearSampler, activeUv(p12), 0.0).rgb * (w12.x * w12.y);
-    result += gSceneColor.SampleLevel(gLinearSampler, activeUv(float2(p3.x, p12.y)), 0.0).rgb *
+    result += sceneColorTexture.SampleLevel(linearSampler, activeUv(params, p12), 0.0).rgb *
+              (w12.x * w12.y);
+    result += sceneColorTexture
+                  .SampleLevel(linearSampler, activeUv(params, float2(p3.x, p12.y)), 0.0)
+                  .rgb *
               (w3.x * w12.y);
-    result += gSceneColor.SampleLevel(gLinearSampler, activeUv(float2(p12.x, p3.y)), 0.0).rgb *
+    result += sceneColorTexture
+                  .SampleLevel(linearSampler, activeUv(params, float2(p12.x, p3.y)), 0.0)
+                  .rgb *
               (w12.x * w3.y);
     float weightSum = w12.x * (w0.y + w12.y + w3.y) + (w0.x + w3.x) * w12.y;
     return max(result / weightSum, 0.0);
@@ -171,37 +117,50 @@ float3 sampleCurrentCatmullRom(float2 samplePosition)
 [numthreads(8, 8, 1)]
 void computeTemporalUpscale(uint3 tid: SV_DispatchThreadID)
 {
-    if (tid.x >= gParams.outputWidth || tid.y >= gParams.outputHeight)
+    let root = rojoRHI::root<TemporalResolveRoot>();
+    let params = rojoRHI::load<TemporalUpscaleParams>(root.paramsAddr, 0);
+    let sceneColorTexture = rojoRHI::texture2D<float4>(root.sceneColor);
+    let depthTexture = rojoRHI::texture2D<float>(root.depth);
+    let previousDepthTexture = rojoRHI::texture2D<float>(root.previousDepth);
+    let motionTexture = rojoRHI::texture2D<float2>(root.motion);
+    let reactiveTexture = rojoRHI::texture2D<float>(root.reactive);
+    let historyTexture = rojoRHI::texture2D<float4>(root.history);
+    let outputTexture = rojoRHI::rwTexture2D<float4>(root.output);
+    let rejectionTexture = rojoRHI::rwTexture2D<float4>(root.rejection);
+    let reprojectedTexture = rojoRHI::rwTexture2D<float4>(root.reprojected);
+    let linearSampler = rojoRHI::sampler(root.sampler);
+    if (tid.x >= params.outputWidth || tid.y >= params.outputHeight)
     {
         return;
     }
 
-    float2 render = float2(float(gParams.width), float(gParams.height));
-    float2 output = float2(float(gParams.outputWidth), float(gParams.outputHeight));
+    float2 render = float2(float(params.width), float(params.height));
+    float2 output = float2(float(params.outputWidth), float(params.outputHeight));
 
     // Step 1: sample position. Source/Render/Temporal.h's renderSamplePosition, the nearest render
     // texel to it, and the unjittered UV of this output pixel's own centre.
-    float2 samplePos = (float2(tid.xy) + 0.5) * (render / output) + gParams.jitterOffset;
+    float2 samplePos = (float2(tid.xy) + 0.5) * (render / output) + params.jitterOffset;
     int2 c = clamp(int2(floor(samplePos)), int2(0, 0), int2(render) - 1);
     float2 uv = (float2(tid.xy) + 0.5) / output;
 
     // Step 6's fetch, hoisted the way the resolve hoists its own one-to-one load: a reset frame
     // writes this colour and reads no history at all, so it has to exist before that branch.
-    float3 current = sampleCurrentCatmullRom(samplePos);
-    float reactive = gReactive.Load(int3(c, 0)).r;
+    float3 current =
+        sampleCurrentCatmullRom(params, sceneColorTexture, linearSampler, samplePos);
+    float reactive = reactiveTexture.Load(int3(c, 0)).r;
 
     // Step 9's reset case: this frame's picture, with the per-pixel count started over. The pass
     // binds the same textures either way, so nothing below is reached rather than nothing bound.
-    if (gParams.historyValid == 0u)
+    if (params.historyValid == 0u)
     {
-        gOutput[tid.xy] = float4(current, 1.0);
-        if ((gParams.writeDiagnostics & 1u) != 0u)
+        outputTexture[tid.xy] = float4(current, 1.0);
+        if ((params.writeDiagnostics & 1u) != 0u)
         {
-            gRejection[tid.xy] = float4(float(kReasonNone) / 255.0, 1.0, 0.0, 1.0);
+            rejectionTexture[tid.xy] = float4(float(kReasonNone) / 255.0, 1.0, 0.0, 1.0);
         }
-        if ((gParams.writeDiagnostics & 2u) != 0u)
+        if ((params.writeDiagnostics & 2u) != 0u)
         {
-            gReprojected[tid.xy] = float4(0.0, 0.0, 0.0, 0.0);
+            reprojectedTexture[tid.xy] = float4(0.0, 0.0, 0.0, 0.0);
         }
         return;
     }
@@ -211,20 +170,20 @@ void computeTemporalUpscale(uint3 tid: SV_DispatchThreadID)
     // Step 2: motion dilation over the 3x3 render texels around the nearest sample, clamped to the
     // active rectangle. The closest-depth texel lends its motion to the whole footprint, so a
     // silhouette reprojects with the foreground it belongs to.
-    float2 motion = gMotion.Load(int3(c, 0)).xy;
-    float closestDepth = gDepth.Load(int3(c, 0)).r;
+    float2 motion = motionTexture.Load(int3(c, 0)).xy;
+    float closestDepth = depthTexture.Load(int3(c, 0)).r;
     for (int dy = -1; dy <= 1; ++dy)
     {
         for (int dx = -1; dx <= 1; ++dx)
         {
             int2 neighbor = clamp(c + int2(dx, dy), int2(0, 0), int2(render) - 1);
             int3 neighborCoord = int3(neighbor, 0);
-            float neighborDepth = gDepth.Load(neighborCoord).r;
+            float neighborDepth = depthTexture.Load(neighborCoord).r;
             // Reversed depth: the greater value is the nearer surface.
             if (neighborDepth > closestDepth)
             {
                 closestDepth = neighborDepth;
-                motion = gMotion.Load(neighborCoord).xy;
+                motion = motionTexture.Load(neighborCoord).xy;
             }
         }
     }
@@ -252,13 +211,13 @@ void computeTemporalUpscale(uint3 tid: SV_DispatchThreadID)
     if (reason == kReasonNone && closestDepth > 0.0)
     {
         float3 ndc = float3(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, closestDepth);
-        float4 world = mul(gParams.inverseViewProjection, float4(ndc, 1.0));
-        float4 previousClip = mul(gParams.previousViewProjection, float4(world.xyz / world.w, 1.0));
+        float4 world = mul(params.inverseViewProjection, float4(ndc, 1.0));
+        float4 previousClip = mul(params.previousViewProjection, float4(world.xyz / world.w, 1.0));
         if (previousClip.w > 0.0)
         {
             float expectedDepth = previousClip.z / previousClip.w;
-            float2 previousRender = float2(float(gParams.previousRenderWidth),
-                                           float(gParams.previousRenderHeight));
+            float2 previousRender = float2(float(params.previousRenderWidth),
+                                           float(params.previousRenderHeight));
             int2 historyTexel =
                 clamp(int2(historyUv * previousRender), int2(0, 0), int2(previousRender) - 1);
             float previousDepth = 0.0;
@@ -268,13 +227,14 @@ void computeTemporalUpscale(uint3 tid: SV_DispatchThreadID)
                 {
                     int2 neighbor = clamp(historyTexel + int2(dx, dy), int2(0, 0),
                                           int2(previousRender) - 1);
-                    previousDepth = max(previousDepth, gPreviousDepth.Load(int3(neighbor, 0)).r);
+                    previousDepth =
+                        max(previousDepth, previousDepthTexture.Load(int3(neighbor, 0)).r);
                 }
             }
             if (expectedDepth > 0.0 && previousDepth > 0.0)
             {
-                float expectedDistance = viewDistance(expectedDepth, gParams.previousNearZ);
-                float previousDistance = viewDistance(previousDepth, gParams.previousNearZ);
+                float expectedDistance = viewDistance(expectedDepth, params.previousNearZ);
+                float previousDistance = viewDistance(previousDepth, params.previousNearZ);
                 if (abs(previousDistance - expectedDistance) >
                     kDisocclusionTolerance * expectedDistance)
                 {
@@ -295,16 +255,16 @@ void computeTemporalUpscale(uint3 tid: SV_DispatchThreadID)
     float previousAge = 0.0;
     if (reason == kReasonNone)
     {
-        history = sampleHistoryCatmullRom(historyUv, output);
-        float applied = gExposure[0];
-        float previous = gExposure[1];
+        history = sampleHistoryCatmullRom(historyTexture, linearSampler, historyUv, output);
+        float applied = rojoRHI::load<float>(root.exposureAddr, 0);
+        float previous = rojoRHI::load<float>(root.exposureAddr, 1);
         history *= previous > 0.0 ? applied / previous : 1.0;
-        previousAge = floor(gHistory.SampleLevel(gLinearSampler, historyUv, 0.0).a);
+        previousAge = floor(historyTexture.SampleLevel(linearSampler, historyUv, 0.0).a);
     }
 
-    if ((gParams.writeDiagnostics & 2u) != 0u)
+    if ((params.writeDiagnostics & 2u) != 0u)
     {
-        gReprojected[tid.xy] = float4(history, reason == kReasonNone ? 1.0 : 0.0);
+        reprojectedTexture[tid.xy] = float4(history, reason == kReasonNone ? 1.0 : 0.0);
     }
 
     // Step 7: neighbourhood clipping against the mean and standard deviation of the 3x3 render
@@ -320,7 +280,7 @@ void computeTemporalUpscale(uint3 tid: SV_DispatchThreadID)
             for (int dx = -1; dx <= 1; ++dx)
             {
                 int2 neighbor = clamp(c + int2(dx, dy), int2(0, 0), int2(render) - 1);
-                float3 sample = rgbToYcocg(gSceneColor.Load(int3(neighbor, 0)).rgb);
+                float3 sample = rgbToYcocg(sceneColorTexture.Load(int3(neighbor, 0)).rgb);
                 sum += sample;
                 sumSquares += sample * sample;
             }
@@ -366,11 +326,11 @@ void computeTemporalUpscale(uint3 tid: SV_DispatchThreadID)
 
     // Step 9: the age this pixel has accumulated, which is what the HistoryAge view reads back.
     float age = reason != kReasonNone ? 1.0 : min(previousAge + 1.0, kMaxHistoryAge);
-    gOutput[tid.xy] = float4(resolved, age);
+    outputTexture[tid.xy] = float4(resolved, age);
 
-    if ((gParams.writeDiagnostics & 1u) != 0u)
+    if ((params.writeDiagnostics & 1u) != 0u)
     {
-        gRejection[tid.xy] = float4(float(reason | (clipped ? kClippedBit : 0u)) / 255.0, alpha,
-                                    clipped ? 1.0 : 0.0, 1.0);
+        rejectionTexture[tid.xy] = float4(float(reason | (clipped ? kClippedBit : 0u)) / 255.0,
+                                          alpha, clipped ? 1.0 : 0.0, 1.0);
     }
 }

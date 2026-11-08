@@ -58,7 +58,8 @@ class DecodeDepth32Tests(unittest.TestCase):
         self.assertEqual(decoded.png_rgb_rows[-3:], bytes([255, 255, 255]))
 
     def test_all_clear_plane_reports_fraction_at_clear_1_and_is_flat(self):
-        payload = struct.pack("<4f", 1.0, 1.0, 1.0, 1.0)
+        # Reversed depth: every depth target clears to the far plane, 0.
+        payload = struct.pack("<4f", 0.0, 0.0, 0.0, 0.0)
         blob_bytes = _blob(252, 2, 2, payload)
 
         decoded = decodelib.decode_texture(_resource(fmt="Depth32Float", width=2, height=2),
@@ -66,11 +67,12 @@ class DecodeDepth32Tests(unittest.TestCase):
 
         self.assertEqual(decoded.stats["fractionAtClear"], 1.0)
         self.assertTrue(decoded.stats["flat"])
-        self.assertEqual(decoded.stats["min"], 1.0)
-        self.assertEqual(decoded.stats["max"], 1.0)
+        self.assertEqual(decoded.stats["min"], 0.0)
+        self.assertEqual(decoded.stats["max"], 0.0)
 
     def test_no_clear_texels_reports_fraction_at_clear_0(self):
-        payload = struct.pack("<4f", 0.1, 0.2, 0.3, 0.4)
+        # 1.0 is the near plane under reversed depth, not the clear value.
+        payload = struct.pack("<4f", 0.1, 0.2, 0.3, 1.0)
         blob_bytes = _blob(252, 2, 2, payload)
 
         decoded = decodelib.decode_texture(_resource(fmt="Depth32Float", width=2, height=2),

@@ -1,6 +1,10 @@
 #include "Support/GpuTestSupport.h"
+#include "Support/VisibilityOracleRoots.h"
 
 #include "Core/Math/Scalar.h"
+#include "Engine/Gpu/CaptureSchema.h"
+#include "Engine/Gpu/GpuOwned.h"
+#include "Render/Common/FrameData.h"
 #include "Render/Passes/Occlusion/HzbStage.h"
 
 #include <algorithm>
@@ -8,12 +12,7 @@
 #include <format>
 
 namespace {
-struct ReadbackParams {
-    uint32_t width;
-    uint32_t height;
-    uint32_t level;
-    uint32_t offset;
-};
+using lmx::test::ReadbackParams;
 static_assert(sizeof(ReadbackParams) == 16);
 
 //======================================================================================================================
@@ -26,45 +25,40 @@ void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
     REQUIRE(stage);
     TextureStateTable states;
     REQUIRE((*stage)->resize(outputWidth, outputHeight, states));
-    auto depth = gpu->device().createTexture({.width = outputWidth,
-                                              .height = outputHeight,
-                                              .format = rojoRHI::Format::D32Float,
-                                              .renderTarget = true,
-                                              .sampled = true,
-                                              .label = "lmx.test.hzbDepth"});
+    auto depth =
+        engine::GpuTexture::create(gpu->device(), {.format = rojoRHI::Format::D32Float,
+                                                   .extent = {outputWidth, outputHeight, 1},
+                                                   .usage = rojoRHI::TextureUsage::DepthStencil |
+                                                            rojoRHI::TextureUsage::Sampled,
+                                                   .label = "lmx.test.hzbDepth"});
     REQUIRE(depth);
     auto depthLibrary = gpu->loadShaderLibrary("HzbDepthFixture");
     REQUIRE(depthLibrary);
-    auto raster =
-        gpu->device().createGraphicsPipeline({.library = depthLibrary->get(),
-                                              .vertexEntry = "vertexMain",
-                                              .fragmentEntry = "fragmentMain",
-                                              .colorFormat = rojoRHI::Format::Unknown,
-                                              .depthFormat = rojoRHI::Format::D32Float,
-                                              .depthTestEnable = true,
-                                              .depthWriteEnable = true,
-                                              .cullMode = rojoRHI::CullMode::None,
-                                              .depthCompare = rojoRHI::DepthCompare::Greater,
-                                              .label = "lmx.test.hzbDepthPipeline"});
+    auto raster = engine::adoptGpu(
+        gpu->device(), gpu->device().createPipeline(rojoRHI::GraphicsPipelineDesc{
+                           .vertex = {depthLibrary->get(), "vertexMain"},
+                           .fragment = {depthLibrary->get(), "fragmentMain"},
+                           .raster = {.cull = rojoRHI::CullMode::None},
+                           .depthStencil = {.depthTest = true,
+                                            .depthWrite = true,
+                                            .depthCompare = rojoRHI::CompareOp::Greater},
+                           .depthFormat = rojoRHI::Format::D32Float,
+                           .label = "lmx.test.hzbDepthPipeline"}));
     INFO(errorOf(raster));
     REQUIRE(raster);
     auto readLibrary = gpu->loadShaderLibrary("HzbReadbackFixture");
     REQUIRE(readLibrary);
-    auto reader = gpu->device().createComputePipeline({.library = readLibrary->get(),
-                                                       .computeEntry = "computeMain",
-                                                       .threadsPerThreadgroup = {8, 8, 1},
-                                                       .label = "lmx.test.hzbReadPipeline"});
+    auto reader = engine::adoptGpu(
+        gpu->device(),
+        gpu->device().createPipeline(rojoRHI::ComputePipelineDesc{
+            .compute = {readLibrary->get(), "computeMain"}, .label = "lmx.test.hzbReadPipeline"}));
     REQUIRE(reader);
     const HzbLayout layout = (*stage)->layout();
     const uint64_t capacity = uint64_t{outputWidth} * outputHeight + layout.bytes / 8;
-    auto readback = lmx::engine::GpuBuffer::create(gpu->device(),
-                                                   {.size = capacity * sizeof(float),
-                                                    .storageWrite = true,
-                                                    .cpuReadback = true,
-                                                    .label = "lmx.test.hzbReadback"},
-                                                   nullptr);
+    auto readback = lmx::engine::GpuBuffer::create(
+        gpu->device(), {.size = capacity * sizeof(float), .label = "lmx.test.hzbReadback"});
     REQUIRE(readback);
-    std::array<rojoRHI::Texture*, 2> identities{};
+    std::array<rojoRHI::Texture, 2> identities{};
     for (uint32_t frame = 0; frame < 6; ++frame) {
         const bool half = frame == 1 || frame == 3;
         const bool sky = frame == 4;
@@ -79,20 +73,20 @@ void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
         RenderGraph graph;
         graph.bindTextureStates(states);
         if (frame > 0) {
-            states.set(**depth, lmx::render::TextureUse::ShaderRead);
+            states.setLogicalUse(depth->rhi(), lmx::render::TextureUse::ShaderRead);
         }
-        const auto depthInput =
-            frame == 0 ? graph.importTexture(**depth, rojoRHI::Format::D32Float, "lmx.test.depth")
-                       : graph.importPersistentTexture(**depth, rojoRHI::Format::D32Float,
-                                                       "lmx.test.depth");
+        const auto depthInput = frame == 0
+                                    ? graph.importTexture(depth->ref(), "lmx.test.depth")
+                                    : graph.importPersistentTexture(*depth, "lmx.test.depth");
         PassDesc rasterDesc;
-        rasterDesc.depth = DepthAttachment{.handle = depthInput, .store = StoreOp::Store};
+        rasterDesc.depth = lmx::render::DepthAttachment{.handle = depthInput,
+                                                        .store = lmx::render::StoreOp::Store};
         rasterDesc.renderAreaWidth = width;
         rasterDesc.renderAreaHeight = height;
         graph.addPass("lmx.test.hzb.raster", std::move(rasterDesc), [&](const PassResources&) {
             if (!sky) {
-                commands.bindPipeline(**raster);
-                commands.bindFrameData(0, masked);
+                commands.setPipeline(raster->get());
+                commands.pushRoot(lmx::test::HzbDepthRoot{masked, 0, 0, 0});
                 commands.draw(3);
             }
         });
@@ -100,7 +94,7 @@ void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
         const auto pyramid =
             (*stage)->declare(graph, commands, source,
                               {.frameNumber = frame, .activeWidth = width, .activeHeight = height});
-        auto* identity = &(*stage)->previousTexture();
+        const auto identity = (*stage)->previousTexture();
         if (frame < 2)
             identities[frame] = identity;
         else
@@ -108,10 +102,9 @@ void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
         REQUIRE((*stage)->previousSource().frameNumber == frame);
         REQUIRE((*stage)->previousSource().activeWidth == width);
         REQUIRE((*stage)->previousSource().built);
-        GraphBuffer buffer = frame == 0
-                                 ? graph.importBuffer(readback->rhi(), "lmx.test.hzbReadback")
-                                 : graph.importBuffer(readback->rhi(), "lmx.test.hzbReadback",
-                                                      lmx::render::BufferUse::StorageWrite);
+        GraphBuffer buffer = frame == 0 ? graph.importBuffer(*readback, "lmx.test.hzbReadback")
+                                        : graph.importBuffer(*readback, "lmx.test.hzbReadback",
+                                                             lmx::render::BufferUse::StorageWrite);
         std::vector<uint32_t> offsets;
         uint32_t offset = 0;
         for (uint32_t input = 0; input <= layout.levelCount; ++input) {
@@ -127,20 +120,31 @@ void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
             const auto texture = sourceDepth ? source : pyramid;
             ComputePassDesc desc;
             desc.shaderTextureReads.emplace_back(
-                texture,
-                rojoRHI::TextureSubresourceRange{.baseMipLevel = level, .mipLevelCount = 1});
+                texture, rojoRHI::SubresourceRange{.baseMip = level, .mipCount = 1});
             desc.bufferWrites.push_back(buffer);
             graph.addComputePass(std::format("lmx.test.hzb.read{}", input), std::move(desc),
                                  [&, params, texture, buffer](const PassResources& resources) {
                                      auto t = resources.texture(texture);
                                      auto b = resources.buffer(buffer);
-                                     REQUIRE(t);
-                                     REQUIRE(b);
-                                     commands.bindComputePipeline(**reader);
-                                     commands.bindTexture(0, **t);
-                                     commands.bindStorageBuffer(1, **b,
-                                                                rojoRHI::StorageAccess::Write);
-                                     commands.bindFrameData(0, params);
+                                     REQUIRE(t.texture.bits != 0);
+                                     REQUIRE(b.bits != 0);
+                                     commands.setPipeline(reader->get());
+                                     commands.pushRoot(lmx::test::HzbReadbackRoot{
+                                         frameData(commands, params), resources.address(buffer),
+                                         static_cast<uint32_t>(resources.view(texture)), 0, 0, 0});
+#ifndef NDEBUG
+                                     const std::array<rojoRHI::ResourceAccess, 2> accesses{
+                                         {{.texture = t.texture,
+                                           .range = {params.level, 1, 0, 1},
+                                           .stage = rojoRHI::Stage::ComputeShader,
+                                           .access = rojoRHI::Access::ShaderRead},
+                                          {.buffer = b,
+                                           .offset = uint64_t{params.offset} * 4,
+                                           .size = uint64_t{params.width} * params.height * 4,
+                                           .stage = rojoRHI::Stage::ComputeShader,
+                                           .access = rojoRHI::Access::ShaderWrite}}};
+                                     commands.declareAccess(accesses);
+#endif
                                      commands.dispatch(divRoundUp(params.width, 8u),
                                                        divRoundUp(params.height, 8u), 1);
                                  });
@@ -155,10 +159,13 @@ void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
         gpu->waitIdle();
         std::vector<float> values(capacity);
         {
-            const auto readbackBytes =
-                lmx::render::readbackNow(*gpu, *readback, lmx::render::BufferUse::StorageWrite,
-                                         lmx::render::wholeBuffer(*readback));
-            std::memcpy(values.data(), readbackBytes.data(), capacity * sizeof(float));
+            const auto readbackBytes = lmx::render::readbackNow(
+                *gpu, *readback,
+                lmx::render::SyncPoint{rojoRHI::Stage::ComputeShader, rojoRHI::Access::ShaderWrite,
+                                       rojoRHI::Layout::Undefined},
+                lmx::render::wholeBuffer(*readback));
+            REQUIRE(readbackBytes);
+            std::memcpy(values.data(), readbackBytes->data(), capacity * sizeof(float));
         }
         // The oracle derives each level from rasterized depth, never from another pyramid level.
         for (uint32_t level = 0; level < layout.levelCount; ++level) {

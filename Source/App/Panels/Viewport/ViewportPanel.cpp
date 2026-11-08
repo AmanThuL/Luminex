@@ -11,7 +11,7 @@
 #include "App/Panels/Viewport/ViewportGizmo.h"
 #include "Core/Diagnostics/Log.h"
 #include "Render/Passes/Occlusion/HzbStage.h"
-#include <rojoRHI/Metal4/Metal4ImGui.h>
+#include <rojoRHI/ImGuiAdapter.h>
 
 #include <imgui.h>
 
@@ -230,15 +230,15 @@ ViewportPanelResult drawViewportPanel(bool& open, const ViewportPanelContext& co
         result.focused = ImGui::IsWindowFocused();
         if (result.measured) {
             const bool outlineReady =
-                context.outlineTarget.desc().width == context.renderer.width() &&
-                context.outlineTarget.desc().height == context.renderer.height();
+                context.outlineTarget.desc().extent.width == context.renderer.width() &&
+                context.outlineTarget.desc().extent.height == context.renderer.height();
             ImGui::PushStyleColor(ImGuiCol_Border, editor_style::color(ThemeRole::SurfaceViewport));
-            ImGui::Image(rojoRHI::metal4::imguiTextureID(
-                             context.showOutline && outlineReady &&
-                                     context.selection.subject == EditorSubject::Object
-                                 ? context.outlineTarget.rhi()
-                                 : context.renderer.colorTarget().rhi()),
-                         imageSize);
+            ImGui::Image(
+                rojoRHI::imgui::textureId(context.showOutline && outlineReady &&
+                                                  context.selection.subject == EditorSubject::Object
+                                              ? context.outlineTarget.view()
+                                              : context.renderer.colorTarget().view()),
+                imageSize);
             ImGui::PopStyleColor();
             const auto outerOrigin = ImGui::GetItemRectMin();
             const ImVec2 origin(outerOrigin.x + border, outerOrigin.y + border);

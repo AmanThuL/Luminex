@@ -111,18 +111,17 @@ std::vector<ResolvedRange> subtractRange(const ResolvedRange& range, const Resol
 // The canonical range covering both, expressed the way a whole-resource declaration is: a union
 // that reaches the end of the chain keeps the sentinel rather than a resolved count, so a barrier
 // derived from whole-resource reads is indistinguishable from the declaration it came from.
-rojoRHI::TextureSubresourceRange unionRange(const ResolvedRange& a, const ResolvedRange& b,
-                                            uint32_t mipLevels, uint32_t arrayLayers) {
+rojoRHI::SubresourceRange unionRange(const ResolvedRange& a, const ResolvedRange& b,
+                                     uint32_t mipLevels, uint32_t arrayLayers) {
     const uint32_t firstMip = std::min(a.mips.first, b.mips.first);
     const uint32_t lastMip = std::max(last(a.mips), last(b.mips));
     const uint32_t firstLayer = std::min(a.layers.first, b.layers.first);
     const uint32_t lastLayer = std::max(last(a.layers), last(b.layers));
-    return {.baseMipLevel = firstMip,
-            .mipLevelCount =
-                lastMip + 1 >= mipLevels ? rojoRHI::kAllMipLevels : lastMip - firstMip + 1,
-            .baseArrayLayer = firstLayer,
-            .arrayLayerCount = lastLayer + 1 >= arrayLayers ? rojoRHI::kAllArrayLayers
-                                                            : lastLayer - firstLayer + 1};
+    return {.baseMip = firstMip,
+            .mipCount = lastMip + 1 >= mipLevels ? rojoRHI::kAllMips : lastMip - firstMip + 1,
+            .baseLayer = firstLayer,
+            .layerCount =
+                lastLayer + 1 >= arrayLayers ? rojoRHI::kAllLayers : lastLayer - firstLayer + 1};
 }
 
 } // namespace
@@ -300,7 +299,7 @@ void RenderGraph::deriveReadTransitions(uint32_t passIndex,
                                    .bufferFrom = state.bufferUse,
                                    .bufferTo = bufferUseOf(pass.kind, read.role)});
         } else {
-            rojoRHI::TextureSubresourceRange covered = read.range;
+            rojoRHI::SubresourceRange covered = read.range;
             for (uint32_t later = index + 1; later < pass.declarations.size(); ++later) {
                 const Declaration& other = pass.declarations[later];
                 const bool otherReads = !other.isWrite || loadsAttachment(other);

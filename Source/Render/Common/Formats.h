@@ -6,7 +6,7 @@
 #pragma once
 
 #include "Render/Renderer/DisplayDomain.h"
-#include <rojoRHI/Format.h>
+#include <rojoRHI/RHI.h>
 
 namespace lmx::render {
 

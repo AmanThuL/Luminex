@@ -4,42 +4,73 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Render/Passes/LocalLights/LightClusterStage.h"
+#include "Render/Common/FrameData.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Common/PacedSlots.h"
 #include "Render/Common/StageSetup.h"
 #include "Render/Passes/LocalLights/LightClusterFrameData.h"
+#include "Render/Passes/LocalLights/LightClusterReadback.h"
+#include "Render/Passes/LocalLights/LightRoots.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"
 #include "Engine/Gpu/CaptureSchema.h"
 
-#include <algorithm>
 #include <string>
 
 namespace lmx::render {
 namespace {
 
-// The shared buffer binding space; see CommandList::bindBuffer on why one index space serves the
-// constant, read-only and storage bindings alike.
-constexpr uint32_t kParamsSlot = 0;
-constexpr uint32_t kLightsSlot = 1;
-constexpr uint32_t kCountsSlot = 2;
-constexpr uint32_t kGridSlot = 3;
-constexpr uint32_t kIndicesSlot = 4;
-constexpr uint32_t kCountersSlot = 5;
+using light_detail::kCountBytes;
+using light_detail::kCounterBytes;
+using light_detail::kGridBytes;
+using light_detail::kIndexBytes;
 
 constexpr uint32_t kThreadsPerGroup = 256;
-constexpr uint64_t kGridBytes = uint64_t{kClusterCount} * sizeof(ClusterRecord);
-constexpr uint64_t kIndexBytes = uint64_t{kLightClusterIndexCapacity} * sizeof(uint32_t);
-constexpr uint64_t kCountBytes = uint64_t{kClusterCount} * sizeof(uint32_t);
+// Where each kernel leaves the buffers it writes, which is what a readback after it preserves.
+// The counters' two padding words are last written by the reset's copy fill; the graph's barrier
+// from that copy into the scan's shader write already orders them, so this frontier covers them.
+constexpr SyncPoint kComputeWrite{rojoRHI::Stage::ComputeShader, rojoRHI::Access::ShaderWrite,
+                                  rojoRHI::Layout::Undefined};
+
+//======================================================================================================================
+// A discarded declaration released its slot; running its passes later would race the next owner.
+// The first kernel callback marks the declaration entered, which makes it no longer discardable.
+// The reset fill, declared through the shared zero-fill helper, does not mark it; it runs only in
+// a graph that goes on to run the count pass, whose check catches an executed discarded
+// declaration.
+void enterLive(light_detail::ClusterReadbackTickets& tickets) {
+    LMX_ASSERT(!tickets.discarded, "a discarded light-cluster declaration executed");
+    tickets.entered = true;
+}
+
+#ifndef NDEBUG
+// The six counter words the scan writes; the two padding words keep the reset's zeros.
+constexpr uint64_t kCounterValueBytes = 6 * sizeof(uint32_t);
+
+//======================================================================================================================
+rojoRHI::ResourceAccess computeAccess(const PassResources& resources, GraphBuffer handle,
+                                      uint64_t bytes, rojoRHI::Access access) {
+    return {.buffer = resources.buffer(handle),
+            .size = bytes,
+            .stage = rojoRHI::Stage::ComputeShader,
+            .access = access};
+}
+#endif
 
 } // namespace
+
+//======================================================================================================================
+LightClusterStage::LightClusterStage(engine::GpuContext& gpu)
+    : m_gpu(gpu), m_readback(std::make_unique<light_detail::LightClusterReadback>()) {}
+
+//======================================================================================================================
+LightClusterStage::~LightClusterStage() = default;
 
 //======================================================================================================================
 void LightClusterStage::registerLayoutsForCapture() {
     engine::registerUniformStruct(
         {.name = "LightClusterParams",
-         .slot = kParamsSlot,
          .sizeBytes = sizeof(LightClusterKernelParams),
          .fields = {{"view", offsetof(LightClusterKernelParams, view), "float4[4]"},
                     {"inverseProjection", offsetof(LightClusterKernelParams, inverseProjection),
@@ -53,18 +84,24 @@ void LightClusterStage::registerLayoutsForCapture() {
                     {"padding0", offsetof(LightClusterKernelParams, padding0), "uint"},
                     {"padding1", offsetof(LightClusterKernelParams, padding1), "uint"},
                     {"sliceDepth", offsetof(LightClusterKernelParams, sliceDepth), "float4[7]"}}});
+    engine::registerUniformStruct(
+        {.name = "LightClusterRoot",
+         .sizeBytes = sizeof(LightClusterRoot),
+         .fields = {{"params", offsetof(LightClusterRoot, params), "Addr"},
+                    {"lights", offsetof(LightClusterRoot, lights), "Addr"},
+                    {"counts", offsetof(LightClusterRoot, counts), "Addr"},
+                    {"grid", offsetof(LightClusterRoot, grid), "Addr"},
+                    {"indices", offsetof(LightClusterRoot, indices), "Addr"},
+                    {"counters", offsetof(LightClusterRoot, counters), "Addr"}}});
 }
 
 //======================================================================================================================
 lmx::Result<std::unique_ptr<LightClusterStage>> LightClusterStage::create(engine::GpuContext& gpu) {
-    rojoRHI::Device& device = gpu.device();
     std::unique_ptr<LightClusterStage> self(new LightClusterStage(gpu));
-    constexpr std::array names{"LightClusterCount", "LightClusterScan", "LightClusterFill"};
     // The scan is a single thread on purpose: 3,456 counts summed in froxel order is what
     // makes every range and every counter a function of the declarations alone.
-    auto pipelines = createComputePipelines(gpu, names, "lmx.light.", [](uint32_t index) {
-        return index == 1 ? 1u : kThreadsPerGroup;
-    });
+    constexpr std::array names{"LightClusterCount", "LightClusterScan", "LightClusterFill"};
+    auto pipelines = createComputePipelines(gpu, names, "lmx.light.");
     if (!pipelines) {
         return std::unexpected(pipelines.error());
     }
@@ -74,14 +111,14 @@ lmx::Result<std::unique_ptr<LightClusterStage>> LightClusterStage::create(engine
     }
     for (uint32_t slot = 0; slot < self->m_slots.size(); ++slot) {
         const std::string suffix = "." + std::to_string(slot);
-        auto allocate = [&](engine::GpuBuffer& buffer, uint64_t bytes, const std::string& name,
-                            bool readback) -> lmx::Result<void> {
+        auto allocate = [&](engine::GpuBuffer& buffer, uint64_t bytes,
+                            const std::string& name) -> lmx::Result<void> {
             const std::string label = name + suffix;
-            auto result = engine::GpuBuffer::create(device, {.size = bytes,
-                                                             .storageRead = true,
-                                                             .storageWrite = true,
-                                                             .cpuReadback = readback,
-                                                             .label = label});
+            auto result =
+                engine::GpuBuffer::create(gpu.device(), {.size = bytes,
+                                                         .memory = rojoRHI::Memory::Gpu,
+                                                         .usage = rojoRHI::BufferUsage::ShaderWrite,
+                                                         .label = label});
             if (!result) {
                 return std::unexpected(result.error());
             }
@@ -89,20 +126,19 @@ lmx::Result<std::unique_ptr<LightClusterStage>> LightClusterStage::create(engine
             return {};
         };
         auto& owned = self->m_slots[slot];
-        auto result = allocate(owned.grid, kGridBytes, "lmx.light.grid", true);
+        auto result = allocate(owned.grid, kGridBytes, "lmx.light.grid");
         if (!result) {
             return std::unexpected(result.error());
         }
-        result = allocate(owned.indices, kIndexBytes, "lmx.light.indices", true);
+        result = allocate(owned.indices, kIndexBytes, "lmx.light.indices");
         if (!result) {
             return std::unexpected(result.error());
         }
-        result = allocate(owned.counts, kCountBytes, "lmx.light.counts", false);
+        result = allocate(owned.counts, kCountBytes, "lmx.light.counts");
         if (!result) {
             return std::unexpected(result.error());
         }
-        result = allocate(owned.counters, kLightClusterCounterWords * sizeof(uint32_t),
-                          "lmx.light.counters", true);
+        result = allocate(owned.counters, kCounterBytes, "lmx.light.counters");
         if (!result) {
             return std::unexpected(result.error());
         }
@@ -132,11 +168,7 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rojoRHI::Comm
                "LightClusterStage::declare: the active render rectangle must be nonempty");
     LMX_ASSERT(inputs.liveLightCount <= inputs.rowCount,
                "LightClusterStage::declare: live lights must fit the addressable rows");
-
-    LMX_ASSERT(std::ranges::none_of(m_pending,
-                                    [&](const Pending& pending) {
-                                        return pending.frameNumber % 3 == inputs.frameNumber % 3;
-                                    }),
+    LMX_ASSERT(!m_readback->hasPendingSlot(inputs.frameNumber),
                "retire a light-cluster slot before reusing its GPU buffers");
     auto& slot = m_slots[inputs.frameNumber % 3];
     const auto params = buildLightClusterKernelParams(
@@ -148,46 +180,58 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rojoRHI::Comm
          .perClusterCap = m_perClusterCap,
          .globalCapacity = m_globalCapacity,
          .sliceDepth = inputs.sliceDepth});
-    m_pending.push_back({.frameNumber = inputs.frameNumber, .captureLists = inputs.captureLists});
-    const auto tickets = m_pending.back().tickets;
+    // One upload serves all three kernels; its address lives until this frame slot recycles.
+    const rojoRHI::Addr paramsAddr = frameData(commands, params);
+    engine::registerFrameRoot("LightClusterParams", paramsAddr);
+    const auto tickets = m_readback->enqueue(inputs.frameNumber, inputs.captureLists);
     const bool captureLists = inputs.captureLists;
     const engine::GpuBuffer* const gridOwner = &slot.grid;
     const engine::GpuBuffer* const indexOwner = &slot.indices;
     const engine::GpuBuffer* const counterOwner = &slot.counters;
 
     const auto grid =
-        importPaced(graph, slot.grid.rhi(), "lmx.light.grid",
+        importPaced(graph, slot.grid, "lmx.light.grid",
                     slot.shaderRead ? BufferUse::ShaderRead : BufferUse::StorageRead, slot.used);
     const auto indices =
-        importPaced(graph, slot.indices.rhi(), "lmx.light.indices",
+        importPaced(graph, slot.indices, "lmx.light.indices",
                     slot.shaderRead ? BufferUse::ShaderRead : BufferUse::StorageWrite, slot.used);
-    const auto counts = importPaced(graph, slot.counts.rhi(), "lmx.light.counts",
-                                    BufferUse::StorageRead, slot.used);
-    const auto counters = importPaced(graph, slot.counters.rhi(), "lmx.light.counters",
-                                      BufferUse::StorageWrite, slot.used);
+    const auto counts =
+        importPaced(graph, slot.counts, "lmx.light.counts", BufferUse::StorageRead, slot.used);
+    const auto counters =
+        importPaced(graph, slot.counters, "lmx.light.counters", BufferUse::StorageWrite, slot.used);
 
     // The counters the scan writes are complete on their own; the fill is what makes them a
     // reconciling total of bytes the GPU actually holds, so the zero fill is the stated start.
-    declareZeroFill(graph, commands, "lmx.pass.light.reset", counters,
-                    kLightClusterCounterWords * sizeof(uint32_t));
+    declareZeroFill(graph, commands, "lmx.pass.light.reset", counters, kCounterBytes);
     const auto countersReset = nextVersion(counters);
 
     const uint32_t groups = divRoundUp(kClusterCount, kThreadsPerGroup);
     const auto lights = inputs.lights;
+    // The kernels read rows [0, rowCount) and the fill writes inside the global capacity.
+    [[maybe_unused]] const uint64_t lightBytes =
+        uint64_t{inputs.rowCount} * sizeof(engine::LightRow);
+    [[maybe_unused]] const uint64_t listBytes = uint64_t{m_globalCapacity} * sizeof(uint32_t);
     ComputePassDesc count;
     count.shaderBufferReads = {lights};
     count.bufferWrites = {counts};
-    graph.addComputePass("lmx.pass.light.count", std::move(count),
-                         [=, this, &commands](const PassResources& resources) {
-                             auto& lightRows = lmx::render::buffer(resources, lights);
-                             auto& target = lmx::render::buffer(resources, counts);
-                             commands.bindComputePipeline(*m_pipelines[0]);
-                             commands.bindFrameData(kParamsSlot, params);
-                             commands.bindBuffer(kLightsSlot, lightRows);
-                             commands.bindStorageBuffer(kCountsSlot, target,
-                                                        rojoRHI::StorageAccess::Write);
-                             commands.dispatch(groups, 1, 1);
-                         });
+    graph.addComputePass(
+        "lmx.pass.light.count", std::move(count),
+        [=, this, &commands](const PassResources& resources) {
+            enterLive(*tickets);
+            commands.setPipeline(m_pipelines[0].get());
+            engine::registerFrameRoot(
+                "LightClusterRoot",
+                commands.pushRoot(LightClusterRoot{.params = paramsAddr,
+                                                   .lights = resources.address(lights),
+                                                   .counts = resources.address(counts)}));
+#ifndef NDEBUG
+            const std::array accesses{
+                computeAccess(resources, lights, lightBytes, rojoRHI::Access::ShaderRead),
+                computeAccess(resources, counts, kCountBytes, rojoRHI::Access::ShaderWrite)};
+            commands.declareAccess(accesses);
+#endif
+            commands.dispatch(groups, 1, 1);
+        });
     const auto countsFilled = nextVersion(counts);
 
     ComputePassDesc scan;
@@ -196,19 +240,27 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rojoRHI::Comm
     graph.addComputePass(
         "lmx.pass.light.scan", std::move(scan),
         [=, this, &commands](const PassResources& resources) {
-            auto& source = lmx::render::buffer(resources, countsFilled);
-            auto& records = lmx::render::buffer(resources, grid);
-            auto& totals = lmx::render::buffer(resources, countersReset);
-            commands.bindComputePipeline(*m_pipelines[1]);
-            commands.bindFrameData(kParamsSlot, params);
-            commands.bindStorageBuffer(kCountsSlot, source, rojoRHI::StorageAccess::Read);
-            commands.bindStorageBuffer(kGridSlot, records, rojoRHI::StorageAccess::Write);
-            commands.bindStorageBuffer(kCountersSlot, totals, rojoRHI::StorageAccess::Write);
+            enterLive(*tickets);
+            commands.setPipeline(m_pipelines[1].get());
+            engine::registerFrameRoot(
+                "LightClusterRoot",
+                commands.pushRoot(LightClusterRoot{.params = paramsAddr,
+                                                   .counts = resources.address(countsFilled),
+                                                   .grid = resources.address(grid),
+                                                   .counters = resources.address(countersReset)}));
+#ifndef NDEBUG
+            const std::array accesses{
+                computeAccess(resources, countsFilled, kCountBytes, rojoRHI::Access::ShaderRead),
+                computeAccess(resources, grid, kGridBytes, rojoRHI::Access::ShaderWrite),
+                computeAccess(resources, countersReset, kCounterValueBytes,
+                              rojoRHI::Access::ShaderWrite)};
+            commands.declareAccess(accesses);
+#endif
             commands.dispatch(1, 1, 1);
-            tickets->counters = recordReadback(m_gpu, commands, *counterOwner,
-                                               BufferUse::StorageWrite, wholeBuffer(*counterOwner));
+            tickets->counters = recordReadback(m_gpu, commands, *counterOwner, kComputeWrite,
+                                               wholeBuffer(*counterOwner));
             if (captureLists) {
-                tickets->grid = recordReadback(m_gpu, commands, *gridOwner, BufferUse::StorageWrite,
+                tickets->grid = recordReadback(m_gpu, commands, *gridOwner, kComputeWrite,
                                                wholeBuffer(*gridOwner));
             }
         });
@@ -222,20 +274,26 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rojoRHI::Comm
     graph.addComputePass(
         "lmx.pass.light.fill", std::move(fill),
         [=, this, &commands](const PassResources& resources) {
-            auto& lightRows = lmx::render::buffer(resources, lights);
-            auto& records = lmx::render::buffer(resources, gridBuilt);
-            auto& list = lmx::render::buffer(resources, indices);
-            commands.bindComputePipeline(*m_pipelines[2]);
-            commands.bindFrameData(kParamsSlot, params);
-            commands.bindBuffer(kLightsSlot, lightRows);
-            commands.bindStorageBuffer(kGridSlot, records, rojoRHI::StorageAccess::Read);
-            commands.bindStorageBuffer(kIndicesSlot, list, rojoRHI::StorageAccess::Write);
+            enterLive(*tickets);
+            commands.setPipeline(m_pipelines[2].get());
+            engine::registerFrameRoot(
+                "LightClusterRoot",
+                commands.pushRoot(LightClusterRoot{.params = paramsAddr,
+                                                   .lights = resources.address(lights),
+                                                   .grid = resources.address(gridBuilt),
+                                                   .indices = resources.address(indices)}));
+#ifndef NDEBUG
+            const std::array accesses{
+                computeAccess(resources, lights, lightBytes, rojoRHI::Access::ShaderRead),
+                computeAccess(resources, gridBuilt, kGridBytes, rojoRHI::Access::ShaderRead),
+                computeAccess(resources, indices, listBytes, rojoRHI::Access::ShaderWrite)};
+            commands.declareAccess(accesses);
+#endif
             commands.dispatch(groups, 1, 1);
             // The whole list: only the retired counters say how much of it is defined.
             if (captureLists) {
-                tickets->indices =
-                    recordReadback(m_gpu, commands, *indexOwner, BufferUse::StorageWrite,
-                                   wholeBuffer(*indexOwner));
+                tickets->indices = recordReadback(m_gpu, commands, *indexOwner, kComputeWrite,
+                                                  wholeBuffer(*indexOwner));
             }
         });
     const auto listFilled = nextVersion(indices);
@@ -247,9 +305,27 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rojoRHI::Comm
         graph.readbackBuffer(gridBuilt);
         graph.readbackBuffer(listFilled);
     }
+    // discardUnrecorded does not undo these: the slot's buffers keep the previous state while the
+    // next import seeds an access no command recorded. That is harmless while every declaration
+    // failure is terminal for the renderer.
     slot.used = true;
     slot.shaderRead = inputs.shaderReadsOutputs;
-    return {.grid = gridBuilt, .indices = listFilled, .declared = true};
+    return {.grid = gridBuilt, .indices = listFilled, .declared = true, .readbackIntent = tickets};
+}
+
+//======================================================================================================================
+lmx::Result<void> LightClusterStage::retireThrough(uint64_t completedFrame) {
+    return m_readback->retireThrough(m_gpu, completedFrame);
+}
+
+//======================================================================================================================
+void LightClusterStage::discardUnrecorded(const LightClusterOutputs& declaration) {
+    m_readback->discardUnrecorded(declaration.readbackIntent.lock().get());
+}
+
+//======================================================================================================================
+std::vector<RetiredLightClusters> LightClusterStage::takeRetired() {
+    return m_readback->takeRetired();
 }
 
 } // namespace lmx::render

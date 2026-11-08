@@ -99,6 +99,7 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     std::string_view measurementPath;
     bool unscored = false;
     bool measurementTrack = true;
+    bool rhiValidation = false;
     bool measurementCameraSpecified = false;
     bool visibilityEnabled = true;
     render::SubmissionMode submission = render::SubmissionMode::Indirect;
@@ -130,6 +131,7 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     bool maximized = true;
     bool session = false;
     std::optional<Appearance> appearance;
+    std::vector<DetachedWindow> openWindows;
     uint32_t frames = 1;
     TemporalMode temporal = TemporalMode::Taa;
     render::TemporalDebugView temporalView = render::TemporalDebugView::Off;
@@ -140,7 +142,13 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
         if (argument == "--") {
             continue;
         }
-        if (argument == "--measure") {
+        if (argument == "--rhi-validation") {
+#ifdef NDEBUG
+            return fail("--rhi-validation needs a Debug build");
+#else
+            rhiValidation = true;
+#endif
+        } else if (argument == "--measure") {
             if (++i >= arguments.size() || arguments[i].empty() || !looksLikeValue(arguments[i])) {
                 return fail("--measure needs a non-empty output JSON path");
             }
@@ -288,6 +296,23 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
             if (++i >= arguments.size() || !(appearance = parseAppearance(arguments[i]))) {
                 return fail("--appearance needs auto|light|dark for the windowed editor");
             }
+        } else if (argument == "--open-window") {
+            if (++i >= arguments.size()) {
+                return fail("--open-window needs performance|graph|gallery|session for the "
+                            "windowed editor");
+            }
+            if (arguments[i] == "performance") {
+                openWindows.push_back(DetachedWindow::Performance);
+            } else if (arguments[i] == "graph") {
+                openWindows.push_back(DetachedWindow::RenderGraph);
+            } else if (arguments[i] == "gallery") {
+                openWindows.push_back(DetachedWindow::StyleGallery);
+            } else if (arguments[i] == "session") {
+                openWindows.push_back(DetachedWindow::Session);
+            } else {
+                return fail("--open-window needs performance|graph|gallery|session for the "
+                            "windowed editor");
+            }
         } else if (argument == "--windowed") {
             maximized = false;
         } else if (argument == "--session") {
@@ -364,7 +389,8 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
             return fail(
                 "unknown argument '" + std::string(argument) +
                 "'; usage: App [--screenshot <out.png|out.bmp>] [--scene <" + sceneIdList("|") +
-                "|path>] [--windowed] [--session] [--appearance <auto|light|dark>] [--frames <N>] "
+                "|path>] [--windowed] [--session] [--appearance <auto|light|dark>] "
+                "[--open-window <performance|graph|gallery|session>] [--frames <N>] "
                 "[--temporal "
                 "<off|raw|taa|metalfx>] "
                 "[--temporal-view <off|motion|reprojection|reprojected|rejection|weight|age>] "
@@ -389,6 +415,11 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     if (appearance &&
         (!screenshotPath.empty() || !captureSequencePath.empty() || !measurementPath.empty())) {
         return fail("--appearance is only available in the windowed editor");
+    }
+
+    if (!openWindows.empty() &&
+        (!screenshotPath.empty() || !captureSequencePath.empty() || !measurementPath.empty())) {
+        return fail("--open-window is only available in the windowed editor");
     }
 
     if (session &&
@@ -499,6 +530,7 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     options.measurementPath = measurementPath;
     options.unscored = unscored;
     options.measurementTrack = measurementTrack;
+    options.rhiValidation = rhiValidation && measurementPath.empty();
     options.visibilityEnabled = visibilityEnabled;
     options.submission = submission;
     options.classifyMode = classifyMode;
@@ -528,6 +560,7 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     options.maximized = maximized;
     options.session = session;
     options.appearance = appearance;
+    options.openWindows = std::move(openWindows);
     options.frames = frames;
     options.warmup = warmup;
     options.captureFormat = captureFormat;

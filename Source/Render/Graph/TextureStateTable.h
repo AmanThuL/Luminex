@@ -1,50 +1,63 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file TextureStateTable.h
-/// @brief Declares the table of uses persistent textures were left in by earlier frames.
+/// @brief Declares independent logical uses and physical subresource frontiers.
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-
 #include "Render/Graph/ResourceUse.h"
-
-#include <rojoRHI/Texture.h>
-
 #include <cstddef>
+#include <cstdint>
 #include <optional>
+#include <rojoRHI/RHI.h>
 #include <unordered_map>
+#include <vector>
 
 namespace lmx::render {
-
-/// The use each persistent texture was left in when the last frame that touched it completed.
-///
-/// A render graph is declared fresh every frame and cannot see the passes of an earlier one, so a
-/// texture that outlives a frame carries its terminal use here. A graph bound to the table reads
-/// the entry when it imports the texture through RenderGraph::importPersistentTexture and writes
-/// the frame's terminal use back once it has recorded the frame. An absent entry means no earlier
-/// access, which is what a plain import states.
-///
-/// The owner of the persistent textures, the renderer, owns the table and binds it to each frame's
-/// graph. Entries are keyed by the texture's address and are whole-resource uses.
-/// An address can be reused once a texture is destroyed, so an owner that creates or recreates a
-/// persistent texture seeds it with set() before its next import; otherwise the new texture would
-/// inherit the destroyed one's use. The table holds no GPU object and dereferences no key, and it
-/// is not thread-safe: it is read and written on the thread that records the frame.
+/// The outstanding dependency frontier, valid in exactly one layout.
+struct TextureState {
+    rojoRHI::Stage stage = rojoRHI::Stage::None;         ///< Outstanding stages.
+    rojoRHI::Access access = rojoRHI::Access::None;      ///< Accesses valid in layout.
+    rojoRHI::Layout layout = rojoRHI::Layout::Undefined; ///< Actual physical layout.
+    /// Compares all frontier fields.
+    bool operator==(const TextureState&) const = default;
+};
+/// An exact disjoint subresource range and its physical state.
+struct TextureRangeState {
+    rojoRHI::SubresourceRange range; ///< Resolved mip/layer cells.
+    TextureState state;              ///< Frontier for every covered cell.
+};
+/// Renderer-owned states keyed by texture identity; owns no GPU object and is recording-thread
+/// only. Logical uses preserve diagnostic records; physical cells describe actual synchronization.
 class TextureStateTable {
 public:
-    /// The use `texture` was left in, or nullopt when nothing earlier accessed it.
-    std::optional<TextureUse> find(const rojoRHI::Texture& texture) const;
-
-    /// States the use `texture` is in now, replacing any earlier entry.
-    void set(const rojoRHI::Texture& texture, TextureUse use);
-
-    /// Removes `texture`'s entry, so its next import has no earlier access.
-    void forget(const rojoRHI::Texture& texture);
-
-    /// The number of textures with an entry.
-    std::size_t size() const { return m_uses.size(); }
+    /// Returns the whole-resource diagnostic use, if present.
+    std::optional<TextureUse> logicalUse(rojoRHI::Texture texture) const;
+    /// Replaces only the diagnostic use.
+    void setLogicalUse(rojoRHI::Texture texture, TextureUse use);
+    /// Initializes absent physical cells from immutable creation facts, preserving known cells.
+    void seedPhysical(rojoRHI::Texture texture, uint32_t mips, uint32_t layers,
+                      rojoRHI::Layout initialLayout);
+    /// Returns exact disjoint known cells; absent resources return no ranges.
+    std::vector<TextureRangeState> physicalRanges(rojoRHI::Texture texture,
+                                                  const rojoRHI::SubresourceRange& range) const;
+    /// Combines masks only when every requested cell is known and has the same layout.
+    std::optional<TextureState> find(rojoRHI::Texture texture,
+                                     const rojoRHI::SubresourceRange& range) const;
+    /// Replaces requested cells only; requires dimensions established by seedPhysical.
+    void set(rojoRHI::Texture texture, const rojoRHI::SubresourceRange& range,
+             const TextureState& state);
+    /// Removes both channels before a destroyed identity can be reused.
+    void forget(rojoRHI::Texture texture);
+    /// Counts distinct identities with either channel.
+    std::size_t size() const { return m_entries.size(); }
 
 private:
-    std::unordered_map<const rojoRHI::Texture*, TextureUse> m_uses;
+    struct Entry {
+        std::optional<TextureUse> logical;
+        uint32_t mips = 0;
+        uint32_t layers = 0;
+        std::vector<std::optional<TextureState>> cells;
+    };
+    std::unordered_map<uint64_t, Entry> m_entries;
 };
-
 } // namespace lmx::render

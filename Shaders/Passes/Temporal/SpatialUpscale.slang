@@ -6,42 +6,19 @@
 //
 // Everything here stays on pre-exposed scene-linear radiance; nothing encodes or tone maps.
 //
-// Slots: texture 0 scene colour; storage texture 1 output; sampler 0 clamped linear; buffer 0
-// params.
-
-struct SpatialUpscaleParams
-{
-    uint renderWidth;  // Active rectangle of the scene colour, anchored at the origin.
-    uint renderHeight;
-    uint outputWidth;  // Dispatch bound: one invocation per output pixel.
-    uint outputHeight;
-    uint allocatedWidth;  // Allocation of the scene colour, which every UV is taken over.
-    uint allocatedHeight;
-    // Where the jittered raster placed the scene, in render texels of texture space: the CPU-side
-    // jitterTexelOffset(jitter) of Source/Render/Temporal.h.
-    float2 jitterOffset;
-};
-
-[[vk::binding(0, 0)]]
-Texture2D<float4> gSceneColor : register(t0); // → MSL [[texture(0)]]
-
-[[vk::binding(1, 0)]]
-RWTexture2D<float4> gOutput : register(u1); // → MSL [[texture(1)]]
-
-[[vk::binding(0, 1)]]
-SamplerState gLinearSampler : register(s0); // → MSL [[sampler(0)]]
-
-[[vk::binding(0, 0)]]
-ConstantBuffer<SpatialUpscaleParams> gParams : register(b0); // → MSL [[buffer(0)]]
+// The address root carries this dispatch's parameters, the scene-colour view, the colour slot's
+// storage view and the clamped linear sampler.
+import RojoRHI;
+import TemporalRoots;
 
 // A tap position in render texels, turned into a UV the sampler may take. The clamp keeps the
 // bilinear footprint of every tap inside the active rectangle, so no filter weight reaches the
 // stale region the render extent leaves outside it; the division is by the *allocated* extent,
 // because that is the texture the UV addresses.
-float2 activeUv(float2 position)
+float2 activeUv(SpatialUpscaleParams params, float2 position)
 {
-    float2 render = float2(float(gParams.renderWidth), float(gParams.renderHeight));
-    float2 allocated = float2(float(gParams.allocatedWidth), float(gParams.allocatedHeight));
+    float2 render = float2(float(params.renderWidth), float(params.renderHeight));
+    float2 allocated = float2(float(params.allocatedWidth), float(params.allocatedHeight));
     return clamp(position, float2(0.5, 0.5), render - 0.5) / allocated;
 }
 
@@ -49,7 +26,8 @@ float2 activeUv(float2 position)
 // Shaders/Passes/Temporal/TemporalResolve.slang's sampleHistoryCatmullRom, which stays the source
 // of truth for the kernel: the weights, the five-tap renormalisation and the negative-lobe clamp
 // are that function's, with the taps taken over the active rectangle instead of a whole-texture UV.
-float3 sampleCurrentCatmullRom(float2 samplePosition)
+float3 sampleCurrentCatmullRom(SpatialUpscaleParams params, Texture2D<float4> sceneColorTexture,
+                               SamplerState linearSampler, float2 samplePosition)
 {
     float2 texelCenter = floor(samplePosition - 0.5) + 0.5;
     float2 f = samplePosition - texelCenter;
@@ -66,15 +44,23 @@ float3 sampleCurrentCatmullRom(float2 samplePosition)
     float2 p3 = texelCenter + 2.0;
     float2 p12 = texelCenter + offset12;
 
-    float3 result =
-        gSceneColor.SampleLevel(gLinearSampler, activeUv(float2(p12.x, p0.y)), 0.0).rgb *
-        (w12.x * w0.y);
-    result += gSceneColor.SampleLevel(gLinearSampler, activeUv(float2(p0.x, p12.y)), 0.0).rgb *
+    float3 result = sceneColorTexture
+                        .SampleLevel(linearSampler, activeUv(params, float2(p12.x, p0.y)), 0.0)
+                        .rgb *
+                    (w12.x * w0.y);
+    result += sceneColorTexture
+                  .SampleLevel(linearSampler, activeUv(params, float2(p0.x, p12.y)), 0.0)
+                  .rgb *
               (w0.x * w12.y);
-    result += gSceneColor.SampleLevel(gLinearSampler, activeUv(p12), 0.0).rgb * (w12.x * w12.y);
-    result += gSceneColor.SampleLevel(gLinearSampler, activeUv(float2(p3.x, p12.y)), 0.0).rgb *
+    result += sceneColorTexture.SampleLevel(linearSampler, activeUv(params, p12), 0.0).rgb *
+              (w12.x * w12.y);
+    result += sceneColorTexture
+                  .SampleLevel(linearSampler, activeUv(params, float2(p3.x, p12.y)), 0.0)
+                  .rgb *
               (w3.x * w12.y);
-    result += gSceneColor.SampleLevel(gLinearSampler, activeUv(float2(p12.x, p3.y)), 0.0).rgb *
+    result += sceneColorTexture
+                  .SampleLevel(linearSampler, activeUv(params, float2(p12.x, p3.y)), 0.0)
+                  .rgb *
               (w12.x * w3.y);
     // Removing the four corner taps also removes their positive weight. Renormalize the five
     // remaining taps so a constant radiance stays constant at every fractional sample position.
@@ -87,17 +73,23 @@ float3 sampleCurrentCatmullRom(float2 samplePosition)
 [numthreads(8, 8, 1)]
 void computeSpatialUpscale(uint3 tid: SV_DispatchThreadID)
 {
-    if (tid.x >= gParams.outputWidth || tid.y >= gParams.outputHeight)
+    let root = rojoRHI::root<SpatialUpscaleRoot>();
+    let params = rojoRHI::load<SpatialUpscaleParams>(root.paramsAddr, 0);
+    let sceneColorTexture = rojoRHI::texture2D<float4>(root.sceneColor);
+    let outputTexture = rojoRHI::rwTexture2D<float4>(root.output);
+    let linearSampler = rojoRHI::sampler(root.sampler);
+    if (tid.x >= params.outputWidth || tid.y >= params.outputHeight)
     {
         return;
     }
 
     // Source/Render/Temporal.h's renderSamplePosition: where the jittered raster put the scene the
     // centre of this output pixel is looking at.
-    float2 ratio = float2(float(gParams.renderWidth) / float(gParams.outputWidth),
-                          float(gParams.renderHeight) / float(gParams.outputHeight));
-    float2 samplePosition = (float2(tid.xy) + 0.5) * ratio + gParams.jitterOffset;
+    float2 ratio = float2(float(params.renderWidth) / float(params.outputWidth),
+                          float(params.renderHeight) / float(params.outputHeight));
+    float2 samplePosition = (float2(tid.xy) + 0.5) * ratio + params.jitterOffset;
     // Alpha 1 is one frame of accumulation: this picture is built from this frame alone, which is
     // the age the colour slot's alpha carries everywhere else.
-    gOutput[tid.xy] = float4(sampleCurrentCatmullRom(samplePosition), 1.0);
+    outputTexture[tid.xy] = float4(
+        sampleCurrentCatmullRom(params, sceneColorTexture, linearSampler, samplePosition), 1.0);
 }

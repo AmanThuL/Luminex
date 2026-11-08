@@ -452,19 +452,19 @@ TEST_CASE("a built scene carries its uploaded IBL textures", "[gpu]") {
     REQUIRE(scene.has_value());
 
     REQUIRE((*scene)->irradianceMap);
-    REQUIRE((*scene)->irradianceMap.desc().width == kIrradianceFaceSize);
-    REQUIRE((*scene)->irradianceMap.desc().height == kIrradianceFaceSize);
+    REQUIRE((*scene)->irradianceMap.desc().extent.width == kIrradianceFaceSize);
+    REQUIRE((*scene)->irradianceMap.desc().extent.height == kIrradianceFaceSize);
 
     REQUIRE((*scene)->prefilteredEnvMap);
     REQUIRE((*scene)->skyCubemap);
     const uint32_t reflectionSize =
-        (*scene)->skyCubemap.desc().width == 1 ? kSpecularBaseFaceSize : 128;
-    REQUIRE((*scene)->prefilteredEnvMap.desc().width == reflectionSize);
-    REQUIRE((*scene)->prefilteredEnvMap.desc().height == reflectionSize);
+        (*scene)->skyCubemap.desc().extent.width == 1 ? kSpecularBaseFaceSize : 128;
+    REQUIRE((*scene)->prefilteredEnvMap.desc().extent.width == reflectionSize);
+    REQUIRE((*scene)->prefilteredEnvMap.desc().extent.height == reflectionSize);
 
     REQUIRE((*scene)->dfgLut);
-    REQUIRE((*scene)->dfgLut.desc().width == kDfgLutSize);
-    REQUIRE((*scene)->dfgLut.desc().height == kDfgLutSize);
+    REQUIRE((*scene)->dfgLut.desc().extent.width == kDfgLutSize);
+    REQUIRE((*scene)->dfgLut.desc().extent.height == kDfgLutSize);
     // rojoRHI::Texture exposes no mip count, so the prefiltered chain's kSpecularMipCount levels
     // stay pinned CPU-side by the prefilterSpecular case above rather than read back off the
     // device.

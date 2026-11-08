@@ -36,17 +36,17 @@ bool isWriteRole(UseRole role) {
 //
 // The counts are passed rather than read off an rojoRHI::Texture because a transient has no texture
 // until the frame is executed, and every rule below has to answer the same way for both kinds.
-ResolvedRange resolveRange(const rojoRHI::TextureSubresourceRange& range, uint32_t mipLevels,
+ResolvedRange resolveRange(const rojoRHI::SubresourceRange& range, uint32_t mipLevels,
                            uint32_t arrayLayers) {
     const auto resolve = [](uint32_t base, uint32_t count, uint32_t available) {
-        if (count == rojoRHI::kAllMipLevels) {
+        if (count == rojoRHI::kAllMips) {
             count = available > base ? available - base : 1;
         }
         // Validation diagnoses zero counts; preserve their singleton resolved bounds.
         return Interval{base, std::max(count, uint32_t{1})};
     };
-    return {.mips = resolve(range.baseMipLevel, range.mipLevelCount, mipLevels),
-            .layers = resolve(range.baseArrayLayer, range.arrayLayerCount, arrayLayers)};
+    return {.mips = resolve(range.baseMip, range.mipCount, mipLevels),
+            .layers = resolve(range.baseLayer, range.layerCount, arrayLayers)};
 }
 
 //======================================================================================================================

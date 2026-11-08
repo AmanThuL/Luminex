@@ -55,8 +55,22 @@ transient counts/offsets, shader reads and indirect reads separately. Physical s
 retain their terminal uses across classifier switches. The existing shared RHI buffer namespace
 has sixteen slots; visibility entries use slots 0–12, with source-space occlusion parameters in slot 13.
 
-Every frame uses one of three paced slots. Draw rows/arguments grow together and keep replaced
-allocations through last prepared frame + 3. Visibility input/state storage doubles only in the
+CPU draw preparation uses the actual current graphics list and paced device frame. Three slots
+each own GPU row/argument destinations and separate Upload row/argument staging buffers. Only
+nonempty prefixes are copied; CopyWrite dependencies lead to vertex row reads and indirect arguments.
+Slot reuse follows beginFrame retirement, and growth allocates all twelve replacement buffers before
+publishing them. All four old owners per slot survive through last prepared frame + 3.
+The indexed argument ABI is 24 bytes: drawId holds the absolute first visible entry, firstInstance
+and baseVertex are zero. The direct root supplies firstEntry; indirect roots select drawId instead.
+
+`allocatedListBytes` and `allocatedArgumentBytes` count GPU destinations across the three active slots.
+`allocatedUploadBytes` separately counts six active Upload staging buffers; it is an optional
+nonnegative integer in schema-5 measurements. These allocation fields exclude retired generations
+and scene-table storage. Payload list/argument bytes do not count staging copies twice.
+`pendingReleaseBuffers` counts replaced destinations, and `pendingReleaseUploadBuffers` counts
+replaced staging buffers: six of each per generation. These counts are shown separately in the UI.
+
+GPU visibility input/state storage doubles only in the
 currently paced slot, whose previous contents have already retired. CPU uploads skip tables whose
 bytes match that slot's prior upload. Empty views retain diagnostic sinks and report zero counts.
 

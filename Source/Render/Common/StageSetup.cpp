@@ -14,38 +14,44 @@
 namespace lmx::render {
 
 //======================================================================================================================
-rojoRHI::GraphicsPipelineDesc fullscreenPipelineDesc(rojoRHI::ShaderLibrary* library,
-                                                     std::string_view fragmentEntry,
-                                                     rojoRHI::Format colorFormat,
-                                                     std::string_view label) {
-    return {.library = library,
-            .vertexEntry = "vertexMain",
-            .fragmentEntry = fragmentEntry,
-            .colorFormat = colorFormat,
-            .depthFormat = rojoRHI::Format::Unknown,
-            .cullMode = rojoRHI::CullMode::None,
-            .label = label};
+lmx::Result<engine::GpuOwned<rojoRHI::Pipeline>>
+createFullscreenPipeline(rojoRHI::Device device, rojoRHI::ShaderLibrary library,
+                         std::string_view fragmentEntry, rojoRHI::Format colorFormat,
+                         std::string_view label) {
+    const std::array<rojoRHI::ColorTarget, 1> colors{{{.format = colorFormat}}};
+    return engine::adoptGpu(
+        device, device.createPipeline({.vertex = {library, "vertexMain"},
+                                       .fragment = {library, fragmentEntry},
+                                       .raster = {.cull = rojoRHI::CullMode::None},
+                                       .depthStencil = {.depthTest = false,
+                                                        .depthWrite = false,
+                                                        .depthCompare = rojoRHI::CompareOp::Always},
+                                       .colors = colors,
+                                       .label = label}));
 }
 
 //======================================================================================================================
 lmx::Result<engine::GpuTexture> createTexel(rojoRHI::Device& device, rojoRHI::Format format,
-                                            rojoRHI::TextureKind kind,
+                                            rojoRHI::TextureType kind,
                                             std::span<const std::byte> bytes,
                                             std::string_view label) {
-    const rojoRHI::TextureMip mip{.data = bytes.data(), .bytesPerRow = bytes.size()};
-    const std::array<rojoRHI::TextureMip, 6> mips{mip, mip, mip, mip, mip, mip};
-    const uint32_t faces = kind == rojoRHI::TextureKind::Cube ? 6u : 1u;
-    return engine::GpuTexture::create(
-        device,
-        {.width = 1, .height = 1, .format = format, .kind = kind, .sampled = true, .label = label},
-        std::span{mips.data(), faces});
+    const rojoRHI::TextureData mip{.bytes = bytes, .bytesPerRow = bytes.size()};
+    const std::array<rojoRHI::TextureData, 6> mips{mip, mip, mip, mip, mip, mip};
+    const uint32_t faces = kind == rojoRHI::TextureType::Cube ? 6u : 1u;
+    return engine::GpuTexture::create(device,
+                                      {.type = kind,
+                                       .format = format,
+                                       .extent = {1, 1, 1},
+                                       .layers = faces,
+                                       .usage = rojoRHI::TextureUsage::Sampled,
+                                       .label = label},
+                                      std::span{mips.data(), faces});
 }
 
 //======================================================================================================================
 lmx::Result<ComputePipelines> createComputePipelines(engine::GpuContext& gpu,
                                                      std::span<const char* const> names,
-                                                     std::string_view labelPrefix,
-                                                     uint32_t (*threadsFor)(uint32_t)) {
+                                                     std::string_view labelPrefix) {
     ComputePipelines result;
     result.libraries.reserve(names.size());
     result.pipelines.reserve(names.size());
@@ -56,10 +62,9 @@ lmx::Result<ComputePipelines> createComputePipelines(engine::GpuContext& gpu,
         }
         result.libraries.push_back(std::move(*library));
         auto pipeline = engine::adoptGpu(
-            gpu.device().createComputePipeline({.library = result.libraries.back().get(),
-                                                .computeEntry = "computeMain",
-                                                .threadsPerThreadgroup = {threadsFor(index), 1, 1},
-                                                .label = std::string(labelPrefix) + names[index]}));
+            gpu.device(), gpu.device().createPipeline(rojoRHI::ComputePipelineDesc{
+                              .compute = {result.libraries.back().get(), "computeMain"},
+                              .label = std::string(labelPrefix) + names[index]}));
         if (!pipeline) {
             return std::unexpected(pipeline.error());
         }

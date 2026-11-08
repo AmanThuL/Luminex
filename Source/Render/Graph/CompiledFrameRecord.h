@@ -5,10 +5,10 @@
 
 #pragma once
 
+#include "Engine/Gpu/FormatInfo.h"
 #include "Render/Graph/ResourceUse.h"
 
-#include <rojoRHI/Buffer.h>
-#include <rojoRHI/Texture.h>
+#include <rojoRHI/RHI.h>
 
 #include <cstdint>
 #include <optional>
@@ -17,6 +17,9 @@
 #include <vector>
 
 namespace lmx::render {
+
+/// Logical primary-plus-extra color limit retained by the graph declaration contract.
+inline constexpr uint32_t kMaxExtraColorTargets = 3;
 
 /// What kind of work a declared pass encodes, and therefore which RHI pass scope execute() opens
 /// for it, if any. Each declaration path fixes the kind, so
@@ -48,14 +51,13 @@ enum class UseRole {
 std::string_view roleName(UseRole role);
 
 /// Names a format as its enumerator, so a message says D32Float rather than an integer. It lives
-/// here rather than in the RHI because naming an enumerator is a diagnostic concern and the graph
-/// is what has the diagnostics.
-std::string_view formatName(rojoRHI::Format format);
+/// in Engine because naming an enumerator is a consumer diagnostic concern, shared by observers.
+using engine::formatName;
 
 /// Formats a subresource range as `mips[first..last] layers[first..last]`, with the last bound left
 /// open -- `mips[1..]` -- where the range runs to the end of the chain. Shared by the graph's
 /// validation messages and the frame dump so one range reads the same in both.
-std::string describeRange(const rojoRHI::TextureSubresourceRange& range);
+std::string describeRange(const rojoRHI::SubresourceRange& range);
 
 /// The order compile() proved: pass indices, numbered by declaration order, arranged so every
 /// producer precedes its consumers. Serial -- the graph models one queue.
@@ -85,15 +87,15 @@ enum class SinkKind {
 struct DebugResource {
     std::string name;                                    ///< The name it was imported under.
     GraphResourceKind kind = GraphResourceKind::Texture; ///< Texture or buffer.
-    rojoRHI::Format format = rojoRHI::Format::Unknown;   ///< Declared format; Unknown for a buffer.
+    rojoRHI::Format format = rojoRHI::Format::Undefined; ///< Declared format; Unknown for a buffer.
 };
 
 /// One declared use of one resource version by one pass, in the order the pass declared it.
 struct DebugUse {
-    uint32_t resource = 0;                  ///< Index into CompiledFrameDebug::resources.
-    uint32_t version = 0;                   ///< The version the pass named.
-    UseRole role = UseRole::Read;           ///< What the pass does with it.
-    rojoRHI::TextureSubresourceRange range; ///< Subresources covered; whole-resource for a buffer.
+    uint32_t resource = 0;           ///< Index into CompiledFrameDebug::resources.
+    uint32_t version = 0;            ///< The version the pass named.
+    UseRole role = UseRole::Read;    ///< What the pass does with it.
+    rojoRHI::SubresourceRange range; ///< Subresources covered; whole-resource for a buffer.
 };
 
 /// Why a compiled frame left a declared pass out of its schedule.
@@ -128,17 +130,18 @@ struct DebugSink {
     uint32_t version = 0;  ///< The version the sink roots.
 };
 
-/// One barrier the graph derived, positioned by the pass it precedes.
+/// One logical diagnostic dependency, positioned by the pass it precedes.
+/// Physical barriers derive separately from scheduled accesses; this record contains no layouts.
 ///
 /// `kind` says which of the two use pairs below is the meaningful one: a texture transition carries
 /// its `range` and the texture uses, a buffer transition the buffer uses. They share one struct
 /// because the transitions of a frame are one ordered sequence, and splitting them by resource kind
 /// would lose which came first.
 struct DebugTransition {
-    uint32_t beforePass = 0; ///< Index of the pass the barrier precedes.
+    uint32_t beforePass = 0; ///< Index of the pass the diagnostic dependency precedes.
     uint32_t resource = 0;   ///< Index into CompiledFrameDebug::resources.
     GraphResourceKind kind = GraphResourceKind::Texture; ///< Which use pair applies.
-    rojoRHI::TextureSubresourceRange range;              ///< Subresources covered; textures only.
+    rojoRHI::SubresourceRange range;                     ///< Subresources covered; textures only.
     TextureUse textureFrom = TextureUse::RenderTarget;   ///< Producing texture use.
     TextureUse textureTo = TextureUse::ShaderRead;       ///< Consuming texture use.
     BufferUse bufferFrom = BufferUse::StorageWrite;      ///< Producing buffer use.
@@ -192,7 +195,7 @@ struct CompiledFrameDebug {
     std::vector<DebugSink> sinks;             ///< Declared sinks, in declaration order.
     std::vector<DebugPass> passes;            ///< Declared passes, in declaration order.
     Schedule schedule;                        ///< Surviving pass indices in execution order.
-    std::vector<DebugTransition> transitions; ///< Derived barriers, in the order they are emitted.
+    std::vector<DebugTransition> transitions; ///< Diagnostic dependencies, in schedule order.
     /// Graph-created transients, in declaration order, with their lifetimes and assignments.
     std::vector<DebugTransient> transients;
     TransientMemory memory;      ///< What the transients cost and what aliasing saved.
@@ -201,11 +204,8 @@ struct CompiledFrameDebug {
 
 /// A compiled frame together with the frame it belongs to.
 ///
-/// `frameId` is the RHI device's number for the frame being recorded
-/// (rojoRHI::Device::frameNumber()), which is the same numbering
-/// rojoRHI::Device::passTimingsFrame() reports -- so an observer holding records for the frames in
-/// flight joins a retired frame's timings to the record that describes it by comparing the two
-/// numbers rather than by guessing at a lag.
+/// frameId is the GPU context's actual frame number. Retired timings join by that exact number;
+/// skipped attempts and private copy frames are not inferred away.
 struct CompiledFrameRecord {
     uint64_t frameId = 0;     ///< The device frame number this frame was compiled for.
     CompiledFrameDebug debug; ///< What compilation decided.

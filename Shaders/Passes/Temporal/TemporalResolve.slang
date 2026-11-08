@@ -9,70 +9,22 @@
 // encodes or tone maps. The alpha channel of the colour history is not coverage but a per-pixel
 // accumulation age, which the debug views read and the CPU count in TemporalStatus mirrors.
 //
-// Slots: textures 0 scene colour, 1 depth, 2 previous depth, 3 motion, 4 reactive, 5 history;
-// storage textures 6 output, 7 rejection, 8 reprojected; sampler 0 clamped linear; buffers 0
-// exposure pair (read), 1 params.
+// The address root carries this dispatch's parameters, the persistent exposure pair (read), the
+// scene colour, depth, previous depth, motion, reactive and history views, the storage views of
+// the output and the two diagnostics, and the clamped linear sampler.
 //
 // The frozen constants, the rejection reason codes and the colour and depth helpers live in
 // Shaders/Passes/Temporal/TemporalCommon.slang, which Shaders/Passes/Temporal/TemporalUpscale.slang
 // shares with this file; the algorithm they belong to is this one's.
+import RojoRHI;
 import Motion;
 import TemporalCommon;
-
-struct TemporalResolveParams
-{
-    uint width;  // Render extent, shared by every input and both outputs.
-    uint height;
-    uint historyValid;      // 0 on a reset frame: steps 1-6 are skipped and no history is read.
-    uint writeDiagnostics;  // Bit 0 writes rejection; bit 1 writes reprojected history.
-    // Unjittered, so a reconstructed world position does not carry the frame's sub-pixel offset.
-    float4x4 inverseViewProjection;
-    float4x4 previousViewProjection;
-    // The previous frame's positive near-plane distance. Both sides of the disocclusion comparison
-    // are depths in the *previous* frame's clip space, so one near plane inverts both of them.
-    float previousNearZ;
-    float3 pad; // Keeps the block a multiple of 16 bytes.
-};
-
-[[vk::binding(0, 0)]]
-Texture2D<float4> gSceneColor : register(t0); // → MSL [[texture(0)]]
-
-[[vk::binding(1, 0)]]
-Texture2D<float> gDepth : register(t1); // → MSL [[texture(1)]]
-
-[[vk::binding(2, 0)]]
-Texture2D<float> gPreviousDepth : register(t2); // → MSL [[texture(2)]]
-
-[[vk::binding(3, 0)]]
-Texture2D<float2> gMotion : register(t3); // → MSL [[texture(3)]]
-
-[[vk::binding(4, 0)]]
-Texture2D<float> gReactive : register(t4); // → MSL [[texture(4)]]
-
-[[vk::binding(5, 0)]]
-Texture2D<float4> gHistory : register(t5); // → MSL [[texture(5)]]
-
-[[vk::binding(6, 0)]]
-RWTexture2D<float4> gOutput : register(u6); // → MSL [[texture(6)]]
-
-[[vk::binding(7, 0)]]
-RWTexture2D<float4> gRejection : register(u7); // → MSL [[texture(7)]]
-
-[[vk::binding(8, 0)]]
-RWTexture2D<float4> gReprojected : register(u8); // → MSL [[texture(8)]]
-
-[[vk::binding(0, 1)]]
-SamplerState gLinearSampler : register(s0); // → MSL [[sampler(0)]]
-
-[[vk::binding(0, 0)]]
-StructuredBuffer<float> gExposure : register(t0); // → MSL [[buffer(0)]]
-
-[[vk::binding(1, 0)]]
-ConstantBuffer<TemporalResolveParams> gParams : register(b1); // → MSL [[buffer(1)]]
+import TemporalRoots;
 
 // Five-tap Catmull-Rom: a sharper history fetch than bilinear, which is what stops an accumulated
 // image from softening a little more every frame it is reprojected.
-float3 sampleHistoryCatmullRom(float2 uv, float2 extent)
+float3 sampleHistoryCatmullRom(Texture2D<float4> historyTexture, SamplerState linearSampler,
+                               float2 uv, float2 extent)
 {
     float2 samplePosition = uv * extent;
     float2 texelCenter = floor(samplePosition - 0.5) + 0.5;
@@ -90,12 +42,14 @@ float3 sampleHistoryCatmullRom(float2 uv, float2 extent)
     float2 uv3 = (texelCenter + 2.0) / extent;
     float2 uv12 = (texelCenter + offset12) / extent;
 
-    float3 result = gHistory.SampleLevel(gLinearSampler, float2(uv12.x, uv0.y), 0.0).rgb *
+    float3 result = historyTexture.SampleLevel(linearSampler, float2(uv12.x, uv0.y), 0.0).rgb *
                     (w12.x * w0.y);
-    result += gHistory.SampleLevel(gLinearSampler, float2(uv0.x, uv12.y), 0.0).rgb * (w0.x * w12.y);
-    result += gHistory.SampleLevel(gLinearSampler, uv12, 0.0).rgb * (w12.x * w12.y);
-    result += gHistory.SampleLevel(gLinearSampler, float2(uv3.x, uv12.y), 0.0).rgb * (w3.x * w12.y);
-    result += gHistory.SampleLevel(gLinearSampler, float2(uv12.x, uv3.y), 0.0).rgb *
+    result += historyTexture.SampleLevel(linearSampler, float2(uv0.x, uv12.y), 0.0).rgb *
+              (w0.x * w12.y);
+    result += historyTexture.SampleLevel(linearSampler, uv12, 0.0).rgb * (w12.x * w12.y);
+    result += historyTexture.SampleLevel(linearSampler, float2(uv3.x, uv12.y), 0.0).rgb *
+              (w3.x * w12.y);
+    result += historyTexture.SampleLevel(linearSampler, float2(uv12.x, uv3.y), 0.0).rgb *
               (w12.x * w3.y);
     // Removing the four corner taps also removes their positive weight. Renormalize the five
     // remaining taps so a constant radiance stays constant at every fractional history position.
@@ -108,29 +62,41 @@ float3 sampleHistoryCatmullRom(float2 uv, float2 extent)
 [numthreads(8, 8, 1)]
 void computeTemporalResolve(uint3 tid: SV_DispatchThreadID)
 {
-    if (tid.x >= gParams.width || tid.y >= gParams.height)
+    let root = rojoRHI::root<TemporalResolveRoot>();
+    let params = rojoRHI::load<TemporalResolveParams>(root.paramsAddr, 0);
+    let sceneColorTexture = rojoRHI::texture2D<float4>(root.sceneColor);
+    let depthTexture = rojoRHI::texture2D<float>(root.depth);
+    let previousDepthTexture = rojoRHI::texture2D<float>(root.previousDepth);
+    let motionTexture = rojoRHI::texture2D<float2>(root.motion);
+    let reactiveTexture = rojoRHI::texture2D<float>(root.reactive);
+    let historyTexture = rojoRHI::texture2D<float4>(root.history);
+    let outputTexture = rojoRHI::rwTexture2D<float4>(root.output);
+    let rejectionTexture = rojoRHI::rwTexture2D<float4>(root.rejection);
+    let reprojectedTexture = rojoRHI::rwTexture2D<float4>(root.reprojected);
+    let linearSampler = rojoRHI::sampler(root.sampler);
+    if (tid.x >= params.width || tid.y >= params.height)
     {
         return;
     }
 
     int3 coord = int3(int2(tid.xy), 0);
-    float2 extent = float2(float(gParams.width), float(gParams.height));
-    float3 current = gSceneColor.Load(coord).rgb;
-    float reactive = gReactive.Load(coord).r;
+    float2 extent = float2(float(params.width), float(params.height));
+    float3 current = sceneColorTexture.Load(coord).rgb;
+    float reactive = reactiveTexture.Load(coord).r;
 
     // Step 8: a reset frame has no history that describes this scene. It writes what it shaded and
     // starts the per-pixel count over; the pass binds the same textures either way, so nothing
     // below is reached rather than nothing being bound.
-    if (gParams.historyValid == 0u)
+    if (params.historyValid == 0u)
     {
-        gOutput[tid.xy] = float4(current, 1.0);
-        if ((gParams.writeDiagnostics & 1u) != 0u)
+        outputTexture[tid.xy] = float4(current, 1.0);
+        if ((params.writeDiagnostics & 1u) != 0u)
         {
-            gRejection[tid.xy] = float4(float(kReasonNone) / 255.0, 1.0, 0.0, 1.0);
+            rejectionTexture[tid.xy] = float4(float(kReasonNone) / 255.0, 1.0, 0.0, 1.0);
         }
-        if ((gParams.writeDiagnostics & 2u) != 0u)
+        if ((params.writeDiagnostics & 2u) != 0u)
         {
-            gReprojected[tid.xy] = float4(0.0, 0.0, 0.0, 0.0);
+            reprojectedTexture[tid.xy] = float4(0.0, 0.0, 0.0, 0.0);
         }
         return;
     }
@@ -140,20 +106,20 @@ void computeTemporalResolve(uint3 tid: SV_DispatchThreadID)
     // Step 1: motion dilation. The closest-depth texel of the 3x3 neighbourhood lends its motion to
     // the whole footprint, so a silhouette reprojects with the foreground it belongs to rather than
     // with the background its own texel happens to sit on.
-    float2 motion = gMotion.Load(coord).xy;
-    float closestDepth = gDepth.Load(coord).r;
+    float2 motion = motionTexture.Load(coord).xy;
+    float closestDepth = depthTexture.Load(coord).r;
     for (int dy = -1; dy <= 1; ++dy)
     {
         for (int dx = -1; dx <= 1; ++dx)
         {
             int2 neighbor = clamp(int2(tid.xy) + int2(dx, dy), int2(0, 0), int2(extent) - 1);
             int3 neighborCoord = int3(neighbor, 0);
-            float neighborDepth = gDepth.Load(neighborCoord).r;
+            float neighborDepth = depthTexture.Load(neighborCoord).r;
             // Reversed depth: the greater value is the nearer surface.
             if (neighborDepth > closestDepth)
             {
                 closestDepth = neighborDepth;
-                motion = gMotion.Load(neighborCoord).xy;
+                motion = motionTexture.Load(neighborCoord).xy;
             }
         }
     }
@@ -184,8 +150,8 @@ void computeTemporalResolve(uint3 tid: SV_DispatchThreadID)
     if (reason == kReasonNone && closestDepth > 0.0)
     {
         float3 ndc = float3(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, closestDepth);
-        float4 world = mul(gParams.inverseViewProjection, float4(ndc, 1.0));
-        float4 previousClip = mul(gParams.previousViewProjection, float4(world.xyz / world.w, 1.0));
+        float4 world = mul(params.inverseViewProjection, float4(ndc, 1.0));
+        float4 previousClip = mul(params.previousViewProjection, float4(world.xyz / world.w, 1.0));
         if (previousClip.w > 0.0)
         {
             float expectedDepth = previousClip.z / previousClip.w;
@@ -197,13 +163,14 @@ void computeTemporalResolve(uint3 tid: SV_DispatchThreadID)
                 {
                     int2 neighbor =
                         clamp(historyTexel + int2(dx, dy), int2(0, 0), int2(extent) - 1);
-                    previousDepth = max(previousDepth, gPreviousDepth.Load(int3(neighbor, 0)).r);
+                    previousDepth =
+                        max(previousDepth, previousDepthTexture.Load(int3(neighbor, 0)).r);
                 }
             }
             if (expectedDepth > 0.0 && previousDepth > 0.0)
             {
-                float expectedDistance = viewDistance(expectedDepth, gParams.previousNearZ);
-                float previousDistance = viewDistance(previousDepth, gParams.previousNearZ);
+                float expectedDistance = viewDistance(expectedDepth, params.previousNearZ);
+                float previousDistance = viewDistance(previousDepth, params.previousNearZ);
                 if (abs(previousDistance - expectedDistance) >
                     kDisocclusionTolerance * expectedDistance)
                 {
@@ -224,16 +191,16 @@ void computeTemporalResolve(uint3 tid: SV_DispatchThreadID)
     float previousAge = 0.0;
     if (reason == kReasonNone)
     {
-        history = sampleHistoryCatmullRom(historyUv, extent);
-        float applied = gExposure[0];
-        float previous = gExposure[1];
+        history = sampleHistoryCatmullRom(historyTexture, linearSampler, historyUv, extent);
+        float applied = rojoRHI::load<float>(root.exposureAddr, 0);
+        float previous = rojoRHI::load<float>(root.exposureAddr, 1);
         history *= previous > 0.0 ? applied / previous : 1.0;
-        previousAge = floor(gHistory.SampleLevel(gLinearSampler, historyUv, 0.0).a);
+        previousAge = floor(historyTexture.SampleLevel(linearSampler, historyUv, 0.0).a);
     }
 
-    if ((gParams.writeDiagnostics & 2u) != 0u)
+    if ((params.writeDiagnostics & 2u) != 0u)
     {
-        gReprojected[tid.xy] = float4(history, reason == kReasonNone ? 1.0 : 0.0);
+        reprojectedTexture[tid.xy] = float4(history, reason == kReasonNone ? 1.0 : 0.0);
     }
 
     // Step 5: neighbourhood clipping against the 3x3 mean and standard deviation this frame shaded.
@@ -247,7 +214,7 @@ void computeTemporalResolve(uint3 tid: SV_DispatchThreadID)
             for (int dx = -1; dx <= 1; ++dx)
             {
                 int2 neighbor = clamp(int2(tid.xy) + int2(dx, dy), int2(0, 0), int2(extent) - 1);
-                float3 sample = rgbToYcocg(gSceneColor.Load(int3(neighbor, 0)).rgb);
+                float3 sample = rgbToYcocg(sceneColorTexture.Load(int3(neighbor, 0)).rgb);
                 sum += sample;
                 sumSquares += sample * sample;
             }
@@ -288,11 +255,11 @@ void computeTemporalResolve(uint3 tid: SV_DispatchThreadID)
 
     // Step 7: the age this pixel has accumulated, which is what the HistoryAge view reads back.
     float age = reason != kReasonNone ? 1.0 : min(previousAge + 1.0, kMaxHistoryAge);
-    gOutput[tid.xy] = float4(resolved, age);
+    outputTexture[tid.xy] = float4(resolved, age);
 
-    if ((gParams.writeDiagnostics & 1u) != 0u)
+    if ((params.writeDiagnostics & 1u) != 0u)
     {
-        gRejection[tid.xy] = float4(float(reason | (clipped ? kClippedBit : 0u)) / 255.0, alpha,
-                                    clipped ? 1.0 : 0.0, 1.0);
+        rejectionTexture[tid.xy] = float4(float(reason | (clipped ? kClippedBit : 0u)) / 255.0,
+                                          alpha, clipped ? 1.0 : 0.0, 1.0);
     }
 }

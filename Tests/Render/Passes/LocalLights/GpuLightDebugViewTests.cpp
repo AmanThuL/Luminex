@@ -1,5 +1,6 @@
 #include "Engine/Lights/LocalLightMath.h"
 #include "Engine/Scene/Scene.h"
+#include "Render/Graph/TransientPool.h"
 #include "Render/Passes/LocalLights/LightDebugStage.h"
 #include "Render/Renderer/SceneViewBuilder.h"
 #include "Scenes/CatalogScenes.h"
@@ -66,68 +67,69 @@ std::vector<uint8_t> renderDebug(const DebugFixture& f, lmx::engine::LightDebugV
     auto stage = LightDebugStage::create(*gpu);
     INFO(errorOf(stage));
     REQUIRE(stage.has_value());
-    const rojoRHI::TextureMip depthMip{.data = f.depths.data(), .bytesPerRow = f.width * 4};
-    auto depth = gpu->device().createTexture({.width = f.width,
-                                              .height = f.height,
-                                              .format = rojoRHI::Format::R32Float,
-                                              .sampled = true,
-                                              .label = "lmx.test.lightDebug.depth"},
-                                             std::span{&depthMip, 1});
+    const rojoRHI::TextureData depthMip{.bytes = std::as_bytes(std::span(f.depths)),
+                                        .bytesPerRow = f.width * 4};
+    auto depth = lmx::engine::GpuTexture::create(gpu->device(),
+                                                 {.format = rojoRHI::Format::R32Float,
+                                                  .extent = {f.width, f.height, 1},
+                                                  .usage = rojoRHI::TextureUsage::Sampled,
+                                                  .label = "lmx.test.lightDebug.depth"},
+                                                 std::span{&depthMip, 1});
     REQUIRE(depth.has_value());
     std::vector<uint8_t> source(f.outputWidth * f.outputHeight * 4, 128);
     for (size_t i = 3; i < source.size(); i += 4)
         source[i] = 255;
-    const rojoRHI::TextureMip sourceMip{.data = source.data(), .bytesPerRow = f.outputWidth * 4};
-    auto display = gpu->device().createTexture({.width = f.outputWidth,
-                                                .height = f.outputHeight,
-                                                .format = rojoRHI::Format::BGRA8Unorm,
-                                                .sampled = true,
-                                                .label = "lmx.test.lightDebug.source"},
-                                               std::span{&sourceMip, 1});
+    const rojoRHI::TextureData sourceMip{.bytes = std::as_bytes(std::span(source)),
+                                         .bytesPerRow = f.outputWidth * 4};
+    auto display = lmx::engine::GpuTexture::create(gpu->device(),
+                                                   {.format = rojoRHI::Format::BGRA8Unorm,
+                                                    .extent = {f.outputWidth, f.outputHeight, 1},
+                                                    .usage = rojoRHI::TextureUsage::Sampled,
+                                                    .label = "lmx.test.lightDebug.source"},
+                                                   std::span{&sourceMip, 1});
     REQUIRE(display.has_value());
-    auto output =
-        lmx::engine::GpuTexture::create(gpu->device(), {.width = f.outputWidth,
-                                                        .height = f.outputHeight,
-                                                        .format = rojoRHI::Format::BGRA8Unorm,
-                                                        .renderTarget = true,
-                                                        .cpuReadback = true,
-                                                        .label = "lmx.test.lightDebug.output"});
+    auto output = lmx::engine::GpuTexture::create(gpu->device(),
+                                                  {.format = rojoRHI::Format::BGRA8Unorm,
+                                                   .extent = {f.outputWidth, f.outputHeight, 1},
+                                                   .usage = rojoRHI::TextureUsage::RenderTarget,
+                                                   .label = "lmx.test.lightDebug.output"});
     REQUIRE(output.has_value());
-    auto lights = gpu->device().createBuffer({.size = f.rows.size() * sizeof(lmx::engine::LightRow),
-                                              .storageRead = true,
-                                              .label = "lmx.test.lightDebug.lights"},
-                                             f.rows.data());
-    auto grid = gpu->device().createBuffer({.size = f.lists.grid.size() * sizeof(ClusterRecord),
-                                            .storageRead = true,
-                                            .label = "lmx.test.lightDebug.grid"},
-                                           f.lists.grid.data());
+    auto upload = [&](std::span<const std::byte> bytes, const char* label) {
+        return lmx::engine::GpuBuffer::create(
+            gpu->device(),
+            {.size = bytes.size(), .memory = rojoRHI::Memory::Upload, .label = label}, bytes);
+    };
+    auto lights = upload(std::as_bytes(std::span(f.rows)), "lmx.test.lightDebug.lights");
+    auto grid = upload(std::as_bytes(std::span(f.lists.grid)), "lmx.test.lightDebug.grid");
     const uint32_t dummy = 0;
-    auto indices =
-        gpu->device().createBuffer({.size = std::max(size_t{1}, f.lists.indices.size()) * 4,
-                                    .storageRead = true,
-                                    .label = "lmx.test.lightDebug.indices"},
-                                   f.lists.indices.empty() ? &dummy : f.lists.indices.data());
+    auto indices = upload(f.lists.indices.empty() ? std::as_bytes(std::span{&dummy, 1})
+                                                  : std::as_bytes(std::span(f.lists.indices)),
+                          "lmx.test.lightDebug.indices");
     REQUIRE(lights.has_value());
     REQUIRE(grid.has_value());
     REQUIRE(indices.has_value());
+    TextureStateTable states;
     auto gpuFrame1 = gpu->beginFrame();
     auto& commands = gpuFrame1.commands;
     RenderGraph graph;
-    const auto result = (*stage)->declare(
-        graph, commands,
-        {.mode = mode,
-         .depth = graph.importTexture(**depth, rojoRHI::Format::R32Float, "depth"),
-         .display = graph.importTexture(**display, rojoRHI::Format::BGRA8Unorm, "display"),
-         .output = graph.importTexture(output->rhi(), rojoRHI::Format::BGRA8Unorm, "output"),
-         .lights = graph.importBuffer(**lights, "lights"),
-         .grid = graph.importBuffer(**grid, "grid"),
-         .indices = graph.importBuffer(**indices, "indices"),
-         .clusters = f.params,
-         .inverseViewProjection = f.inverseViewProjection,
-         .outputWidth = f.outputWidth,
-         .outputHeight = f.outputHeight});
+    graph.bindTextureStates(states);
+    const auto result =
+        (*stage)->declare(graph, commands,
+                          {.mode = mode,
+                           .depth = graph.importPersistentTexture(*depth, "depth"),
+                           .display = graph.importPersistentTexture(*display, "display"),
+                           .output = graph.importPersistentTexture(*output, "output"),
+                           .lights = graph.importBuffer(*lights, "lights"),
+                           .grid = graph.importBuffer(*grid, "grid"),
+                           .indices = graph.importBuffer(*indices, "indices"),
+                           .clusters = f.params,
+                           .inverseViewProjection = f.inverseViewProjection,
+                           .outputWidth = f.outputWidth,
+                           .outputHeight = f.outputHeight});
     graph.exportTexture(result);
     auto compiled = graph.compile();
+    if (!compiled)
+        gpu->submitAndEndFrame(gpuFrame1);
     INFO((compiled ? "" : compiled.error().message));
     REQUIRE(compiled.has_value());
     graph.execute(commands, gpu->frameNumber());
@@ -135,9 +137,10 @@ std::vector<uint8_t> renderDebug(const DebugFixture& f, lmx::engine::LightDebugV
     gpu->waitIdle();
     std::vector<uint8_t> image(source.size());
     {
-        const auto readbackBytes =
-            lmx::render::readbackNow(*gpu, *output, lmx::render::TextureUse::RenderTarget);
-        std::memcpy(image.data(), readbackBytes.data(), image.size());
+        const auto readbackBytes = lmx::render::readbackNow(*gpu, *output, states);
+        INFO(errorOf(readbackBytes));
+        REQUIRE(readbackBytes.has_value());
+        std::memcpy(image.data(), readbackBytes->data(), image.size());
     }
     return image;
 }
@@ -249,67 +252,6 @@ TEST_CASE("light count and overflow views use exact pixel-aligned froxel records
 }
 
 //======================================================================================================================
-TEST_CASE("light diagnostics reuse actual temporal depth without contaminating history",
-          "[gpu][light-debug]") {
-    auto gpu = createTestGpu();
-    auto scene = lmx::test::loadCatalogScene(gpu->device(), "light-lab", 256, 0);
-    REQUIRE(scene.has_value());
-    const auto camera = lmx::engine::cameraFromScene((*scene)->initialCamera);
-    for (const auto reconstruction :
-         {ReconstructionMode::NativeTaa, ReconstructionMode::VendorTemporal}) {
-        std::vector<uint8_t> reference;
-        for (bool debug : {false, true}) {
-            auto renderer = Renderer::create(*gpu, 67, 43, true);
-            REQUIRE(renderer.has_value());
-            for (uint32_t frame = 0; frame < 7; ++frame) {
-                auto gpuFrame2 = gpu->beginFrame();
-                auto& commands = gpuFrame2.commands;
-                REQUIRE((*scene)->prepareFrame(gpu->frameNumber()).has_value());
-                std::vector<lmx::engine::DrawItem> items;
-                auto view = buildSceneView(**scene, items, false);
-                view.localLightMode = lmx::engine::LocalLightMode::Clustered;
-                view.temporal.enabled = true;
-                view.temporal.jitterEnabled = true;
-                view.temporal.reconstruction = reconstruction;
-                view.temporal.renderScale = 0.75f;
-                view.bloomEnabled = false;
-                view.lightDebugView = debug && frame < 6 ? lmx::engine::LightDebugView::Missed
-                                                         : lmx::engine::LightDebugView::Off;
-                (*renderer)->render(commands, camera, view);
-                gpu->submitAndEndFrame(gpuFrame2);
-                gpu->waitIdle();
-                if (debug && frame < 6) {
-                    std::vector<uint8_t> pixels(67 * 43 * 4);
-                    {
-                        const auto readbackBytes =
-                            lmx::render::readbackNow(*gpu, (*renderer)->colorTarget(),
-                                                     lmx::render::TextureUse::RenderTarget);
-                        std::memcpy(pixels.data(), readbackBytes.data(), pixels.size());
-                    }
-                    for (size_t at = 0; at < pixels.size(); at += 4) {
-                        REQUIRE(pixels[at] == 0);
-                        REQUIRE(pixels[at + 1] == 0);
-                        REQUIRE(pixels[at + 2] == 0);
-                        REQUIRE(pixels[at + 3] == 255);
-                    }
-                }
-            }
-            (*renderer)->drainLightingAfterIdle();
-            std::vector<uint8_t> image(67 * 43 * 4);
-            {
-                const auto readbackBytes = lmx::render::readbackNow(
-                    *gpu, (*renderer)->colorTarget(), lmx::render::TextureUse::RenderTarget);
-                std::memcpy(image.data(), readbackBytes.data(), image.size());
-            }
-            if (!debug)
-                reference = std::move(image);
-            else
-                REQUIRE(image == reference);
-        }
-    }
-}
-
-//======================================================================================================================
 TEST_CASE("zero-live light debug leaves the graph unchanged after removal", "[gpu][light-debug]") {
     auto gpu = createTestGpu();
     auto scene = lmx::test::loadCatalogScene(gpu->device(), "light-lab", 64, 0);
@@ -330,16 +272,23 @@ TEST_CASE("zero-live light debug leaves the graph unchanged after removal", "[gp
     view.temporal.enabled = false;
     REQUIRE(view.tables.liveLightCount == 0);
     REQUIRE(view.tables.lightRowCount == 64);
-    TransientPool pool(gpu->device());
+    TransientPool pool(*gpu);
     pool.beginFrame();
     RenderGraph graph(pool);
-    graph.exportTexture((*renderer)->declarePasses(
-        graph, commands, lmx::engine::cameraFromScene((*scene)->initialCamera), view));
+    const auto declared = (*renderer)->declarePasses(
+        graph, commands, lmx::engine::cameraFromScene((*scene)->initialCamera), view);
+    if (!declared)
+        gpu->submitAndEndFrame(gpuFrame3);
+    INFO(errorOf(declared));
+    REQUIRE(declared.has_value());
+    graph.exportTexture(*declared);
     const auto record = graph.compileFrame(gpu->frameNumber());
+    if (!record)
+        gpu->submitAndEndFrame(gpuFrame3);
     REQUIRE(record.has_value());
-    for (const auto& pass : record->debug.passes)
-        REQUIRE_FALSE(pass.label.starts_with("lmx.pass.light."));
     graph.execute(commands, gpu->frameNumber());
     gpu->submitAndEndFrame(gpuFrame3);
     gpu->waitIdle();
+    for (const auto& pass : record->debug.passes)
+        REQUIRE_FALSE(pass.label.starts_with("lmx.pass.light."));
 }

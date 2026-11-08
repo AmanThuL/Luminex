@@ -1,9 +1,5 @@
 // Ordered fp32 source-view box test; no filtered depth access.
-struct OcclusionParams {
-    float4 sourceRows[4];
-    uint sourceWidth; uint sourceHeight; uint levelCount; uint flags;
-    float nearGuard; float depthGuard; uint2 padding;
-};
+import VisibilityRoots;
 struct OcclusionProjection {
     int4 rectangle;
     uint level;

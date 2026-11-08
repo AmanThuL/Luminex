@@ -66,13 +66,9 @@ lmx::Result<void> reserveTable(rojoRHI::Device& device, PacedTable<Row>& table, 
     std::array<GpuBuffer, kSlots> buffers;
     for (uint32_t slot = 0; slot < kSlots; ++slot) {
         const std::string bufferLabel = std::format("{}.{}", label, slot);
-        auto buffer = GpuBuffer::create(device,
-                                        {.size = uint64_t{capacity} * sizeof(Row),
-                                         .storageRead = true,
-                                         .cpuReadback = true,
-                                         .cpuWrite = true,
-                                         .label = bufferLabel},
-                                        nullptr);
+        auto buffer = GpuBuffer::create(device, {.size = uint64_t{capacity} * sizeof(Row),
+                                                 .memory = rojoRHI::Memory::Upload,
+                                                 .label = bufferLabel});
         if (!buffer) {
             return std::unexpected(std::move(buffer.error()));
         }
@@ -113,8 +109,8 @@ template <typename Row>
 void writeRows(PacedTable<Row>& table, uint32_t slot, SceneTableStats& stats) {
     for (uint32_t i = 0; i < table.shadow.size(); ++i) {
         if (table.dirty.test(i, slot)) {
-            table.buffers[slot].rhi().write(uint64_t{i} * sizeof(Row), &table.shadow[i],
-                                            sizeof(Row));
+            std::memcpy(table.buffers[slot].cpuPointer() + uint64_t{i} * sizeof(Row),
+                        &table.shadow[i], sizeof(Row));
             table.dirty.clear(i, slot);
             ++stats.rowsWritten;
             stats.bytesWritten += sizeof(Row);

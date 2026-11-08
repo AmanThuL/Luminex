@@ -1,9 +1,6 @@
-// Sampler smoke oracle using texture slot 0 and sampler slot 0.
-[[vk::binding(0, 0)]]
-Texture2D<float4> gSource : register(t0);  // → MSL [[texture(0)]]
-
-[[vk::binding(0, 1)]]
-SamplerState gSampler : register(s0);      // → MSL [[sampler(0)]]
+// Sampler smoke oracle using a sampled view and sampler index.
+import RojoRHI;
+import OracleRoots;
 
 struct VSOutput
 {
@@ -12,8 +9,9 @@ struct VSOutput
 };
 
 [shader("vertex")]
-VSOutput vertexMain(uint vid: SV_VertexID)
+VSOutput vertexMain(rojoRHI::VertexIds ids)
 {
+    uint vid = rojoRHI::vertexIndex(ids);
     // Three-vertex fullscreen triangle.
     float2 uv = float2((vid << 1) & 2, vid & 2);
     VSOutput o;
@@ -26,19 +24,22 @@ VSOutput vertexMain(uint vid: SV_VertexID)
 [shader("fragment")]
 float4 fragmentMain(VSOutput in): SV_Target
 {
-    return gSource.Sample(gSampler, in.uv);
+    let params = rojoRHI::root<SamplerRoot>();
+    return rojoRHI::texture2D<float4>(params.source).Sample(rojoRHI::sampler(params.sampler), in.uv);
 }
 
 // Restore 0..1 UVs when probing texture content rather than address behavior.
 [shader("fragment")]
 float4 fragmentIdentityUv(VSOutput in): SV_Target
 {
-    return gSource.Sample(gSampler, in.uv * 0.5);
+    let params = rojoRHI::root<SamplerRoot>();
+    return rojoRHI::texture2D<float4>(params.source).Sample(rojoRHI::sampler(params.sampler), in.uv * 0.5);
 }
 
 // Explicit level 1 bypasses magnification's implicit selection of level 0.
 [shader("fragment")]
 float4 fragmentMipLevel1(VSOutput in): SV_Target
 {
-    return gSource.SampleLevel(gSampler, in.uv, 1.0);
+    let params = rojoRHI::root<SamplerRoot>();
+    return rojoRHI::texture2D<float4>(params.source).SampleLevel(rojoRHI::sampler(params.sampler), in.uv, 1.0);
 }

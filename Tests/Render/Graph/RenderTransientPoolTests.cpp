@@ -22,18 +22,20 @@ TEST_CASE("a frame reserves its transient memory once", "[render][transient]") {
 
     backend.frame = 1;
     pool.beginFrame();
-    REQUIRE(pool.reserve(4096).has_value());
+    REQUIRE(pool.reserve(TransientLayout{.bytes = 4096}).has_value());
+    pool.finishPlacement();
     REQUIRE(pool.heapBytes() == 4096);
 
-    REQUIRE_FALSE(pool.reserve(4096).has_value());
-    REQUIRE_FALSE(pool.reserve(8192).has_value());
+    REQUIRE_FALSE(pool.reserve(TransientLayout{.bytes = 4096}).has_value());
+    REQUIRE_FALSE(pool.reserve(TransientLayout{.bytes = 8192}).has_value());
     // The refusal changed nothing: the frame still holds the generation it reserved.
     REQUIRE(pool.heapBytes() == 4096);
     REQUIRE(pool.liveGenerationCount() == 1);
 
     backend.frame = 2;
     pool.beginFrame();
-    REQUIRE(pool.reserve(4096).has_value());
+    REQUIRE(pool.reserve(TransientLayout{.bytes = 4096}).has_value());
+    pool.finishPlacement();
 }
 
 //======================================================================================================================
@@ -47,7 +49,8 @@ TEST_CASE("consecutive frames reserve separate slots", "[render][transient]") {
     for (uint64_t frame = 1; frame <= kTransientFrameSlots; ++frame) {
         backend.frame = frame;
         pool.beginFrame();
-        REQUIRE(pool.reserve(4096).has_value());
+        REQUIRE(pool.reserve(TransientLayout{.bytes = 4096}).has_value());
+        pool.finishPlacement();
         // A slot per frame so far, none of them shared.
         REQUIRE(pool.liveGenerationCount() == frame);
     }
@@ -56,7 +59,8 @@ TEST_CASE("consecutive frames reserve separate slots", "[render][transient]") {
     // nothing new is created and nothing is retired.
     backend.frame = kTransientFrameSlots + 1;
     pool.beginFrame();
-    REQUIRE(pool.reserve(4096).has_value());
+    REQUIRE(pool.reserve(TransientLayout{.bytes = 4096}).has_value());
+    pool.finishPlacement();
     REQUIRE(pool.liveGenerationCount() == kTransientFrameSlots);
     REQUIRE(pool.retiringGenerationCount() == 0);
 }
@@ -70,12 +74,14 @@ TEST_CASE("a resized slot retires its generation before releasing it", "[render]
 
     backend.frame = 1;
     pool.beginFrame();
-    REQUIRE(pool.reserve(4096).has_value());
+    REQUIRE(pool.reserve(TransientLayout{.bytes = 4096}).has_value());
+    pool.finishPlacement();
 
     // Back to the same slot with a different footprint: a new generation, and the old one held.
     backend.frame = 1 + kTransientFrameSlots;
     pool.beginFrame();
-    REQUIRE(pool.reserve(8192).has_value());
+    REQUIRE(pool.reserve(TransientLayout{.bytes = 8192}).has_value());
+    pool.finishPlacement();
     REQUIRE(pool.heapBytes() == 8192);
     REQUIRE(pool.retiringGenerationCount() == 1);
 
@@ -87,26 +93,34 @@ TEST_CASE("a resized slot retires its generation before releasing it", "[render]
 }
 
 //======================================================================================================================
-// A slot's placements live exactly until the slot comes round again: the frames between it place
-// into their own slots and leave it alone, and reopening it releases what it placed while keeping
-// the heap, which the same footprint goes on using.
-TEST_CASE("the pool releases a slot's placements when the slot comes round",
+// Exact layouts retain the placed identities across paced visits, while a same-byte descriptor
+// change invalidates placements without replacing the heap.
+TEST_CASE("the pool keeps a slot's placements while its layout is unchanged",
           "[render][transient]") {
     constexpr TransientTextureDesc kColor{.width = 64,
                                           .height = 64,
                                           .format = rojoRHI::Format::RGBA16Float,
                                           .renderTarget = true,
-                                          .sampled = true};
+                                          .sampled = true,
+                                          .storageWrite = true};
     FakeTransientBackend backend;
     TransientPool pool(backend);
-
+    const auto footprint = backend.footprint(kColor);
+    TransientLayout layout{.bytes = 2 * FakeTransientBackend::kTextureAlignment,
+                           .placements = {{0, 0, footprint, kColor, "lmx.transient.first"},
+                                          {1, FakeTransientBackend::kTextureAlignment, footprint,
+                                           kColor, "lmx.transient.second"}}};
+    backend.permitFootprintQueries = false;
     backend.frame = 1;
     pool.beginFrame();
-    REQUIRE(pool.reserve(2 * FakeTransientBackend::kTextureAlignment).has_value());
-    REQUIRE(pool.placeTexture(kColor, 0, "lmx.transient.first").has_value());
-    REQUIRE(
-        pool.placeTexture(kColor, FakeTransientBackend::kTextureAlignment, "lmx.transient.second")
-            .has_value());
+    REQUIRE(pool.reserve(layout).has_value());
+    const auto first = pool.placeTexture(kColor, 0, "lmx.transient.first");
+    const auto second =
+        pool.placeTexture(kColor, FakeTransientBackend::kTextureAlignment, "lmx.transient.second");
+    REQUIRE(first.has_value());
+    REQUIRE(second.has_value());
+    pool.finishPlacement();
+    const auto storage = pool.storageView(first->texture, 0);
     REQUIRE(backend.heaps.size() == 1);
     const TransientHeapId heap{backend.heaps.begin()->first};
     REQUIRE(backend.placementCount(heap) == 2);
@@ -116,12 +130,43 @@ TEST_CASE("the pool releases a slot's placements when the slot comes round",
         pool.beginFrame();
         REQUIRE(backend.placementCount(heap) == 2);
     }
-
-    backend.frame = kTransientFrameSlots + 1;
-    pool.beginFrame();
-    REQUIRE(backend.placementCount(heap) == 0);
+    for (uint64_t visit = 1; visit <= 4; ++visit) {
+        backend.frame = 1 + visit * kTransientFrameSlots;
+        pool.beginFrame();
+        REQUIRE(pool.reserve(layout).has_value());
+        const auto reusedFirst = pool.placeTexture(kColor, 0, "lmx.transient.first");
+        const auto reusedSecond = pool.placeTexture(kColor, FakeTransientBackend::kTextureAlignment,
+                                                    "lmx.transient.second");
+        REQUIRE(reusedFirst.has_value());
+        REQUIRE(reusedSecond.has_value());
+        pool.finishPlacement();
+        REQUIRE(reusedFirst->texture == first->texture);
+        REQUIRE(reusedFirst->view == first->view);
+        REQUIRE(reusedSecond->texture == second->texture);
+        REQUIRE(pool.storageView(reusedFirst->texture, 0) == storage);
+        REQUIRE(backend.placementCount(heap) == 2);
+    }
     REQUIRE(backend.heaps.size() == 1);
     REQUIRE(backend.heaps.contains(heap.value));
+    REQUIRE(backend.destroyedHeaps.empty());
+    REQUIRE(backend.textureQueries == 1);
+
+    auto changed = kColor;
+    changed.format = rojoRHI::Format::RG16Float;
+    layout.placements[0].desc = changed;
+    backend.frame += kTransientFrameSlots;
+    pool.beginFrame();
+    REQUIRE(pool.reserve(layout).has_value());
+    const auto replacement = pool.placeTexture(changed, 0, "lmx.transient.first");
+    const auto unchangedDesc =
+        pool.placeTexture(kColor, FakeTransientBackend::kTextureAlignment, "lmx.transient.second");
+    REQUIRE(replacement.has_value());
+    REQUIRE(unchangedDesc.has_value());
+    pool.finishPlacement();
+    REQUIRE(replacement->texture != first->texture);
+    REQUIRE(unchangedDesc->texture != second->texture);
+    REQUIRE(backend.placementCount(heap) == 2);
+    REQUIRE(backend.heaps.size() == 1);
     REQUIRE(backend.destroyedHeaps.empty());
 }
 
@@ -137,7 +182,8 @@ TEST_CASE("a replaced heap is destroyed only after its last frame retires", "[re
 
     backend.frame = 1;
     pool.beginFrame();
-    REQUIRE(pool.reserve(kSmall).has_value());
+    REQUIRE(pool.reserve(TransientLayout{.bytes = kSmall}).has_value());
+    pool.finishPlacement();
     REQUIRE(backend.heaps.size() == 1);
     const uint32_t small = backend.heaps.begin()->first;
     REQUIRE(backend.heaps.at(small).bytes == kSmall);
@@ -151,7 +197,8 @@ TEST_CASE("a replaced heap is destroyed only after its last frame retires", "[re
 
     backend.frame = 1 + kTransientFrameSlots;
     pool.beginFrame();
-    REQUIRE(pool.reserve(kLarge).has_value());
+    REQUIRE(pool.reserve(TransientLayout{.bytes = kLarge}).has_value());
+    pool.finishPlacement();
     REQUIRE(backend.heaps.size() == 2);
     REQUIRE(backend.heaps.contains(small));
     REQUIRE(backend.destroyedHeaps.empty());

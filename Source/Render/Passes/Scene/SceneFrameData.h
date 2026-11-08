@@ -65,7 +65,7 @@ struct SkyUniforms {
 };
 static_assert(sizeof(SkyUniforms) == 176, "must match Sky.slang's SkyUniforms");
 
-/// Mirrors the scalar-packed LocalLightParams at b11 in LocalLights.slang.
+/// Mirrors Shaders/Common/LocalLightTypes.slang's scalar local-light selection parameters.
 struct LocalLightParams {
     uint32_t mode;                                ///< 0 -- engine::LocalLightMode's value.
     uint32_t rowCount;                            ///< 4 -- addressable light rows; 0 when Off.

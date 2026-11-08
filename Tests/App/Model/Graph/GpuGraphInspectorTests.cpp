@@ -67,22 +67,25 @@ TEST_CASE("the inspector model agrees with the dump for the same frame", "[gpu]"
     using namespace lmx::render;
 
     constexpr uint64_t kBytes = 256;
+    constexpr uint32_t kFrameSlots = 3;
 
-    auto gpu = createTestGpu();
+    auto gpu = createTestGpu({.framesInFlight = kFrameSlots});
     auto* device = &gpu->device();
     REQUIRE(gpu);
 
-    auto target = device->createBuffer(
-        {.size = kBytes, .storageRead = true, .label = "lmx.test.inspector.target"}, nullptr);
+    auto target = lmx::engine::GpuBuffer::create(
+        *device, {.size = kBytes, .label = "lmx.test.inspector.target"});
     INFO(errorOf(target));
     REQUIRE(target.has_value());
 
-    auto orphan = device->createBuffer(
-        {.size = kBytes, .storageRead = true, .label = "lmx.test.inspector.orphan"}, nullptr);
+    auto orphan =
+        lmx::engine::GpuBuffer::create(*device, {.size = kBytes,
+                                                 .usage = rojoRHI::BufferUsage::ShaderWrite,
+                                                 .label = "lmx.test.inspector.orphan"});
     INFO(errorOf(orphan));
     REQUIRE(orphan.has_value());
 
-    TransientPool pool(*device);
+    TransientPool pool(*gpu);
     lmx::app::FrameRecordRing records;
 
     auto gpuFrame1 = gpu->beginFrame();
@@ -90,30 +93,31 @@ TEST_CASE("the inspector model agrees with the dump for the same frame", "[gpu]"
     pool.beginFrame();
 
     RenderGraph graph(pool);
-    const GraphBuffer staging = graph.createBuffer({.size = kBytes}, "lmx.test.inspector.staging");
-    const GraphBuffer targetHandle = graph.importBuffer(**target, "lmx.test.inspector.target");
-    const GraphBuffer orphanHandle = graph.importBuffer(**orphan, "lmx.test.inspector.orphan");
+    const GraphBuffer staging =
+        graph.createBuffer({.size = kBytes, .storageWrite = true}, "lmx.test.inspector.staging");
+    const GraphBuffer targetHandle = graph.importBuffer(*target, "lmx.test.inspector.target");
+    const GraphBuffer orphanHandle = graph.importBuffer(*orphan, "lmx.test.inspector.orphan");
 
     CopyPassDesc fillStaging;
     fillStaging.bufferDestinations.push_back(staging);
     graph.addCopyPass("lmx.test.inspector.fillStaging", fillStaging,
                       [&](const PassResources& resources) {
-                          const GraphResult<Buffer*> buffer = resources.buffer(staging);
-                          REQUIRE(buffer.has_value());
-                          commands.fillBuffer(**buffer, 0, kBytes, 0);
+                          const Buffer buffer = resources.buffer(staging);
+                          REQUIRE(buffer.bits != 0);
+                          commands.fillBuffer(buffer, 0, kBytes, 0);
                       });
 
     CopyPassDesc moveToTarget;
     moveToTarget.bufferSources.push_back(nextVersion(staging));
     moveToTarget.bufferDestinations.push_back(targetHandle);
-    graph.addCopyPass(
-        "lmx.test.inspector.moveToTarget", moveToTarget, [&](const PassResources& resources) {
-            const GraphResult<Buffer*> source = resources.buffer(nextVersion(staging));
-            REQUIRE(source.has_value());
-            const GraphResult<Buffer*> destination = resources.buffer(targetHandle);
-            REQUIRE(destination.has_value());
-            commands.copyBuffer(**source, 0, **destination, 0, kBytes);
-        });
+    graph.addCopyPass("lmx.test.inspector.moveToTarget", moveToTarget,
+                      [&](const PassResources& resources) {
+                          const Buffer source = resources.buffer(nextVersion(staging));
+                          REQUIRE(source.bits != 0);
+                          const Buffer destination = resources.buffer(targetHandle);
+                          REQUIRE(destination.bits != 0);
+                          commands.copyBuffer(source, 0, destination, 0, kBytes);
+                      });
 
     // Declared, writes, but nothing reads or exports it: culled with NoSinkReachesIt, never run.
     CopyPassDesc orphanFill;
@@ -124,18 +128,25 @@ TEST_CASE("the inspector model agrees with the dump for the same frame", "[gpu]"
     graph.exportBuffer(nextVersion(targetHandle));
 
     records.retain(graph.execute(commands, gpu->frameNumber()));
-    const lmx::engine::PassTimingFrame published = gpu->passTimings();
-    records.joinTimings(published.frame, published.passes);
+    const uint64_t measured = gpuFrame1.number;
+    bool joined = false;
+    // passTimings() publishes a retired frame only after a real frame slot is acquired and ended,
+    // so the measured frame is joined from whichever publication names it.
+    const auto joinPublished = [&] {
+        const lmx::engine::PassTimingFrame retired = gpu->passTimings();
+        if (retired.frame == measured) {
+            joined = records.joinTimings(measured, retired.passes);
+        }
+    };
     gpu->submitAndEndFrame(gpuFrame1);
-
-    // The one sequence passTimings() documents as publishing a specific frame: drain, then open one
-    // more frame, which publishes the frame that just retired.
+    joinPublished();
     gpu->waitIdle();
-    auto gpuFrame2 = gpu->beginFrame();
-    const lmx::engine::PassTimingFrame retired = gpu->passTimings();
-    const uint64_t measured = retired.frame;
-    REQUIRE(records.joinTimings(measured, retired.passes));
-    gpu->submitAndEndFrame(gpuFrame2);
+    for (uint32_t drained = 0; !joined && drained < kFrameSlots; ++drained) {
+        auto drainFrame = gpu->beginFrame();
+        gpu->submitAndEndFrame(drainFrame);
+        joinPublished();
+    }
+    REQUIRE(joined);
     gpu->waitIdle();
 
     const lmx::app::RetainedFrame* newest = records.newestTimedFrame();
@@ -319,7 +330,7 @@ TEST_CASE("Native TAA physical history alternates without changing canvas topolo
     FixtureSceneView view = temporalSceneView({});
     view.temporal.enabled = true;
     view.temporal.reconstruction = ReconstructionMode::NativeTaa;
-    TransientPool pool(gpu->device());
+    TransientPool pool(*gpu);
     std::vector<CompiledFrameRecord> records;
     for (uint32_t frame = 0; frame < 4; ++frame) {
         auto gpuFrame3 = gpu->beginFrame();
@@ -328,7 +339,13 @@ TEST_CASE("Native TAA physical history alternates without changing canvas topolo
         RenderGraph graph(pool);
         const auto display = (*renderer)->declarePasses(graph, commands, temporalCamera(),
                                                         lmx::test::prepareSceneView(view, *gpu));
-        graph.presentTexture(display);
+        if (!display)
+            gpu->submitAndEndFrame(gpuFrame3);
+        INFO(errorOf(display));
+        REQUIRE(display.has_value());
+        // The renderer leaves its display target sampled; an executed frame exports it rather
+        // than presenting it, as Renderer::render does.
+        graph.exportTexture(*display);
         records.push_back(graph.execute(commands, gpu->frameNumber()));
         gpu->submitAndEndFrame(gpuFrame3);
         gpu->waitIdle();

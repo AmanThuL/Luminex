@@ -7,10 +7,14 @@
 #include "Render/Passes/Bloom/BloomStage.h"
 #include "Render/Passes/Display/DisplayStage.h"
 #include "Render/Passes/Exposure/ExposureStage.h"
+
 #include "Render/Passes/Occlusion/OcclusionReference.h"
+
 #include "Render/Passes/Temporal/VendorTemporalScaler.h"
+
 #include "Render/Passes/Visibility/GpuVisibility.h"
 #include "Render/Renderer/Renderer.h"
+#include "Render/Renderer/RendererInternal.h"
 #include <chrono>
 
 #include "Core/Diagnostics/Assert.h"
@@ -41,66 +45,42 @@ constexpr std::array<uint8_t, 4> kBlackTexel = {0, 0, 0, 255};
 // F0 * 0 + 0 vanish -- the matching answer for an environment that is itself black.
 constexpr std::array<uint16_t, 2> kZeroDfgTexel = {0, 0};
 
+} // namespace
+
 //======================================================================================================================
-// Seeds a target resize() allocates. A replacement starts from the use its predecessor was left
-// in, so a resize changes none of the barriers the next frame records; the first allocation starts
-// from `initial`. The predecessor's entry goes with it, so its address carries nothing forward.
+// Only the diagnostic use survives replacement. Physical cells come from the new identity's
+// immutable creation layout; equal identity retains every existing subresource frontier.
 void seedReplacement(TextureStateTable& states, const engine::GpuTexture& previous,
-                     const rojoRHI::Texture& replacement, TextureUse initial) {
-    TextureUse use = initial;
+                     const engine::GpuTexture& replacement, TextureUse initial) {
+    if (previous && previous.rhi() == replacement.rhi()) {
+        return;
+    }
+    const TextureUse use = previous ? states.logicalUse(previous.rhi()).value_or(initial) : initial;
+    states.setLogicalUse(replacement.rhi(), use);
+    states.seedPhysical(replacement.rhi(), replacement.desc().mips, replacement.desc().layers,
+                        replacement.initialLayout());
     if (previous) {
-        use = states.find(previous.rhi()).value_or(initial);
         states.forget(previous.rhi());
     }
-    states.set(replacement, use);
 }
-
-// The temporal slots' entries, depth then colour per slot, as forgetTemporalSlots() found them.
-using TemporalSlotUses = std::array<std::optional<TextureUse>, 4>;
-
-//======================================================================================================================
-// Drops the temporal slots' entries before resize() replaces the slots, returning them so a failed
-// resize, which keeps the old slots, can put them back with restoreTemporalSlots().
-TemporalSlotUses forgetTemporalSlots(TextureStateTable& states, TemporalResolve& temporal) {
-    TemporalSlotUses outgoing{};
-    for (uint32_t slot = 0; slot < 2; ++slot) {
-        outgoing[slot] = states.find(temporal.depthTexture(slot).rhi());
-        outgoing[2 + slot] = states.find(temporal.colorTexture(slot).rhi());
-        states.forget(temporal.depthTexture(slot).rhi());
-        states.forget(temporal.colorTexture(slot).rhi());
-    }
-    return outgoing;
-}
-
-//======================================================================================================================
-// Puts back the entries forgetTemporalSlots() dropped, for slots a failed resize kept.
-void restoreTemporalSlots(TextureStateTable& states, TemporalResolve& temporal,
-                          const TemporalSlotUses& outgoing) {
-    for (uint32_t slot = 0; slot < 2; ++slot) {
-        if (outgoing[slot]) {
-            states.set(temporal.depthTexture(slot).rhi(), *outgoing[slot]);
-        }
-        if (outgoing[2 + slot]) {
-            states.set(temporal.colorTexture(slot).rhi(), *outgoing[2 + slot]);
-        }
-    }
-}
-
-} // namespace
 
 //======================================================================================================================
 void registerUniformLayoutsForCapture() {
     SceneStage::registerSceneTableLayoutsForCapture();
     ShadowStage::registerUniformLayoutsForCapture();
+
     registerVisibilityLayoutsForCapture();
+
     LightClusterStage::registerLayoutsForCapture();
+    LightDebugStage::registerLayoutsForCapture();
+
     SceneStage::registerPassLayoutsForCapture();
 }
 
 //======================================================================================================================
 Renderer::Renderer(engine::GpuContext& gpu, bool cpuReadback)
-    : m_gpu(gpu), m_transientPool(gpu.device()), m_drawSubmission(gpu.device()),
-      m_cpuReadback(cpuReadback) {}
+    : m_gpu(gpu), m_transientPool(gpu), m_drawSubmission(gpu.device()), m_cpuReadback(cpuReadback) {
+}
 
 //======================================================================================================================
 Renderer::~Renderer() = default;
@@ -113,7 +93,7 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
     // Registration is idempotent and keeps capture startup independent of Renderer state.
     registerUniformLayoutsForCapture();
 
-    rojoRHI::Device& device = gpu.device();
+    [[maybe_unused]] rojoRHI::Device& device = gpu.device();
     std::unique_ptr<Renderer> self(new Renderer(gpu, cpuReadback));
 
     {
@@ -137,7 +117,7 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
     }
     self->m_displayStage = std::move(*displayStage);
 
-    auto exposureStage = ExposureStage::create(gpu, cpuReadback);
+    auto exposureStage = ExposureStage::create(gpu);
     if (!exposureStage) {
         return std::unexpected(exposureStage.error());
     }
@@ -151,23 +131,24 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
 
     // The shadow map transitions from depth attachment to sampled texture each frame.
     {
-        auto shadowMap = engine::GpuTexture::create(device, {.width = kShadowMapSize,
-                                                             .height = kShadowMapSize,
-                                                             .format = rojoRHI::Format::D32Float,
-                                                             .renderTarget = true,
-                                                             .sampled = true,
-                                                             .label = "lmx.render.shadowMap"});
+        auto shadowMap = engine::GpuTexture::create(
+            device, {.format = rojoRHI::Format::D32Float,
+                     .extent = {kShadowMapSize, kShadowMapSize, 1},
+                     .usage = rojoRHI::TextureUsage::DepthStencil | rojoRHI::TextureUsage::Sampled,
+                     .label = "lmx.render.shadowMap"});
         if (!shadowMap) {
             return std::unexpected(shadowMap.error());
         }
         self->m_shadowMap = std::move(*shadowMap);
         // What every frame leaves it as: the scene pass samples it after the shadow pass writes it.
-        self->m_textureStates.set(self->m_shadowMap.rhi(), TextureUse::ShaderRead);
+        self->m_textureStates.setLogicalUse(self->m_shadowMap.rhi(), TextureUse::ShaderRead);
+        self->m_textureStates.seedPhysical(self->m_shadowMap.rhi(), 1, 1,
+                                           self->m_shadowMap.initialLayout());
     }
 
     {
         auto texture =
-            createTexel(device, rojoRHI::Format::RGBA8Unorm, rojoRHI::TextureKind::Tex2D,
+            createTexel(device, rojoRHI::Format::RGBA8Unorm, rojoRHI::TextureType::Tex2D,
                         std::as_bytes(std::span{kWhiteTexel}), "lmx.render.whiteFallback");
         if (!texture) {
             return std::unexpected(texture.error());
@@ -175,7 +156,7 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
         self->m_whiteTexture = std::move(*texture);
     }
     {
-        auto texture = createTexel(device, rojoRHI::Format::RGBA8Unorm, rojoRHI::TextureKind::Tex2D,
+        auto texture = createTexel(device, rojoRHI::Format::RGBA8Unorm, rojoRHI::TextureType::Tex2D,
                                    std::as_bytes(std::span{kFlatNormalTexel}),
                                    "lmx.render.flatNormalFallback");
         if (!texture) {
@@ -185,7 +166,7 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
     }
     {
         auto texture =
-            createTexel(device, rojoRHI::Format::RGBA8Unorm, rojoRHI::TextureKind::Cube,
+            createTexel(device, rojoRHI::Format::RGBA8Unorm, rojoRHI::TextureType::Cube,
                         std::as_bytes(std::span{kBlackTexel}), "lmx.render.blackCubeFallback");
         if (!texture) {
             return std::unexpected(texture.error());
@@ -194,7 +175,7 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
     }
     {
         auto texture =
-            createTexel(device, rojoRHI::Format::RG16Float, rojoRHI::TextureKind::Tex2D,
+            createTexel(device, rojoRHI::Format::RG16Float, rojoRHI::TextureType::Tex2D,
                         std::as_bytes(std::span{kZeroDfgTexel}), "lmx.render.zeroDfgFallback");
         if (!texture) {
             return std::unexpected(texture.error());
@@ -202,11 +183,11 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
         self->m_zeroDfgTexture = std::move(*texture);
     }
     {
-        auto sampler =
-            engine::adoptGpu(device.createSampler({.filter = rojoRHI::FilterMode::Linear,
-                                                   .addressMode = rojoRHI::AddressMode::Wrap,
-                                                   .maxAnisotropy = 16,
-                                                   .label = "lmx.render.linearSampler"}));
+        auto sampler = engine::adoptGpu(
+            device, device.createSampler({.filter = rojoRHI::SamplerFilter::Linear,
+                                          .address = rojoRHI::SamplerAddress::Repeat,
+                                          .maxAnisotropy = 16,
+                                          .label = "lmx.render.linearSampler"}));
         if (!sampler) {
             return std::unexpected(sampler.error());
         }
@@ -217,12 +198,13 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
     // Clamp extends the 0.0 clear outside the fitted shadow footprint, and every receiver depth
     // clears that bar, so that region stays lit exactly as it did under the 1.0 clear before.
     {
-        auto sampler =
-            engine::adoptGpu(device.createSampler({.filter = rojoRHI::FilterMode::Linear,
-                                                   .addressMode = rojoRHI::AddressMode::Clamp,
-                                                   .maxAnisotropy = 16,
-                                                   .compare = rojoRHI::CompareFunc::GreaterEqual,
-                                                   .label = "lmx.render.shadowSampler"}));
+        auto sampler = engine::adoptGpu(
+            device, device.createSampler({.filter = rojoRHI::SamplerFilter::Linear,
+                                          .address = rojoRHI::SamplerAddress::ClampToEdge,
+                                          .maxAnisotropy = 16,
+                                          .compareEnable = true,
+                                          .compare = rojoRHI::CompareOp::GreaterOrEqual,
+                                          .label = "lmx.render.shadowSampler"}));
         if (!sampler) {
             return std::unexpected(sampler.error());
         }
@@ -236,8 +218,9 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
     // about.
     {
         auto sampler = engine::adoptGpu(
-            self->m_gpu.device().createSampler({.filter = rojoRHI::FilterMode::Linear,
-                                                .addressMode = rojoRHI::AddressMode::Clamp,
+            device,
+            self->m_gpu.device().createSampler({.filter = rojoRHI::SamplerFilter::Linear,
+                                                .address = rojoRHI::SamplerAddress::ClampToEdge,
                                                 .label = "lmx.render.iblSampler"}));
         if (!sampler) {
             return std::unexpected(sampler.error());
@@ -248,7 +231,7 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
     // The reconstruction stage owns both history pairs and the passes over them, so it is built
     // before the first resize(), which is what allocates its slots at this renderer's extent.
     {
-        auto stage = TemporalResolve::create(gpu, self->m_cpuReadback);
+        auto stage = TemporalResolve::create(gpu);
         if (!stage) {
             return std::unexpected(stage.error());
         }
@@ -272,116 +255,60 @@ lmx::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
     // pass. Readable on the same terms as the display target, because a caller that wants to
     // inspect radiance rather than the picture has nowhere else to read it from.
     auto hdrColor =
-        engine::GpuTexture::create(m_gpu.device(), {.width = width,
-                                                    .height = height,
-                                                    .format = kSceneColorFormat,
-                                                    .renderTarget = true,
-                                                    .sampled = true,
-                                                    .cpuReadback = m_cpuReadback,
+        engine::GpuTexture::create(m_gpu.device(), {.format = kSceneColorFormat,
+                                                    .extent = {width, height, 1},
+                                                    .usage = rojoRHI::TextureUsage::RenderTarget |
+                                                             rojoRHI::TextureUsage::Sampled,
                                                     .label = "lmx.render.sceneColorHdr"});
     if (!hdrColor) {
         return std::unexpected(hdrColor.error());
     }
     // The display transform's output: what the viewport samples and a screenshot reads back.
-    auto color = engine::GpuTexture::create(m_gpu.device(), {.width = width,
-                                                             .height = height,
-                                                             .format = kDisplayFormat,
-                                                             .renderTarget = true,
-                                                             .sampled = true,
-                                                             .cpuReadback = m_cpuReadback,
-                                                             .label = "lmx.render.displayColor"});
+    auto color =
+        engine::GpuTexture::create(m_gpu.device(), {.format = kDisplayFormat,
+                                                    .extent = {width, height, 1},
+                                                    .usage = rojoRHI::TextureUsage::RenderTarget |
+                                                             rojoRHI::TextureUsage::Sampled,
+                                                    .label = "lmx.render.displayColor"});
     if (!color) {
         return std::unexpected(color.error());
     }
-    // Swap the targets only after every allocation succeeds. The scene colour starts as the display
-    // transform's read left it; the display target as the sampled image it always ends as.
-    seedReplacement(m_textureStates, m_hdrColor, hdrColor->rhi(), TextureUse::ShaderRead);
-    seedReplacement(m_textureStates, m_color, color->rhi(), TextureUse::ShaderRead);
-    m_hdrColor = std::move(*hdrColor);
-    m_color = std::move(*color);
-    m_width = width;
-    m_height = height;
-
     // The temporal targets follow the scene targets' extent, under the same caller idle guarantee
     // this function already requires. The histories' contents are dropped with the old textures,
     // which the extent change makes a reset anyway (HistoryResetReason::ExtentChanged). Depth is
     // among them: it ping-pongs by temporal frame parity, so the stage owns both slots of it.
-    {
-        auto targets = createTemporalTargets();
-        if (!targets) {
-            return std::unexpected(targets.error());
-        }
+    auto temporalTargets = createTemporalTargets(width, height);
+    if (!temporalTargets) {
+        return std::unexpected(temporalTargets.error());
     }
-    {
-        // The outgoing slots' entries go with them. A failed resize keeps those slots, so it puts
-        // their entries back.
-        const bool replacing = m_temporalResolve->depthBytes() > 0;
-        const TemporalSlotUses outgoing =
-            replacing ? forgetTemporalSlots(m_textureStates, *m_temporalResolve)
-                      : TemporalSlotUses{};
-        auto slots = m_temporalResolve->resize(width, height);
-        if (!slots) {
-            if (replacing) {
-                restoreTemporalSlots(m_textureStates, *m_temporalResolve, outgoing);
-            }
-            return std::unexpected(slots.error());
-        }
-        // The slots' contents went with the old textures, and the extent change resets history
-        // anyway: a colour slot starts as the commit copy leaves it, a depth slot as sampled.
-        for (uint32_t slot = 0; slot < 2; ++slot) {
-            m_textureStates.set(m_temporalResolve->colorTexture(slot).rhi(),
-                                TextureUse::CopyDestination);
-            m_textureStates.set(m_temporalResolve->depthTexture(slot).rhi(),
-                                TextureUse::ShaderRead);
-        }
+    auto temporalSlots = m_temporalResolve->allocateSlots(width, height);
+    if (!temporalSlots) {
+        return std::unexpected(temporalSlots.error());
     }
+    // The occlusion pyramid pair, once a frame has created it, is one more replacement: prepared
+    // here without touching the live pair, committed with everything else below.
+    std::optional<PreparedHzbResize> hzb;
     if (m_hzbStage) {
-        {
-            auto result = m_hzbStage->resize(width, height, m_textureStates);
-            if (!result) {
-                return std::unexpected(result.error());
-            }
+        auto prepared = m_hzbStage->prepareResize(width, height);
+        if (!prepared) {
+            return std::unexpected(prepared.error());
         }
-    }
-    return {};
-}
-
-//======================================================================================================================
-lmx::Result<void> Renderer::createTemporalTargets() {
-    LMX_ASSERT(m_width > 0 && m_height > 0,
-               "Renderer::createTemporalTargets: the render extent must be non-empty");
-
-    // Readable on the same terms as the scene targets: motion is the one output a GPU test has to
-    // compare against an arithmetic oracle rather than against a picture.
-    auto motion = engine::GpuTexture::create(m_gpu.device(), {.width = m_width,
-                                                              .height = m_height,
-                                                              .format = kMotionFormat,
-                                                              .renderTarget = true,
-                                                              .sampled = true,
-                                                              .cpuReadback = m_cpuReadback,
-                                                              .label = "lmx.render.motion"});
-    if (!motion) {
-        return std::unexpected(motion.error());
-    }
-    // The per-pixel reactive weight: the scene pass's second extra attachment, read by the resolve
-    // alone. One byte per pixel, and colour-renderable rather than storage, because a fragment
-    // writes it as an ordinary attachment.
-    auto reactive = engine::GpuTexture::create(m_gpu.device(), {.width = m_width,
-                                                                .height = m_height,
-                                                                .format = kReactiveFormat,
-                                                                .renderTarget = true,
-                                                                .sampled = true,
-                                                                .cpuReadback = m_cpuReadback,
-                                                                .label = "lmx.render.reactive"});
-    if (!reactive) {
-        return std::unexpected(reactive.error());
+        hzb = std::move(*prepared);
     }
 
-    // Both start as their own attachment write leaves them, the scene pass's.
-    seedReplacement(m_textureStates, m_motion, motion->rhi(), TextureUse::RenderTarget);
-    seedReplacement(m_textureStates, m_reactive, reactive->rhi(), TextureUse::RenderTarget);
-    m_motion = std::move(*motion);
-    m_reactive = std::move(*reactive);
+    // Every allocation above succeeded, so commit them all at once: a failure before this point
+    // leaves the renderer entirely at its old extent, with every old identity and state entry.
+    // Successful replacements begin from their own creation layout.
+    seedReplacement(m_textureStates, m_hdrColor, *hdrColor, TextureUse::ShaderRead);
+    seedReplacement(m_textureStates, m_color, *color, TextureUse::ShaderRead);
+    m_hdrColor = std::move(*hdrColor);
+    m_color = std::move(*color);
+    m_width = width;
+    m_height = height;
+    adoptTemporalTargets(std::move(*temporalTargets), std::move(*temporalSlots));
+    if (hzb) {
+        m_hzbStage->commitResize(std::move(*hzb), m_textureStates);
+    }
     return {};
 }
 

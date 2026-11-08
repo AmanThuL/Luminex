@@ -6,7 +6,7 @@
 #include "Render/Common/RhiLog.h"
 
 #include "Core/Diagnostics/Log.h"
-#include <rojoRHI/Message.h>
+#include <rojoRHI/RHI.h>
 
 #include <string>
 #include <string_view>

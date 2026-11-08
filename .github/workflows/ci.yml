@@ -87,6 +87,9 @@ jobs:
       - name: Screenshot comparison tests
         run: python3 Tools/Screenshots/compare.py --selftest
 
+      - name: GPU debug tool tests
+        run: python3 -m unittest discover -s Tools/GpuDebug/tests -v
+
   build-test:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}
@@ -109,7 +112,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ThirdParty
-          key: ${{ runner.os }}-thirdparty-${{ hashFiles('xmake.lua', 'xmake/setup.lua', 'Tools/Patches/**', 'RojoRHI/Tools/Patches/**') }}
+          key: ${{ runner.os }}-thirdparty-${{ hashFiles('xmake.lua', 'xmake/setup.lua', 'Tools/Patches/**') }}
 
       - name: Cache xmake packages
         uses: actions/cache@v5
@@ -125,16 +128,23 @@ jobs:
           xmake f -m release -y --ccache=n --rojorhi_backend=null
           xmake project -k compile_commands
 
-      - name: C++ layout policy
-        run: python3 Tools/check_cpp_layout.py
+      - name: Build
+        run: xmake -y
+
+      - name: Build test shader layouts
+        run: xmake build -P . Tests
+
+      # Not a default target; building it here keeps the frame-data benchmark from rotting.
+      # --selftest checks its host-side logic without a GPU.
+      - name: Build FrameDataBench
+        run: |
+          xmake build -P . FrameDataBench
+          ./build/macosx/arm64/release/bench/FrameDataBench --selftest
 
       - name: Module and header contract
         run: |
           python3 Tools/check_module_deps.py
           python3 Tools/check_source_headers.py
-
-      - name: Build
-        run: xmake -y
 
       - name: Module contract (link)
         run: python3 Tools/check_module_deps.py --link
@@ -152,21 +162,54 @@ jobs:
       - name: Confirm GPU suite is discoverable
         run: |
           xmake build Tests
-          xmake build RojoRHILegacyTests
           gpu_count=$(./build/macosx/arm64/release/test/Tests --list-tests "[gpu]" | \
             sed -n 's/^\([0-9][0-9]*\) matching test cases$/\1/p')
           test -n "$gpu_count" && test "$gpu_count" -gt 0
           echo "$gpu_count Metal 4 GPU cases compiled in Tests"
-          rhi_gpu_count=$(./build/macosx/arm64/release/rojorhi-legacy-test/RojoRHILegacyTests --list-tests "[gpu]" | \
-            sed -n 's/^\([0-9][0-9]*\) matching test cases$/\1/p')
-          test -n "$rhi_gpu_count" && test "$rhi_gpu_count" -gt 0
-          echo "$rhi_gpu_count Metal 4 GPU cases compiled in RojoRHILegacyTests"
-
-      - name: Checkpoint A inventory
-        run: python3 Tools/check_checkpoint_a.py
 
       - name: Format check
         run: xmake format --check
+
+  # The validation tracker is Debug-only; hosted runners use Null without a GPU.
+  tracker:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+      - name: Install xmake
+        run: brew install xmake
+      - name: Cache ThirdParty
+        uses: actions/cache@v5
+        with:
+          path: ThirdParty
+          key: ${{ runner.os }}-thirdparty-${{ hashFiles('xmake.lua', 'xmake/setup.lua', 'Tools/Patches/**') }}
+      - name: Cache xmake packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.xmake/packages
+          key: ${{ runner.os }}-xrepo-${{ hashFiles('xmake.lua') }}
+      - name: Fetch pinned third-party deps
+        run: xmake setup -P .
+      - name: Configure Debug Null
+        run: xmake f -m debug -y -P . --ccache=n --rojorhi_backend=null
+      - name: Generate Debug compile_commands
+        run: xmake project -k compile_commands -P .
+      - name: Build app shader layouts
+        run: xmake build -P . App
+      - name: Build tracker cases
+        run: xmake build -P . Tests
+      - name: C++ layout policy
+        run: python3 Tools/check_cpp_layout.py
+      - name: Run tracker cases
+        working-directory: build/macosx/arm64/debug/test
+        run: |
+          ./Tests --list-tests "[tracker]" --reporter json --out tracker-inventory.json
+          cat tracker-inventory.json
+          python3 "$GITHUB_WORKSPACE/Tools/check_tracker_inventory.py" tracker-inventory.json
+          ./Tests "[tracker]"
 
   # Non-blocking per spec D8: reports style/modernization findings
   # without failing the build. Metal4 backend TUs are excluded from the tidy sweep below —
@@ -187,7 +230,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ThirdParty
-          key: ${{ runner.os }}-thirdparty-${{ hashFiles('xmake.lua', 'xmake/setup.lua', 'Tools/Patches/**', 'RojoRHI/Tools/Patches/**') }}
+          key: ${{ runner.os }}-thirdparty-${{ hashFiles('xmake.lua', 'xmake/setup.lua', 'Tools/Patches/**') }}
       - name: Cache xmake packages
         uses: actions/cache@v5
         with:
@@ -199,8 +242,49 @@ jobs:
         run: |
           xmake f -m debug -y --ccache=n --rojorhi_backend=null
           xmake project -k compile_commands
+      - name: Build generated shader layouts
+        run: xmake build -P . App
       - name: clang-tidy (non-blocking)
         run: |
-          $(brew --prefix llvm)/bin/clang-tidy --version
-          find Source -name '*.cpp' ! -path '*Metal4*' -print0 | \
-            xargs -0 $(brew --prefix llvm)/bin/clang-tidy -p .
+          tidy="$(brew --prefix llvm)/bin/clang-tidy"
+          "$tidy" --version
+          python3 - "$tidy" <<'PY'
+          import json
+          from pathlib import Path
+          import subprocess
+          import sys
+
+          root = Path.cwd()
+          entries = json.loads((root / "compile_commands.json").read_text())
+          if not isinstance(entries, list) or not entries:
+              raise SystemExit("compile_commands.json must contain a nonempty array")
+          files = set()
+          for index, entry in enumerate(entries):
+              if not isinstance(entry, dict) or any(
+                  not isinstance(entry.get(key), str) or not entry[key]
+                  for key in ("directory", "file")
+              ):
+                  raise SystemExit(f"invalid compilation database entry {index}")
+              arguments = entry.get("arguments")
+              has_arguments = isinstance(arguments, list) and arguments and all(
+                  isinstance(argument, str) for argument in arguments
+              )
+              command = entry.get("command")
+              if not (has_arguments or isinstance(command, str) and command):
+                  raise SystemExit(f"compilation database entry {index} has no compiler command")
+              directory = (root / entry["directory"]).resolve()
+              path = (directory / entry["file"]).resolve()
+              if (
+                  path.is_relative_to(root / "Source")
+                  and path.suffix == ".cpp"
+                  and "Metal4" not in str(path.relative_to(root))
+              ):
+                  if not path.is_file():
+                      raise SystemExit(f"configured source does not exist: {path}")
+                  files.add(str(path))
+          if not files:
+              raise SystemExit("compilation database has no configured Source C++ files")
+          files = sorted(files)
+          print(f"clang-tidy: {len(files)} configured Source C++ files", flush=True)
+          sys.exit(subprocess.run([sys.argv[1], "-p", str(root), *files]).returncode)
+          PY

@@ -1,3 +1,10 @@
+//----------------------------------------------------------------------------------------------------------------------
+/// @file GpuOcclusionOffTests.cpp
+/// @brief Checks production occlusion with temporal reconstruction off, at full resolution.
+//----------------------------------------------------------------------------------------------------------------------
+// These are the temporal-off counterparts of GpuOcclusionTemporalTests: the same scenes, the same
+// production classifier and independent reference, with no jitter, motion, reactive mask or scaled
+// render extent. They prove the occlusion join alone and claim nothing about temporal history.
 #include "Engine/Scene/Scene.h"
 #include "Render/Renderer/SceneViewBuilder.h"
 #include "Support/GpuTestSupport.h"
@@ -6,7 +13,6 @@
 #include <functional>
 
 using namespace lmx::render;
-using namespace rojoRHI;
 namespace engine = lmx::engine;
 
 namespace {
@@ -34,11 +40,28 @@ engine::Scene occludedScene(float targetX = 0) {
                       .material = material});
     return result;
 }
+
+// The frame's colour, copied on its own command list after its passes: a readback in a frame of
+// its own would leave a gap in the occlusion source clock that the next frame would see.
+struct FrameTargets {
+    std::vector<uint8_t> hdr;
+};
+
+//======================================================================================================================
+std::vector<uint8_t> resolvedBytes(lmx::engine::GpuContext& gpu, const ReadbackTicket& ticket) {
+    std::vector<uint8_t> bytes(ticket.region.size);
+    const auto resolved = resolve(gpu, ticket, bytes);
+    INFO(errorOf(resolved));
+    REQUIRE(resolved);
+    return bytes;
+}
+
 //======================================================================================================================
 VisibilityStatus checkedFrame(lmx::engine::GpuContext& gpu, engine::Scene& scene,
-                              Renderer& renderer, const engine::Camera& camera, float scale = 1,
-                              bool jitter = false, std::function<void(SceneView&)> configure = {},
-                              std::vector<uint32_t>* depthReadback = nullptr) {
+                              Renderer& renderer, const engine::Camera& camera,
+                              std::function<void(SceneView&)> configure = {},
+                              std::vector<uint32_t>* depthReadback = nullptr,
+                              FrameTargets* targets = nullptr) {
     auto gpuFrame1 = gpu.beginFrame();
     auto& commands = gpuFrame1.commands;
     REQUIRE(scene.prepareFrame(gpu.frameNumber()));
@@ -48,59 +71,38 @@ VisibilityStatus checkedFrame(lmx::engine::GpuContext& gpu, engine::Scene& scene
     view.classifyCheck = true;
     view.occlusionEnabled = true;
     view.occlusionCheck = true;
-    view.temporal.enabled = true;
-    view.temporal.jitterEnabled = jitter;
-    view.temporal.reconstruction = ReconstructionMode::Raw;
-    view.temporal.renderScale = scale;
+    view.temporal.enabled = false;
     view.temporal.sceneGeneration = 1;
     view.bloomEnabled = false;
     if (configure)
         configure(view);
-    renderer.render(commands, camera, view);
-    lmx::engine::GpuOwned<ShaderLibrary> readLibrary;
-    std::unique_ptr<ComputePipeline> readPipeline;
-    lmx::engine::GpuBuffer depthBuffer;
-    if (depthReadback) {
-        auto library = gpu.loadShaderLibrary("HzbReadbackFixture");
-        REQUIRE(library);
-        readLibrary = std::move(*library);
-        auto pipeline =
-            gpu.device().createComputePipeline({.library = readLibrary.get(),
-                                                .computeEntry = "computeMain",
-                                                .threadsPerThreadgroup = {8, 8, 1},
-                                                .label = "lmx.test.occlusion.depthReader"});
-        REQUIRE(pipeline);
-        readPipeline = std::move(*pipeline);
-        const auto& depth = renderer.depthTexture();
-        depthReadback->resize(uint64_t{depth.desc().width} * depth.desc().height);
-        auto buffer = lmx::engine::GpuBuffer::create(gpu.device(),
-                                                     {.size = depthReadback->size() * sizeof(float),
-                                                      .storageWrite = true,
-                                                      .cpuReadback = true,
-                                                      .label = "lmx.test.occlusion.depthReadback"},
-                                                     nullptr);
-        REQUIRE(buffer);
-        depthBuffer = std::move(*buffer);
-        commands.beginComputePass("lmx.test.occlusion.depthReadback");
-        commands.bindComputePipeline(*readPipeline);
-        commands.bindTexture(0, depth.rhi());
-        commands.bindStorageBuffer(1, depthBuffer.rhi(), StorageAccess::Write);
-        commands.bindFrameData(
-            0, std::array<uint32_t, 4>{depth.desc().width, depth.desc().height, 0, 0});
-        commands.dispatch((depth.desc().width + 7) / 8, (depth.desc().height + 7) / 8, 1);
-        commands.endComputePass();
+    const auto rendered = renderer.render(commands, camera, view);
+    if (!rendered)
+        gpu.submitAndEndFrame(gpuFrame1);
+    INFO(errorOf(rendered));
+    REQUIRE(rendered);
+    ReadbackTicket depthTicket, hdrTicket;
+    auto& states = renderer.textureStates();
+    if (depthReadback)
+        depthTicket = recordReadback(gpu, commands, renderer.depthTexture(), states);
+    if (targets) {
+        // With temporal off the display transform samples the scene colour directly.
+        requireRecordedUse(states, renderer.hdrColorTexture(), TextureUse::ShaderRead);
+        hdrTicket = recordReadback(gpu, commands, renderer.hdrColorTexture(), states);
     }
     gpu.submitAndEndFrame(gpuFrame1);
     scene.commitFrame();
     gpu.waitIdle();
     if (depthReadback) {
-        const auto readbackBytes =
-            lmx::render::readbackNow(gpu, depthBuffer, lmx::render::BufferUse::StorageWrite,
-                                     lmx::render::wholeBuffer(depthBuffer));
-        std::memcpy(depthReadback->data(), readbackBytes.data(),
-                    depthReadback->size() * sizeof(float));
+        const auto& depth = renderer.depthTexture();
+        depthReadback->resize(uint64_t{depth.desc().extent.width} * depth.desc().extent.height);
+        const auto resolved = resolve(gpu, depthTicket, resolveBytes(std::span(*depthReadback)));
+        INFO(errorOf(resolved));
+        REQUIRE(resolved);
     }
-    renderer.drainVisibilityAfterIdle();
+    if (targets)
+        targets->hdr = resolvedBytes(gpu, hdrTicket);
+    REQUIRE(renderer.drainVisibilityAfterIdle());
     auto retired = renderer.takeRetiredVisibility();
     REQUIRE(retired.size() == 1);
     auto status = std::move(retired.front());
@@ -117,23 +119,11 @@ VisibilityStatus checkedFrame(lmx::engine::GpuContext& gpu, engine::Scene& scene
     REQUIRE(status.shadowCounters.occluded == 0);
     return status;
 }
-//======================================================================================================================
-std::vector<uint8_t> targetBytes(lmx::engine::GpuContext& gpu,
-                                 const lmx::engine::GpuTexture& texture, uint32_t bytesPerPixel,
-                                 lmx::render::TextureUse current) {
-    std::vector<uint8_t> result(uint64_t{texture.desc().width} * texture.desc().height *
-                                bytesPerPixel);
-    {
-        const auto readbackBytes = lmx::render::readbackNow(gpu, texture, current);
-        std::memcpy(result.data(), readbackBytes.data(), result.size());
-    }
-    return result;
-}
 } // namespace
 
 //======================================================================================================================
-TEST_CASE("production occlusion preserves exact static geometry attachments and independent IDs",
-          "[gpu][occlusion-integration]") {
+TEST_CASE("temporal-off occlusion preserves static color depth and independent IDs",
+          "[gpu][occlusion-integration][temporal-off]") {
     auto gpu = createTestGpu();
     auto scene = occludedScene();
     REQUIRE(scene.finalize(gpu->device()));
@@ -142,49 +132,42 @@ TEST_CASE("production occlusion preserves exact static geometry attachments and 
     engine::Camera camera;
     camera.fovY = glm::half_pi<float>();
     std::vector<uint32_t> depth, occludedDepth;
-    auto baseline = checkedFrame(
-        *gpu, scene, **renderer, camera, 1, false,
+    FrameTargets baselineTargets, occludedTargets;
+    const auto baseline = checkedFrame(
+        *gpu, scene, **renderer, camera,
         [](SceneView& view) {
             view.occlusionEnabled = false;
             view.occlusionCheck = false;
         },
-        &depth);
-    const auto hdr =
-        targetBytes(*gpu, (*renderer)->hdrColorTexture(), 8, lmx::render::TextureUse::CopySource);
-    const auto motion =
-        targetBytes(*gpu, *(*renderer)->motionTexture(), 4, lmx::render::TextureUse::RenderTarget);
-    const auto reactive = targetBytes(*gpu, *(*renderer)->reactiveTexture(), 1,
-                                      lmx::render::TextureUse::RenderTarget);
+        &depth, &baselineTargets);
+    REQUIRE(baseline.sceneCounters.occluded == 0);
+    REQUIRE(baseline.occlusionInvalidReason == OcclusionInvalidReason::Disabled);
     auto first = checkedFrame(*gpu, scene, **renderer, camera);
     REQUIRE(first.sceneCounters.occluded == 0);
-    auto second = checkedFrame(*gpu, scene, **renderer, camera, 1, false, {}, &occludedDepth);
+    auto second =
+        checkedFrame(*gpu, scene, **renderer, camera, {}, &occludedDepth, &occludedTargets);
     REQUIRE(second.sceneCounters.occluded == 1);
+    REQUIRE(second.scene.candidates[1].reason == VisibilityReason::Occluded);
     REQUIRE(second.occlusionInvalidReason == OcclusionInvalidReason::None);
     REQUIRE(second.occlusionSourceFrame + 1 == second.frameNumber);
     REQUIRE(second.occlusionCheck.strict);
     REQUIRE(second.occlusionCheck.falselyRejectedInstances == 0);
-    REQUIRE(targetBytes(*gpu, (*renderer)->hdrColorTexture(), 8,
-                        lmx::render::TextureUse::CopySource) == hdr);
+    REQUIRE(occludedTargets.hdr == baselineTargets.hdr);
     REQUIRE(occludedDepth == depth);
-    REQUIRE(targetBytes(*gpu, *(*renderer)->motionTexture(), 4,
-                        lmx::render::TextureUse::RenderTarget) == motion);
-    REQUIRE(targetBytes(*gpu, *(*renderer)->reactiveTexture(), 1,
-                        lmx::render::TextureUse::RenderTarget) == reactive);
-    for (const float scale : {1.0f, 0.5f, 1.0f}) {
-        for (uint32_t phase = 0; phase < 16; ++phase) {
-            CAPTURE(scale, phase);
-            const auto status = checkedFrame(*gpu, scene, **renderer, camera, scale, true);
-            REQUIRE(status.occlusionSourceFrame + 1 == status.frameNumber);
-            REQUIRE(status.occlusionInvalidReason == OcclusionInvalidReason::None);
-            REQUIRE(status.sceneCounters.occluded == 1);
-            REQUIRE(status.occlusionCheck.falselyRejectedInstances == 0);
-        }
+    for (uint32_t frame = 0; frame < 4; ++frame) {
+        CAPTURE(frame);
+        const auto status = checkedFrame(*gpu, scene, **renderer, camera);
+        REQUIRE(status.occlusionSourceFrame + 1 == status.frameNumber);
+        REQUIRE(status.occlusionInvalidReason == OcclusionInvalidReason::None);
+        REQUIRE(status.sceneCounters.occluded == 1);
+        REQUIRE(status.occlusionCheck.strict);
+        REQUIRE(status.occlusionCheck.falselyRejectedInstances == 0);
     }
 }
 
 //======================================================================================================================
-TEST_CASE("newly visible geometry is recovered on its second visible frame",
-          "[gpu][occlusion-integration][occlusion-recovery]") {
+TEST_CASE("temporal-off occlusion recovers newly visible geometry on its second visible frame",
+          "[gpu][occlusion-integration][occlusion-recovery][temporal-off]") {
     auto gpu = createTestGpu();
     auto scene = occludedScene(1.2f);
     REQUIRE(scene.finalize(gpu->device()));
@@ -209,8 +192,8 @@ TEST_CASE("newly visible geometry is recovered on its second visible frame",
 }
 
 //======================================================================================================================
-TEST_CASE("global occlusion invalidation retains all candidates before reusing depth evidence",
-          "[gpu][occlusion-integration][occlusion-invalidation]") {
+TEST_CASE("temporal-off occlusion invalidates every changed coverage source",
+          "[gpu][occlusion-integration][occlusion-invalidation][temporal-off]") {
     auto gpu = createTestGpu();
     auto scene = occludedScene();
     REQUIRE(scene.finalize(gpu->device()));
@@ -263,7 +246,7 @@ TEST_CASE("global occlusion invalidation retains all candidates before reusing d
         expected = OcclusionInvalidReason::OutputExtentChanged;
     }
     SECTION("toggle off then on") {
-        checkedFrame(*gpu, scene, **renderer, camera, 1, false, [](SceneView& view) {
+        checkedFrame(*gpu, scene, **renderer, camera, [](SceneView& view) {
             view.occlusionEnabled = false;
             view.occlusionCheck = false;
         });
@@ -274,12 +257,12 @@ TEST_CASE("global occlusion invalidation retains all candidates before reusing d
         gpu->submitAndEndFrame(gpuFrame2);
         expected = OcclusionInvalidReason::SourceGap;
     }
-    const auto status = checkedFrame(*gpu, scene, **renderer, camera, 1, false, configure);
+    const auto status = checkedFrame(*gpu, scene, **renderer, camera, configure);
     REQUIRE(status.occlusionInvalidReason == expected);
     REQUIRE(status.sceneCounters.occluded == 0);
     REQUIRE(status.occlusionCheck.falselyRejectedInstances == 0);
     const auto following =
-        checkedFrame(*gpu, scene, **renderer, camera, 1, false, [configure](SceneView& view) {
+        checkedFrame(*gpu, scene, **renderer, camera, [configure](SceneView& view) {
             if (configure)
                 configure(view);
             view.temporal.cameraCut = false;
@@ -290,8 +273,8 @@ TEST_CASE("global occlusion invalidation retains all candidates before reusing d
 }
 
 //======================================================================================================================
-TEST_CASE("occlusion joins overlapping retired frames across slot reuse in both submission modes",
-          "[gpu][occlusion-integration][occlusion-overlap]") {
+TEST_CASE("temporal-off occlusion joins overlapping frames through paced slot reuse",
+          "[gpu][occlusion-integration][occlusion-overlap][temporal-off]") {
     auto gpu = createTestGpu();
     auto scene = occludedScene();
     REQUIRE(scene.finalize(gpu->device()));
@@ -314,20 +297,19 @@ TEST_CASE("occlusion joins overlapping retired frames across slot reuse in both 
             view.occlusionEnabled = true;
             view.occlusionCheck = true;
             view.bloomEnabled = false;
-            view.temporal.enabled = true;
-            view.temporal.jitterEnabled = true;
-            view.temporal.reconstruction = ReconstructionMode::Raw;
+            view.temporal.enabled = false;
             view.temporal.sceneGeneration = 9;
-            view.temporal.renderScale = frame % 2 == 0 ? 1.0f : 0.5f;
-            (*renderer)->render(commands, camera, view);
+            const auto rendered = (*renderer)->render(commands, camera, view);
             gpu->submitAndEndFrame(gpuFrame3);
+            INFO(errorOf(rendered));
+            REQUIRE(rendered);
             scene.commitFrame();
             auto retired = (*renderer)->takeRetiredVisibility();
             for (auto& status : retired)
                 statuses.push_back(std::move(status));
         }
         gpu->waitIdle();
-        (*renderer)->drainVisibilityAfterIdle();
+        REQUIRE((*renderer)->drainVisibilityAfterIdle());
         auto retired = (*renderer)->takeRetiredVisibility();
         for (auto& status : retired)
             statuses.push_back(std::move(status));
@@ -355,8 +337,9 @@ TEST_CASE("occlusion joins overlapping retired frames across slot reuse in both 
 }
 
 //======================================================================================================================
-TEST_CASE("enabled toggles invalidate positively rejecting occluder history and restore rejection",
-          "[gpu][occlusion-integration][disabled-instance][occlusion-enabled-toggle]") {
+TEST_CASE(
+    "temporal-off enabled toggles invalidate rejecting occlusion history",
+    "[gpu][occlusion-integration][disabled-instance][occlusion-enabled-toggle][temporal-off]") {
     auto gpu = createTestGpu();
     auto scene = occludedScene();
     REQUIRE(scene.finalize(gpu->device()));
@@ -369,15 +352,15 @@ TEST_CASE("enabled toggles invalidate positively rejecting occluder history and 
         auto renderer = Renderer::create(*gpu, 64, 64, true);
         REQUIRE(renderer);
         const auto configure = [mode](SceneView& view) { view.submission = mode; };
-        checkedFrame(*gpu, scene, **renderer, camera, 1, false, configure);
-        const auto hidden = checkedFrame(*gpu, scene, **renderer, camera, 1, false, configure);
+        checkedFrame(*gpu, scene, **renderer, camera, configure);
+        const auto hidden = checkedFrame(*gpu, scene, **renderer, camera, configure);
         REQUIRE(hidden.sceneCounters.occluded == 1);
         REQUIRE(hidden.scene.candidates[1].reason == VisibilityReason::Occluded);
         REQUIRE(hidden.occlusionCheck.visibleInstances == 1);
         const auto coverageBefore = scene.coverageEpoch();
         scene.setObjectEnabled(0, false);
         REQUIRE(scene.coverageEpoch() > coverageBefore);
-        const auto revealed = checkedFrame(*gpu, scene, **renderer, camera, 1, false, configure);
+        const auto revealed = checkedFrame(*gpu, scene, **renderer, camera, configure);
         REQUIRE(revealed.occlusionInvalidReason == OcclusionInvalidReason::CoverageChanged);
         REQUIRE(revealed.sceneCounters.occluded == 0);
         REQUIRE(revealed.sceneCounters.candidates == 1);
@@ -390,17 +373,17 @@ TEST_CASE("enabled toggles invalidate positively rejecting occluder history and 
         REQUIRE(revealed.scene.candidates[1].state == VisibilityState::Visible);
         REQUIRE(revealed.occlusionCheck.falselyRejectedInstances == 0);
         REQUIRE(revealed.occlusionCheck.visibleInstances == 1);
-        const auto off = checkedFrame(*gpu, scene, **renderer, camera, 1, false, configure);
+        const auto off = checkedFrame(*gpu, scene, **renderer, camera, configure);
         REQUIRE(off.occlusionInvalidReason == OcclusionInvalidReason::None);
         REQUIRE(off.sceneCounters.occluded == 0);
         REQUIRE(off.sceneCounters.disabled == 1);
         scene.setObjectEnabled(0, true);
-        const auto restored = checkedFrame(*gpu, scene, **renderer, camera, 1, false, configure);
+        const auto restored = checkedFrame(*gpu, scene, **renderer, camera, configure);
         REQUIRE(restored.occlusionInvalidReason == OcclusionInvalidReason::CoverageChanged);
         REQUIRE(restored.sceneCounters.disabled == 0);
         REQUIRE(restored.sceneCounters.occluded == 0);
         REQUIRE(restored.sceneCounters.historyInvalid == 2);
-        const auto hiddenAgain = checkedFrame(*gpu, scene, **renderer, camera, 1, false, configure);
+        const auto hiddenAgain = checkedFrame(*gpu, scene, **renderer, camera, configure);
         REQUIRE(hiddenAgain.occlusionInvalidReason == OcclusionInvalidReason::None);
         REQUIRE(hiddenAgain.sceneCounters.occluded == 1);
         REQUIRE(hiddenAgain.scene.candidates[1].reason == VisibilityReason::Occluded);

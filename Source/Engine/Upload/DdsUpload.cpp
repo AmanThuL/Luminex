@@ -7,18 +7,20 @@
 
 #include "Engine/Asset/Image/DdsLoader.h"
 
-#include <rojoRHI/TextureDesc.h>
+#include <rojoRHI/RHI.h>
 
+#include <span>
 #include <utility>
 
 namespace lmx::engine {
 
 //======================================================================================================================
-std::vector<rojoRHI::TextureMip> toTextureMips(const asset::ImageData& image) {
-    std::vector<rojoRHI::TextureMip> mips;
+std::vector<rojoRHI::TextureData> toTextureData(const asset::ImageData& image) {
+    std::vector<rojoRHI::TextureData> mips;
     mips.reserve(image.mips.size());
     for (const asset::ImageMip& mip : image.mips) {
-        mips.push_back({image.payload.data() + mip.offset, mip.rowPitch});
+        mips.push_back({.bytes = std::span(image.payload).subspan(mip.offset, mip.size),
+                        .bytesPerRow = mip.rowPitch});
     }
     return mips;
 }
@@ -39,16 +41,16 @@ asset::AssetResult<GpuTexture> createTextureFromDds(rojoRHI::Device& device, std
     }
 
     const rojoRHI::TextureDesc desc{
-        .width = image->width,
-        .height = image->height,
+        .type = image->kind == asset::ImageKind::Cube ? rojoRHI::TextureType::Cube
+                                                      : rojoRHI::TextureType::Tex2D,
         .format = format,
-        .kind = image->kind == asset::ImageKind::Cube ? rojoRHI::TextureKind::Cube
-                                                      : rojoRHI::TextureKind::Tex2D,
-        .mipLevels = image->mipLevels,
-        .sampled = true,
+        .extent = {image->width, image->height, 1},
+        .mips = image->mipLevels,
+        .layers = image->kind == asset::ImageKind::Cube ? 6u : 1u,
+        .usage = rojoRHI::TextureUsage::Sampled,
         .label = label,
     };
-    auto texture = GpuTexture::create(device, desc, toTextureMips(*image));
+    auto texture = GpuTexture::create(device, desc, toTextureData(*image));
     if (!texture) {
         return std::unexpected(asset::AssetError{asset::AssetErrorCode::UploadFailed,
                                                  std::move(texture.error().message)});

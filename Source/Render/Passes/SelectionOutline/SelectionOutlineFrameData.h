@@ -13,8 +13,8 @@
 
 namespace lmx::render {
 
-/// Matches Shaders/Passes/SelectionOutline/SelectionMask.slang. Coverage is non-color data; all
-/// scene transforms remain borrowed.
+/// Pointed MaskParams shared with SelectionOutlineRoots.slang and loaded by SelectionMask.
+/// Coverage is non-color data; scene transforms remain borrowed.
 struct MaskParams {
     glm::mat4 viewProj;    ///< 0 -- unjittered world-to-clip transform.
     uint32_t instanceRow;  ///< 64 -- instance row of the draw being rasterized.
@@ -25,7 +25,7 @@ static_assert(sizeof(MaskParams) == 80);
 static_assert(offsetof(MaskParams, instanceRow) == 64);
 static_assert(offsetof(MaskParams, selected) == 68);
 
-/// Matches Shaders/Passes/SelectionOutline/SelectionOutline.slang's constant block.
+/// Pointed radius payload shared with SelectionOutlineRoots.slang and loaded by SelectionOutline.
 struct OutlineParams {
     float radius; ///< 0 -- outline radius in target pixels.
 };

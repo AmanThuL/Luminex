@@ -36,32 +36,6 @@ constexpr std::array kCells{Cell{"off", false, ReconstructionMode::Raw, 1.0f},
                             Cell{"metalfx-1", true, ReconstructionMode::VendorTemporal, 1.0f},
                             Cell{"metalfx-0.5", true, ReconstructionMode::VendorTemporal, 0.5f}};
 
-struct ZeroLightDepthProbe {
-    lmx::engine::GpuOwned<rojoRHI::ShaderLibrary> library;
-    std::unique_ptr<rojoRHI::ComputePipeline> pipeline;
-    lmx::engine::GpuBuffer bytes;
-};
-
-//======================================================================================================================
-ZeroLightDepthProbe makeZeroLightDepthProbe(lmx::engine::GpuContext& gpu, uint32_t width,
-                                            uint32_t height) {
-    auto library = gpu.loadShaderLibrary("VisibilityDepthReadback");
-    REQUIRE(library);
-    auto pipeline = gpu.device().createComputePipeline({.library = library->get(),
-                                                        .computeEntry = "computeMain",
-                                                        .threadsPerThreadgroup = {8, 8, 1},
-                                                        .label = "lmx.test.zeroLight.depthReader"});
-    REQUIRE(pipeline);
-    auto bytes = lmx::engine::GpuBuffer::create(gpu.device(),
-                                                {.size = uint64_t{width} * height * 4,
-                                                 .storageWrite = true,
-                                                 .cpuReadback = true,
-                                                 .label = "lmx.test.zeroLight.depthBytes"},
-                                                nullptr);
-    REQUIRE(bytes);
-    return {std::move(*library), std::move(*pipeline), std::move(*bytes)};
-}
-
 //======================================================================================================================
 Bytes crop(const Bytes& source, uint32_t stride, uint32_t width, uint32_t height, uint32_t bpp) {
     Bytes result(size_t{width} * height * bpp);
@@ -72,14 +46,31 @@ Bytes crop(const Bytes& source, uint32_t stride, uint32_t width, uint32_t height
 }
 
 //======================================================================================================================
+// Reads mip 0 of `texture` in the exact state the renderer's table records, then crops it to the
+// active rectangle.
 Bytes readTexture(lmx::engine::GpuContext& gpu, const lmx::engine::GpuTexture& texture,
-                  TextureUse current, uint32_t bpp, uint32_t width, uint32_t height) {
-    Bytes bytes(size_t{texture.desc().width} * texture.desc().height * bpp);
+                  const TextureStateTable& states, uint32_t bpp, uint32_t width, uint32_t height) {
+    const uint32_t stride = texture.desc().extent.width;
+    Bytes bytes(size_t{stride} * texture.desc().extent.height * bpp);
     {
-        const auto readbackBytes = lmx::render::readbackNow(gpu, texture, current);
-        std::memcpy(bytes.data(), readbackBytes.data(), bytes.size());
+        const auto readbackBytes = lmx::render::readbackNow(gpu, texture, states);
+        INFO(errorOf(readbackBytes));
+        REQUIRE(readbackBytes);
+        REQUIRE(readbackBytes->size() == bytes.size());
+        std::memcpy(bytes.data(), readbackBytes->data(), bytes.size());
     }
-    return crop(bytes, texture.desc().width, width, height, bpp);
+    return crop(bytes, stride, width, height, bpp);
+}
+
+//======================================================================================================================
+// Reads a leading region of a buffer whose last access `current` states.
+Bytes readBuffer(lmx::engine::GpuContext& gpu, const lmx::engine::GpuBuffer& buffer,
+                 SyncPoint current, size_t size) {
+    const auto readbackBytes = lmx::render::readbackNow(gpu, buffer, current, {0, size});
+    INFO(errorOf(readbackBytes));
+    REQUIRE(readbackBytes);
+    REQUIRE(readbackBytes->size() >= size);
+    return Bytes(readbackBytes->begin(), readbackBytes->begin() + static_cast<ptrdiff_t>(size));
 }
 
 //======================================================================================================================
@@ -126,7 +117,6 @@ lmx::engine::LocalLightMode modeFor(size_t history, uint32_t frame) {
 void compareHistories(lmx::engine::GpuContext& gpu, const char* sceneName,
                       const lmx::engine::Camera& camera, uint32_t width, uint32_t height,
                       const std::function<SceneView(uint64_t)>& prepare) {
-    rojoRHI::Device& device = gpu.device();
     std::ofstream report;
     std::filesystem::path reportPath;
     if (const char* path = std::getenv("LMX_ZERO_LIGHT_REPORT")) {
@@ -144,14 +134,13 @@ void compareHistories(lmx::engine::GpuContext& gpu, const char* sceneName,
     const char* selectedSubmission = std::getenv("LMX_ZERO_LIGHT_SUBMISSION");
     if (selectedSubmission)
         REQUIRE(std::string_view(selectedSubmission) == "direct");
-    auto probe = makeZeroLightDepthProbe(gpu, width, height);
     for (const auto& cell : kCells) {
         if (selectedCell && std::string_view(cell.name) != selectedCell)
             continue;
         {
             INFO(sceneName << " " << cell.name);
             if (cell.reconstruction == ReconstructionMode::VendorTemporal &&
-                !device.capabilities().temporalScaler.available) {
+                !gpu.upscalerSupport().available) {
                 SKIP("MetalFX unavailable; the six-cell zero-light matrix is incomplete");
             }
             std::array<std::unique_ptr<Renderer>, kHistories> renderers;
@@ -180,19 +169,14 @@ void compareHistories(lmx::engine::GpuContext& gpu, const char* sceneName,
                     view.temporal.cameraCut = false;
                     view.autoExposureEnabled = false;
                     view.exposureEv = 0;
-                    renderer.render(commands, camera, view);
-                    commands.textureBarrier(renderer.depthTexture().rhi(),
-                                            rojoRHI::TextureUse::RenderTarget,
-                                            rojoRHI::TextureUse::ShaderRead);
-                    commands.beginComputePass("lmx.test.zeroLight.readDepth");
-                    commands.bindComputePipeline(*probe.pipeline);
-                    commands.bindStorageBuffer(0, probe.bytes.rhi(), rojoRHI::StorageAccess::Write);
-                    commands.bindTexture(1, renderer.depthTexture().rhi());
-                    commands.dispatch((width + 7) / 8, (height + 7) / 8, 1);
-                    commands.endComputePass();
+                    const auto rendered = renderer.render(commands, camera, view);
                     gpu.submitAndEndFrame(gpuFrame);
+                    INFO(errorOf(rendered));
+                    REQUIRE(rendered);
                     gpu.waitIdle();
-                    renderer.drainLightingAfterIdle();
+                    const auto drained = renderer.drainLightingAfterIdle();
+                    INFO(errorOf(drained));
+                    REQUIRE(drained);
                     REQUIRE(renderer.lightingStatus().effective ==
                             lmx::engine::LocalLightMode::Off);
                     REQUIRE(renderer.lightingStatus().liveLightCount == 0);
@@ -207,48 +191,29 @@ void compareHistories(lmx::engine::GpuContext& gpu, const char* sceneName,
                     const uint32_t activeWidth = status.extents.renderWidth;
                     const uint32_t activeHeight = status.extents.renderHeight;
                     std::array<Bytes, kAttachments.size()> image;
-                    const bool rawCopy = status.reconstruction == ReconstructionMode::Raw &&
-                                         !status.upscaled && cell.temporal;
-                    const auto hdrUse = status.reconstruction == ReconstructionMode::VendorTemporal
-                                            ? TextureUse::ExternalRead
-                                        : rawCopy ? TextureUse::CopySource
-                                                  : TextureUse::ShaderRead;
-                    const auto motionUse = cell.reconstruction == ReconstructionMode::Raw
-                                               ? TextureUse::RenderTarget
-                                               : TextureUse::ShaderRead;
-                    const auto historyUse =
-                        rawCopy ? TextureUse::CopyDestination : TextureUse::ShaderRead;
-                    image[0] = readTexture(gpu, renderer.hdrColorTexture(), hdrUse, 8, activeWidth,
+                    const auto& states = renderer.textureStates();
+                    image[0] = readTexture(gpu, renderer.hdrColorTexture(), states, 8, activeWidth,
                                            activeHeight);
-                    Bytes depth(size_t{width} * height * 4);
-                    {
-                        const auto readbackBytes = lmx::render::readbackNow(
-                            gpu, probe.bytes, lmx::render::BufferUse::StorageWrite,
-                            {0, depth.size()});
-                        std::memcpy(depth.data(), readbackBytes.data(), depth.size());
-                    }
-                    image[1] = crop(depth, width, activeWidth, activeHeight, 4);
+                    image[1] = readTexture(gpu, renderer.depthTexture(), states, 4, activeWidth,
+                                           activeHeight);
                     if (cell.temporal) {
-                        image[2] = readTexture(gpu, *renderer.motionTexture(), motionUse, 4,
+                        image[2] = readTexture(gpu, *renderer.motionTexture(), states, 4,
                                                activeWidth, activeHeight);
-                        image[3] = readTexture(gpu, *renderer.reactiveTexture(), motionUse, 1,
+                        image[3] = readTexture(gpu, *renderer.reactiveTexture(), states, 1,
                                                activeWidth, activeHeight);
                         if (cell.reconstruction != ReconstructionMode::VendorTemporal)
-                            image[4] = readTexture(gpu, *renderer.historyTexture(), historyUse, 8,
+                            image[4] = readTexture(gpu, *renderer.historyTexture(), states, 8,
                                                    width, height);
                     }
-                    image[5] = readTexture(gpu, renderer.colorTarget(), TextureUse::RenderTarget, 4,
-                                           width, height);
-                    const auto exposureUse = !cell.temporal ? BufferUse::ShaderRead
-                                             : cell.reconstruction == ReconstructionMode::Raw
-                                                 ? BufferUse::StorageWrite
-                                                 : BufferUse::StorageRead;
-                    image[6].resize(renderer.exposureBufferOwner().desc().size);
-                    {
-                        const auto readbackBytes = lmx::render::readbackNow(
-                            gpu, renderer.exposureBufferOwner(), exposureUse, {0, image[6].size()});
-                        std::memcpy(image[6].data(), readbackBytes.data(), image[6].size());
-                    }
+                    image[5] = readTexture(gpu, renderer.colorTarget(), states, 4, width, height);
+                    // The seed and resolve dispatches write the pair and the scene, sky and
+                    // metering passes read it; the readback waits on every one of them.
+                    image[6] =
+                        readBuffer(gpu, renderer.exposureBufferOwner(),
+                                   {rojoRHI::Stage::ComputeShader | rojoRHI::Stage::FragmentShader,
+                                    rojoRHI::Access::ShaderRead | rojoRHI::Access::ShaderWrite,
+                                    rojoRHI::Layout::Undefined},
+                                   renderer.exposureBufferOwner().desc().size);
                     const std::array buffers{view.tables.instances, view.tables.materials,
                                              view.tables.meshes};
                     const std::array sizes{
@@ -257,13 +222,7 @@ void compareHistories(lmx::engine::GpuContext& gpu, const char* sceneName,
                         size_t{view.tables.meshCount} * sizeof(lmx::engine::MeshRow)};
                     for (size_t i = 0; i < buffers.size(); ++i) {
                         REQUIRE(buffers[i] != nullptr);
-                        image[7 + i].resize(sizes[i]);
-                        {
-                            const auto readbackBytes = lmx::render::readbackNow(
-                                gpu, *buffers[i], lmx::render::BufferUse::ShaderRead,
-                                {0, sizes[i]});
-                            std::memcpy(image[7 + i].data(), readbackBytes.data(), sizes[i]);
-                        }
+                        image[7 + i] = readBuffer(gpu, *buffers[i], {}, sizes[i]);
                     }
                     REQUIRE(hasHdrColorDetail(image[0]));
                     REQUIRE(finiteHalfComponents(image[0]));
@@ -341,26 +300,27 @@ TEST_CASE("zero-light requested modes preserve controlled GPU histories",
                     "lmx.test.zeroLight.sky");
     REQUIRE(sky);
     const uint32_t skyTexel = 0xffff8000u;
-    const rojoRHI::TextureMip skyMip{.data = &skyTexel, .bytesPerRow = 4};
+    const rojoRHI::TextureData skyMip{.bytes = std::as_bytes(std::span(&skyTexel, 1)),
+                                      .bytesPerRow = 4};
     const std::array skyFaces{skyMip, skyMip, skyMip, skyMip, skyMip, skyMip};
     auto cubemap = lmx::engine::GpuTexture::create(gpu->device(),
-                                                   {.width = 1,
-                                                    .height = 1,
+                                                   {.type = rojoRHI::TextureType::Cube,
                                                     .format = rojoRHI::Format::RGBA8Unorm,
-                                                    .kind = rojoRHI::TextureKind::Cube,
-                                                    .sampled = true,
+                                                    .extent = {1, 1, 1},
+                                                    .layers = 6,
+                                                    .usage = rojoRHI::TextureUsage::Sampled,
                                                     .label = "lmx.test.zeroLight.skyTexture"},
                                                    skyFaces);
     REQUIRE(cubemap);
     std::array<uint32_t, 64> maskTexels{};
     for (size_t i = 0; i < maskTexels.size(); ++i)
         maskTexels[i] = ((i / 8 + i % 8) % 2) ? 0xffffffffu : 0x00ffffffu;
-    const rojoRHI::TextureMip maskMip{.data = maskTexels.data(), .bytesPerRow = 8 * 4};
+    const rojoRHI::TextureData maskMip{.bytes = std::as_bytes(std::span(maskTexels)),
+                                       .bytesPerRow = 8 * 4};
     auto mask = lmx::engine::GpuTexture::create(gpu->device(),
-                                                {.width = 8,
-                                                 .height = 8,
-                                                 .format = rojoRHI::Format::RGBA8Unorm,
-                                                 .sampled = true,
+                                                {.format = rojoRHI::Format::RGBA8Unorm,
+                                                 .extent = {8, 8, 1},
+                                                 .usage = rojoRHI::TextureUsage::Sampled,
                                                  .label = "lmx.test.zeroLight.mask"},
                                                 std::span{&maskMip, 1});
     REQUIRE(mask);

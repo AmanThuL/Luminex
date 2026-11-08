@@ -70,6 +70,8 @@ followed by 118 `=` characters:
 
 A Clang-based policy check, using `compile_commands.json`, rejects missing, duplicate, malformed,
 and orphan separators. It must not use a regular expression to guess C++ function definitions.
+The checker requires clangd's `definition` and `constructorOrDestructor` semantic modifiers
+and compiler AST ranges to recover callable definitions.
 
 ## Comment policy
 

@@ -7,7 +7,7 @@
 
 #include "Engine/Scene/MotionClass.h"
 #include "Engine/View/Camera.h"
-#include <rojoRHI/Format.h>
+#include <rojoRHI/RHI.h>
 
 #include <glm/mat4x4.hpp>
 #include <glm/vec2.hpp>

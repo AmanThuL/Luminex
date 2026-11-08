@@ -28,19 +28,19 @@ using lmx::test::requireMatchesGolden;
 // with the derived transitions between them. It is the case that would notice a change to the
 // wording, the ordering, or the set of things a dump reports.
 TEST_CASE("a frame's dump matches its golden file", "[render][graph]") {
-    FakeTexture shadowMap{1024, 1024};
-    FakeTexture sceneColor{64, 64};
-    FakeTexture sceneDepth{64, 64};
-    FakeTexture displayColor{64, 64};
+    auto shadowMap = textureFixture(1024, 1024);
+    auto sceneColor = textureFixture(64, 64);
+    auto sceneDepth = textureFixture(64, 64);
+    auto displayColor = textureFixture(64, 64);
     RenderGraph graph;
-    const GraphTexture shadow =
-        graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "lmx.render.shadowMap");
-    const GraphTexture color =
-        graph.importTexture(sceneColor, rojoRHI::Format::RGBA16Float, "lmx.render.sceneColorHdr");
-    const GraphTexture depth =
-        graph.importTexture(sceneDepth, rojoRHI::Format::D32Float, "lmx.render.sceneDepth");
-    const GraphTexture display =
-        graph.importTexture(displayColor, rojoRHI::Format::BGRA8Unorm, "lmx.render.displayColor");
+    const GraphTexture shadow = graph.importTexture(formatted(shadowMap, rojoRHI::Format::D32Float),
+                                                    "lmx.render.shadowMap");
+    const GraphTexture color = graph.importTexture(
+        formatted(sceneColor, rojoRHI::Format::RGBA16Float), "lmx.render.sceneColorHdr");
+    const GraphTexture depth = graph.importTexture(formatted(sceneDepth, rojoRHI::Format::D32Float),
+                                                   "lmx.render.sceneDepth");
+    const GraphTexture display = graph.importTexture(
+        formatted(displayColor, rojoRHI::Format::BGRA8Unorm), "lmx.render.displayColor");
 
     // Declared before its producer, so the dump's scheduled order differs from its pass indices.
     PassDesc scene;
@@ -69,15 +69,15 @@ TEST_CASE("a frame's dump matches its golden file", "[render][graph]") {
 // The substrate frame: compute and copy passes over a mip chain and a buffer, with narrowed
 // subresource ranges and buffer transitions -- everything the raster frame above cannot show.
 TEST_CASE("a compute and copy frame's dump matches its golden file", "[render][graph]") {
-    FakeTexture chain{64, 64, "", 4};
-    FakeTexture output{64, 64};
-    FakeBuffer histogram{1024};
-    FakeBuffer staging{1024};
+    auto chain = textureFixture(64, 64, "", 4);
+    auto output = textureFixture(64, 64);
+    auto histogram = bufferFixture(1024);
+    auto staging = bufferFixture(1024);
     RenderGraph graph;
     const GraphTexture bloom =
-        graph.importTexture(chain, rojoRHI::Format::RGBA16Float, "lmx.bloomChain");
+        graph.importTexture(formatted(chain, rojoRHI::Format::RGBA16Float), "lmx.bloomChain");
     const GraphTexture target =
-        graph.importTexture(output, rojoRHI::Format::BGRA8Unorm, "lmx.composite");
+        graph.importTexture(formatted(output, rojoRHI::Format::BGRA8Unorm), "lmx.composite");
     const GraphBuffer bins = graph.importBuffer(histogram, "lmx.histogram");
     const GraphBuffer readback = graph.importBuffer(staging, "lmx.staging");
 
@@ -87,14 +87,12 @@ TEST_CASE("a compute and copy frame's dump matches its golden file", "[render][g
 
     ComputePassDesc prefilter;
     prefilter.bufferReads.push_back(nextVersion(bins));
-    prefilter.textureWrites.push_back({bloom, {.baseMipLevel = 0, .mipLevelCount = 1}});
+    prefilter.textureWrites.push_back({bloom, {.baseMip = 0, .mipCount = 1}});
     graph.addComputePass("lmx.pass.bloomPrefilter", prefilter, kNoWork);
 
     ComputePassDesc downsample;
-    downsample.textureReads.push_back(
-        {nextVersion(bloom), {.baseMipLevel = 0, .mipLevelCount = 1}});
-    downsample.textureWrites.push_back(
-        {nextVersion(bloom), {.baseMipLevel = 1, .mipLevelCount = 2}});
+    downsample.textureReads.push_back({nextVersion(bloom), {.baseMip = 0, .mipCount = 1}});
+    downsample.textureWrites.push_back({nextVersion(bloom), {.baseMip = 1, .mipCount = 2}});
     graph.addComputePass("lmx.pass.bloomDownsample", downsample, kNoWork);
 
     PassDesc composite;
@@ -119,16 +117,16 @@ TEST_CASE("a compute and copy frame's dump matches its golden file", "[render][g
 // scheduled section says what runs, and the culled one says what was declared, was not needed, and
 // why -- both reasons appearing so neither can silently stop being reported.
 TEST_CASE("a culled frame's dump matches its golden file", "[render][graph]") {
-    FakeTexture sceneColor{64, 64};
-    FakeTexture displayColor{64, 64};
-    FakeTexture unused{64, 64};
+    auto sceneColor = textureFixture(64, 64);
+    auto displayColor = textureFixture(64, 64);
+    auto unused = textureFixture(64, 64);
     RenderGraph graph;
     const GraphTexture color =
-        graph.importTexture(sceneColor, rojoRHI::Format::RGBA16Float, "lmx.sceneColor");
-    const GraphTexture display =
-        graph.importTexture(displayColor, rojoRHI::Format::BGRA8Unorm, "lmx.displayColor");
+        graph.importTexture(formatted(sceneColor, rojoRHI::Format::RGBA16Float), "lmx.sceneColor");
+    const GraphTexture display = graph.importTexture(
+        formatted(displayColor, rojoRHI::Format::BGRA8Unorm), "lmx.displayColor");
     const GraphTexture orphan =
-        graph.importTexture(unused, rojoRHI::Format::BGRA8Unorm, "lmx.debugOverlay");
+        graph.importTexture(formatted(unused, rojoRHI::Format::BGRA8Unorm), "lmx.debugOverlay");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = color};
@@ -172,8 +170,8 @@ TEST_CASE("an empty frame's dump matches its golden file", "[render][graph]") {
 TEST_CASE("a transient frame's dump matches its golden file", "[render][graph]") {
     FakeTransientBackend backend;
     TransientPool pool(backend);
-    FakeTexture midTarget{64, 64};
-    FakeTexture displayColor{64, 64};
+    auto midTarget = textureFixture(64, 64);
+    auto displayColor = textureFixture(64, 64);
     RenderGraph graph(pool);
     const GraphTexture scene = graph.createTexture({.width = 64,
                                                     .height = 64,
@@ -193,9 +191,10 @@ TEST_CASE("a transient frame's dump matches its golden file", "[render][graph]")
                                                      .renderTarget = true,
                                                      .sampled = true},
                                                     "lmx.transient.unused");
-    const GraphTexture mid = graph.importTexture(midTarget, rojoRHI::Format::BGRA8Unorm, "lmx.mid");
-    const GraphTexture display =
-        graph.importTexture(displayColor, rojoRHI::Format::BGRA8Unorm, "lmx.displayColor");
+    const GraphTexture mid =
+        graph.importTexture(formatted(midTarget, rojoRHI::Format::BGRA8Unorm), "lmx.mid");
+    const GraphTexture display = graph.importTexture(
+        formatted(displayColor, rojoRHI::Format::BGRA8Unorm), "lmx.displayColor");
 
     PassDesc writeScene;
     writeScene.color = ColorAttachment{.handle = scene};
@@ -232,10 +231,10 @@ TEST_CASE("a transient frame's dump matches its golden file", "[render][graph]")
 // The property the golden files rest on: the dump is a function of the declarations, so compiling
 // the same graph twice produces identical bytes.
 TEST_CASE("the same declarations dump identically", "[render][graph]") {
-    FakeTexture sceneColor{64, 64};
+    auto sceneColor = textureFixture(64, 64);
     RenderGraph graph;
     const GraphTexture color =
-        graph.importTexture(sceneColor, rojoRHI::Format::RGBA16Float, "lmx.sceneColor");
+        graph.importTexture(formatted(sceneColor, rojoRHI::Format::RGBA16Float), "lmx.sceneColor");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = color};
@@ -254,19 +253,19 @@ TEST_CASE("the same declarations dump identically", "[render][graph]") {
 // from the primary, and to keep the two derived transitions apart, which is what a single "color
 // attachment" line for both would hide.
 TEST_CASE("a multi-attachment frame's dump matches its golden file", "[render][graph]") {
-    FakeTexture sceneColor{64, 64};
-    FakeTexture motionVectors{64, 64};
-    FakeTexture sceneDepth{64, 64};
-    FakeTexture displayColor{64, 64};
+    auto sceneColor = textureFixture(64, 64);
+    auto motionVectors = textureFixture(64, 64);
+    auto sceneDepth = textureFixture(64, 64);
+    auto displayColor = textureFixture(64, 64);
     RenderGraph graph;
-    const GraphTexture color =
-        graph.importTexture(sceneColor, rojoRHI::Format::RGBA16Float, "lmx.render.sceneColorHdr");
-    const GraphTexture motion =
-        graph.importTexture(motionVectors, rojoRHI::Format::RG16Float, "lmx.render.motionVectors");
-    const GraphTexture depth =
-        graph.importTexture(sceneDepth, rojoRHI::Format::D32Float, "lmx.render.sceneDepth");
-    const GraphTexture display =
-        graph.importTexture(displayColor, rojoRHI::Format::BGRA8Unorm, "lmx.render.displayColor");
+    const GraphTexture color = graph.importTexture(
+        formatted(sceneColor, rojoRHI::Format::RGBA16Float), "lmx.render.sceneColorHdr");
+    const GraphTexture motion = graph.importTexture(
+        formatted(motionVectors, rojoRHI::Format::RG16Float), "lmx.render.motionVectors");
+    const GraphTexture depth = graph.importTexture(formatted(sceneDepth, rojoRHI::Format::D32Float),
+                                                   "lmx.render.sceneDepth");
+    const GraphTexture display = graph.importTexture(
+        formatted(displayColor, rojoRHI::Format::BGRA8Unorm), "lmx.render.displayColor");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = color};
@@ -292,16 +291,16 @@ TEST_CASE("a multi-attachment frame's dump matches its golden file", "[render][g
 // once motion and the reactive weight join the picture. Each extra has to be numbered by its own
 // attachment index rather than collapsed with the one before it.
 TEST_CASE("a third colour attachment is numbered in the dump", "[render][graph]") {
-    FakeTexture sceneColor{64, 64};
-    FakeTexture motionVectors{64, 64};
-    FakeTexture reactive{64, 64};
+    auto sceneColor = textureFixture(64, 64);
+    auto motionVectors = textureFixture(64, 64);
+    auto reactive = textureFixture(64, 64);
     RenderGraph graph;
-    const GraphTexture color =
-        graph.importTexture(sceneColor, rojoRHI::Format::RGBA16Float, "lmx.render.sceneColorHdr");
-    const GraphTexture motion =
-        graph.importTexture(motionVectors, rojoRHI::Format::RG16Float, "lmx.render.motion");
+    const GraphTexture color = graph.importTexture(
+        formatted(sceneColor, rojoRHI::Format::RGBA16Float), "lmx.render.sceneColorHdr");
+    const GraphTexture motion = graph.importTexture(
+        formatted(motionVectors, rojoRHI::Format::RG16Float), "lmx.render.motion");
     const GraphTexture weight =
-        graph.importTexture(reactive, rojoRHI::Format::R8Unorm, "lmx.render.reactive");
+        graph.importTexture(formatted(reactive, rojoRHI::Format::R8Unorm), "lmx.render.reactive");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = color};
@@ -323,16 +322,16 @@ TEST_CASE("a third colour attachment is numbered in the dump", "[render][graph]"
 // the one that renders the whole target still prints exactly what it always has, so a dump reader
 // can tell a scaled frame from a full-resolution one.
 TEST_CASE("a render area appears in the dump", "[render][graph]") {
-    FakeTexture sceneColor{64, 64};
-    FakeTexture sceneDepth{64, 64};
-    FakeTexture displayColor{64, 64};
+    auto sceneColor = textureFixture(64, 64);
+    auto sceneDepth = textureFixture(64, 64);
+    auto displayColor = textureFixture(64, 64);
     RenderGraph graph;
-    const GraphTexture color =
-        graph.importTexture(sceneColor, rojoRHI::Format::RGBA16Float, "lmx.render.sceneColorHdr");
-    const GraphTexture depth =
-        graph.importTexture(sceneDepth, rojoRHI::Format::D32Float, "lmx.render.sceneDepth");
-    const GraphTexture display =
-        graph.importTexture(displayColor, rojoRHI::Format::BGRA8Unorm, "lmx.render.displayColor");
+    const GraphTexture color = graph.importTexture(
+        formatted(sceneColor, rojoRHI::Format::RGBA16Float), "lmx.render.sceneColorHdr");
+    const GraphTexture depth = graph.importTexture(formatted(sceneDepth, rojoRHI::Format::D32Float),
+                                                   "lmx.render.sceneDepth");
+    const GraphTexture display = graph.importTexture(
+        formatted(displayColor, rojoRHI::Format::BGRA8Unorm), "lmx.render.displayColor");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = color};
@@ -356,14 +355,16 @@ TEST_CASE("a render area appears in the dump", "[render][graph]") {
 //======================================================================================================================
 TEST_CASE("external graph dumps name the operation and both external uses",
           "[render][graph][external]") {
-    FakeTexture input{64, 64};
-    FakeTexture output{64, 64};
+    auto input = textureFixture(64, 64);
+    auto output = textureFixture(64, 64);
     TextureStateTable states;
-    states.set(input, lmx::render::TextureUse::StorageWrite);
+    states.setLogicalUse(input.texture, lmx::render::TextureUse::StorageWrite);
     RenderGraph graph;
     graph.bindTextureStates(states);
-    const auto source = graph.importPersistentTexture(input, rojoRHI::Format::R16Float, "exposure");
-    const auto target = graph.importTexture(output, rojoRHI::Format::RGBA16Float, "history");
+    const auto source =
+        graph.importPersistentTexture(formatted(input, rojoRHI::Format::R16Float), "exposure");
+    const auto target =
+        graph.importTexture(formatted(output, rojoRHI::Format::RGBA16Float), "history");
     graph.addExternalPass("vendor", {.textureReads = {source}, .textureWrites = {target}}, kNoWork);
     graph.addComputePass("consume",
                          {.shaderTextureReads = {nextVersion(target)}, .textureWrites = {source}},

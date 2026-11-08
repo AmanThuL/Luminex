@@ -1,0 +1,299 @@
+-- Consumer shader entries and backend library names share the component's Slang rule.
+local repository_root = path.directory(os.scriptdir())
+
+-- Registered directly so every helper below is created in the runtime sandbox.
+function lmx_configure_shader_library(target)
+    import("core.project.config")
+    local extensions = {null = ".nulllib", metal4 = ".metal4lib", d3d12 = ".d3d12lib"}
+    local backend = config.get("rojorhi_backend")
+    local extension = assert(extensions[backend], "unknown RojoRHI shader backend: " .. tostring(backend))
+    target:add("defines", 'LMX_SHADER_LIBRARY_EXTENSION="' .. extension .. '"')
+
+    local kind = target:values("lmx.shader.kind")
+    if not kind then return end
+    assert(kind == "app" or kind == "tests" or kind == "bench", "unknown shader entry kind: " .. kind)
+
+    local function lmx_shader_entries(entry_kind)
+        local candidates = {}
+        if entry_kind == "bench" then
+            candidates = {path.join(repository_root, "Shaders/Tests/FrameDataQuad.slang")}
+        else
+            candidates = os.files(path.join(repository_root, "Shaders/Passes/**.slang"))
+            if entry_kind == "tests" then
+                table.join2(candidates, os.files(path.join(repository_root, "Shaders/Tests/*.slang")))
+            end
+        end
+        local entries, basenames = {}, {}
+        for _, file in ipairs(candidates) do
+            local text = assert(io.readfile(file), "cannot read shader: " .. file)
+                :gsub("/%*.-%*/", ""):gsub("//[^\n]*", "")
+            if text:find('%[%s*shader%s*%(%s*"(%w+)"%s*%)%s*%]') then
+                local basename = path.basename(file):lower()
+                assert(not basenames[basename], "duplicate shader entry basename: " .. basename)
+                basenames[basename] = true
+                table.insert(entries, file)
+            end
+        end
+        table.sort(entries)
+        assert(#entries > 0, "no shader entries for " .. entry_kind)
+        return entries
+    end
+
+    local includedirs = {path.join(repository_root, "Shaders/Common")}
+    if kind == "tests" or kind == "app" then
+        local passes = os.dirs(path.join(repository_root, "Shaders/Passes/*"))
+        table.sort(passes)
+        table.join2(includedirs, passes)
+    end
+    if kind == "tests" then
+        table.insert(includedirs, path.join(repository_root, "Shaders/Tests"))
+    end
+    target:values_set("slang.slangc", path.join(repository_root,
+        os.host() == "windows" and "ThirdParty/slang/bin/slangc.exe" or "ThirdParty/slang/bin/slangc"))
+    target:values_set("slang.moduledir", path.join(repository_root, "RojoRHI/Shaders/RojoRHI"))
+    target:values_set("slang.includedirs", table.unpack(includedirs))
+    if kind == "app" then
+        target:values_set("slang.layout_probe", path.join(repository_root, "Shaders/Layout/LuminexLayout.slang"))
+        local layout_map = {
+            "DisplayRoot=lmx::render::DisplayRoot",
+            -- ---- scene ----
+            "VertexStorage=lmx::engine::Vertex",
+            "ShadowPassRoot=lmx::render::ShadowPassRoot",
+            "ShadowDrawRoot=lmx::render::ShadowDrawRoot",
+            "ShadowPassUniforms=lmx::render::ShadowPassUniforms",
+            "ScenePassRoot=lmx::render::ScenePassRoot",
+            "SceneDrawRoot=lmx::render::SceneDrawRoot",
+            "SkyRoot=lmx::render::SkyRoot",
+            "PassUniforms=lmx::render::scene_detail::PassUniforms",
+            "SkyUniforms=lmx::render::scene_detail::SkyUniforms",
+            "DirLight=lmx::render::scene_detail::DirLightUniform",
+            "InstanceRow=lmx::engine::InstanceRow",
+            "MaterialRow=lmx::engine::MaterialRow",
+            "MeshRow=lmx::engine::MeshRow",
+            "LightRow=lmx::engine::LightRow",
+            -- ---- visibility ----
+            "VisibilityClassifyRoot=lmx::render::VisibilityClassifyRoot",
+            "VisibilityOcclusionRoot=lmx::render::VisibilityOcclusionRoot",
+            "VisibilityScanRoot=lmx::render::VisibilityScanRoot",
+            "VisibilityEmitRoot=lmx::render::VisibilityEmitRoot",
+            "HzbReduceRoot=lmx::render::HzbReduceRoot",
+            "HzbPublishRoot=lmx::render::HzbPublishRoot",
+            "HzbDebugRoot=lmx::render::HzbDebugRoot",
+            "OcclusionReferenceRoot=lmx::render::OcclusionReferenceRoot",
+            "CandidateRecord=lmx::render::CandidateRecord",
+            "RunRecord=lmx::render::RunRecord",
+            "ChunkRecord=lmx::render::ChunkRecord",
+            "VisibilityViewParams=lmx::render::VisibilityViewParams",
+            "VisibilityParams=lmx::render::VisibilityParams",
+            "OcclusionParams=lmx::render::OcclusionParams",
+            "HzbReduceParams=lmx::render::HzbReduceParams",
+            "HzbDebugViewParams=lmx::render::HzbDebugViewParams",
+            "ReferenceParams=lmx::render::ReferenceParams",
+            -- ---- lights ----
+            "LightClusterRoot=lmx::render::LightClusterRoot",
+            "LightDebugRoot=lmx::render::LightDebugRoot",
+            "ClusterRecord=lmx::render::ClusterRecord",
+            "LocalLightParams=lmx::render::scene_detail::LocalLightParams",
+            "LightClusterParams=lmx::render::LightClusterKernelParams",
+            "DebugParams=lmx::render::LightDebugParams",
+            -- ---- post ----
+            "ExposureSeedRoot=lmx::render::ExposureSeedRoot",
+            "HistogramRoot=lmx::render::HistogramRoot",
+            "ExposureResolveRoot=lmx::render::ExposureResolveRoot",
+            "HistogramParams=lmx::render::HistogramParams",
+            "ExposureSeedParams=lmx::render::ExposureSeedParams",
+            "ExposureResolveParams=lmx::render::ExposureResolveParams",
+            "BloomThresholdRoot=lmx::render::BloomThresholdRoot",
+            "BloomDownsampleRoot=lmx::render::BloomDownsampleRoot",
+            "BloomUpsampleRoot=lmx::render::BloomUpsampleRoot",
+            "BloomThresholdParams=lmx::render::BloomThresholdParams",
+            "BloomDownsampleParams=lmx::render::BloomDownsampleParams",
+            "BloomUpsampleParams=lmx::render::BloomUpsampleParams",
+            "SelectionMaskRoot=lmx::render::SelectionMaskRoot",
+            "SelectionOutlineRoot=lmx::render::SelectionOutlineRoot",
+            "SelectionCopyRoot=lmx::render::SelectionCopyRoot",
+            "MaskParams=lmx::render::MaskParams",
+            "OutlineParams=lmx::render::OutlineParams",
+            -- ---- temporal ----
+            "TemporalReprojectRoot=lmx::render::TemporalReprojectRoot",
+            "TemporalResolveRoot=lmx::render::TemporalResolveRoot",
+            "SpatialUpscaleRoot=lmx::render::SpatialUpscaleRoot",
+            "TemporalDebugViewRoot=lmx::render::TemporalDebugViewRoot",
+            "VendorTemporalHistoryRoot=lmx::render::VendorTemporalHistoryRoot",
+            "VendorTemporalPackRoot=lmx::render::VendorTemporalPackRoot",
+            "TemporalResolveParams=lmx::render::temporal_detail::TemporalResolveParams",
+            "TemporalUpscaleParams=lmx::render::temporal_detail::TemporalUpscaleParams",
+            "SpatialUpscaleParams=lmx::render::temporal_detail::SpatialUpscaleParams",
+            "TemporalReprojectParams=lmx::render::temporal_detail::TemporalReprojectParams",
+            "TemporalDebugViewParams=lmx::render::temporal_detail::TemporalDebugViewParams",
+            "VendorPackParams=lmx::render::temporal_detail::VendorPackParams",
+        }
+        target:values_set("slang.layout_map", table.unpack(layout_map))
+        target:values_set("slang.layout_include", "Render/Passes/Display/DisplayRoots.h",
+                          "Render/Passes/Scene/SceneRoots.h", "Render/Passes/Shadow/ShadowRoots.h",
+                          "Engine/Geometry/Mesh.h", "Render/Passes/Scene/SceneFrameData.h",
+                          "Engine/Scene/SceneTables.h",
+                          "Render/Passes/LocalLights/LightRoots.h",
+                          "Render/Passes/LocalLights/LightClusterFrameData.h",
+                          "Render/Passes/Exposure/ExposureRoots.h",
+                          "Render/Passes/Exposure/ExposureFrameData.h",
+                          "Render/Passes/Bloom/BloomRoots.h",
+                          "Render/Passes/Bloom/BloomFrameData.h",
+                          "Render/Passes/SelectionOutline/SelectionOutlineRoots.h",
+                          "Render/Passes/SelectionOutline/SelectionOutlineFrameData.h",
+                          "Render/Passes/Visibility/VisibilityRoots.h",
+                          "Render/Passes/Occlusion/OcclusionRoots.h",
+                          "Render/Passes/Temporal/TemporalRoots.h",
+                          "Render/Passes/Temporal/TemporalFrameData.h")
+    elseif kind == "tests" then
+        target:values_set("slang.layout_probe", path.join(repository_root, "Shaders/Layout/TestLayout.slang"))
+        local layout_map = {
+            "BufferHazardRoot=lmx::test::BufferHazardRoot",
+            "ComputeImageRoot=lmx::test::ComputeImageRoot",
+            "FullscreenSampleRoot=lmx::test::FullscreenSampleRoot",
+            "SamplerRoot=lmx::test::SamplerRoot",
+            "VisibilityDepthRoot=lmx::test::VisibilityDepthRoot",
+            -- ---- scene ----
+            "VertexStorage=lmx::engine::Vertex",
+            "ShadowSmokeRoot=lmx::test::ShadowSmokeRoot",
+            "SceneTableAbiRoot=lmx::test::SceneTableAbiRoot",
+            "ShadowSmokeUniforms=lmx::test::ShadowSmokeUniforms",
+            -- ---- visibility ----
+            "VisibilityClassifyRoot=lmx::render::VisibilityClassifyRoot",
+            "VisibilityOcclusionRoot=lmx::render::VisibilityOcclusionRoot",
+            "VisibilityScanRoot=lmx::render::VisibilityScanRoot",
+            "VisibilityEmitRoot=lmx::render::VisibilityEmitRoot",
+            "HzbReduceRoot=lmx::render::HzbReduceRoot",
+            "HzbPublishRoot=lmx::render::HzbPublishRoot",
+            "HzbDebugRoot=lmx::render::HzbDebugRoot",
+            "OcclusionReferenceRoot=lmx::render::OcclusionReferenceRoot",
+            "CandidateRecord=lmx::render::CandidateRecord",
+            "RunRecord=lmx::render::RunRecord",
+            "ChunkRecord=lmx::render::ChunkRecord",
+            "VisibilityViewParams=lmx::render::VisibilityViewParams",
+            "VisibilityParams=lmx::render::VisibilityParams",
+            "OcclusionParams=lmx::render::OcclusionParams",
+            "HzbReduceParams=lmx::render::HzbReduceParams",
+            "HzbDebugViewParams=lmx::render::HzbDebugViewParams",
+            "ReferenceParams=lmx::render::ReferenceParams",
+            "HzbDepthRoot=lmx::test::HzbDepthRoot",
+            "HzbReadbackRoot=lmx::test::HzbReadbackRoot",
+            "OcclusionProbeRoot=lmx::test::OcclusionProbeRoot",
+            "ReadbackParams=lmx::test::ReadbackParams",
+            "ProbeBounds=lmx::test::ProbeBounds",
+            -- ---- lights ----
+            "LightClusterRoot=lmx::render::LightClusterRoot",
+            "LightDebugRoot=lmx::render::LightDebugRoot",
+            "ClusterRecord=lmx::render::ClusterRecord",
+            "LocalLightParams=lmx::render::scene_detail::LocalLightParams",
+            "LightClusterParams=lmx::render::LightClusterKernelParams",
+            "DebugParams=lmx::render::LightDebugParams",
+            "LightRow=lmx::engine::LightRow",
+            "PunctualLightRoot=lmx::test::PunctualLightRoot",
+            "PunctualSample=lmx::test::PunctualSample",
+            -- ---- post ----
+            "ExposureSeedRoot=lmx::render::ExposureSeedRoot",
+            "HistogramRoot=lmx::render::HistogramRoot",
+            "ExposureResolveRoot=lmx::render::ExposureResolveRoot",
+            "HistogramParams=lmx::render::HistogramParams",
+            "ExposureSeedParams=lmx::render::ExposureSeedParams",
+            "ExposureResolveParams=lmx::render::ExposureResolveParams",
+            "BloomThresholdRoot=lmx::render::BloomThresholdRoot",
+            "BloomDownsampleRoot=lmx::render::BloomDownsampleRoot",
+            "BloomUpsampleRoot=lmx::render::BloomUpsampleRoot",
+            "BloomThresholdParams=lmx::render::BloomThresholdParams",
+            "BloomDownsampleParams=lmx::render::BloomDownsampleParams",
+            "BloomUpsampleParams=lmx::render::BloomUpsampleParams",
+            "SelectionMaskRoot=lmx::render::SelectionMaskRoot",
+            "SelectionOutlineRoot=lmx::render::SelectionOutlineRoot",
+            "SelectionCopyRoot=lmx::render::SelectionCopyRoot",
+            "MaskParams=lmx::render::MaskParams",
+            "OutlineParams=lmx::render::OutlineParams",
+            -- ---- temporal ----
+            "TemporalReprojectRoot=lmx::render::TemporalReprojectRoot",
+            "TemporalResolveRoot=lmx::render::TemporalResolveRoot",
+            "SpatialUpscaleRoot=lmx::render::SpatialUpscaleRoot",
+            "TemporalDebugViewRoot=lmx::render::TemporalDebugViewRoot",
+            "VendorTemporalHistoryRoot=lmx::render::VendorTemporalHistoryRoot",
+            "VendorTemporalPackRoot=lmx::render::VendorTemporalPackRoot",
+            "TemporalResolveParams=lmx::render::temporal_detail::TemporalResolveParams",
+            "TemporalUpscaleParams=lmx::render::temporal_detail::TemporalUpscaleParams",
+            "SpatialUpscaleParams=lmx::render::temporal_detail::SpatialUpscaleParams",
+            "TemporalReprojectParams=lmx::render::temporal_detail::TemporalReprojectParams",
+            "TemporalDebugViewParams=lmx::render::temporal_detail::TemporalDebugViewParams",
+            "VendorPackParams=lmx::render::temporal_detail::VendorPackParams",
+        }
+        target:values_set("slang.layout_map", table.unpack(layout_map))
+        target:values_set("slang.layout_include", "Support/OracleRoots.h",
+                          "Engine/Geometry/Mesh.h", "Engine/Scene/SceneTables.h",
+                          "Render/Passes/Scene/SceneFrameData.h",
+                          "Render/Passes/LocalLights/LightRoots.h",
+                          "Render/Passes/LocalLights/LightClusterFrameData.h",
+                          "Support/LocalLightOracleRoots.h",
+                          "Render/Passes/Exposure/ExposureRoots.h",
+                          "Render/Passes/Exposure/ExposureFrameData.h",
+                          "Render/Passes/Bloom/BloomRoots.h",
+                          "Render/Passes/Bloom/BloomFrameData.h",
+                          "Render/Passes/SelectionOutline/SelectionOutlineRoots.h",
+                          "Render/Passes/SelectionOutline/SelectionOutlineFrameData.h",
+                          "Render/Passes/Visibility/VisibilityRoots.h",
+                          "Render/Passes/Occlusion/OcclusionRoots.h",
+                          "Support/VisibilityOracleRoots.h",
+                          "Render/Passes/Temporal/TemporalRoots.h",
+                          "Render/Passes/Temporal/TemporalFrameData.h")
+    end
+    local entries = lmx_shader_entries(kind)
+    -- v1 compiled every Visibility*, Hzb* and LightCluster* entry, and every Occlusion* entry
+    -- except OcclusionReference, with precise floating point. The rule is v1's prefix predicate
+    -- over entry basenames, so a new entry in those families is selected without a list edit.
+    local precise_prefixes = {"Visibility", "Occlusion", "Hzb", "LightCluster"}
+    local function precise(name)
+        if name == "OcclusionReference" then
+            return false
+        end
+        for _, prefix in ipairs(precise_prefixes) do
+            if name:startswith(prefix) then
+                return true
+            end
+        end
+        return false
+    end
+    -- Every prefix must still name a real entry, so a renamed family cannot silently fall back to
+    -- the default floating-point mode.
+    local all_entries = os.files(path.join(repository_root, "Shaders/Passes/**.slang"))
+    table.join2(all_entries, os.files(path.join(repository_root, "Shaders/Tests/*.slang")))
+    for _, prefix in ipairs(precise_prefixes) do
+        local matched = false
+        for _, file in ipairs(all_entries) do
+            local name = path.basename(file)
+            if name:startswith(prefix) and precise(name) then
+                local text = assert(io.readfile(file), "cannot read shader: " .. file)
+                    :gsub("/%*.-%*/", ""):gsub("//[^\n]*", "")
+                if text:find('%[%s*shader%s*%(%s*"(%w+)"%s*%)%s*%]') then
+                    matched = true
+                    break
+                end
+            end
+        end
+        assert(matched, "precise shader prefix names no shader entry: " .. prefix)
+    end
+    local precise_entries = {}
+    for _, file in ipairs(entries) do
+        local basename = path.basename(file)
+        if precise(basename) then
+            table.insert(precise_entries, basename)
+        end
+    end
+    if #precise_entries > 0 then
+        target:values_set("slang.precise_files", table.unpack(precise_entries))
+    end
+    target:values_set("lmx.shader.entries", table.unpack(entries))
+    target:add("files", table.unpack(entries))
+end
+
+function lmx_apply_shader_rule(kind)
+    add_rules("rojorhi.slang")
+    if kind == "app" or kind == "tests" then add_rules("rojorhi.shader_layout") end
+    set_values("lmx.shader.kind", kind)
+    on_load(lmx_configure_shader_library)
+end
