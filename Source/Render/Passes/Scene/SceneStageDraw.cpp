@@ -153,6 +153,17 @@ void SceneStage::draw(rojoRHI::CommandList& commands, const SceneView& view,
             .iblSampler = static_cast<uint32_t>(inputs.iblSampler)};
         const auto passAddress = frameData(commands, pass);
         engine::registerFrameRoot("ScenePassRoot", passAddress);
+        // Indirect and batched runs share one root and read drawId; a direct run's root carries
+        // its firstEntry, because a vertex entry cannot read the base instance (RojoRHI ADR 0024).
+        const bool direct = inputs.draws.mode == SubmissionMode::Direct;
+        if (!direct) {
+            engine::registerFrameRoot("SceneDrawRoot", commands.pushRoot(SceneDrawRoot{
+                                                           .pass = passAddress, .indirect = 1u}));
+        }
+#ifndef NDEBUG
+        LMX_ASSERT(view.tables.whiteTexture && view.tables.flatNormalTexture,
+                   "scene draw declarations need the tables' material fallbacks");
+#endif
         encodeDrawRuns(
             commands, {inputs.draws, view.tables.indices, opaquePipeline},
             [&](const DrawRun& run, const auto& bindPipeline) -> const engine::DrawItem& {
@@ -164,23 +175,20 @@ void SceneStage::draw(rojoRHI::CommandList& commands, const SceneView& view,
                 bindPipeline(masked ? m_maskScenePipelines[maskIndex].get() : opaquePipeline);
                 LMX_ASSERT(item.instanceRow < view.tables.instanceCount,
                            "draw instance must name a current table row");
-                const auto* diffuse = item.diffuse ? item.diffuse : inputs.whiteTexture;
-                const auto* normal = item.normalMap ? item.normalMap : inputs.flatNormalTexture;
-                const auto* metalRough =
-                    item.metallicRoughness ? item.metallicRoughness : inputs.whiteTexture;
-                const auto* occlusion = item.occlusion ? item.occlusion : inputs.whiteTexture;
-                const auto* emissive = item.emissiveMap ? item.emissiveMap : inputs.whiteTexture;
-                const SceneDrawRoot draw{.pass = passAddress,
-                                         .firstEntry = run.firstEntry,
-                                         .baseColor = static_cast<uint32_t>(diffuse->view()),
-                                         .normal = static_cast<uint32_t>(normal->view()),
-                                         .metalRough = static_cast<uint32_t>(metalRough->view()),
-                                         .occlusion = static_cast<uint32_t>(occlusion->view()),
-                                         .emissive = static_cast<uint32_t>(emissive->view()),
-                                         .indirect =
-                                             inputs.draws.mode != SubmissionMode::Direct ? 1u : 0u};
-                engine::registerFrameRoot("SceneDrawRoot", commands.pushRoot(draw));
+                if (direct) {
+                    engine::registerFrameRoot(
+                        "SceneDrawRoot", commands.pushRoot(SceneDrawRoot{
+                                             .pass = passAddress, .firstEntry = run.firstEntry}));
+                }
 #ifndef NDEBUG
+                // The views the material row names: the item's textures, else the fallbacks.
+                const auto* white = view.tables.whiteTexture;
+                const auto* diffuse = item.diffuse ? item.diffuse : white;
+                const auto* normal =
+                    item.normalMap ? item.normalMap : view.tables.flatNormalTexture;
+                const auto* metalRough = item.metallicRoughness ? item.metallicRoughness : white;
+                const auto* occlusion = item.occlusion ? item.occlusion : white;
+                const auto* emissive = item.emissiveMap ? item.emissiveMap : white;
                 if (run.instanceCount != 0 && item.mesh.indexCount != 0) {
                     const std::array<rojoRHI::ResourceAccess, 6> buffers{
                         {{.buffer = view.tables.vertices->rhi(),

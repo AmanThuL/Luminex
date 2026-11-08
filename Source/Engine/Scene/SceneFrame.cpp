@@ -14,17 +14,53 @@
 #include "Engine/Scene/SceneStorage.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <span>
+#include <string_view>
 #include <vector>
 
 namespace lmx::engine {
+namespace {
+// Linear white is the neutral multiplier for every material factor.
+constexpr std::array<uint8_t, 4> kWhiteTexel = {255, 255, 255, 255};
+// Encoded tangent-space (0, 0, 1); named by rows without a normal map, which never sample it.
+constexpr std::array<uint8_t, 4> kFlatNormalTexel = {128, 128, 255, 255};
+
+//======================================================================================================================
+lmx::Result<GpuTexture> createFallback(rojoRHI::Device& device, std::span<const uint8_t, 4> texel,
+                                       std::string_view label) {
+    const std::array<rojoRHI::TextureData, 1> data{
+        {{.bytes = std::as_bytes(texel), .bytesPerRow = texel.size()}}};
+    return GpuTexture::create(device,
+                              {.type = rojoRHI::TextureType::Tex2D,
+                               .format = rojoRHI::Format::RGBA8Unorm,
+                               .extent = {1, 1, 1},
+                               .usage = rojoRHI::TextureUsage::Sampled,
+                               .label = label},
+                              data);
+}
+
+//======================================================================================================================
+uint32_t viewOf(const GpuTexture* texture, const GpuTexture& fallback) {
+    return static_cast<uint32_t>((texture ? *texture : fallback).view());
+}
+} // namespace
 
 //======================================================================================================================
 lmx::Result<void> Scene::finalize(rojoRHI::Device& device) {
     auto& storage = *m_storage;
     LMX_ASSERT(storage.device == nullptr, "scene is already finalized");
+    auto white = createFallback(device, kWhiteTexel, "lmx.scene.whiteFallback");
+    if (!white) {
+        return std::unexpected(std::move(white.error()));
+    }
+    auto flatNormal = createFallback(device, kFlatNormalTexel, "lmx.scene.flatNormalFallback");
+    if (!flatNormal) {
+        return std::unexpected(std::move(flatNormal.error()));
+    }
     std::vector<engine::Vertex> vertices;
     std::vector<uint32_t> indices;
     for (size_t i = 0; i < storage.meshData.size(); ++i) {
@@ -81,6 +117,8 @@ lmx::Result<void> Scene::finalize(rojoRHI::Device& device) {
     }
     storage.vertices = std::move(*vertexBuffer);
     storage.indices = std::move(*indexBuffer);
+    storage.whiteTexture = std::move(*white);
+    storage.flatNormalTexture = std::move(*flatNormal);
     storage.meshData.clear();
     storage.meshData.shrink_to_fit();
     storage.device = &device;
@@ -216,6 +254,16 @@ lmx::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
         row.flags = (material.normalMap ? engine::kMaterialHasNormalMap : 0) |
                     (material.alphaMode == engine::AlphaMode::Mask ? engine::kMaterialMasked : 0) |
                     (material.doubleSided ? engine::kMaterialDoubleSided : 0);
+        // A replaced texture changes its view, so the row differs and every slot is rewritten; a
+        // removed texture retires kSlots frames later, after the last slot naming it.
+        const auto texture = [&](const std::optional<TextureId>& id) {
+            return id ? tryTexture(*id) : nullptr;
+        };
+        row.baseColorView = viewOf(texture(material.diffuse), storage.whiteTexture);
+        row.normalView = viewOf(texture(material.normalMap), storage.flatNormalTexture);
+        row.metalRoughView = viewOf(texture(material.metallicRoughness), storage.whiteTexture);
+        row.occlusionView = viewOf(texture(material.occlusion), storage.whiteTexture);
+        row.emissiveView = viewOf(texture(material.emissiveMap), storage.whiteTexture);
         updateRow(storage.materialTable, i, row);
     }
     for (uint32_t i = 0; i < storage.localLightIds.size(); ++i) {
@@ -300,7 +348,9 @@ engine::SceneTables Scene::tables() const {
             .lightRowCount = static_cast<uint32_t>(storage.localLightIds.size()),
             .lightCapacity = storage.lightTable.capacity,
             .lightRows = storage.lightTable.shadow,
-            .liveLightCount = storage.enabledLightCount};
+            .liveLightCount = storage.enabledLightCount,
+            .whiteTexture = &storage.whiteTexture,
+            .flatNormalTexture = &storage.flatNormalTexture};
 }
 
 } // namespace lmx::engine

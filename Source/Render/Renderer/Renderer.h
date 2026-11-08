@@ -326,12 +326,9 @@ private:
     // resized alongside the scene targets, so its slots always share their extent.
     std::unique_ptr<TemporalResolve> m_temporalResolve;
 
-    // Roots select these owned views whenever a material or environment has no texture. White
-    // preserves material factors, the flat normal preserves the tangent frame when sampled, and
-    // a black cube plus zero DFG makes both image-based terms vanish. Owners outlive submitted
-    // readers, including views selected independently by each draw.
-    engine::GpuTexture m_whiteTexture;
-    engine::GpuTexture m_flatNormalTexture;
+    // The scene root selects these owned views whenever an environment has no texture: a black
+    // cube plus zero DFG makes both image-based terms vanish. Owners outlive submitted readers.
+    // Material fallbacks belong to the scene, whose rows name them.
     engine::GpuTexture m_blackCubeTexture;
     engine::GpuTexture m_zeroDfgTexture;
     engine::GpuOwned<rojoRHI::SamplerIndex> m_linearSampler;

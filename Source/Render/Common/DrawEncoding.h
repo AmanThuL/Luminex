@@ -19,9 +19,10 @@ struct DrawEncodingInputs {
     rojoRHI::Pipeline initialPipeline{}; ///< Pipeline already selected by the pass, or null.
 };
 
-/// PerRun selects a pipeline through the cache-aware callable, pushes the concrete draw root,
-/// declares actual shader accesses, and returns the representative item. Draw roots choose either
-/// direct firstEntry or indirect drawId; both paths use zero base vertex and first instance.
+/// PerRun selects a pipeline through the cache-aware callable, pushes a direct run's draw root,
+/// declares actual shader accesses, and returns the representative item. Indirect and batched runs
+/// share the root the pass pushed once and read drawId; direct runs read their root's firstEntry.
+/// Both paths use zero base vertex and first instance.
 //======================================================================================================================
 template <class PerRun>
 void encodeDrawRuns(rojoRHI::CommandList& commands, const DrawEncodingInputs& draws,

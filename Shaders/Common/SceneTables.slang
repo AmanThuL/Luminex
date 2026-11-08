@@ -40,6 +40,15 @@ struct MaterialRow
     float occlusionStrength;
     float alphaCutoff;
     uint flags;
+    // Sampled views resolved on the CPU; a missing texture names the scene's fallback.
+    uint baseColorView;
+    uint normalView;
+    uint metalRoughView;
+    uint occlusionView;
+    uint emissiveView;
+    uint viewPadding0;
+    uint viewPadding1;
+    uint viewPadding2;
 };
 
 struct MeshRow

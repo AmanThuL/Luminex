@@ -22,7 +22,7 @@ inline lmx::Result<FixtureMesh> fixtureMesh(rojoRHI::Device&, engine::MeshData d
 }
 
 struct FixtureMaterial {
-    /// Null means the renderer's white 1x1 fallback -- so `albedo` alone applies, rather than the
+    /// Null means the scene's white 1x1 fallback -- so `albedo` alone applies, rather than the
     /// draw silently reading an unbound texture slot.
     const engine::GpuTexture* diffuse = nullptr;
     /// Null means no normal mapping: the shader's flags bit 0 stays clear and its TBN path never
@@ -83,8 +83,10 @@ struct FixtureSceneState {
 };
 
 // Each view retains its production scene until the test drains the GPU. Changes use the real
-// paced table path. Original texture probes keep ownership in the test and replace only the
-// resolved draw bindings; a scene-owned normal marker preserves the tested normal-map flag.
+// paced table path. Original texture probes keep ownership in the test and replace the resolved
+// draw bindings and, in the prepared slot, the material row's view words, which the scene would
+// otherwise resolve to its fallbacks; a scene-owned normal marker preserves the tested normal-map
+// flag.
 struct FixtureSceneView : render::SceneView {
     std::span<const FixtureDrawItem> items;
     /// Local point and spot lights authored into the fixture scene before finalize. Their count is
@@ -199,6 +201,10 @@ private:
         view.items = state->draws;
         view.skySphere = skySphere ? std::optional{*state->scene.tryMesh(*state->scene.skySphere)}
                                    : std::nullopt;
+        const auto viewOf = [](const engine::GpuTexture* texture,
+                               const engine::GpuTexture* fallback) {
+            return static_cast<uint32_t>((texture ? texture : fallback)->view());
+        };
         for (size_t i = 0; i < items.size(); ++i) {
             auto& draw = state->draws[i];
             const auto& material = items[i].material;
@@ -207,6 +213,18 @@ private:
             draw.metallicRoughness = material.metallicRoughness;
             draw.occlusion = material.occlusion;
             draw.emissiveMap = material.emissiveMap;
+            // This slot's row retired with its frame, so the mapped bytes are safe to rewrite;
+            // every frame rewrites them, because the scene's shadow row never holds these views.
+            const uint32_t materialRow = state->scene.objects[i].material.slot;
+            auto* row =
+                reinterpret_cast<engine::MaterialRow*>(view.tables.materials->cpuPointer()) +
+                materialRow;
+            const auto* white = view.tables.whiteTexture;
+            row->baseColorView = viewOf(material.diffuse, white);
+            row->normalView = viewOf(material.normalMap, view.tables.flatNormalTexture);
+            row->metalRoughView = viewOf(material.metallicRoughness, white);
+            row->occlusionView = viewOf(material.occlusion, white);
+            row->emissiveView = viewOf(material.emissiveMap, white);
         }
         return view;
     }

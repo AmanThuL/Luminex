@@ -141,7 +141,29 @@ TEST_CASE("Scene texture fallbacks preserve factors and stale texture handles fa
     const auto materialId = scene.objects[0].material;
     REQUIRE(scene.finalize(gpu->device()).has_value());
     auto renderer = tableRenderer(*gpu);
+    // The current slot's row, as the scene shaders read it.
+    const auto currentRow = [&] {
+        engine::MaterialRow row{};
+        const auto bytes =
+            lmx::render::readbackNow(*gpu, *scene.tables().materials,
+                                     render::SyncPoint{rojoRHI::Stage::None, rojoRHI::Access::None,
+                                                       rojoRHI::Layout::Undefined},
+                                     {uint64_t{materialId.slot} * sizeof(row), sizeof(row)});
+        INFO(errorOf(bytes));
+        REQUIRE(bytes.has_value());
+        std::memcpy(&row, bytes->data(), sizeof(row));
+        return row;
+    };
     auto fallback = submitOffTables(*gpu, scene, *renderer);
+    const auto whiteView = static_cast<uint32_t>(scene.tables().whiteTexture->view());
+    const auto flatNormalView = static_cast<uint32_t>(scene.tables().flatNormalTexture->view());
+    REQUIRE(whiteView != flatNormalView);
+    const engine::MaterialRow fallbackRow = currentRow();
+    CHECK(fallbackRow.baseColorView == whiteView);
+    CHECK(fallbackRow.normalView == flatNormalView);
+    CHECK(fallbackRow.metalRoughView == whiteView);
+    CHECK(fallbackRow.occlusionView == whiteView);
+    CHECK(fallbackRow.emissiveView == whiteView);
     auto& material = scene.material(materialId);
     material.diffuse = whiteId;
     material.metallicRoughness = whiteId;
@@ -150,17 +172,15 @@ TEST_CASE("Scene texture fallbacks preserve factors and stale texture handles fa
     auto explicitWhite = submitOffTables(*gpu, scene, *renderer);
     REQUIRE(tablePixels(*gpu, fallback) == tablePixels(*gpu, explicitWhite));
     requireRed(tablePixels(*gpu, fallback), -0.6f);
-    engine::MaterialRow row{};
-    {
-        const auto bytes =
-            lmx::render::readbackNow(*gpu, *scene.tables().materials,
-                                     render::SyncPoint{rojoRHI::Stage::None, rojoRHI::Access::None,
-                                                       rojoRHI::Layout::Undefined},
-                                     {0, sizeof(row)});
-        INFO(errorOf(bytes));
-        REQUIRE(bytes.has_value());
-        std::memcpy(&row, bytes->data(), sizeof(row));
-    }
+    // Retargeting the material republishes its row with the new views in the next slot.
+    const auto explicitView = static_cast<uint32_t>(scene.tryTexture(whiteId)->view());
+    REQUIRE(explicitView != whiteView);
+    const engine::MaterialRow row = currentRow();
+    CHECK(row.baseColorView == explicitView);
+    CHECK(row.normalView == flatNormalView);
+    CHECK(row.metalRoughView == explicitView);
+    CHECK(row.occlusionView == explicitView);
+    CHECK(row.emissiveView == explicitView);
     REQUIRE((row.flags & engine::kMaterialHasNormalMap) == 0);
 }
 

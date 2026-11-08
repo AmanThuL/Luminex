@@ -35,10 +35,6 @@ namespace {
 
 constexpr uint32_t kShadowMapSize = 2048;
 
-// Linear white is the neutral multiplier for every per-draw material factor.
-constexpr std::array<uint8_t, 4> kWhiteTexel = {255, 255, 255, 255};
-// Encoded tangent-space (0, 0, 1); bound to keep every declared slot valid.
-constexpr std::array<uint8_t, 4> kFlatNormalTexel = {128, 128, 255, 255};
 // Black zeroes both image-based terms when a scene carries no IBL set.
 constexpr std::array<uint8_t, 4> kBlackTexel = {0, 0, 0, 255};
 // The DFG fallback's (scale, bias), as RG16Float bits. Zero makes the specular reconstruction
@@ -146,24 +142,6 @@ lmx::Result<std::unique_ptr<Renderer>> Renderer::create(engine::GpuContext& gpu,
                                            self->m_shadowMap.initialLayout());
     }
 
-    {
-        auto texture =
-            createTexel(device, rojoRHI::Format::RGBA8Unorm, rojoRHI::TextureType::Tex2D,
-                        std::as_bytes(std::span{kWhiteTexel}), "lmx.render.whiteFallback");
-        if (!texture) {
-            return std::unexpected(texture.error());
-        }
-        self->m_whiteTexture = std::move(*texture);
-    }
-    {
-        auto texture = createTexel(device, rojoRHI::Format::RGBA8Unorm, rojoRHI::TextureType::Tex2D,
-                                   std::as_bytes(std::span{kFlatNormalTexel}),
-                                   "lmx.render.flatNormalFallback");
-        if (!texture) {
-            return std::unexpected(texture.error());
-        }
-        self->m_flatNormalTexture = std::move(*texture);
-    }
     {
         auto texture =
             createTexel(device, rojoRHI::Format::RGBA8Unorm, rojoRHI::TextureType::Cube,

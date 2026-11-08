@@ -41,24 +41,18 @@ static_assert(offsetof(ShadowPassRoot, uniforms) == 32);
 static_assert(offsetof(ShadowPassRoot, linearSampler) == 40);
 static_assert(offsetof(ShadowPassRoot, padding) == 44);
 
-/// Per-run direct or indirect row identity and the actual masked diffuse view.
+/// Draw-row identity: pushed once per pass for indirect and batched draws, which read drawId, and
+/// once per run for direct draws, which read firstEntry. Masked draws read their diffuse view from
+/// MaterialRow.
 struct alignas(16) ShadowDrawRoot {
     rojoRHI::Addr pass{};  ///< Address of this pass's ShadowPassRoot.
     uint32_t firstEntry{}; ///< Direct visible-row offset, unused for indirect draws.
-    uint32_t baseColor{};  ///< Selected diffuse sampled view for masked draws.
     uint32_t indirect{};   ///< One selects drawId, zero selects firstEntry; never add them.
-    uint32_t padding0{};   ///< Explicit zero padding.
-    uint32_t padding1{};   ///< Explicit zero padding.
-    uint32_t padding2{};   ///< Explicit zero padding.
 };
 static_assert(alignof(ShadowDrawRoot) == 16);
-static_assert(sizeof(ShadowDrawRoot) == 32);
+static_assert(sizeof(ShadowDrawRoot) == 16);
 static_assert(offsetof(ShadowDrawRoot, pass) == 0);
 static_assert(offsetof(ShadowDrawRoot, firstEntry) == 8);
-static_assert(offsetof(ShadowDrawRoot, baseColor) == 12);
-static_assert(offsetof(ShadowDrawRoot, indirect) == 16);
-static_assert(offsetof(ShadowDrawRoot, padding0) == 20);
-static_assert(offsetof(ShadowDrawRoot, padding1) == 24);
-static_assert(offsetof(ShadowDrawRoot, padding2) == 28);
+static_assert(offsetof(ShadowDrawRoot, indirect) == 12);
 
 } // namespace lmx::render

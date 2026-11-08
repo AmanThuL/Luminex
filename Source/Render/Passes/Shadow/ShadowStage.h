@@ -53,9 +53,7 @@ struct ShadowStageInputs {
     std::vector<GraphBuffer> sceneBuffers; ///< Five read-only scene pool/table imports.
     GraphTexture shadowMap;                ///< D32Float attachment version to write.
     glm::mat4 lightViewProj;               ///< World-to-light clip transform, reversed depth.
-    const engine::GpuTexture*
-        whiteTexture;                    ///< Non-null neutral diffuse fallback owned by Renderer.
-    rojoRHI::SamplerIndex linearSampler; ///< Material sampler index owned by Renderer.
+    rojoRHI::SamplerIndex linearSampler;   ///< Material sampler index owned by Renderer.
 };
 
 /// Owns shadow pipelines; Renderer keeps the stage alive through graph execution.

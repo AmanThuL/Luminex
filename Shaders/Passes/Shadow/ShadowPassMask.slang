@@ -35,6 +35,6 @@ void fragmentMain(VSOutput input)
     ShadowPassRoot pass = rojoRHI::load<ShadowPassRoot>(draw.pass, 0);
     InstanceRow instance = rojoRHI::load<InstanceRow>(pass.instances, input.instanceRow);
     MaterialRow material = rojoRHI::load<MaterialRow>(pass.materials, instance.materialRow);
-    applyAlphaMask(rojoRHI::texture2D(draw.baseColor).Sample(rojoRHI::sampler(pass.linearSampler), input.uv).a * material.albedo.a,
+    applyAlphaMask(rojoRHI::texture2D(material.baseColorView).Sample(rojoRHI::sampler(pass.linearSampler), input.uv).a * material.albedo.a,
                    material.alphaCutoff);
 }

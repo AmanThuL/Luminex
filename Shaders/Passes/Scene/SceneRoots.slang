@@ -27,15 +27,7 @@ struct SceneDrawRoot
 {
     rojoRHI::Addr pass;
     uint firstEntry;
-    uint baseColor;
-    uint normal;
-    uint metalRough;
-    uint occlusion;
-    uint emissive;
     uint indirect;
-    uint padding0;
-    uint padding1;
-    uint padding2;
 };
 
 struct SkyRoot

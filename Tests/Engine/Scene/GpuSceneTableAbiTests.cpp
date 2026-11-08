@@ -118,6 +118,14 @@ TEST_CASE("scene table structured-buffer ABI preserves every field and row strid
         material.occlusionStrength = 0.8125f + float(row);
         material.alphaCutoff = 0.4375f + float(row);
         material.flags = 0xD4567000u + row;
+        material.baseColorView = 0xE5678000u + row;
+        material.normalView = 0xE6789000u + row;
+        material.metalRoughView = 0xE789A000u + row;
+        material.occlusionView = 0xE89AB000u + row;
+        material.emissiveView = 0xE9ABC000u + row;
+        material.viewPadding0 = 0xEABCD000u + row;
+        material.viewPadding1 = 0xEBCDE000u + row;
+        material.viewPadding2 = 0xECDEF000u + row;
         meshes[row] = {.firstIndex = 17 + row,
                        .indexCount = 31 + row,
                        .firstVertex = 47 + row,
