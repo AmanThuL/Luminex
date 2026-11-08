@@ -150,9 +150,7 @@ jobs:
         run: python3 Tools/check_module_deps.py --link
 
       - name: Unit tests
-        run: |
-          xmake test Tests/unit
-          xmake test RojoRHILegacyTests/unit
+        run: xmake test Tests/unit
 
       - name: Validate scene documents
         run: python3 Tools/Scenes/validate_documents.py

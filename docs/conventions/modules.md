@@ -51,8 +51,8 @@ contract. `externals` in `Tools/module_contract.json` holds one entry per compon
 | `includeRoots` | the include roots the `"*"` allowance covers; each must be a directory inside `paths` |
 | `consumers` | unit → the headers it may include, spelled as an `#include` writes them, or `"*"` |
 
-Today there is one entry, `rhi`: paths `RojoRHI`, its nine targets (the v1 `RojoRHILegacy*`, `RojoRHIMetalCpp`
-and the current `RojoRHI`, `RojoRHIImGui`, `RojoRHITests`, `RojoRHILtoProbe`, `RojoRHIBench`), include root `RojoRHI/Include`.
+Today there is one entry, `rhi`: paths `RojoRHI`, its six targets (`RojoRHIMetalCpp`, `RojoRHI`,
+`RojoRHIImGui`, `RojoRHITests`, `RojoRHILtoProbe`, `RojoRHIBench`), include root `RojoRHI/Include`.
 
 | Consumer | May include |
 |---|---|
@@ -71,7 +71,7 @@ Rules the entry carries:
 - A resolved include inside `paths` is an external edge, charged to the unit of the file the check
   started from. A unit absent from `consumers` may not include the component at all.
 - `"*"` covers every header under `includeRoots` and nothing else, so `RojoRHI/Source`,
-  `RojoRHI/Backends/.../Source`, Legacy headers and every other component-private file stay unreachable through it. The
+  `RojoRHI/Backends/.../Source` and every other component-private file stay unreachable through it. The
   optional ImGui adapter ships a second public include root; `app-shell` names its single header
   explicitly rather than widening `includeRoots`, so the wildcard does not hand the editor's ImGui
   bridge to every consumer.
@@ -79,16 +79,15 @@ Rules the entry carries:
   that header includes inside the component, and the component's own files are not walked for unit
   ownership, reach or line budgets — they are absent from `roots`, and excluded even if a root
   reached them.
-- The component's targets are still reconciled (`RojoRHILegacy` declares `RojoRHIMetalCpp`;
-  `RojoRHILegacyMetal4ImGui` adds `RojoRHILegacy` and `ImGui`; `RojoRHILegacyTests` adds `RojoRHILegacy`;
-  `RojoRHI` declares `RojoRHIMetalCpp` on metal4 only; `RojoRHIImGui` adds `RojoRHI` and `ImGui`;
-  `RojoRHITests` adds `RojoRHI` and the adapter when declared; the other v2 targets add `RojoRHI`), and no Luminex target depends on a `RojoRHILegacy*` target, including FrameDataBench. RHI consumers link `RojoRHI`; App also links `RojoRHIImGui`.
+- The component's targets are still reconciled (`RojoRHI` declares `RojoRHIMetalCpp` on metal4
+  only; `RojoRHIImGui` adds `RojoRHI` and `ImGui`; `RojoRHITests` adds `RojoRHI` and the adapter
+  when declared; `RojoRHILtoProbe` and `RojoRHIBench` add `RojoRHI`). RHI consumers link `RojoRHI`; App also links `RojoRHIImGui`.
   No component target can link a Luminex target without failing the closure check. `Asset`'s `forbidUndefined: rojoRHI::` still runs under `--link`.
 
-`tests` takes no header from either component suite, `RojoRHI/Tests` or `RojoRHI/Legacy/Tests`.
+`tests` takes no header from the component suite, `RojoRHI/Tests`.
 Its GPU bootstrap lives in `Tests/Support/GpuTestSupport.h` alongside its Asset, Render and Engine
-helpers. Luminex `Tests` owns consumer cases; `RojoRHITests` owns current component cases, and
-retained `RojoRHILegacyTests` owns the frozen suite. Component suites link no Luminex unit.
+helpers. Luminex `Tests` owns consumer cases; `RojoRHITests` owns component cases and links no Luminex
+unit.
 
 ### Directory ownership
 Asset, Engine and AppModel own their directories and static targets.
@@ -221,8 +220,8 @@ and maintenance tasks live under `xmake/`. The RHI component keeps the same shap
 `RojoRHI/xmake.lua` carries root settings for a standalone configure, `RojoRHI/xmake/targets.lua` is the
 one file the repository root includes, and `RojoRHI/xmake/` owns the component's own shader rule and
 dependency setup. Slang entry points stay at `Shaders/Passes/<family>/`, common modules
-at `Shaders/Common/` and oracles at `Shaders/Tests/`; the RHI component owns its current smoke
-shaders at `RojoRHI/Shaders/Tests/` and frozen smoke shaders at `RojoRHI/Legacy/Shaders/Tests/`.
+at `Shaders/Common/` and oracles at `Shaders/Tests/`; the RHI component owns its conformance
+shaders at `RojoRHI/Shaders/Tests/`.
 `check_shader_imports.py` enforces each tree's import
 boundary and basename uniqueness. These paths do not change runtime shader basenames.
 

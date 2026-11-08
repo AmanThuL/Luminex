@@ -16,8 +16,8 @@ edits files inside the mount: changes land upstream first, then arrive through a
 ([ADR 0024](../decisions/0024-rhi-relocation-to-rojorhi.md)).
 
 The root includes `RojoRHI/xmake/targets.lua`, linking `RojoRHI` for the core API and
-`RojoRHIImGui` for the app-shell adapter. The component still declares its frozen Legacy targets,
-but no Luminex target links them. Asset and TextureBake have no RHI include permission or
+`RojoRHIImGui` for the app-shell adapter. The component carries the v2 interface alone; its
+tag `v0.1.0` is the last that carries v1. Asset and TextureBake have no RHI include permission or
 dependency. Hosted CI selects `--rojorhi_backend=null`; Metal 4 builds and GPU execution use the
 local device. The component's own checkers run in its repository and CI, separately from Luminex
 policy. See the [component build](../../RojoRHI/AGENTS.md) for standalone commands.
