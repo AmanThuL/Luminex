@@ -13,7 +13,7 @@ that decomposes the accepted boundary without expanding it.
 |---|---|---|
 | [Rendering Foundations](roadmap/rendering-foundations.md) | M4–M6.5 and interface gate B | Establish image formation, execution, inspection, temporal and display contracts; retain acceptance limits |
 | [GPU-Driven Hybrid Rendering](roadmap/gpu-driven-hybrid-rendering.md) | M7, M8, M10, M11 and independent research | Scale scene data, visibility and lighting, then add shadows and composition, transport, GI and residency |
-| [Codebase Refactoring](roadmap/codebase-module-boundaries.md) | R1 between M6.5 and gate B; [R2–R4](roadmap/codebase-restructuring.md) between M7 and UX2; [R5](roadmap/codebase-rojorhi-port.md) after UX6 (R5.1–R5.5 implemented) | Restructure modules and large units between rendering milestones without changing output; move the RHI to its own repository |
+| [Codebase Refactoring](roadmap/codebase-module-boundaries.md) | R1 between M6.5 and gate B; [R2–R4](roadmap/codebase-restructuring.md) between M7 and UX2; [R5](roadmap/codebase-rojorhi-port.md) after UX6 (complete) | Restructure modules and large units between rendering milestones without changing output; move the RHI to its own repository |
 | [Editor Experience](roadmap/editor-experience.md) | UX1 after gate B and before M7.1; UX2–UX6 after R4 and before N1 | Make scene inspection, controls and diagnostic data understandable and reliable for a human operator; give each control one home; make scenes saved documents; give the editor one design system with light, dark and system-following themes; let agents' work reach the operator as reviewable proposals; save lab objects in scene documents and edit transforms in the viewport |
 | [Neural and Learned Rendering](roadmap/neural-rendering.md) | N1–N4 interleaved after M7 | Evaluate learned techniques as bounded experimental features with oracles, fallbacks and hardware gates |
 | [Cluster Geometry](roadmap/cluster-geometry.md) | G1 and G2 after N1; G3 after M8 | Build, select, cull and draw a crack-free cluster hierarchy, then decide the surface path for pixel-scale triangles |
@@ -51,7 +51,7 @@ the row says otherwise.
 | 15 | [UX4.1–UX4.5](roadmap/editor-experience.md#ux4--design-system-and-themes) design system and themes | IV | Implemented and owner-accepted for integration 2026-10-01; plan closed, integrated by squash merge; image matrix and Compact cost gates failed as measured, native gate incomplete, ADR 0029 proposed; [record](milestones/ux/ux4.md), [validation and retained limits](milestones/ux/ux4-review-validation.md#owner-acceptance-and-integration) | UX3 |
 | 16 | [UX5.1–UX5.3](roadmap/editor-experience.md#ux5--agent-session) agent session | IV | Implemented; owner authorized integration 2026-10-02; plan closed, integrated by squash merge; Gallery exact comparison (Light and Dark 0/16), four of five original CLI rejection pairs, the initial standing matrix (14/15) and native GPU capture certification (0/4) failed as measured, the original five-case Off gate is incomplete, ADR 0030 proposed; [record](milestones/ux/ux5.md), [validation](milestones/ux/ux5-validation.md), [review, authorization and retained limits](milestones/ux/ux5-review-validation.md#owner-authorization-and-integration) | UX4 |
 | 17 | [UX6.1–UX6.3](roadmap/editor-experience.md#ux6--scene-authoring) scene authoring | IV | Implemented; owner authorized integration 2026-10-04 after milestone review; plan closed, integrated by squash merge; original parent parity (10/15) failed as measured, native completion incomplete, ADRs 0031–0032 proposed; [record](milestones/ux/ux6.md), [review and retained limits](milestones/ux/ux6-review-validation.md) | UX5 |
-| 18 | [R5.1–R5.7](roadmap/codebase-rojorhi-port.md#r5--luminex-runs-on-the-rojorhi-v2-interface) port to the RojoRHI v2 interface | III | R5.1–R5.5 implemented and accepted 2026-11-08; parity gate passed with one accepted image exception; [record](milestones/r/r5.md), [test ledger](milestones/r/r5-tests.md); R5.6–R5.7 remain | UX6 |
+| 18 | [R5.1–R5.7](roadmap/codebase-rojorhi-port.md#r5--luminex-runs-on-the-rojorhi-v2-interface) port to the RojoRHI v2 interface | III | R5.1–R5.5 implemented and accepted 2026-11-08; parity gate passed with one accepted image exception; [record](milestones/r/r5.md), [test ledger](milestones/r/r5-tests.md); R5.6 pinned RojoRHI `v0.2.0` 2026-11-08; R5.7 closed 2026-11-09, [record](milestones/r/r5.7.md); R5 complete | UX6 |
 | 19 | [N1.1–N1.4](roadmap/neural-rendering.md#n1--in-shader-inference-lab) in-shader inference lab | V | Inactive | R5; technically gate B |
 | 20 | [G1.1–G1.4](roadmap/cluster-geometry.md#g1--cluster-geometry) cluster geometry | VI | Inactive | M7 and N1 |
 | 21 | [G2.1–G2.2](roadmap/cluster-geometry.md#g2--scalable-visibility) scalable visibility | VI | Inactive | G1 |
@@ -91,7 +91,8 @@ authorized its integration on 2026-10-04, with failed original image parity and 
 completion retained.
 R5, the port to the RojoRHI v2 interface, was proposed on 2026-10-22 as step 18, before N1, and
 Luminex `main` took no other work until it integrated. R5.1–R5.5 passed the parity gate and were
-accepted on 2026-11-08; R5.6 and R5.7 remain.
+accepted on 2026-11-08; R5.6 pinned the RojoRHI release without v1 the same day and R5.7
+closed on 2026-11-09, completing R5.
 On 2026-10-01 the owner retired M9 after the
 [geometry direction review](research/2026-10-01-geometry-direction-review.md): its scope became
 G1–G3 in Part VI, with G1 and G2 before M8 and G3 after it. M8, M10 and M11 keep their identifiers,
