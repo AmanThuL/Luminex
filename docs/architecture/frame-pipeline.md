@@ -147,7 +147,8 @@ The CPU oracle reads uploaded rows: five jittered VP planes, 1e-3 world margin, 
 Renderer owns three paced GPU `DrawSubmission` pairs and three separate Upload staging pairs, retired on growth at last prepared frame + 3. Scene rows precede unculled shadows; `lmx.draw.rows`/`lmx.draw.args` expose graph reads.
 Scene/shadow 16-byte draw roots select direct firstEntry or indirect drawId, then add instanceIndex into addressed visible/instance/material rows; records are 24 bytes with zero native bases. Indirect and batched submission push one draw root per pass, so a run is a cached `setPipeline` plus `drawIndexedIndirect`; direct submission pushes one per run, because a vertex entry cannot read the base instance (RojoRHI ADR 0024).
 Batched stably sorts pipeline/material/mesh keys and draws one run per
-command; fragments retain a flat instance row. Sky remains separate. Counts report issued commands.
+command; fragments retain a flat instance row. Sky remains separate.
+On indirect and batched submission, a scene pipeline group (opaque, masked single-sided, masked double-sided) of at least `kCountedDrawMinRuns` (512) runs moves to the front of the scene list and is drawn by counted `drawIndexedIndirect` calls with no count, each covering at most 65,536 consecutive records (RojoRHI's Metal 4 `maxDrawIndirectCount`), split evenly. Smaller groups and every shadow run keep one lone indirect draw per run, which Metal 4 draws natively; counted draws come first because a lone draw opens the render encoder, which a later counted draw would split. Below the threshold the command stream is unchanged. Counts report runs (records), not the calls that cover them.
 
 Masked materials select `ScenePassMask`/`ScenePassAutoMask` and `ShadowPassMask` (ADR 0018).
 Shared `AlphaMask` discards texture alpha × factor alpha below cutoff, using the same UV transform;
