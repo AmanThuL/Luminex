@@ -5,6 +5,7 @@
 #pragma once
 #include "Core/Diagnostics/Result.h"
 #include "Engine/Gpu/GpuBuffer.h"
+#include "Engine/Scene/DrawItem.h"
 #include "Render/Graph/ResourceUse.h"
 #include "Render/Passes/Visibility/Visibility.h"
 #include <array>
@@ -23,11 +24,24 @@ struct DrawRun {
     uint32_t instanceCount = 0; ///< Number of consecutive row indices consumed.
     uint32_t argumentIndex = 0; ///< Absolute argument index, independent of firstEntry.
 };
+/// Fewest runs of one scene pipeline group drawn as a counted multi-draw. Below it a group keeps
+/// one lone indirect draw per run, which Metal 4 draws natively; above it the backend's encode
+/// kernel and indirect command buffer cost less than the native draws they replace (R5.7 item C).
+inline constexpr uint32_t kCountedDrawMinRuns = 512;
+/// Most records in one counted multi-draw: RojoRHI's Metal 4 maxDrawIndirectCount.
+inline constexpr uint32_t kCountedDrawMaxRecords = 65'536;
+/// The scene pass's pipeline group of an item: 0 opaque (one pipeline whatever the sidedness),
+/// 1 masked single-sided, 2 masked double-sided, as the scene stage selects its pipelines; the
+/// encoder asserts that a counted draw's runs bind one pipeline.
+uint32_t sceneDrawGroup(const engine::DrawItem& item);
 /// Per-view command list borrowing the Renderer-owned current slot.
 struct DrawList {
     std::vector<DrawRun> runs; ///< CPU command order, one run per direct/indirect entry.
-    uint32_t firstEntry = 0;   ///< First row in the view's contiguous range.
-    uint32_t entryCount = 0;   ///< Number of submitted instances.
+    /// Leading runs drawn as counted multi-draws, as run counts in order: each covers consecutive
+    /// runs of one pipeline group with consecutive arguments. Runs after them draw one by one.
+    std::vector<uint32_t> countedDraws;
+    uint32_t firstEntry = 0;                        ///< First row in the view's contiguous range.
+    uint32_t entryCount = 0;                        ///< Number of submitted instances.
     const engine::GpuBuffer* rows = nullptr;        ///< Current paced visible-row allocation.
     const engine::GpuBuffer* arguments = nullptr;   ///< Current paced indirect argument allocation.
     SubmissionMode mode = SubmissionMode::Indirect; ///< Command encoder choice.
@@ -39,7 +53,10 @@ struct PreparedSubmission {
     DrawList scene;                                          ///< Scene commands.
     DrawList shadow;                                         ///< Shadow commands.
 };
-/// Builds rows and arguments deterministically without touching a GPU.
+/// Builds rows and arguments deterministically without touching a GPU. On indirect and batched
+/// submission, when a scene pipeline group holds at least kCountedDrawMinRuns runs, those groups'
+/// runs come first, in group order, and become counted draws of at most kCountedDrawMaxRecords
+/// runs, split evenly; the other runs follow in their original order. Shadow runs never move.
 PreparedSubmission buildDrawSubmission(const SceneView& view, const VisibilityResult& scene,
                                        const VisibilityResult& shadow, SubmissionMode mode);
 /// Owns three paced destination/staging pairs and retains replaced owners through retirement.

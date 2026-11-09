@@ -10,8 +10,50 @@
 #include <format>
 #include <limits>
 #include <tuple>
+#include <utility>
 
 namespace lmx::render {
+
+//======================================================================================================================
+uint32_t sceneDrawGroup(const engine::DrawItem& item) {
+    return item.alphaMode == engine::AlphaMode::Mask ? (item.doubleSided ? 2u : 1u) : 0u;
+}
+
+namespace {
+//======================================================================================================================
+// Moves the runs of every scene pipeline group with at least kCountedDrawMinRuns runs to the front,
+// in group order, and returns their counted draws: each group split evenly into the fewest draws
+// of at most kCountedDrawMaxRecords runs, so no tail falls below a group's share. Counted draws
+// precede every lone draw because a lone draw opens Metal 4's render encoder, which a later
+// counted draw would split. With no such group the order, and so the command stream, is unchanged.
+std::vector<uint32_t> orderCountedGroups(const SceneView& view,
+                                         const std::vector<uint32_t>& indices,
+                                         std::vector<std::pair<uint32_t, uint32_t>>& ranges) {
+    const auto group = [&](const std::pair<uint32_t, uint32_t>& range) {
+        return sceneDrawGroup(view.items[indices[range.first]]);
+    };
+    std::array<uint32_t, 3> sizes{};
+    for (const auto& range : ranges)
+        ++sizes[group(range)];
+    std::vector<uint32_t> draws;
+    if (std::ranges::none_of(sizes, [](uint32_t size) { return size >= kCountedDrawMinRuns; }))
+        return draws;
+    const auto rank = [&](const std::pair<uint32_t, uint32_t>& range) {
+        const uint32_t g = group(range);
+        return sizes[g] >= kCountedDrawMinRuns ? g : 3u;
+    };
+    std::stable_sort(ranges.begin(), ranges.end(),
+                     [&](const auto& a, const auto& b) { return rank(a) < rank(b); });
+    for (const uint32_t size : sizes) {
+        if (size < kCountedDrawMinRuns)
+            continue;
+        const uint32_t parts = (size + kCountedDrawMaxRecords - 1) / kCountedDrawMaxRecords;
+        for (uint32_t part = 0; part < parts; ++part)
+            draws.push_back(size / parts + (part < size % parts ? 1u : 0u));
+    }
+    return draws;
+}
+} // namespace
 
 //======================================================================================================================
 PreparedSubmission buildDrawSubmission(const SceneView& view, const VisibilityResult& scene,
@@ -22,7 +64,7 @@ PreparedSubmission buildDrawSubmission(const SceneView& view, const VisibilityRe
         const auto& row = view.tables.instanceRows[item.instanceRow];
         return std::tuple{item.alphaMode, item.doubleSided, row.materialRow, row.meshRow};
     };
-    auto append = [&](const VisibilityResult& visibility, DrawList& list) {
+    auto append = [&](const VisibilityResult& visibility, DrawList& list, bool counted) {
         list.mode = mode;
         list.firstEntry = static_cast<uint32_t>(result.rows.size());
         list.entryCount = static_cast<uint32_t>(visibility.visibleItems.size());
@@ -30,12 +72,20 @@ PreparedSubmission buildDrawSubmission(const SceneView& view, const VisibilityRe
         if (mode == SubmissionMode::Batched)
             std::stable_sort(indices.begin(), indices.end(),
                              [&](auto a, auto b) { return key(a) < key(b); });
+        // Each run is a range of indices; batched runs share the key, which includes the group.
+        std::vector<std::pair<uint32_t, uint32_t>> ranges;
         for (uint32_t cursor = 0; cursor < indices.size();) {
-            const uint32_t itemIndex = indices[cursor];
             uint32_t end = cursor + 1;
             if (mode == SubmissionMode::Batched)
-                while (end < indices.size() && key(indices[end]) == key(itemIndex))
+                while (end < indices.size() && key(indices[end]) == key(indices[cursor]))
                     ++end;
+            ranges.push_back({cursor, end});
+            cursor = end;
+        }
+        if (counted && mode != SubmissionMode::Direct)
+            list.countedDraws = orderCountedGroups(view, indices, ranges);
+        for (const auto [cursor, end] : ranges) {
+            const uint32_t itemIndex = indices[cursor];
             const uint32_t firstEntry = static_cast<uint32_t>(result.rows.size());
             for (uint32_t i = cursor; i < end; ++i)
                 result.rows.push_back(view.items[indices[i]].instanceRow);
@@ -48,11 +98,12 @@ PreparedSubmission buildDrawSubmission(const SceneView& view, const VisibilityRe
                                         .firstIndex = mesh.firstIndex,
                                         .baseVertex = 0,
                                         .firstInstance = 0});
-            cursor = end;
         }
     };
-    append(scene, result.scene);
-    append(shadow, result.shadow);
+    // Shadow draws stay lone: their depth-only native draws cost the GPU less than a counted
+    // draw's kernel and indirect commands at every measured size but the largest (R5.7 item C).
+    append(scene, result.scene, true);
+    append(shadow, result.shadow, false);
     return result;
 }
 

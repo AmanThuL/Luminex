@@ -48,8 +48,11 @@ unit allowed to reach `Engine/Scene/Scene.h` itself, beyond the `Engine/View/`, 
 `Source/Render/Common/` shares dispatch, graph-resource lookup, setup and frame-data helpers.
 `DrawEncoding.h::encodeDrawRuns` records direct or indirect indexed Scene runs using value Pipeline
 handles. Shadow retains its measured explicit run loop. Indirect and batched passes push one draw
-root before their runs; a direct run's callback pushes its own, carrying `firstEntry`. Material
-views come from the material row, so no root carries them. Each callback declares actual resource
+root before their runs; a direct run's callback pushes its own, carrying `firstEntry`. A scene
+list's leading counted draws (see [frame pipeline](frame-pipeline.md)) each run the callback for
+every run they cover, so one pipeline is bound and all their accesses are declared, then issue one
+`drawIndexedIndirect` over the runs' consecutive records with no count; shadow runs always draw
+one by one. Material views come from the material row, so no root carries them. Each callback declares actual resource
 reads, the fallbacks the row names included, immediately before its draw in Debug. Graph declarations alone
 are not shader observations; nested frame-arena payloads and opaque adapter draws remain outside
 public handle-based access observation.
