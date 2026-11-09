@@ -27,7 +27,10 @@ and paired costs not slower beyond noise.
 
 **State:** R5.1–R5.5 are implemented, and R5.5 passed the parity gate and was accepted on
 2026-11-08 with one recorded image exception ([record](../milestones/r/r5.md),
-[test ledger](../milestones/r/r5-tests.md)). R5.6 and R5.7 remain.
+[test ledger](../milestones/r/r5-tests.md)). R5.6 pinned RojoRHI `v0.2.0`, which deletes v1, on
+2026-11-08 with parity 15/15 byte-identical. R5.7 closed on 2026-11-09: bindless material rows and
+counted draws for large scene pipeline groups kept, fragment-only raster reads parked, static pass
+roots dropped ([record](../milestones/r/r5.7.md)). R5 is complete.
 
 **Defer:** Luminex on D3D12; new rendering features; scene-pass deduplication, which
 [ADR 0027](../decisions/0027-scene-pass-deduplication-defer.md) owns; mesh shaders; async compute
