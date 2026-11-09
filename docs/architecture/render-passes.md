@@ -37,7 +37,7 @@ materials), a sixth `lmx.scene.lights` import that exists only when a light is l
 consumes it. `render::buildSceneView` (`Renderer/SceneViewBuilder.h`) produces it from a scene,
 describing mesh ranges and textures and borrowing the CPU rows plus the five geometry/material GPU
 buffers and the live-only lights. Engine's `SceneTables.h`, mirrored by its Slang module, defines the
-240-byte instance, 112-byte material, 48-byte mesh and 64-byte local-light rows, including bounds;
+240-byte instance, 144-byte material, 48-byte mesh and 64-byte local-light rows, including bounds;
 instances and meshes carry both world and local AABBs. `SceneViewBuilder.cpp` is the one translation
 unit allowed to reach `Engine/Scene/Scene.h` itself, beyond the `Engine/View/`, `Engine/Lights/`,
 `Engine/Geometry/` and `Engine/Material/` vocabulary and the `SceneTables.h`/`DrawItem.h`/
@@ -47,8 +47,10 @@ unit allowed to reach `Engine/Scene/Scene.h` itself, beyond the `Engine/View/`, 
 
 `Source/Render/Common/` shares dispatch, graph-resource lookup, setup and frame-data helpers.
 `DrawEncoding.h::encodeDrawRuns` records direct or indirect indexed Scene runs using value Pipeline
-handles. Shadow retains its measured explicit run loop. Each callback pushes its concrete root
-and declares actual resource reads immediately before its draw in Debug. Graph declarations alone
+handles. Shadow retains its measured explicit run loop. Indirect and batched passes push one draw
+root before their runs; a direct run's callback pushes its own, carrying `firstEntry`. Material
+views come from the material row, so no root carries them. Each callback declares actual resource
+reads, the fallbacks the row names included, immediately before its draw in Debug. Graph declarations alone
 are not shader observations; nested frame-arena payloads and opaque adapter draws remain outside
 public handle-based access observation.
 
@@ -108,8 +110,9 @@ back-face shading normals, with cutoff and sidedness taken from the shared mater
 
 Scene has 28 pipeline states (8 opaque, 4 sky, 16 masked) and Shadow has 3. Geometry uses reversed
 Greater depth with writes; sky uses GreaterOrEqual without writes/culling. Shadow enables depth
-bias and sets constant−4/slope−32/clamp0 before draws. Flat aligned16 roots are ScenePass112,
-SceneDraw48, Sky32, ShadowPass48 and ShadowDraw32; bound roots use pushRoot's GPU256 alignment,
+bias and sets constant−4/slope−32/clamp0 once, after its first pipeline bind; the values persist
+across `setPipeline` to the end of the pass. Flat aligned16 roots are ScenePass112, SceneDraw16,
+Sky32, ShadowPass48 and ShadowDraw16; bound roots use pushRoot's GPU256 alignment,
 while pointed pass roots use natural16. The 48-byte scalar VertexStorage matches all twelve
 Engine Vertex fields. Real App/Test assertion TUs consume three-target reflection.
 

@@ -55,13 +55,11 @@ struct SceneStageInputs {
     std::array<float, 4> clearColor; ///< Authored sRGB color; alpha is passed through.
     float timeSeconds;               ///< Frame clock uploaded to PassUniforms.time.
     bool temporalEnabled;            ///< Selects motion pipelines and extra attachments.
-    const engine::GpuTexture* whiteTexture;      ///< Neutral material-factor fallback.
-    const engine::GpuTexture* flatNormalTexture; ///< Tangent-space positive-Z normal fallback.
-    const engine::GpuTexture* blackCubeTexture;  ///< Zero-radiance environment fallback.
-    const engine::GpuTexture* zeroDfgTexture;    ///< Zero split-sum reconstruction fallback.
-    rojoRHI::SamplerIndex linearSampler;         ///< Material sampler.
-    rojoRHI::SamplerIndex shadowSampler;         ///< Reversed-depth comparison sampler.
-    rojoRHI::SamplerIndex iblSampler;            ///< Clamped environment sampler.
+    const engine::GpuTexture* blackCubeTexture; ///< Zero-radiance environment fallback.
+    const engine::GpuTexture* zeroDfgTexture;   ///< Zero split-sum reconstruction fallback.
+    rojoRHI::SamplerIndex linearSampler;        ///< Material sampler.
+    rojoRHI::SamplerIndex shadowSampler;        ///< Reversed-depth comparison sampler.
+    rojoRHI::SamplerIndex iblSampler;           ///< Clamped environment sampler.
 };
 
 /// Owns scene and sky pipeline variants; Renderer keeps it alive through graph execution.

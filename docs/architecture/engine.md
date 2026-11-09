@@ -32,8 +32,9 @@ The rest of `Source/Engine/` is the static library `Engine`, namespace `lmx::eng
 `Lights/` holds `LocalLightMath`, `LocalLight.h` and `DirectionalLight.h`; `Geometry/` holds the
 CPU geometry vocabulary, `Vertex` and `MeshData`; `Material/` holds `AlphaMode.h` and
 `MaterialRecord.h`, whose record holds a material's factors and optional `TextureId`s (a null
-handle selects the renderer's fallback); the scene view resolves per-draw texture pointers from
-those handles. `Scene/` holds `DrawItem.h`, `MotionClass.h`, the shared `SceneTables.h` row ABI, and
+handle selects the scene's white or flat-normal fallback, which `finalize` creates); the material
+row carries the resolved views, and the scene view resolves per-draw texture pointers from the same
+handles for Debug access declarations. `Scene/` holds `DrawItem.h`, `MotionClass.h`, the shared `SceneTables.h` row ABI, and
 the scene itself. Render consumes this vocabulary directly, plus the `SceneTables.h`, `DrawItem.h`
 and `MotionClass.h` headers `Scene/` exports, but its reach into the scene type itself
 (`Engine/Scene/Scene.h`) stays confined to one translation unit, the `SceneView` builder; see

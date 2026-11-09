@@ -11,7 +11,7 @@ void computeMain(uint3 tid : SV_DispatchThreadID)
     MaterialRow material = rojoRHI::load<MaterialRow>(root.materials, tid.x);
     MeshRow mesh = rojoRHI::load<MeshRow>(root.meshes, tid.x);
     LightRow light = rojoRHI::load<LightRow>(root.lights, tid.x);
-    uint base = tid.x * 116;
+    uint base = tid.x * 124;
     for (uint column = 0; column < 4; ++column)
     {
         for (uint row = 0; row < 4; ++row)
@@ -30,13 +30,13 @@ void computeMain(uint3 tid : SV_DispatchThreadID)
     for (uint component = 0; component < 3; ++component) {
         rojoRHI::store<uint>(root.output, base + 52 + component, asuint(instance.worldBoundsMin[component]));
         rojoRHI::store<uint>(root.output, base + 56 + component, asuint(instance.worldBoundsMax[component]));
-        rojoRHI::store<uint>(root.output, base + 92 + component, asuint(mesh.boundsMin[component]));
-        rojoRHI::store<uint>(root.output, base + 96 + component, asuint(mesh.boundsMax[component]));
+        rojoRHI::store<uint>(root.output, base + 100 + component, asuint(mesh.boundsMin[component]));
+        rojoRHI::store<uint>(root.output, base + 104 + component, asuint(mesh.boundsMax[component]));
     }
     rojoRHI::store<uint>(root.output, base + 55, instance.boundsPadding0);
     rojoRHI::store<uint>(root.output, base + 59, instance.boundsPadding1);
-    rojoRHI::store<uint>(root.output, base + 95, mesh.boundsPadding0);
-    rojoRHI::store<uint>(root.output, base + 99, mesh.boundsPadding1);
+    rojoRHI::store<uint>(root.output, base + 103, mesh.boundsPadding0);
+    rojoRHI::store<uint>(root.output, base + 107, mesh.boundsPadding1);
     for (uint component = 0; component < 4; ++component)
         rojoRHI::store<uint>(root.output, base + 76 + component, asuint(material.albedo[component]));
     for (uint component = 0; component < 3; ++component)
@@ -46,19 +46,27 @@ void computeMain(uint3 tid : SV_DispatchThreadID)
     rojoRHI::store<uint>(root.output, base + 85, asuint(material.occlusionStrength));
     rojoRHI::store<uint>(root.output, base + 86, asuint(material.alphaCutoff));
     rojoRHI::store<uint>(root.output, base + 87, material.flags);
-    rojoRHI::store<uint>(root.output, base + 88, mesh.firstIndex);
-    rojoRHI::store<uint>(root.output, base + 89, mesh.indexCount);
-    rojoRHI::store<uint>(root.output, base + 90, mesh.firstVertex);
-    rojoRHI::store<uint>(root.output, base + 91, mesh.vertexCount);
+    rojoRHI::store<uint>(root.output, base + 88, material.baseColorView);
+    rojoRHI::store<uint>(root.output, base + 89, material.normalView);
+    rojoRHI::store<uint>(root.output, base + 90, material.metalRoughView);
+    rojoRHI::store<uint>(root.output, base + 91, material.occlusionView);
+    rojoRHI::store<uint>(root.output, base + 92, material.emissiveView);
+    rojoRHI::store<uint>(root.output, base + 93, material.viewPadding0);
+    rojoRHI::store<uint>(root.output, base + 94, material.viewPadding1);
+    rojoRHI::store<uint>(root.output, base + 95, material.viewPadding2);
+    rojoRHI::store<uint>(root.output, base + 96, mesh.firstIndex);
+    rojoRHI::store<uint>(root.output, base + 97, mesh.indexCount);
+    rojoRHI::store<uint>(root.output, base + 98, mesh.firstVertex);
+    rojoRHI::store<uint>(root.output, base + 99, mesh.vertexCount);
     for (uint component = 0; component < 3; ++component)
     {
-        rojoRHI::store<uint>(root.output, base + 100 + component, asuint(light.position[component]));
-        rojoRHI::store<uint>(root.output, base + 104 + component, asuint(light.strength[component]));
-        rojoRHI::store<uint>(root.output, base + 108 + component, asuint(light.direction[component]));
-        rojoRHI::store<uint>(root.output, base + 112 + component, asuint(light.boundCentre[component]));
+        rojoRHI::store<uint>(root.output, base + 108 + component, asuint(light.position[component]));
+        rojoRHI::store<uint>(root.output, base + 112 + component, asuint(light.strength[component]));
+        rojoRHI::store<uint>(root.output, base + 116 + component, asuint(light.direction[component]));
+        rojoRHI::store<uint>(root.output, base + 120 + component, asuint(light.boundCentre[component]));
     }
-    rojoRHI::store<uint>(root.output, base + 103, asuint(light.range));
-    rojoRHI::store<uint>(root.output, base + 107, asuint(light.spotScale));
-    rojoRHI::store<uint>(root.output, base + 111, asuint(light.spotOffset));
-    rojoRHI::store<uint>(root.output, base + 115, asuint(light.boundRadius));
+    rojoRHI::store<uint>(root.output, base + 111, asuint(light.range));
+    rojoRHI::store<uint>(root.output, base + 115, asuint(light.spotScale));
+    rojoRHI::store<uint>(root.output, base + 119, asuint(light.spotOffset));
+    rojoRHI::store<uint>(root.output, base + 123, asuint(light.boundRadius));
 }

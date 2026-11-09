@@ -72,6 +72,11 @@ struct Scene::Storage {
     /// bound across repeated runtime add/remove cycles.
     std::vector<LightId> lightCreationOrder;
     std::vector<GpuTexture> textures;
+    /// The views a material row names for a missing texture: white for the base-color,
+    /// metallic/roughness, occlusion and emissive maps, flat +Z for the normal map. Created by
+    /// `finalize`, immutable, and alive as long as any row slot may name them.
+    GpuTexture whiteTexture;
+    GpuTexture flatNormalTexture;
     GpuBuffer vertices;
     GpuBuffer indices;
     PacedTable<engine::InstanceRow> instanceTable;

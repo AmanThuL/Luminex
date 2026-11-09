@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Engine/Gpu/GpuBuffer.h"
+#include "Engine/Gpu/GpuTexture.h"
 
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
@@ -77,7 +78,9 @@ static_assert(offsetof(InstanceRow, boundsPadding0) == 220);
 static_assert(offsetof(InstanceRow, worldBoundsMax) == 224);
 static_assert(offsetof(InstanceRow, boundsPadding1) == 236);
 
-/// Stable material slot contents; factors are scene-linear and textures remain per draw.
+/// Stable material slot contents; factors are scene-linear. The five view indices are resolved on
+/// the CPU, a missing texture to the scene's white or flat-normal fallback, so shaders never branch
+/// on them.
 struct alignas(16) MaterialRow {
     glm::mat4 uvTransform{1.0f};    ///< UV transform applied before material sampling.
     glm::vec4 albedo{1.0f};         ///< Scene-linear base color and linear alpha.
@@ -87,8 +90,16 @@ struct alignas(16) MaterialRow {
     float occlusionStrength = 1.0f; ///< Occlusion-map interpolation strength.
     float alphaCutoff = 0.5f;       ///< Nonnegative alpha-test threshold.
     uint32_t flags = 0;             ///< Normal-map, masked and double-sided flags.
+    uint32_t baseColorView = 0;     ///< Base-color sampled view, or the white fallback's.
+    uint32_t normalView = 0;        ///< Normal-map sampled view, or the flat-normal fallback's.
+    uint32_t metalRoughView = 0;    ///< Metallic/roughness sampled view, or the white fallback's.
+    uint32_t occlusionView = 0;     ///< Occlusion sampled view, or the white fallback's.
+    uint32_t emissiveView = 0;      ///< Emissive sampled view, or the white fallback's.
+    uint32_t viewPadding0 = 0;      ///< Explicit ABI padding.
+    uint32_t viewPadding1 = 0;      ///< Explicit ABI padding.
+    uint32_t viewPadding2 = 0;      ///< Explicit ABI padding.
 };
-static_assert(sizeof(MaterialRow) == 112);
+static_assert(sizeof(MaterialRow) == 144);
 static_assert(offsetof(MaterialRow, uvTransform) == 0);
 static_assert(offsetof(MaterialRow, albedo) == 64);
 static_assert(offsetof(MaterialRow, emissive) == 80);
@@ -97,6 +108,14 @@ static_assert(offsetof(MaterialRow, metallic) == 96);
 static_assert(offsetof(MaterialRow, occlusionStrength) == 100);
 static_assert(offsetof(MaterialRow, alphaCutoff) == 104);
 static_assert(offsetof(MaterialRow, flags) == 108);
+static_assert(offsetof(MaterialRow, baseColorView) == 112);
+static_assert(offsetof(MaterialRow, normalView) == 116);
+static_assert(offsetof(MaterialRow, metalRoughView) == 120);
+static_assert(offsetof(MaterialRow, occlusionView) == 124);
+static_assert(offsetof(MaterialRow, emissiveView) == 128);
+static_assert(offsetof(MaterialRow, viewPadding0) == 132);
+static_assert(offsetof(MaterialRow, viewPadding1) == 136);
+static_assert(offsetof(MaterialRow, viewPadding2) == 140);
 
 /// Indexed range in the scene geometry pool; indices are rebased and base vertex is zero.
 struct alignas(16) MeshRow {
@@ -170,6 +189,8 @@ struct SceneTables {
     uint32_t lightCapacity = 0;          ///< Allocated light slots; zero until one exists.
     std::span<const LightRow> lightRows; ///< CPU rows exactly matching the prepared GPU slot.
     uint32_t liveLightCount = 0; ///< Enabled local lights this frame; zero disables local passes.
+    const GpuTexture* whiteTexture = nullptr;      ///< Fallback the material rows' views name.
+    const GpuTexture* flatNormalTexture = nullptr; ///< Normal fallback the material rows name.
 };
 
 } // namespace lmx::engine

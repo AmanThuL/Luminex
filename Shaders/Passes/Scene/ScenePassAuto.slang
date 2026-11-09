@@ -1,4 +1,4 @@
-// Scene-linear shading with address-first scene and per-run material roots.
+// Scene-linear shading with address-first scene roots and bindless material rows.
 import RojoRHI;
 import SceneRoots;
 import VertexStorage;
@@ -94,11 +94,11 @@ SurfaceShading shadeSurfaceDetailed(VSOutput input)
     InstanceRow instance = rojoRHI::load<InstanceRow>(pass.instances, input.instanceRow);
     MaterialRow material = rojoRHI::load<MaterialRow>(pass.materials, instance.materialRow);
     // sRGB sampling decodes base colour before lighting.
-    float4 baseColorSample = rojoRHI::texture2D(draw.baseColor).Sample(rojoRHI::sampler(pass.linearSampler), input.uv) * material.albedo;
+    float4 baseColorSample = rojoRHI::texture2D(material.baseColorView).Sample(rojoRHI::sampler(pass.linearSampler), input.uv) * material.albedo;
     float3 baseColor = baseColorSample.rgb;
 
     // glTF 2.0 packing: roughness in G, metallic in B, each scaling its own factor.
-    float3 metallicRoughness = rojoRHI::texture2D(draw.metalRough).Sample(rojoRHI::sampler(pass.linearSampler), input.uv).rgb;
+    float3 metallicRoughness = rojoRHI::texture2D(material.metalRoughView).Sample(rojoRHI::sampler(pass.linearSampler), input.uv).rgb;
     // Clamped once, here, so the direct lobe, the prefiltered mip, and the DFG lookup all speak of
     // the same roughness -- the split-sum contract only holds if they agree.
     float perceptualRoughness =
@@ -107,13 +107,13 @@ SurfaceShading shadeSurfaceDetailed(VSOutput input)
     float alpha = AlphaFromRoughness(perceptualRoughness);
     // glTF strength interpolates between no occlusion and the authored map; multiplying by the
     // strength directly would incorrectly black out the environment when strength is zero.
-    float occlusion = lerp(1.0f, rojoRHI::texture2D(draw.occlusion).Sample(rojoRHI::sampler(pass.linearSampler), input.uv).r,
+    float occlusion = lerp(1.0f, rojoRHI::texture2D(material.occlusionView).Sample(rojoRHI::sampler(pass.linearSampler), input.uv).r,
                            saturate(material.occlusionStrength));
 
     float3 normalW = normalize(input.normalW);
     if ((material.flags & kMaterialHasNormalMap) != 0u)
     {
-        normalW = applyNormalMap(rojoRHI::texture2D(draw.normal).Sample(rojoRHI::sampler(pass.linearSampler), input.uv).rgb, normalW,
+        normalW = applyNormalMap(rojoRHI::texture2D(material.normalView).Sample(rojoRHI::sampler(pass.linearSampler), input.uv).rgb, normalW,
                                  input.tangentW);
     }
 
@@ -157,7 +157,7 @@ SurfaceShading shadeSurfaceDetailed(VSOutput input)
     // Emissive is radiance the surface produces rather than reflects, so it takes no lighting term
     // and is added last; pre-exposure then applies to the whole sum exactly once.
     float3 emissiveTerm =
-        (material.emissive * instance.emissiveScale) * rojoRHI::texture2D(draw.emissive).Sample(rojoRHI::sampler(pass.linearSampler), input.uv).rgb;
+        (material.emissive * instance.emissiveScale) * rojoRHI::texture2D(material.emissiveView).Sample(rojoRHI::sampler(pass.linearSampler), input.uv).rgb;
     litColor += emissiveTerm;
 
     // Pre-exposed, still linear: the display transform is the only thing that leaves this space.

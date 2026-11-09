@@ -50,6 +50,8 @@ one. Three paced `Memory::Upload` buffers per scene-table kind receive CPU write
 `cpuPointer()` only after their slot retires. Mapping performs no synchronization. Persistent
 shader data is addressed through `Addr`; transient constants use `uploadFrameData` and
 `pushRoot`, with module-owned bindings and view/sampler indices described in [shaders](shaders.md).
+Material texture views are bindless indices in the scene's material rows, so scene and shadow draws
+push one root per pass on indirect and batched submission and one per run on direct submission.
 
 Readback uses `Render/Gpu/Readback`: recorded tickets preserve causal failures, `resolve` returns
 `Result<void>`, and `readbackNow` returns checked bytes. Textures supply exact current table/range

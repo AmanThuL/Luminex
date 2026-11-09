@@ -20,9 +20,5 @@ struct ShadowDrawRoot
 {
     rojoRHI::Addr pass;
     uint firstEntry;
-    uint baseColor;
     uint indirect;
-    uint padding0;
-    uint padding1;
-    uint padding2;
 };

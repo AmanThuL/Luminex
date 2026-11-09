@@ -16,7 +16,7 @@ namespace lmx::engine {
 
 /// Scene-linear material factors with optional scene-owned texture identities.
 struct MaterialRecord {
-    std::optional<TextureId> diffuse;           ///< Null selects the renderer's white fallback.
+    std::optional<TextureId> diffuse;           ///< Null selects the scene's white fallback.
     std::optional<TextureId> normalMap;         ///< Null disables normal mapping.
     std::optional<TextureId> metallicRoughness; ///< G roughness and B metallic; null is white.
     std::optional<TextureId> occlusion;         ///< Red-channel occlusion; null is white.

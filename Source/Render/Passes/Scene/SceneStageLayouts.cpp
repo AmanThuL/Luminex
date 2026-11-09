@@ -59,7 +59,15 @@ void SceneStage::registerSceneTableLayoutsForCapture() {
              {"metallic", offsetof(engine::MaterialRow, metallic), "float"},
              {"occlusionStrength", offsetof(engine::MaterialRow, occlusionStrength), "float"},
              {"alphaCutoff", offsetof(engine::MaterialRow, alphaCutoff), "float"},
-             {"flags", offsetof(engine::MaterialRow, flags), "uint"}}});
+             {"flags", offsetof(engine::MaterialRow, flags), "uint"},
+             {"baseColorView", offsetof(engine::MaterialRow, baseColorView), "uint"},
+             {"normalView", offsetof(engine::MaterialRow, normalView), "uint"},
+             {"metalRoughView", offsetof(engine::MaterialRow, metalRoughView), "uint"},
+             {"occlusionView", offsetof(engine::MaterialRow, occlusionView), "uint"},
+             {"emissiveView", offsetof(engine::MaterialRow, emissiveView), "uint"},
+             {"viewPadding0", offsetof(engine::MaterialRow, viewPadding0), "uint"},
+             {"viewPadding1", offsetof(engine::MaterialRow, viewPadding1), "uint"},
+             {"viewPadding2", offsetof(engine::MaterialRow, viewPadding2), "uint"}}});
     engine::registerUniformStruct(
         {.name = "MeshRow",
          .sizeBytes = sizeof(engine::MeshRow),
@@ -124,15 +132,7 @@ void SceneStage::registerPassLayoutsForCapture() {
                                    sizeof(SceneDrawRoot),
                                    {{"pass", offsetof(SceneDrawRoot, pass), "Addr"},
                                     {"firstEntry", offsetof(SceneDrawRoot, firstEntry), "uint"},
-                                    {"baseColor", offsetof(SceneDrawRoot, baseColor), "uint"},
-                                    {"normal", offsetof(SceneDrawRoot, normal), "uint"},
-                                    {"metalRough", offsetof(SceneDrawRoot, metalRough), "uint"},
-                                    {"occlusion", offsetof(SceneDrawRoot, occlusion), "uint"},
-                                    {"emissive", offsetof(SceneDrawRoot, emissive), "uint"},
-                                    {"indirect", offsetof(SceneDrawRoot, indirect), "uint"},
-                                    {"padding0", offsetof(SceneDrawRoot, padding0), "uint"},
-                                    {"padding1", offsetof(SceneDrawRoot, padding1), "uint"},
-                                    {"padding2", offsetof(SceneDrawRoot, padding2), "uint"}}});
+                                    {"indirect", offsetof(SceneDrawRoot, indirect), "uint"}}});
     engine::registerUniformStruct({"SkyRoot",
                                    sizeof(SkyRoot),
                                    {{"vertices", offsetof(SkyRoot, vertices), "Addr"},

@@ -41,11 +41,7 @@ void ShadowStage::registerUniformLayoutsForCapture() {
                                    sizeof(ShadowDrawRoot),
                                    {{"pass", offsetof(ShadowDrawRoot, pass), "Addr"},
                                     {"firstEntry", offsetof(ShadowDrawRoot, firstEntry), "uint"},
-                                    {"baseColor", offsetof(ShadowDrawRoot, baseColor), "uint"},
-                                    {"indirect", offsetof(ShadowDrawRoot, indirect), "uint"},
-                                    {"padding0", offsetof(ShadowDrawRoot, padding0), "uint"},
-                                    {"padding1", offsetof(ShadowDrawRoot, padding1), "uint"},
-                                    {"padding2", offsetof(ShadowDrawRoot, padding2), "uint"}}});
+                                    {"indirect", offsetof(ShadowDrawRoot, indirect), "uint"}}});
 }
 
 //======================================================================================================================
@@ -161,6 +157,14 @@ GraphTexture ShadowStage::declare(RenderGraph& graph, rojoRHI::CommandList& comm
                                       .linearSampler = static_cast<uint32_t>(inputs.linearSampler)};
             const auto passAddress = frameData(commands, pass);
             engine::registerFrameRoot("ShadowPassRoot", passAddress);
+            // Indirect and batched runs share one root and read drawId; a direct run's root
+            // carries its firstEntry (RojoRHI ADR 0024).
+            const bool direct = inputs.draws.mode == SubmissionMode::Direct;
+            if (!direct) {
+                engine::registerFrameRoot(
+                    "ShadowDrawRoot",
+                    commands.pushRoot(ShadowDrawRoot{.pass = passAddress, .indirect = 1u}));
+            }
             rojoRHI::Pipeline bound{};
             for (const auto& run : inputs.draws.runs) {
                 const engine::DrawItem& item = view.items[run.itemIndex];
@@ -173,21 +177,26 @@ GraphTexture ShadowStage::declare(RenderGraph& graph, rojoRHI::CommandList& comm
                 const auto pipeline = masked ? m_maskShadowPipelines[item.doubleSided ? 1 : 0].get()
                                              : m_shadowPipeline.get();
                 if (pipeline != bound) {
+                    const bool first = bound == rojoRHI::Pipeline{};
                     commands.setPipeline(pipeline);
                     bound = pipeline;
+                    if (first) {
+                        // Reversed depth pushes casters away from the light; the slope spans the
+                        // PCF kernel. Every shadow pipeline enables depth bias, and the values
+                        // persist across setPipeline to the end of the pass, so one call serves
+                        // every draw.
+                        commands.setDepthBias(-4.0f, -32.0f, 0.0f);
+                    }
                 }
-                const auto* diffuse =
-                    masked ? (item.diffuse ? item.diffuse : inputs.whiteTexture) : nullptr;
-                const ShadowDrawRoot draw{
-                    .pass = passAddress,
-                    .firstEntry = run.firstEntry,
-                    .baseColor = diffuse ? static_cast<uint32_t>(diffuse->view()) : 0u,
-                    .indirect = inputs.draws.mode != SubmissionMode::Direct ? 1u : 0u};
-                engine::registerFrameRoot("ShadowDrawRoot", commands.pushRoot(draw));
-                // Reversed depth pushes casters away from the light; the slope spans the PCF
-                // kernel.
-                commands.setDepthBias(-4.0f, -32.0f, 0.0f);
+                if (direct) {
+                    engine::registerFrameRoot(
+                        "ShadowDrawRoot", commands.pushRoot(ShadowDrawRoot{
+                                              .pass = passAddress, .firstEntry = run.firstEntry}));
+                }
 #ifndef NDEBUG
+                // The view the material row names: the item's diffuse, else the white fallback.
+                const auto* diffuse = item.diffuse ? item.diffuse : view.tables.whiteTexture;
+                LMX_ASSERT(!masked || diffuse, "masked shadow draws need the tables' fallback");
                 const std::array<rojoRHI::ResourceAccess, 3> vertexAccesses{
                     {{.buffer = view.tables.vertices->rhi(),
                       .size = view.tables.vertices->desc().size,

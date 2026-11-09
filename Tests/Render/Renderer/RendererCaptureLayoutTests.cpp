@@ -81,6 +81,7 @@ TEST_CASE("renderer registers the four uniform struct layouts") {
     REQUIRE(json.find("\"previousModel\"") != std::string::npos);
     REQUIRE(json.find("\"sizeBytes\": 240") != std::string::npos);
     REQUIRE(json.find("\"sizeBytes\": 112") != std::string::npos);
+    REQUIRE(json.find("\"sizeBytes\": 144") != std::string::npos);
     REQUIRE(json.find("\"sizeBytes\": 48") != std::string::npos);
     REQUIRE(json.find("ObjectUniforms") == std::string::npos);
     REQUIRE(json.find("AlphaMaskParams") == std::string::npos);
@@ -88,12 +89,13 @@ TEST_CASE("renderer registers the four uniform struct layouts") {
     REQUIRE(json.find("\"slot\"") == std::string::npos);
     REQUIRE(json.contains("\"version\": 2"));
 
-    requireLayout(json, "SceneDrawRoot", 48, {{"pass", 0}, {"firstEntry", 8}});
+    // Material views moved from the draw roots into MaterialRow (R5.7), leaving row identity.
+    requireLayout(json, "SceneDrawRoot", 16, {{"pass", 0}, {"firstEntry", 8}, {"indirect", 12}});
     requireLayout(json, "ScenePassRoot", 112,
                   {{"vertices", 0}, {"visibleRows", 8}, {"instances", 16}, {"materials", 24}});
     requireLayout(json, "SkyRoot", 32, {{"vertices", 0}, {"uniforms", 8}, {"exposure", 16}});
     requireLayout(json, "ShadowPassRoot", 48, {{"vertices", 0}, {"visibleRows", 8}});
-    requireLayout(json, "ShadowDrawRoot", 32, {{"pass", 0}});
+    requireLayout(json, "ShadowDrawRoot", 16, {{"pass", 0}, {"firstEntry", 8}, {"indirect", 12}});
     requireLayout(json, "InstanceRow", 240,
                   {{"model", 0},
                    {"previousModel", 64},
@@ -104,7 +106,7 @@ TEST_CASE("renderer registers the four uniform struct layouts") {
                    {"emissiveScale", 204},
                    {"worldBoundsMin", 208},
                    {"worldBoundsMax", 224}});
-    requireLayout(json, "MaterialRow", 112,
+    requireLayout(json, "MaterialRow", 144,
                   {{"uvTransform", 0},
                    {"albedo", 64},
                    {"emissive", 80},
@@ -112,7 +114,12 @@ TEST_CASE("renderer registers the four uniform struct layouts") {
                    {"metallic", 96},
                    {"occlusionStrength", 100},
                    {"alphaCutoff", 104},
-                   {"flags", 108}});
+                   {"flags", 108},
+                   {"baseColorView", 112},
+                   {"normalView", 116},
+                   {"metalRoughView", 120},
+                   {"occlusionView", 124},
+                   {"emissiveView", 128}});
     requireLayout(json, "MeshRow", 48,
                   {{"firstIndex", 0},
                    {"indexCount", 4},

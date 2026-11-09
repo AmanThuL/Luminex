@@ -55,34 +55,19 @@ static_assert(offsetof(ScenePassRoot, shadowSampler) == 100);
 static_assert(offsetof(ScenePassRoot, iblSampler) == 104);
 static_assert(offsetof(ScenePassRoot, padding) == 108);
 
-/// Per-run material views and explicit direct or indirect row identity.
+/// Draw-row identity: pushed once per pass for indirect and batched draws, which read drawId, and
+/// once per run for direct draws, which read firstEntry. Material views live in MaterialRow.
 struct alignas(16) SceneDrawRoot {
     rojoRHI::Addr pass{};  ///< Address of the shared ScenePassRoot.
     uint32_t firstEntry{}; ///< Direct visible-row offset; unused for indirect draws.
-    uint32_t baseColor{};  ///< Base-color view including fallback.
-    uint32_t normal{};     ///< Normal-map view including fallback.
-    uint32_t metalRough{}; ///< Metallic/roughness view including fallback.
-    uint32_t occlusion{};  ///< Occlusion view including fallback.
-    uint32_t emissive{};   ///< Emissive view including fallback.
     uint32_t indirect{};   ///< One selects drawId, zero selects firstEntry; never add them.
-    uint32_t padding0{};   ///< Explicit zero padding.
-    uint32_t padding1{};   ///< Explicit zero padding.
-    uint32_t padding2{};   ///< Explicit zero padding.
 };
 
 static_assert(alignof(SceneDrawRoot) == 16);
-static_assert(sizeof(SceneDrawRoot) == 48);
+static_assert(sizeof(SceneDrawRoot) == 16);
 static_assert(offsetof(SceneDrawRoot, pass) == 0);
 static_assert(offsetof(SceneDrawRoot, firstEntry) == 8);
-static_assert(offsetof(SceneDrawRoot, baseColor) == 12);
-static_assert(offsetof(SceneDrawRoot, normal) == 16);
-static_assert(offsetof(SceneDrawRoot, metalRough) == 20);
-static_assert(offsetof(SceneDrawRoot, occlusion) == 24);
-static_assert(offsetof(SceneDrawRoot, emissive) == 28);
-static_assert(offsetof(SceneDrawRoot, indirect) == 32);
-static_assert(offsetof(SceneDrawRoot, padding0) == 36);
-static_assert(offsetof(SceneDrawRoot, padding1) == 40);
-static_assert(offsetof(SceneDrawRoot, padding2) == 44);
+static_assert(offsetof(SceneDrawRoot, indirect) == 12);
 
 /// Sky geometry, constants and environment sampling indices.
 struct alignas(16) SkyRoot {
