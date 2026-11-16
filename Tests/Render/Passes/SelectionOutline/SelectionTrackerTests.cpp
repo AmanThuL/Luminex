@@ -29,18 +29,20 @@
 namespace {
 using namespace lmx;
 
-constexpr uint32_t kViewCapacity = 1'000'000;
+// RojoRHI ADR 0030's maxViews floor: tier 3's view heap less the D3D12 reservation.
+constexpr uint32_t kMinViewCapacity = 996'926;
 // Views the fixture holds before exhaustion, the Renderer's temporal motion, reactive, slot and
 // fallback views among them. It is the one count to update when the fixture's views change:
 // exhaustion reserves the free slots greedily by descending powers of two, so it keeps one range
 // per set bit of the free count and is refused once at every power of two.
 constexpr uint32_t kFixtureViews = 31;
-constexpr uint32_t kFreeViews = kViewCapacity - kFixtureViews;
-constexpr uint32_t kExpectedRanges = static_cast<uint32_t>(std::popcount(kFreeViews));
-constexpr uint32_t kExpectedRefusals = static_cast<uint32_t>(std::bit_width(kViewCapacity));
 constexpr size_t kMaxRanges = 460;
 constexpr uint32_t kMaxReserveAttempts = 480;
-constexpr std::string_view kHeapFull = "the view heap of 1000000 slots is full";
+
+//======================================================================================================================
+std::string heapFull(uint32_t capacity) {
+    return std::format("the view heap of {} slots is full", capacity);
+}
 
 struct FrameGuard {
     engine::GpuContext& gpu;
@@ -108,8 +110,12 @@ RangeReservations::~RangeReservations() noexcept(false) {
 
 //======================================================================================================================
 void RangeReservations::exhaust() {
-    REQUIRE(device.capabilities().maxViews == kViewCapacity);
-    for (uint32_t count = std::bit_floor(kViewCapacity); count != 0; count /= 2) {
+    const uint32_t capacity = device.capabilities().maxViews;
+    REQUIRE(capacity >= kMinViewCapacity);
+    const uint32_t freeViews = capacity - kFixtureViews;
+    const auto expectedRanges = static_cast<uint32_t>(std::popcount(freeViews));
+    const auto expectedRefusals = static_cast<uint32_t>(std::bit_width(capacity));
+    for (uint32_t count = std::bit_floor(capacity); count != 0; count /= 2) {
         for (;;) {
             CAPTURE(count, attempts, used);
             REQUIRE(attempts < kMaxReserveAttempts);
@@ -120,7 +126,7 @@ void RangeReservations::exhaust() {
                 REQUIRE(
                     result.error().message ==
                     std::format("the view heap of {} slots has no contiguous run of {} free slots",
-                                kViewCapacity, count));
+                                capacity, count));
                 ++refusals;
                 break;
             }
@@ -133,10 +139,10 @@ void RangeReservations::exhaust() {
             totalSlots += count;
         }
     }
-    REQUIRE(used == kExpectedRanges);
-    REQUIRE(refusals == kExpectedRefusals);
-    REQUIRE(attempts == kExpectedRanges + kExpectedRefusals);
-    REQUIRE(totalSlots == kFreeViews);
+    REQUIRE(used == expectedRanges);
+    REQUIRE(refusals == expectedRefusals);
+    REQUIRE(attempts == expectedRanges + expectedRefusals);
+    REQUIRE(totalSlots == freeViews);
 }
 
 //======================================================================================================================
@@ -528,11 +534,11 @@ TEST_CASE("selection replacement and resize preserve target generations under th
             unexpectedWitness = {fixture.gpu->device(), *witness};
         REQUIRE_FALSE(witness.has_value());
         REQUIRE(witness.error().category == rojoRHI::ErrorCategory::OutOfMemory);
-        REQUIRE(witness.error().message == kHeapFull);
+        REQUIRE(witness.error().message == heapFull(fixture.gpu->device().capabilities().maxViews));
         const auto resized = fixture.selection->resize(64, 64, states);
         REQUIRE_FALSE(resized.has_value());
         REQUIRE(resized.error().code == ErrorCode::Gpu);
-        REQUIRE(resized.error().message == kHeapFull);
+        REQUIRE(resized.error().message == heapFull(fixture.gpu->device().capabilities().maxViews));
         REQUIRE(snapshotTarget(fixture.selection->target(), states) == beforeFailure);
         reservations.releaseAll();
     }

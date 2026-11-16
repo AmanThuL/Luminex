@@ -25,7 +25,8 @@ Result<std::unique_ptr<GpuContext>> GpuContext::create(const GpuContextDesc& des
                                          .enableCapture = desc.enableCapture,
                                          .scopeTimings = desc.scopeTimings,
                                          .framesInFlight = desc.framesInFlight,
-                                         .label = "lmx.device"});
+                                         .label = "lmx.device",
+                                         .debugMarkers = desc.debugMarkers});
     if (!device) {
         return std::unexpected(gpuError(device.error()));
     }
