@@ -142,12 +142,13 @@ Result<VisibilityStatus> stageReadback(engine::GpuContext& gpu,
             difference(counts.candidates, counts.visible + counts.rejected + bypassed);
         result.counterMismatches +=
             difference(counts.emittedRows + counts.overflowedRows, counts.visible + bypassed);
-        uint32_t occluded = 0, tested = 0, invalid = 0, near = 0, outside = 0, large = 0;
+        // `crossing`, not `near`: <windows.h> defines `near` and `far` as empty macros.
+        uint32_t occluded = 0, tested = 0, invalid = 0, crossing = 0, outside = 0, large = 0;
         for (const auto& candidate : view.candidates) {
             occluded += candidate.occlusion.occluded;
             const auto outcome = candidate.occlusion.outcome;
             invalid += outcome == OcclusionOutcome::HistoryInvalid;
-            near += outcome == OcclusionOutcome::NearCrossing;
+            crossing += outcome == OcclusionOutcome::NearCrossing;
             outside += outcome == OcclusionOutcome::OutsideSource;
             large += outcome == OcclusionOutcome::RectTooLarge;
             tested += candidate.occlusion.occluded || (outcome != OcclusionOutcome::NotTested &&
@@ -156,7 +157,7 @@ Result<VisibilityStatus> stageReadback(engine::GpuContext& gpu,
         result.counterMismatches += difference(counts.occluded, occluded);
         result.counterMismatches += difference(counts.occlusionTested, tested);
         result.counterMismatches += difference(counts.historyInvalid, invalid);
-        result.counterMismatches += difference(counts.nearCrossing, near);
+        result.counterMismatches += difference(counts.nearCrossing, crossing);
         result.counterMismatches += difference(counts.outsideSource, outside);
         result.counterMismatches += difference(counts.rectTooLarge, large);
         if (!result.checkEnabled)

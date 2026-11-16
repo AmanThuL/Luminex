@@ -16,8 +16,6 @@
 #include <span>
 #include <system_error>
 
-#include <unistd.h>
-
 namespace lmx::asset {
 namespace {
 

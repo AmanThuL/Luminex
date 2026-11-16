@@ -4,6 +4,8 @@ set_languages("c++23")
 add_rules("mode.debug", "mode.release")
 set_defaultmode("debug")
 set_warnings("allextra")
+-- Source files are UTF-8, and MSVC reads them in the system code page unless told; fmt also requires it.
+set_encodings("utf-8")
 set_policy("build.warning", true)
 
 add_requires("libsdl3", "glm", "spdlog", "catch2 3.x", "cgltf", "stb")
