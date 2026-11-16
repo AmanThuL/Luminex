@@ -87,7 +87,7 @@ xmake run App --scene temporal-lab --frames 32 --temporal-view rejection --scree
 
 Luminex is a set of static libraries whose dependencies point one way, from the GPU interface up to the editor.
 
-- `RojoRHI` is a thin Metal 4 hardware interface for devices, resources, passes and GPU timing. It lives in its own [repository](https://github.com/AmanThuL/rojo-rhi), mounted as a submodule, and depends on nothing else here.
+- `RojoRHI` is a thin Metal 4 hardware interface for devices, resources, passes and GPU timing. It lives in its own [repository](https://github.com/AmanThuL/rojo-rhi), mounted as a submodule pinned to a release, and depends on nothing else here. That repository holds releases only, from 1.0.0 on: older Luminex commits pin RojoRHI commits it does not hold, so their submodule cannot be checked out.
 - `Core` holds math, containers, logging and file utilities, with no graphics code.
 - `Engine` imports and bakes assets, reads and writes glTF scene documents, and keeps the GPU-resident scene with its animation. Depends on `Core` and `RojoRHI`.
 - `Render` builds each frame as a render graph: shadows, clustered lighting, visibility, temporal reconstruction, exposure, bloom and display. Depends on `Engine`.

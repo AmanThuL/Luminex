@@ -11,6 +11,15 @@ TEST_CASE("shaderLibraryPath prefixes the shader directory", "[engine]") {
 }
 
 //======================================================================================================================
+TEST_CASE("a context names its GPU work for debuggers by default only in Debug builds", "[engine]") {
+#ifdef NDEBUG
+    CHECK_FALSE(lmx::engine::GpuContextDesc{}.debugMarkers);
+#else
+    CHECK(lmx::engine::GpuContextDesc{}.debugMarkers);
+#endif
+}
+
+//======================================================================================================================
 TEST_CASE("copyPassTimings copies labels and milliseconds in order", "[engine]") {
     const std::array<rojoRHI::ScopeTiming, 3> source = {
         {{"lmx.frame", 4, rojoRHI::QueueType::Graphics, 0, 2.0},

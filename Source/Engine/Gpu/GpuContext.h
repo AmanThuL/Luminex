@@ -26,6 +26,13 @@ struct GpuContextDesc {
     bool scopeTimings = true;    ///< Collects retired scope timestamps without timing stalls.
     uint32_t framesInFlight = 3; ///< Frame-slot count, either two or three.
     bool enableCapture = true;   ///< Requests platform capture support at device creation.
+    /// Names scopes, passes and upscales for GPU debuggers; on by default in Debug builds only.
+    /// enableCapture implies it.
+#ifdef NDEBUG
+    bool debugMarkers = false;
+#else
+    bool debugMarkers = true;
+#endif
 };
 
 /// One open frame; commands borrows the context's list and expires on the next beginFrame.
