@@ -11,7 +11,7 @@ TEST_CASE("shaderLibraryPath prefixes the shader directory", "[engine]") {
 }
 
 //======================================================================================================================
-TEST_CASE("a context names its GPU work for debuggers by default only in Debug builds", "[engine]") {
+TEST_CASE("a context names GPU work for debuggers by default in Debug only", "[engine]") {
 #ifdef NDEBUG
     CHECK_FALSE(lmx::engine::GpuContextDesc{}.debugMarkers);
 #else
