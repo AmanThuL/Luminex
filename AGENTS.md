@@ -55,6 +55,8 @@ live only in `docs/roadmap.md` and its linked parts under `docs/roadmap/`.
   Current consumer suites: `xmake test -P . Tests/unit Tests/gpu`; Null `Tests/unit` is CPU-only,
   while Metal `Tests/unit` contains device cases. Name groups instead of a plain `xmake test`.
   Luminex links `RojoRHI` and app-shell's `RojoRHIImGui`; standalone commands: `RojoRHI/AGENTS.md`.
+  `--rojorhi_dir=../rojo-rhi` builds against a sibling RojoRHI checkout instead of the pinned
+  `RojoRHI/` submodule (the default), for co-developing the two; Luminex `main` keeps the pin.
 - **Gotcha**: Tests has `set_default(false)`: first `xmake build -P . Tests`, then use CWD `build/macosx/arm64/<mode>/test` for direct execution/shader lookup.
   GPU regression uses `[gpu]~[.]`; hidden diagnostics require explicit filters.
 - Theme colors: `python3 Tools/Theme/generate_tokens.py --check` validates generated C++/Figma outputs; `--audit` prints 48 contrast pairs. CI runs freshness; root policy runs `Tools/check_literal_colors.py`. Shape/density/type are shared C++ constants, not generated colors.
