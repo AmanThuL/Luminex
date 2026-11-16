@@ -6,7 +6,7 @@ RojoRHI is Luminex's dependency-free rendering hardware interface, mounted at th
 root rather than under `Source/`. Engine, Scenes, Render and App consume its public value API;
 Core and Asset remain independent. The [module contract](../conventions/modules.md) owns which
 units may include its headers. This page describes the consumer boundary; the component's
-[architecture](../../RojoRHI/docs/architecture/overview.md) owns backend implementation details.
+[API reference](../../RojoRHI/docs/spec/00-conventions.md) owns the interface and what its backends guarantee.
 
 ## Component boundary
 
@@ -16,11 +16,11 @@ edits files inside the mount: changes land upstream first, then arrive through a
 ([ADR 0024](../decisions/0024-rhi-relocation-to-rojorhi.md)).
 
 The root includes `RojoRHI/xmake/targets.lua`, linking `RojoRHI` for the core API and
-`RojoRHIImGui` for the app-shell adapter. The component carries the v2 interface alone; its
-tag `v0.1.0` is the last that carries v1. Asset and TextureBake have no RHI include permission or
+`RojoRHIImGui` for the app-shell adapter. The component carries the v2 interface alone; v1 was
+deleted before its 1.0.0 release. Asset and TextureBake have no RHI include permission or
 dependency. Hosted CI selects `--rojorhi_backend=null`; Metal 4 builds and GPU execution use the
 local device. The component's own checkers run in its repository and CI, separately from Luminex
-policy. See the [component build](../../RojoRHI/AGENTS.md) for standalone commands.
+policy. Its [README](../../RojoRHI/README.md) gives the standalone build commands.
 
 The Renderer runs its whole frame on the v2 interface: visibility and light lists → shadow →
 scene/sky/IBL → exposure → native or vendor temporal reconstruction → bloom → display → light
@@ -83,8 +83,8 @@ graph remain valid. The `[hzb-resize]` cases cover these boundaries.
 
 Luminex selects Metal 4 on macOS and requires the offline Metal toolchain. The mounted component
 owns native translation, frame arenas, residency, deferred destruction, scope timestamps and
-capture. Its [Metal backend](../../RojoRHI/docs/architecture/metal4-backend.md) and
-[recording contract](../../RojoRHI/docs/architecture/metal4-recording.md) describe those mechanisms.
+capture. Its [queues and frames](../../RojoRHI/docs/spec/10-queues-and-frames.md) and
+[diagnostics](../../RojoRHI/docs/spec/14-diagnostics.md) chapters state what those mechanisms guarantee.
 No backend handle enters Luminex's core or engine interfaces.
 
 `RojoRHIImGui` exposes `<rojoRHI/ImGuiAdapter.h>` only to app-shell. `EditorSurfaces.mm` supplies
