@@ -50,7 +50,11 @@ function lmx_configure_shader_library(target)
     end
     target:values_set("slang.slangc", path.join(repository_root,
         os.host() == "windows" and "ThirdParty/slang/bin/slangc.exe" or "ThirdParty/slang/bin/slangc"))
-    target:values_set("slang.moduledir", path.join(repository_root, "RojoRHI/Shaders/RojoRHI"))
+    -- The shader ABI module of the RojoRHI checkout the build uses (the root xmake.lua's `rojorhi_dir`).
+    local rojorhi_dir = get_config("rojorhi_dir")
+    local rojorhi_root = (rojorhi_dir and rojorhi_dir ~= "") and path.absolute(rojorhi_dir, repository_root)
+        or path.join(repository_root, "RojoRHI")
+    target:values_set("slang.moduledir", path.join(rojorhi_root, "Shaders/RojoRHI"))
     target:values_set("slang.includedirs", table.unpack(includedirs))
     if kind == "app" then
         target:values_set("slang.layout_probe", path.join(repository_root, "Shaders/Layout/LuminexLayout.slang"))
