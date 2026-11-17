@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check repository documentation, identity, and change-message policy."""
+"""Check repository documentation, identity, change-message and workflow-runner policy."""
 
 from __future__ import annotations
 
@@ -59,6 +59,8 @@ NON_IMPERATIVE_START = re.compile(
 PUBLIC_COPY = {Path("README.md")}
 PUBLIC_PLANNING_LANGUAGE = re.compile(r"(?i)\bmilestones?\b|\bM\d+(?:\.\d+)?\b")
 PUBLIC_UNSHIPPED_BACKEND = re.compile(r"(?i)\b(?:D3D12|Direct3D\s*12|Vulkan)\b")
+WORKFLOWS = (".github", "workflows")
+SELF_HOSTED = re.compile(r"(?i)self-hosted")
 
 
 def git(*args: str) -> str:
@@ -351,6 +353,25 @@ def check_public_copy(files: list[Path], errors: list[str]) -> None:
                 errors.append(f"{path}:{line_number(text, match.start())}: {description} in public copy")
 
 
+def check_workflow_runners(files: list[Path], errors: list[str]) -> None:
+    """Reject every workflow line that names a self-hosted runner, comments included.
+
+    The repository is public, so a fork's pull request runs its workflows; a self-hosted runner
+    would run that code on the project's own machines. The scan is for the word, not for
+    `runs-on`, so a label list, a string, an expression, a matrix value or a `labels:` object all
+    match. GitHub reads runner labels case-insensitively, and so does the scan.
+    """
+    for path in files:
+        if path.parts[: len(WORKFLOWS)] != WORKFLOWS:
+            continue
+        text = read_text(path)
+        if text is None:
+            continue
+        for number, line in enumerate(text.splitlines(), 1):
+            if SELF_HOSTED.search(line):
+                errors.append(f"{path}:{number}: names a self-hosted runner")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -372,6 +393,7 @@ def main() -> int:
         check_line_budgets(files, errors)
         check_process_narration(files, errors)
         check_public_copy(files, errors)
+        check_workflow_runners(files, errors)
     except (OSError, RuntimeError) as exc:
         print(f"policy check could not run: {exc}", file=sys.stderr)
         return 2

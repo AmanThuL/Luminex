@@ -244,5 +244,7 @@ SelectionMask and SelectionOutline (editor-only).
   rendering behavior and uses plain feature themes for future work. It never exposes milestone
   numbers, task/plan status, or an unimplemented backend as a current capability. `CLAUDE.md`
   imports this file, so the same rule applies to Codex and Claude Code.
+- Workflows run on GitHub-hosted runners only, since a fork's pull request runs them: policy fails
+  on `self-hosted`, in any case, on any line of a file under `.github/workflows/`.
 ## Update policy
 Refresh this file whenever a command, architecture contract, or hard rule changes.
