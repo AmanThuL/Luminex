@@ -335,6 +335,57 @@ class ProjectPolicyTests(unittest.TestCase):
     def test_component_paths_are_not_process_roots(self) -> None:
         self.assertFalse(any(root.startswith("RojoRHI") for root in policy.PROCESS_ROOTS))
 
+    def workflow_errors(self, text: str, name: str = ".github/workflows/ci.yml") -> list[str]:
+        errors: list[str] = []
+        with mock.patch.object(policy, "read_text", return_value=text):
+            policy.check_workflow_runners([Path(name)], errors)
+        return errors
+
+    def test_workflow_policy_rejects_a_self_hosted_label_in_any_case(self) -> None:
+        text = (
+            "jobs:\n  a:\n    runs-on: [self-hosted, macOS]\n"
+            "  b:\n    runs-on: 'Self-Hosted'\n"
+        )
+        self.assertEqual(
+            self.workflow_errors(text),
+            [".github/workflows/ci.yml:3: names a self-hosted runner",
+             ".github/workflows/ci.yml:5: names a self-hosted runner"],
+        )
+
+    def test_workflow_policy_rejects_every_spelling_of_the_runner(self) -> None:
+        text = (
+            "    runs-on:\n      - self-hosted\n"
+            "    runs-on:\n      group: g\n      labels: [\"self-hosted\"]\n"
+            "    strategy: {matrix: {runner: [ubuntu-latest, self-hosted]}}\n"
+            "    runs-on: ${{ github.event_name == 'push' && 'self-hosted' || 'ubuntu-latest' }}\n"
+            "    # runs-on: self-hosted\n"
+        )
+        errors = self.workflow_errors(text, ".github/workflows/gpu.yaml")
+        self.assertEqual(
+            errors,
+            [f".github/workflows/gpu.yaml:{line}: names a self-hosted runner"
+             for line in (2, 5, 6, 7, 8)],
+        )
+
+    def test_workflow_policy_accepts_hosted_runners(self) -> None:
+        text = "    runs-on: ${{ matrix.os }}\n    runs-on: ubuntu-latest\n    runs-on: macos-26\n"
+        self.assertEqual(self.workflow_errors(text), [])
+
+    def test_workflow_policy_checks_only_the_workflow_folder(self) -> None:
+        for name in ("README.md", ".github/pull_request_template.md", "docs/workflows/ci.yml"):
+            with self.subTest(name=name):
+                self.assertEqual(self.workflow_errors("runs-on: self-hosted\n", name), [])
+
+    def test_repository_workflows_use_hosted_runners(self) -> None:
+        workflows = [
+            path for path in policy.repository_files()
+            if path.parts[: len(policy.WORKFLOWS)] == policy.WORKFLOWS
+        ]
+        self.assertTrue(workflows)
+        errors: list[str] = []
+        policy.check_workflow_runners(workflows, errors)
+        self.assertEqual(errors, [])
+
 
 if __name__ == "__main__":
     unittest.main()
